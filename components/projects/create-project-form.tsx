@@ -21,8 +21,7 @@ import {
 const PRESET_STORAGE_KEY = "imx-project-preset-seed";
 const FEATURED_UNIVERSITIES = getFeaturedProjectUniversityOptions();
 
-const fieldClassName =
-  "h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm focus:border-lime-400 focus:ring-4 focus:ring-lime-100";
+const fieldClassName = "brand-input";
 
 export function CreateProjectForm() {
   const router = useRouter();
@@ -159,27 +158,27 @@ export function CreateProjectForm() {
 
   return (
     <form className="grid gap-8" onSubmit={handleSubmit}>
-      <div className="surface-panel grid gap-4 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 p-5 sm:grid-cols-[1fr_auto] sm:items-start">
+      <div className="rounded-[28px] p-5 brand-card-lilac sm:grid sm:grid-cols-[1fr_auto] sm:items-start sm:gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-            Catalogo activo
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
+            Tema sugerido
           </p>
-          <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-slate-950">
+          <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
             {activePreset ? activePreset.label : "Cargando catalogo..."}
           </p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Selecciona una carrera, luego uno de los 100 titulos disponibles. Cada
-            proyecto arrastra 20 intakes de tesis relacionados.
+          <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+            Empieza con un tema base y luego ajustalo en el intake. El catalogo
+            existe para acelerar la claridad inicial, no para encerrarte.
           </p>
         </div>
 
         <div className="grid gap-3 sm:justify-items-end">
-          <p className="max-w-xs text-sm leading-6 text-slate-500">
-            Presiona <strong>Tab</strong> para autocompletar Programa o usa el
-            siguiente proyecto sugerido.
+          <p className="max-w-xs text-sm leading-6 text-[rgba(23,19,31,0.68)]">
+            Usa <strong>Tab</strong> para autocompletar programa o prueba otra
+            sugerencia si quieres cambiar rapido de punto de partida.
           </p>
           <button
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-950"
+            className="brand-button-secondary px-4 py-2 text-sm font-semibold"
             onClick={cyclePreset}
             type="button"
           >
@@ -190,7 +189,7 @@ export function CreateProjectForm() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="project-career">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="project-career">
             Carrera
           </label>
           <select
@@ -208,7 +207,7 @@ export function CreateProjectForm() {
         </div>
 
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="project-title">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="project-title">
             Titulo del proyecto
           </label>
           <select
@@ -225,14 +224,14 @@ export function CreateProjectForm() {
             ))}
           </select>
           {activePreset ? (
-            <p className="text-sm leading-6 text-slate-500">
+            <p className="text-sm leading-6 text-[var(--color-muted)]">
               Linea sugerida: {activePreset.researchLine}
             </p>
           ) : null}
         </div>
 
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="project-program">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="project-program">
             Programa
           </label>
           <input
@@ -249,7 +248,7 @@ export function CreateProjectForm() {
         </div>
 
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="project-degree">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="project-degree">
             Nivel
           </label>
           <select
@@ -266,7 +265,7 @@ export function CreateProjectForm() {
         </div>
 
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="project-university">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="project-university">
             Universidad
           </label>
           <select
@@ -283,14 +282,14 @@ export function CreateProjectForm() {
               </option>
             ))}
           </select>
-          <p className="text-sm leading-6 text-slate-500">
-            El combo muestra 10 universidades destacadas; el asset local contiene
-            el catalogo nacional completo.
+          <p className="text-sm leading-6 text-[var(--color-muted)]">
+            Aqui priorizamos universidades iniciales del MVP y asignamos la
+            plantilla correspondiente de forma automatica.
           </p>
         </div>
 
         <div className="grid gap-2 lg:col-span-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="project-template">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="project-template">
             Plantilla
           </label>
           <input
@@ -299,17 +298,17 @@ export function CreateProjectForm() {
             readOnly
             value={templateKey}
           />
-          <p className="text-sm leading-6 text-slate-500">
+          <p className="text-sm leading-6 text-[var(--color-muted)]">
             La plantilla se asigna automaticamente segun la universidad elegida.
           </p>
         </div>
       </div>
 
-      <div className="surface-panel rounded-[28px] p-5">
-        <p className="text-sm leading-6 text-slate-600">
-          Este paso ahora crea el proyecto sobre un catalogo estructurado:
-          10 carreras, 100 temas uniformemente distribuidos y 20 intakes listos por
-          cada titulo seleccionado.
+      <div className="rounded-[28px] p-5 brand-card-gold">
+        <p className="text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+          Lo importante aqui es salir con una base coherente. Los detalles de
+          alcance, problema y poblacion se trabajan en el siguiente paso dentro del
+          intake estructurado.
         </p>
       </div>
 
@@ -317,15 +316,15 @@ export function CreateProjectForm() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button
-          className="inline-flex items-center justify-center rounded-full bg-lime-400 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_16px_40px_rgba(163,230,53,0.32)] hover:-translate-y-0.5 hover:bg-lime-300 disabled:cursor-wait disabled:opacity-70"
+          className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
           disabled={isPending || !catalogTopicId}
           type="submit"
         >
           {isPending ? "Creando..." : "Crear proyecto"}
         </button>
-        <p className="text-sm leading-6 text-slate-500">
-          Consejo: crea el proyecto con el titulo del catalogo y luego el intake ya
-          quedara filtrado a sus 20 variantes relacionadas.
+        <p className="text-sm leading-6 text-[var(--color-muted)]">
+          Consejo: si el tema esta cerca de lo que buscas, crealo y termina de
+          adaptarlo despues en el intake.
         </p>
       </div>
     </form>

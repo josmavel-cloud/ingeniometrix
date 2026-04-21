@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileStack, Sparkles } from "lucide-react";
 
+import { getProjectStatusMeta } from "@/lib/project-status";
 import {
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
@@ -93,6 +94,7 @@ export function BlueprintPanel({
     projectStatus === "SOURCES_SELECTED" ||
     projectStatus === "BLUEPRINT_READY" ||
     projectStatus === "EXPORT_READY";
+  const statusMeta = getProjectStatusMeta(projectStatus);
 
   function generateBlueprint() {
     setError(null);
@@ -134,7 +136,7 @@ export function BlueprintPanel({
         </div>
 
         <button
-          className="inline-flex items-center justify-center rounded-full bg-lime-400 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_16px_40px_rgba(163,230,53,0.32)] hover:-translate-y-0.5 hover:bg-lime-300 disabled:cursor-not-allowed disabled:opacity-60"
+          className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isPending || !canGenerate}
           onClick={generateBlueprint}
           type="button"
@@ -146,7 +148,9 @@ export function BlueprintPanel({
 
       {!canGenerate ? (
         <p className="mt-5 text-sm leading-6 text-slate-500">
-          Primero debes guardar entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} fuentes para habilitar la generacion.
+          El proyecto aun esta en "{statusMeta.label}". Primero debes guardar entre{" "}
+          {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} fuentes para
+          habilitar la generacion.
         </p>
       ) : null}
 

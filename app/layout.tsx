@@ -15,7 +15,7 @@ const bodyFont = Manrope({
 
 export const metadata: Metadata = {
   title: "Ingeniometrix",
-  description: "Planifica tu tesis con claridad.",
+  description: "Asistencia etica para planificar tesis de maestria y posgrado en Peru.",
 };
 
 type RootLayoutProps = {

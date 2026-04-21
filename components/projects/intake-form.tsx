@@ -27,11 +27,9 @@ type IntakeState = {
   advisorNotes: string;
 };
 
-const inputClassName =
-  "h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm focus:border-lime-400 focus:ring-4 focus:ring-lime-100";
+const inputClassName = "brand-input";
 
-const textareaClassName =
-  "rounded-3xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 shadow-sm focus:border-lime-400 focus:ring-4 focus:ring-lime-100";
+const textareaClassName = "brand-textarea";
 
 export function IntakeForm({ project }: IntakeFormProps) {
   const router = useRouter();
@@ -179,29 +177,29 @@ export function IntakeForm({ project }: IntakeFormProps) {
 
   return (
     <form className="grid gap-8" onSubmit={handleSubmit}>
-      <div className="surface-panel grid gap-4 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 p-5 sm:grid-cols-[1fr_auto] sm:items-start">
+      <div className="rounded-[28px] p-5 brand-card-lilac sm:grid sm:grid-cols-[1fr_auto] sm:items-start sm:gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
             Intakes relacionados
           </p>
-          <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-slate-950">
+          <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
             {relatedProjectPreset
               ? `${relatedProjectPreset.label} (${intakePresets.length} variantes)`
               : "Proyecto sin catalogo relacionado"}
           </p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            Este formulario ya no usa ejemplos globales: solo trabaja con los 20
-            intakes derivados del titulo seleccionado en el proyecto.
+          <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+            Usa estas variantes como punto de partida. La meta no es copiar un
+            ejemplo, sino aterrizar tu caso real con mayor rapidez.
           </p>
         </div>
 
         <div className="grid gap-3 sm:justify-items-end">
-          <p className="max-w-xs text-sm leading-6 text-slate-500">
+          <p className="max-w-xs text-sm leading-6 text-[rgba(23,19,31,0.68)]">
             Presiona <strong>Tab</strong> para autocompletar el campo actual con
             el preset activo.
           </p>
           <button
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-950"
+            className="brand-button-secondary px-4 py-2 text-sm font-semibold"
             onClick={cyclePreset}
             type="button"
           >
@@ -212,7 +210,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
 
       {intakePresets.length > 0 ? (
         <div className="grid gap-2">
-          <label className="text-sm font-semibold text-slate-600" htmlFor="intake-preset">
+          <label className="text-sm font-semibold text-[var(--color-muted)]" htmlFor="intake-preset">
             Variante de intake
           </label>
           <select
@@ -230,15 +228,14 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </div>
       ) : (
         <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900">
-          No se encontro un catalogo relacionado para este proyecto. Puedes completar
-          el intake manualmente, pero los proyectos nuevos ya quedan enlazados
-          automaticamente mediante <code>catalogTopicId</code>.
+          No se encontro una variante relacionada para este proyecto. Puedes
+          completar el intake manualmente y seguir con el flujo sin problema.
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <label className="grid gap-2 lg:col-span-2">
-          <span className="text-sm font-semibold text-slate-600">Tema</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Tema</span>
           <textarea
             className={textareaClassName}
             onChange={(event) => updateField("topic", event.target.value)}
@@ -251,7 +248,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2 lg:col-span-2">
-          <span className="text-sm font-semibold text-slate-600">Contexto del problema</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Contexto del problema</span>
           <textarea
             className={textareaClassName}
             onChange={(event) => updateField("problemContext", event.target.value)}
@@ -263,7 +260,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-600">Linea de investigacion</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Linea de investigacion</span>
           <input
             className={inputClassName}
             onChange={(event) => updateField("researchLine", event.target.value)}
@@ -274,7 +271,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-600">Metodologia preferida</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Metodologia preferida</span>
           <input
             className={inputClassName}
             onChange={(event) => updateField("preferredMethodology", event.target.value)}
@@ -285,7 +282,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-600">Poblacion objetivo</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Poblacion objetivo</span>
           <textarea
             className={textareaClassName}
             onChange={(event) => updateField("targetPopulation", event.target.value)}
@@ -297,7 +294,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-600">Datos disponibles</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Datos disponibles</span>
           <textarea
             className={textareaClassName}
             onChange={(event) => updateField("availableData", event.target.value)}
@@ -309,7 +306,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2 lg:col-span-2">
-          <span className="text-sm font-semibold text-slate-600">Restricciones academicas</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Restricciones academicas</span>
           <textarea
             className={textareaClassName}
             onChange={(event) => updateField("academicConstraints", event.target.value)}
@@ -321,7 +318,7 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </label>
 
         <label className="grid gap-2 lg:col-span-2">
-          <span className="text-sm font-semibold text-slate-600">Observaciones del asesor</span>
+          <span className="text-sm font-semibold text-[var(--color-muted)]">Observaciones del asesor</span>
           <textarea
             className={textareaClassName}
             onChange={(event) => updateField("advisorNotes", event.target.value)}
@@ -338,15 +335,15 @@ export function IntakeForm({ project }: IntakeFormProps) {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button
-          className="inline-flex items-center justify-center rounded-full bg-lime-400 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_16px_40px_rgba(163,230,53,0.32)] hover:-translate-y-0.5 hover:bg-lime-300 disabled:cursor-wait disabled:opacity-70"
+          className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
           disabled={isPending}
           type="submit"
         >
           {isPending ? "Guardando..." : "Guardar intake"}
         </button>
-        <p className="text-sm leading-6 text-slate-500">
-          El estado pasa a <strong>INTAKE_READY</strong> cuando completas tema,
-          contexto del problema y poblacion objetivo.
+        <p className="text-sm leading-6 text-[var(--color-muted)]">
+          Cuando completas tema, contexto del problema y poblacion objetivo, el
+          proyecto queda listo para buscar fuentes.
         </p>
       </div>
     </form>

@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, Search, Sparkles } from "lucide-react";
 
+import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
 import {
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
@@ -57,6 +58,7 @@ export function ReferenceSearchPanel({
     () => references.filter((reference) => reference.selected).length,
     [references],
   );
+  const statusMeta = getProjectStatusMeta(status);
 
   function toggleReference(referenceId: string) {
     setReferences((current) => {
@@ -200,11 +202,13 @@ export function ReferenceSearchPanel({
         </div>
 
         <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-          <span className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-            {status}
+          <span
+            className={`inline-flex rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${getProjectStatusToneClasses(status)}`}
+          >
+            {statusMeta.label}
           </span>
           <button
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-950 disabled:cursor-wait disabled:opacity-70"
+            className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
             disabled={isSearching}
             onClick={runSearch}
             type="button"
@@ -306,7 +310,7 @@ export function ReferenceSearchPanel({
           Guarda la seleccion cuando tengas un set semilla suficientemente representativo.
         </p>
         <button
-          className="inline-flex items-center justify-center rounded-full bg-lime-400 px-5 py-3 text-sm font-semibold text-slate-950 shadow-[0_16px_40px_rgba(163,230,53,0.32)] hover:-translate-y-0.5 hover:bg-lime-300 disabled:cursor-wait disabled:opacity-70"
+          className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
           disabled={isSaving || references.length === 0}
           onClick={saveSelection}
           type="button"

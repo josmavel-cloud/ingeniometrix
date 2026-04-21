@@ -8,33 +8,50 @@ export default async function NewProjectPage() {
   return (
     <ProjectShell
       title="Crea un nuevo proyecto"
-      description="Empieza con un catalogo estructurado para tu tesis: carrera, titulo, universidad destacada, plantilla y 20 intakes relacionados por tema."
+      description="Empieza con una base corta y clara. Hoy solo necesitamos el marco minimo para pasar al intake guiado."
     >
-      <section className="grid gap-6 lg:grid-cols-[0.95fr_1.2fr]">
-        <aside className="surface-panel rounded-[32px] p-6 sm:p-8">
-          <p className="text-sm font-medium uppercase tracking-[0.22em] text-slate-400">
-            Paso 1
-          </p>
-          <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Define el marco base del proyecto.
-          </h2>
-          <p className="mt-4 text-sm leading-7 text-slate-600">
-            Aqui eliges el tema desde un catalogo organizado. El objetivo es que
-            Ingeniometrix entienda tu contexto academico antes de pasar al intake
-            estructurado.
-          </p>
-          <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
-            <p className="text-sm font-semibold text-slate-700">Incluye:</p>
-            <ul className="mt-3 grid gap-2 text-sm leading-6 text-slate-600">
-              <li>- 10 carreras comunes con 100 temas distribuidos uniformemente</li>
-              <li>- 20 intakes listos por cada titulo del catalogo</li>
-              <li>- 10 universidades destacadas en el combo del proyecto</li>
-              <li>- Relacion directa entre titulo elegido e intakes sugeridos</li>
+      <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
+        <aside className="grid gap-4">
+          <section className="brand-card-primary rounded-[34px] p-6 sm:p-8">
+            <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
+              Paso 1 de 3
+            </p>
+            <h2 className="mt-3 font-[var(--font-heading)] text-3xl font-semibold text-white">
+              Define la base del proyecto.
+            </h2>
+            <p className="mt-4 text-sm leading-7 text-white/76">
+              Aqui solo se decide el marco inicial: tema, programa, universidad y
+              plantilla. El detalle fino vendra despues, dentro del intake.
+            </p>
+          </section>
+
+          <section className="rounded-[30px] p-5 brand-card-lilac">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
+              Lo que obtienes
+            </p>
+            <p className="mt-3 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
+              Un punto de partida mejor guiado.
+            </p>
+            <ul className="mt-3 grid gap-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+              <li>Temas organizados por carrera.</li>
+              <li>Plantilla alineada con la universidad elegida.</li>
+              <li>Base conectada con variantes de intake relacionadas.</li>
             </ul>
-          </div>
+          </section>
+
+          <section className="rounded-[30px] p-5 brand-card-gold">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
+              Criterio MVP
+            </p>
+            <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
+              Este paso no intenta resolver toda la tesis. Solo deja una base
+              suficientemente clara para que Ingeniometrix haga mejores preguntas en el
+              intake y recupere fuentes mas utiles despues.
+            </p>
+          </section>
         </aside>
 
-        <section className="surface-panel rounded-[32px] p-6 sm:p-8">
+        <section className="surface-panel rounded-[34px] p-6 sm:p-8">
           <CreateProjectForm />
         </section>
       </section>

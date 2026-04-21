@@ -36,21 +36,26 @@ export function LoginForm() {
 
   return (
     <form className="grid gap-4" onSubmit={handleSubmit}>
+      <div className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.9)] p-4 text-sm leading-6 text-[var(--color-muted)]">
+        Entra con tu nombre y correo para crear tu primer proyecto y continuar en el
+        workspace de Ingeniometrix.
+      </div>
+
       <label className="grid gap-2">
-        <span className="text-sm font-semibold text-slate-600">Nombre</span>
+        <span className="text-sm font-semibold text-[var(--color-muted)]">Nombre</span>
         <input
-          className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm focus:border-lime-400 focus:ring-4 focus:ring-lime-100"
+          className="brand-input"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="Tu nombre"
+          placeholder="Como te llamamos en el workspace"
           autoComplete="name"
         />
       </label>
 
       <label className="grid gap-2">
-        <span className="text-sm font-semibold text-slate-600">Correo</span>
+        <span className="text-sm font-semibold text-[var(--color-muted)]">Correo</span>
         <input
-          className="h-12 rounded-2xl border border-slate-200 bg-white px-4 text-sm text-slate-900 shadow-sm focus:border-lime-400 focus:ring-4 focus:ring-lime-100"
+          className="brand-input"
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -63,11 +68,11 @@ export function LoginForm() {
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       <button
-        className="inline-flex h-12 items-center justify-center rounded-full bg-lime-400 px-5 text-sm font-semibold text-slate-950 shadow-[0_16px_40px_rgba(163,230,53,0.32)] hover:-translate-y-0.5 hover:bg-lime-300 disabled:cursor-wait disabled:opacity-70"
+        className="brand-button-primary h-12 px-5 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
         disabled={isPending}
         type="submit"
       >
-        {isPending ? "Ingresando..." : "Entrar"}
+        {isPending ? "Entrando..." : "Entrar al workspace"}
       </button>
     </form>
   );
