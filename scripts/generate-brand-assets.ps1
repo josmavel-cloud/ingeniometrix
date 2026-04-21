@@ -34,6 +34,100 @@ function New-TransparentBitmap {
   return $bitmap
 }
 
+function Get-NonWhiteBounds {
+  param(
+    [System.Drawing.Bitmap]$Source,
+    [int]$WhiteThreshold = 245
+  )
+
+  $minX = $Source.Width
+  $minY = $Source.Height
+  $maxX = -1
+  $maxY = -1
+
+  for ($x = 0; $x -lt $Source.Width; $x++) {
+    for ($y = 0; $y -lt $Source.Height; $y++) {
+      $pixel = $Source.GetPixel($x, $y)
+      $isNearWhite = $pixel.R -ge $WhiteThreshold -and $pixel.G -ge $WhiteThreshold -and $pixel.B -ge $WhiteThreshold
+
+      if (-not $isNearWhite) {
+        if ($x -lt $minX) { $minX = $x }
+        if ($y -lt $minY) { $minY = $y }
+        if ($x -gt $maxX) { $maxX = $x }
+        if ($y -gt $maxY) { $maxY = $y }
+      }
+    }
+  }
+
+  if ($maxX -lt 0 -or $maxY -lt 0) {
+    return [System.Drawing.Rectangle]::new(0, 0, $Source.Width, $Source.Height)
+  }
+
+  return [System.Drawing.Rectangle]::new(
+    $minX,
+    $minY,
+    ($maxX - $minX + 1),
+    ($maxY - $minY + 1)
+  )
+}
+
+function Get-NonTransparentBounds {
+  param(
+    [System.Drawing.Bitmap]$Source,
+    [byte]$AlphaThreshold = 8
+  )
+
+  $minX = $Source.Width
+  $minY = $Source.Height
+  $maxX = -1
+  $maxY = -1
+
+  for ($x = 0; $x -lt $Source.Width; $x++) {
+    for ($y = 0; $y -lt $Source.Height; $y++) {
+      $pixel = $Source.GetPixel($x, $y)
+
+      if ($pixel.A -gt $AlphaThreshold) {
+        if ($x -lt $minX) { $minX = $x }
+        if ($y -lt $minY) { $minY = $y }
+        if ($x -gt $maxX) { $maxX = $x }
+        if ($y -gt $maxY) { $maxY = $y }
+      }
+    }
+  }
+
+  if ($maxX -lt 0 -or $maxY -lt 0) {
+    return [System.Drawing.Rectangle]::new(0, 0, $Source.Width, $Source.Height)
+  }
+
+  return [System.Drawing.Rectangle]::new(
+    $minX,
+    $minY,
+    ($maxX - $minX + 1),
+    ($maxY - $minY + 1)
+  )
+}
+
+function CropBitmap {
+  param(
+    [System.Drawing.Bitmap]$Source,
+    [System.Drawing.Rectangle]$Bounds
+  )
+
+  $target = [System.Drawing.Bitmap]::new($Bounds.Width, $Bounds.Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $graphics = [System.Drawing.Graphics]::FromImage($target)
+  $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+  $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+  $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+  $graphics.Clear([System.Drawing.Color]::Transparent)
+
+  $sourceRect = [System.Drawing.RectangleF]::new($Bounds.X, $Bounds.Y, $Bounds.Width, $Bounds.Height)
+  $destRect = [System.Drawing.RectangleF]::new(0, 0, $Bounds.Width, $Bounds.Height)
+  $graphics.DrawImage($Source, $destRect, $sourceRect, [System.Drawing.GraphicsUnit]::Pixel)
+  $graphics.Dispose()
+
+  return $target
+}
+
 function Save-ScaledBitmap {
   param(
     [System.Drawing.Image]$Image,
@@ -89,29 +183,35 @@ if (-not (Test-Path $absoluteOutputDir)) {
 $lockupOriginal = [System.Drawing.Bitmap]::new($LockupSource)
 $markOriginal = [System.Drawing.Bitmap]::new($MarkSource)
 
-$lockupTransparent = New-TransparentBitmap -Source $lockupOriginal
-$markTransparent = New-TransparentBitmap -Source $markOriginal
+$lockupCropped = CropBitmap -Source $lockupOriginal -Bounds (Get-NonWhiteBounds -Source $lockupOriginal)
+$markCropped = CropBitmap -Source $markOriginal -Bounds (Get-NonWhiteBounds -Source $markOriginal)
+
+$lockupTransparent = New-TransparentBitmap -Source $lockupCropped -WhiteThreshold 244
+$markTransparent = New-TransparentBitmap -Source $markCropped -WhiteThreshold 244
+
+$lockupTrimmed = CropBitmap -Source $lockupTransparent -Bounds (Get-NonTransparentBounds -Source $lockupTransparent)
+$markTrimmed = CropBitmap -Source $markTransparent -Bounds (Get-NonTransparentBounds -Source $markTransparent)
 
 $outputs = @()
 
 $lockupBase = Join-Path $absoluteOutputDir "ingeniometrix-lockup.png"
-$lockupTransparent.Save($lockupBase, [System.Drawing.Imaging.ImageFormat]::Png)
+$lockupTrimmed.Save($lockupBase, [System.Drawing.Imaging.ImageFormat]::Png)
 $outputs += $lockupBase
 
 $markBase = Join-Path $absoluteOutputDir "ingeniometrix-mark.png"
-$markTransparent.Save($markBase, [System.Drawing.Imaging.ImageFormat]::Png)
+$markTrimmed.Save($markBase, [System.Drawing.Imaging.ImageFormat]::Png)
 $outputs += $markBase
 
 foreach ($width in @(320, 640, 960)) {
-  $height = [int]([Math]::Round($width * ($lockupTransparent.Height / [double]$lockupTransparent.Width)))
+  $height = [int]([Math]::Round($width * ($lockupTrimmed.Height / [double]$lockupTrimmed.Width)))
   $path = Join-Path $absoluteOutputDir ("ingeniometrix-lockup-{0}.png" -f $width)
-  Save-ScaledBitmap -Image $lockupTransparent -Width $width -Height $height -Path $path
+  Save-ScaledBitmap -Image $lockupTrimmed -Width $width -Height $height -Path $path
   $outputs += $path
 }
 
 foreach ($size in @(32, 64, 180, 192, 512)) {
   $path = Join-Path $absoluteOutputDir ("ingeniometrix-mark-{0}.png" -f $size)
-  Save-PaddedSquareBitmap -Image $markTransparent -Size $size -Path $path
+  Save-PaddedSquareBitmap -Image $markTrimmed -Size $size -Path $path -InsetRatio 0.08
   $outputs += $path
 }
 
@@ -122,8 +222,12 @@ $outputs += (Join-Path $repoRoot "app\apple-icon.png")
 
 $lockupOriginal.Dispose()
 $markOriginal.Dispose()
+$lockupCropped.Dispose()
+$markCropped.Dispose()
 $lockupTransparent.Dispose()
 $markTransparent.Dispose()
+$lockupTrimmed.Dispose()
+$markTrimmed.Dispose()
 
 Write-Output "Brand assets generated:"
 $outputs | ForEach-Object { Write-Output $_ }

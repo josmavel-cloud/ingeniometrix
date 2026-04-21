@@ -12,8 +12,8 @@ type WorkflowStageNavProps = {
 
 export function WorkflowStageNav({ items }: WorkflowStageNavProps) {
   return (
-    <nav className="surface-panel sticky top-24 z-20 rounded-[28px] p-3">
-      <div className="grid gap-3 lg:grid-cols-4">
+    <nav className="surface-panel rounded-[28px] p-3 lg:sticky lg:top-24 lg:z-20">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {items.map((item) => (
           <a
             className={`rounded-[22px] border px-4 py-4 transition-transform hover:-translate-y-0.5 ${
@@ -30,7 +30,7 @@ export function WorkflowStageNav({ items }: WorkflowStageNavProps) {
             <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
               {item.title}
             </p>
-            <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+            <p className="mt-2 hidden text-sm leading-6 text-[var(--color-muted)] sm:block">
               {item.description}
             </p>
           </a>
