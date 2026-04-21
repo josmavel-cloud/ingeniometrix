@@ -1,0 +1,43 @@
+{
+  "name": "ingeniometrix",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MVP de Ingeniometrix",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "debug:providers": "node scripts/debug-research-providers.mjs",
+    "debug:workflow": "node scripts/debug-workflow-runner.mjs",
+    "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
+    "smoke:deployment": "node scripts/smoke-deployment.mjs",
+    "smoke:deployment:workspace": "node scripts/smoke-deployment.mjs --workspace",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "db:push": "prisma db push",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@tailwindcss/postcss": "^4.2.2",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.8.0",
+    "next": "^16.2.4",
+    "openai": "^6.34.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "prisma": "^6.19.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

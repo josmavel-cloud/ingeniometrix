@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top center, rgba(163, 230, 53, 0.15), transparent 24rem),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+  color: #0f172a;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: radial-gradient(circle at center, black, transparent 80%);
+}
+
+a,
+button,
+input,
+textarea,
+select {
+  transition:
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease,
+    opacity 160ms ease;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+
+.surface-panel {
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    0 20px 60px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(16px);
+}
+
+.soft-divider {
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+.hero-card-float {
+  animation: hero-float 6s ease-in-out infinite;
+}
+
+.hero-card-float-delay {
+  animation: hero-float 7.2s ease-in-out 0.8s infinite;
+}
+
+.hero-card-float-slow {
+  animation: hero-float 8.4s ease-in-out 1.2s infinite;
+}
+
+.hero-card-float-reverse {
+  animation: hero-float-reverse 7.6s ease-in-out 0.4s infinite;
+}
+
+@keyframes hero-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes hero-float-reverse {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, 10px, 0);
+  }
+}

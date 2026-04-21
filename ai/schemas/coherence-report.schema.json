@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/coherence-report.schema.json",
+  "title": "CoherenceReport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "problem_objective_alignment",
+    "objective_question_alignment",
+    "objective_method_alignment",
+    "population_method_alignment",
+    "technique_analysis_alignment",
+    "citation_traceability",
+    "missing_information_flags",
+    "risk_flags"
+  ],
+  "properties": {
+    "problem_objective_alignment": { "$ref": "#/$defs/check" },
+    "objective_question_alignment": { "$ref": "#/$defs/check" },
+    "objective_method_alignment": { "$ref": "#/$defs/check" },
+    "population_method_alignment": { "$ref": "#/$defs/check" },
+    "technique_analysis_alignment": { "$ref": "#/$defs/check" },
+    "citation_traceability": { "$ref": "#/$defs/check" },
+    "missing_information_flags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "notes"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["pass", "warning", "fail"]
+        },
+        "notes": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

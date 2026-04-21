@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/research-blueprint.schema.json",
+  "title": "ResearchBlueprint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "project_title",
+    "template_key",
+    "degree_level",
+    "university",
+    "program",
+    "research_line",
+    "problem_statement",
+    "problem_delimitation",
+    "justification",
+    "general_objective",
+    "specific_objectives",
+    "research_questions",
+    "hypotheses_or_guiding_questions",
+    "key_constructs_or_variables",
+    "proposed_methodology",
+    "population_and_sample",
+    "data_collection_techniques",
+    "analysis_plan",
+    "consistency_matrix",
+    "work_plan",
+    "assumptions",
+    "limitations",
+    "references_used"
+  ],
+  "properties": {
+    "project_title": { "type": "string", "minLength": 1 },
+    "template_key": { "type": "string", "minLength": 1 },
+    "degree_level": { "type": "string", "enum": ["MAESTRIA", "POSGRADO"] },
+    "university": { "type": "string", "minLength": 1 },
+    "program": { "type": "string", "minLength": 1 },
+    "research_line": { "type": "string", "minLength": 1 },
+    "problem_statement": { "type": "string", "minLength": 1 },
+    "problem_delimitation": { "type": "string", "minLength": 1 },
+    "justification": { "type": "string", "minLength": 1 },
+    "general_objective": { "type": "string", "minLength": 1 },
+    "specific_objectives": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "research_questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "hypotheses_or_guiding_questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "key_constructs_or_variables": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "proposed_methodology": { "type": "string", "minLength": 1 },
+    "population_and_sample": { "type": "string", "minLength": 1 },
+    "data_collection_techniques": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "analysis_plan": { "type": "string", "minLength": 1 },
+    "consistency_matrix": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["objective", "question", "method", "technique"],
+        "properties": {
+          "objective": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "method": { "type": "string", "minLength": 1 },
+          "technique": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "work_plan": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "duration"],
+        "properties": {
+          "phase": { "type": "string", "minLength": 1 },
+          "duration": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "references_used": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reference_id", "title", "doi"],
+        "properties": {
+          "reference_id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "doi": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,189 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  DRAFT
+  INTAKE_READY
+  SEARCHING
+  SOURCES_REVIEW
+  SOURCES_SELECTED
+  BLUEPRINT_GENERATING
+  BLUEPRINT_READY
+  EXPORT_READY
+  ARCHIVED
+}
+
+enum DegreeLevel {
+  MAESTRIA
+  POSGRADO
+}
+
+enum University {
+  PUCP
+  UNMSM
+  UNI
+  UP
+  UPC
+  UPCH
+  ULIMA
+  UDEP
+  USMP
+  UCV
+  OTHER
+}
+
+enum TemplateKey {
+  UPC_POSGRADO
+  UCV_POSGRADO
+  USMP_POSGRADO
+  GENERIC_POSGRADO_PE
+}
+
+enum Provider {
+  OPENALEX
+  CROSSREF
+  OPENAI
+  ANTHROPIC
+  SYSTEM
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  PROVIDER
+}
+
+enum ExportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  name      String?
+  locale    String     @default("es-PE")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  projects  Project[]
+  auditLogs AuditLog[]
+}
+
+model Project {
+  id                String             @id @default(uuid())
+  userId            String
+  catalogTopicId    String?
+  title             String
+  status            ProjectStatus      @default(DRAFT)
+  country           String             @default("PE")
+  language          String             @default("es")
+  degreeLevel       DegreeLevel
+  university        University
+  program           String
+  templateKey       TemplateKey        @default(GENERIC_POSGRADO_PE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  intake            Intake?
+  projectReferences ProjectReference[]
+  blueprintVersions BlueprintVersion[]
+  auditLogs         AuditLog[]
+}
+
+model Intake {
+  id                   String   @id @default(uuid())
+  projectId            String   @unique
+  topic                String   @db.Text
+  problemContext       String?  @db.Text
+  researchLine         String?  @db.Text
+  academicConstraints  String?  @db.Text
+  targetPopulation     String?  @db.Text
+  availableData        String?  @db.Text
+  preferredMethodology String?  @db.Text
+  advisorNotes         String?  @db.Text
+  searchQuery          String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Reference {
+  id              String              @id @default(uuid())
+  doi             String?
+  openAlexId      String?             @unique
+  crossrefId      String?
+  title           String              @db.Text
+  normalizedTitle String              @db.Text
+  authorsJson     Json
+  abstract        String?             @db.Text
+  venue           String?
+  year            Int?
+  workType        String?
+  landingPageUrl  String?             @db.Text
+  citationCount   Int?
+  rawOpenAlexJson Json?
+  rawCrossrefJson Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  projectLinks    ProjectReference[]
+
+  @@index([doi])
+  @@index([normalizedTitle, year])
+}
+
+model ProjectReference {
+  id              String    @id @default(uuid())
+  projectId       String
+  referenceId     String
+  sourceProvider  Provider
+  relevanceScore  Float?
+  selected        Boolean   @default(false)
+  selectedOrder   Int?
+  selectionReason String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reference       Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, referenceId])
+}
+
+model BlueprintVersion {
+  id                            String       @id @default(uuid())
+  projectId                     String
+  versionNumber                 Int
+  model                         String
+  promptVersion                 String
+  intakeSnapshotJson            Json
+  selectedReferencesSnapshotJson Json
+  blueprintJson                 Json
+  coherenceReportJson           Json
+  exportStatus                  ExportStatus @default(PENDING)
+  createdAt                     DateTime     @default(now())
+  project                       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, versionNumber])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  projectId  String?
+  userId     String?
+  eventType  String
+  actorType  ActorType
+  provider   Provider?
+  payloadJson Json
+  createdAt  DateTime  @default(now())
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([userId, createdAt])
+}

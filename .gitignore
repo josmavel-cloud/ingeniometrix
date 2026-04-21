@@ -1,0 +1,14 @@
+node_modules/
+.next/
+dist/
+coverage/
+.env
+.env.local
+.env.*.local
+artifacts/*
+!artifacts/.gitkeep
+artifacts-local/*
+!artifacts-local/.gitkeep
+prisma/dev.db
+*.log
+*.tsbuildinfo
