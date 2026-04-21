@@ -21,6 +21,8 @@ type BlueprintVersionListItem = {
 type BlueprintPanelProps = {
   projectId: string;
   projectStatus: string;
+  hasIntakeMinimum: boolean;
+  selectedReferenceCount: number;
   versions: BlueprintVersionListItem[];
 };
 
@@ -49,6 +51,8 @@ function renderStatusPill(status: CoherenceCheck["status"]) {
 export function BlueprintPanel({
   projectId,
   projectStatus,
+  hasIntakeMinimum,
+  selectedReferenceCount,
   versions,
 }: BlueprintPanelProps) {
   const router = useRouter();
@@ -95,6 +99,30 @@ export function BlueprintPanel({
     projectStatus === "BLUEPRINT_READY" ||
     projectStatus === "EXPORT_READY";
   const statusMeta = getProjectStatusMeta(projectStatus);
+  const preparationChecklist = [
+    {
+      label: "Base minima del intake",
+      ready: hasIntakeMinimum,
+      detail: hasIntakeMinimum
+        ? "Tema, problema y poblacion ya estan definidos."
+        : "Completa el intake minimo antes de generar.",
+    },
+    {
+      label: "Fuentes seleccionadas",
+      ready:
+        selectedReferenceCount >= MIN_SELECTED_REFERENCES &&
+        selectedReferenceCount <= MAX_SELECTED_REFERENCES,
+      detail: `${selectedReferenceCount} seleccionadas de ${MIN_SELECTED_REFERENCES}-${MAX_SELECTED_REFERENCES} necesarias.`,
+    },
+    {
+      label: "Blueprint listo para validacion",
+      ready: canGenerate,
+      detail: canGenerate
+        ? "El proyecto ya puede pasar a estructura y coherencia."
+        : "Todavia falta cerrar la etapa de fuentes.",
+    },
+  ];
+  const readyCount = preparationChecklist.filter((item) => item.ready).length;
 
   function generateBlueprint() {
     setError(null);
@@ -145,6 +173,82 @@ export function BlueprintPanel({
           {isPending ? "Generando..." : "Generar blueprint"}
         </button>
       </div>
+
+      <section
+        className={`mt-6 rounded-[28px] p-5 ${
+          canGenerate ? "brand-card-mint" : "brand-card-lilac"
+        }`}
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.54)]">
+              Puente hacia blueprint
+            </p>
+            <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
+              {canGenerate
+                ? "Ya puedes convertir tus fuentes en una estructura inicial."
+                : "Aun falta cerrar la preparacion antes de generar."}
+            </p>
+            <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
+              {canGenerate
+                ? "Ingeniometrix usara el intake y las fuentes elegidas para proponer objetivo general, preguntas, supuestos y un chequeo de coherencia trazable."
+                : "La generacion funciona mejor cuando ya existe base minima y un set semilla de fuentes suficientemente representativo."}
+            </p>
+          </div>
+
+          <div className="rounded-[24px] bg-white/72 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:min-w-[250px]">
+            <p>
+              <strong>Checklist:</strong> {readyCount}/3
+            </p>
+            <p>
+              <strong>Estado:</strong> {statusMeta.label}
+            </p>
+            <p>
+              <strong>Siguiente accion:</strong>{" "}
+              {canGenerate ? "Generar blueprint" : "Cerrar etapa de fuentes"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {preparationChecklist.map((item) => (
+            <article
+              className="rounded-[22px] border border-white/55 bg-white/68 p-4"
+              key={item.label}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                {item.label}
+              </p>
+              <div className="mt-2 inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.62)]">
+                {item.ready ? "Listo" : "Pendiente"}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+                {item.detail}
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-5 rounded-[24px] border border-white/55 bg-white/68 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+            Lo que veras al generar
+          </p>
+          <div className="mt-3 grid gap-3 lg:grid-cols-4">
+            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+              Objetivo general
+            </div>
+            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+              Preguntas y objetivos especificos
+            </div>
+            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+              Supuestos y referencias usadas
+            </div>
+            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+              Reporte de coherencia
+            </div>
+          </div>
+        </div>
+      </section>
 
       {!canGenerate ? (
         <p className="mt-5 text-sm leading-6 text-slate-500">

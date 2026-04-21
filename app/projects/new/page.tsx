@@ -7,8 +7,8 @@ export default async function NewProjectPage() {
 
   return (
     <ProjectShell
-      title="Crea un nuevo proyecto"
-      description="Empieza con una base corta y clara. Hoy solo necesitamos el marco minimo para pasar al intake guiado."
+      title="Activa un proyecto en minutos"
+      description="La entrada del MVP ahora parte del contexto: universidad, nivel, area e interes. Con eso Ingeniometrix sugiere una base inicial y te lleva al workspace sin friccion innecesaria."
     >
       <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
         <aside className="grid gap-4">
@@ -17,11 +17,12 @@ export default async function NewProjectPage() {
               Paso 1 de 3
             </p>
             <h2 className="mt-3 font-[var(--font-heading)] text-3xl font-semibold text-white">
-              Define la base del proyecto.
+              Define el contexto base.
             </h2>
             <p className="mt-4 text-sm leading-7 text-white/76">
-              Aqui solo se decide el marco inicial: tema, programa, universidad y
-              plantilla. El detalle fino vendra despues, dentro del intake.
+              Este primer tramo ya no te pide pensar toda la tesis. Solo define el
+              punto de partida academico para que las sugerencias tengan mas ajuste
+              desde el segundo uno.
             </p>
           </section>
 
@@ -30,12 +31,12 @@ export default async function NewProjectPage() {
               Lo que obtienes
             </p>
             <p className="mt-3 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-              Un punto de partida mejor guiado.
+              Un arranque mucho mas corto.
             </p>
             <ul className="mt-3 grid gap-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              <li>Temas organizados por carrera.</li>
-              <li>Plantilla alineada con la universidad elegida.</li>
-              <li>Base conectada con variantes de intake relacionadas.</li>
+              <li>Contexto rapido segun universidad, nivel y area.</li>
+              <li>Sugerencias iniciales del catalogo alineadas al MVP.</li>
+              <li>Entrada directa al workspace para refinar con intake.</li>
             </ul>
           </section>
 
@@ -44,9 +45,8 @@ export default async function NewProjectPage() {
               Criterio MVP
             </p>
             <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-              Este paso no intenta resolver toda la tesis. Solo deja una base
-              suficientemente clara para que Ingeniometrix haga mejores preguntas en el
-              intake y recupere fuentes mas utiles despues.
+              La salida de este paso es una base inicial, no una respuesta final. La
+              profundidad vendra despues con intake, fuentes trazables y blueprint.
             </p>
           </section>
         </aside>

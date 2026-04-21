@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { BlueprintPanel } from "@/components/projects/blueprint-panel";
 import { ExportPanel } from "@/components/projects/export-panel";
 import { IntakeForm } from "@/components/projects/intake-form";
+import { ProjectContextRibbon } from "@/components/projects/project-context-ribbon";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
@@ -31,6 +32,18 @@ export default async function ProjectDetailPage({
   const references = await listProjectReferences(user.id, id);
   const blueprintVersions = await listBlueprintVersionsForUser(user.id, id);
   const statusMeta = getProjectStatusMeta(project.status);
+  const selectedReferenceCount = references.filter((reference) => reference.selected).length;
+  const hasIntakeMinimum = Boolean(
+    project.intake?.topic?.trim() &&
+      project.intake?.problemContext?.trim() &&
+      project.intake?.targetPopulation?.trim(),
+  );
+  const latestBlueprint = blueprintVersions[0] ?? null;
+  const latestBlueprintJson = latestBlueprint?.blueprintJson as
+    | {
+        references_used?: Array<{ reference_id: string; title: string }>;
+      }
+    | undefined;
   const stageCards = [
     {
       step: "01",
@@ -71,6 +84,14 @@ export default async function ProjectDetailPage({
       title={project.title}
       description="Convierte tu tema en una ruta de investigacion mejor estructurada, con intake guiado, fuentes trazables y un siguiente paso siempre visible."
     >
+      <ProjectContextRibbon
+        degreeLevel={project.degreeLevel}
+        program={project.program}
+        templateKey={project.templateKey}
+        topicLabel={project.title}
+        universityLabel={getUniversityDisplayNameByCode(project.university)}
+      />
+
       <section className="grid gap-4 lg:grid-cols-4">
         {stageCards.map((card) => (
           <article
@@ -142,6 +163,14 @@ export default async function ProjectDetailPage({
               </div>
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Nivel
+                </p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  {project.degreeLevel === "MAESTRIA" ? "Maestria" : "Posgrado"}
+                </p>
+              </div>
+              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Programa
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">{project.program}</p>
@@ -188,6 +217,12 @@ export default async function ProjectDetailPage({
 
           <div className="scroll-mt-32" id="fuentes">
             <ReferenceSearchPanel
+              hasIntakeMinimum={hasIntakeMinimum}
+              intakeSnapshot={{
+                topic: project.intake?.topic ?? "",
+                problemContext: project.intake?.problemContext ?? "",
+                targetPopulation: project.intake?.targetPopulation ?? "",
+              }}
               initialReferences={references}
               projectId={project.id}
               status={project.status}
@@ -196,8 +231,10 @@ export default async function ProjectDetailPage({
 
           <div className="scroll-mt-32" id="blueprint">
             <BlueprintPanel
+              hasIntakeMinimum={hasIntakeMinimum}
               projectId={project.id}
               projectStatus={project.status}
+              selectedReferenceCount={selectedReferenceCount}
               versions={blueprintVersions.map((version) => ({
                 id: version.id,
                 versionNumber: version.versionNumber,
@@ -210,7 +247,14 @@ export default async function ProjectDetailPage({
 
           <ExportPanel
             hasBlueprint={blueprintVersions.length > 0}
+            hasIntakeMinimum={hasIntakeMinimum}
+            latestBlueprintCreatedAt={
+              latestBlueprint ? latestBlueprint.createdAt.toLocaleString("es-PE") : null
+            }
+            latestBlueprintReferenceCount={latestBlueprintJson?.references_used?.length ?? 0}
+            latestBlueprintVersionNumber={latestBlueprint?.versionNumber ?? null}
             projectStatus={project.status}
+            selectedReferenceCount={selectedReferenceCount}
           />
         </section>
       </section>

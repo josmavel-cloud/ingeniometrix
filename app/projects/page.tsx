@@ -13,7 +13,7 @@ export default async function ProjectsPage() {
   return (
     <ProjectShell
       title="Tus proyectos"
-      description="Entra por un solo flujo: crea proyecto, afina el intake, selecciona fuentes y revisa el blueprint con mayor claridad."
+      description="El MVP se mueve en un solo recorrido: define contexto, entra con una base sugerida, afina el intake y valida fuentes antes del blueprint."
     >
       <section className="surface-panel rounded-[32px] p-6 sm:p-8">
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
@@ -43,9 +43,9 @@ export default async function ProjectsPage() {
                 Aun no tienes proyectos.
               </p>
               <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--color-muted)]">
-                El primer valor del MVP aparece cuando creas un proyecto y completas
-                la base del intake. Desde ahi Ingeniometrix ya puede guiarte hacia
-                fuentes y blueprint.
+                El nuevo arranque del MVP empieza por contexto y sugerencias. Creas
+                una base inicial en segundos y despues entras al workspace para
+                afinar el intake y avanzar hacia fuentes y blueprint.
               </p>
               <div className="mt-5">
                 <Link
@@ -63,10 +63,10 @@ export default async function ProjectsPage() {
                   Paso 1
                 </p>
                 <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-                  Crea la base
+                  Define contexto
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                  Elige universidad, programa y tema para arrancar con contexto.
+                  Elige universidad, nivel, area e interes para entrar con mejor punto de partida.
                 </p>
               </article>
 
@@ -75,10 +75,10 @@ export default async function ProjectsPage() {
                   Paso 2
                 </p>
                 <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-                  Completa el intake
+                  Elige una base sugerida
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                  Ajusta tema, problema y poblacion para volver la busqueda mas util.
+                  Ingeniometrix te propone temas iniciales del catalogo segun ese contexto.
                 </p>
               </article>
 
@@ -87,10 +87,10 @@ export default async function ProjectsPage() {
                   Paso 3
                 </p>
                 <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-                  Selecciona y valida
+                  Refina y valida
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                  Elige fuentes trazables y genera un blueprint para revision academica.
+                  Ajusta intake, selecciona fuentes trazables y genera un blueprint para revision academica.
                 </p>
               </article>
             </div>

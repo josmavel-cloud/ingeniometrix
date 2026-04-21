@@ -30,6 +30,12 @@ type ReferenceListItem = {
 type ReferenceSearchPanelProps = {
   projectId: string;
   status: string;
+  hasIntakeMinimum: boolean;
+  intakeSnapshot: {
+    topic: string;
+    problemContext: string;
+    targetPopulation: string;
+  };
   initialReferences: ReferenceListItem[];
 };
 
@@ -44,6 +50,8 @@ function renderAuthors(authorsJson: unknown) {
 export function ReferenceSearchPanel({
   projectId,
   status,
+  hasIntakeMinimum,
+  intakeSnapshot,
   initialReferences,
 }: ReferenceSearchPanelProps) {
   const router = useRouter();
@@ -59,6 +67,23 @@ export function ReferenceSearchPanel({
     [references],
   );
   const statusMeta = getProjectStatusMeta(status);
+  const intakeChecklist = [
+    {
+      label: "Tema",
+      ready: intakeSnapshot.topic.trim().length > 0,
+      value: intakeSnapshot.topic,
+    },
+    {
+      label: "Contexto del problema",
+      ready: intakeSnapshot.problemContext.trim().length > 0,
+      value: intakeSnapshot.problemContext,
+    },
+    {
+      label: "Poblacion objetivo",
+      ready: intakeSnapshot.targetPopulation.trim().length > 0,
+      value: intakeSnapshot.targetPopulation,
+    },
+  ];
 
   function toggleReference(referenceId: string) {
     setReferences((current) => {
@@ -88,6 +113,13 @@ export function ReferenceSearchPanel({
     setError(null);
     setMessage(null);
     setInfo(null);
+
+    if (!hasIntakeMinimum) {
+      setInfo(
+        "Completa primero el minimo del intake para que la busqueda tenga suficiente contexto.",
+      );
+      return;
+    }
 
     startSearchTransition(async () => {
       const response = await fetch(`/api/projects/${projectId}/search`, {
@@ -209,15 +241,75 @@ export function ReferenceSearchPanel({
           </span>
           <button
             className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-            disabled={isSearching}
+            disabled={isSearching || !hasIntakeMinimum}
             onClick={runSearch}
             type="button"
           >
             <Search className="mr-2 size-4" />
-            {isSearching ? "Buscando..." : "Buscar fuentes"}
+            {isSearching
+              ? "Buscando..."
+              : hasIntakeMinimum
+                ? "Buscar fuentes"
+                : "Completa intake minimo"}
           </button>
         </div>
       </div>
+
+      <section
+        className={`mt-6 rounded-[28px] p-5 ${
+          hasIntakeMinimum ? "brand-card-gold" : "brand-card-blush"
+        }`}
+      >
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.54)]">
+              Puente hacia fuentes
+            </p>
+            <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
+              {hasIntakeMinimum
+                ? "Tu base ya esta lista para buscar evidencia."
+                : "Aun falta contexto minimo antes de buscar."}
+            </p>
+            <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
+              {hasIntakeMinimum
+                ? "La busqueda ya puede usar tema, problema y poblacion para formular consultas mas utiles en OpenAlex y Crossref."
+                : "Sin esos 3 campos, la recuperacion pierde precision y el usuario siente que la app busca sin criterio suficiente."}
+            </p>
+          </div>
+
+          <div className="rounded-[24px] bg-white/72 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:min-w-[240px]">
+            <p>
+              <strong>Checklist:</strong>{" "}
+              {intakeChecklist.filter((item) => item.ready).length}/3
+            </p>
+            <p>
+              <strong>Siguiente accion:</strong>{" "}
+              {hasIntakeMinimum ? "Lanzar busqueda" : "Volver al intake minimo"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {intakeChecklist.map((item) => (
+            <article
+              className="rounded-[22px] border border-white/55 bg-white/68 p-4"
+              key={item.label}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                {item.label}
+              </p>
+              <div className="mt-2 inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.62)]">
+                {item.ready ? "Listo" : "Pendiente"}
+              </div>
+              <p className="mt-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+                {item.ready
+                  ? item.value
+                  : "Completa este campo en el intake para mejorar la busqueda."}
+              </p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-6 text-slate-600">
