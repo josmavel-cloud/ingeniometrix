@@ -505,7 +505,7 @@ export async function listProjectReferences(userId: string, projectId: string) {
     userLocale: user?.locale,
     projectLanguage: project.language,
   });
-  const translations = await ensureReferenceTranslationsForLanguage({
+  const translationResult = await ensureReferenceTranslationsForLanguage({
     references: references.map((item) => ({
       id: item.reference.id,
       title: item.reference.title,
@@ -516,14 +516,16 @@ export async function listProjectReferences(userId: string, projectId: string) {
   });
 
   return references.map((item) => {
-    const sourceLanguage = resolveReferenceSourceLanguage({
-      id: item.reference.id,
-      title: item.reference.title,
-      abstract: item.reference.abstract,
-      rawOpenAlexJson: item.reference.rawOpenAlexJson,
-    });
+    const sourceLanguage =
+      translationResult.sourceLanguages.get(item.reference.id) ??
+      resolveReferenceSourceLanguage({
+        id: item.reference.id,
+        title: item.reference.title,
+        abstract: item.reference.abstract,
+        rawOpenAlexJson: item.reference.rawOpenAlexJson,
+      });
     const cachedTranslation =
-      translations.get(item.reference.id) ??
+      translationResult.translations.get(item.reference.id) ??
       getCachedTranslation(item.reference.rawOpenAlexJson, languageContext.activeLanguage);
 
     return {

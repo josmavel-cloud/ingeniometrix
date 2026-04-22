@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 
+import referenceLanguageDetectionBatchSchemaJson from "@/ai/schemas/reference-language-detection-batch.schema.json";
 import referenceTranslationBatchSchemaJson from "@/ai/schemas/reference-translation-batch.schema.json";
 import { APP_DEFAULT_LANGUAGE, normalizeLanguageCode } from "@/lib/language";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +19,20 @@ type CachedReferenceTranslation = {
   sourceLanguage: string | null;
   translatedTitle: string | null;
   translatedAbstract: string | null;
+};
+
+type CachedLanguageDetection = {
+  detectedLanguage: string | null;
+  confidence: string | null;
+};
+
+type LanguageDetectionBatchResponse = {
+  detections: Array<{
+    reference_id: string;
+    detected_language: string;
+    confidence: string;
+    rationale?: string | null;
+  }>;
 };
 
 type TranslationBatchResponse = {
@@ -90,6 +105,16 @@ const LANGUAGE_STOPWORDS = {
     "methode",
   ],
 } as const;
+
+function normalizeDetectedLanguageValue(value: string | null | undefined) {
+  const normalized = value?.trim().toLowerCase();
+
+  if (!normalized || normalized === "other") {
+    return null;
+  }
+
+  return normalizeLanguageCode(normalized);
+}
 
 function isRecord(value: Prisma.JsonValue | null | undefined): value is Record<string, Prisma.JsonValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -167,6 +192,29 @@ export function getCachedTranslation(
   } satisfies CachedReferenceTranslation;
 }
 
+function getCachedDetectedLanguage(rawOpenAlexJson: Prisma.JsonValue | null) {
+  if (!isRecord(rawOpenAlexJson)) {
+    return null;
+  }
+
+  const cacheEntry = rawOpenAlexJson.imx_language_detection;
+
+  if (!isRecord(cacheEntry)) {
+    return null;
+  }
+
+  return {
+    detectedLanguage:
+      typeof cacheEntry.detectedLanguage === "string"
+        ? normalizeDetectedLanguageValue(cacheEntry.detectedLanguage)
+        : typeof cacheEntry.detected_language === "string"
+          ? normalizeDetectedLanguageValue(cacheEntry.detected_language)
+          : null,
+    confidence:
+      typeof cacheEntry.confidence === "string" ? cacheEntry.confidence.trim().toLowerCase() : null,
+  } satisfies CachedLanguageDetection;
+}
+
 function buildUpdatedRawOpenAlexJson(input: {
   rawOpenAlexJson: Prisma.JsonValue | null;
   targetLanguage: string;
@@ -189,6 +237,62 @@ function buildUpdatedRawOpenAlexJson(input: {
   currentRoot.imx_translation_cache = currentCache;
 
   return currentRoot as Prisma.InputJsonValue;
+}
+
+function buildRawOpenAlexJsonWithLanguageDetection(input: {
+  rawOpenAlexJson: Prisma.JsonValue | null;
+  detectedLanguage: string | null;
+  confidence: string | null;
+  rationale?: string | null;
+}) {
+  const currentRoot = isRecord(input.rawOpenAlexJson)
+    ? { ...input.rawOpenAlexJson }
+    : ({} as Record<string, Prisma.JsonValue>);
+
+  currentRoot.imx_language_detection = {
+    detectedLanguage: input.detectedLanguage,
+    confidence: input.confidence,
+    rationale: input.rationale ?? null,
+    detectedAt: new Date().toISOString(),
+  } satisfies Prisma.JsonObject;
+
+  return currentRoot as Prisma.InputJsonValue;
+}
+
+function buildLanguageDetectionPrompt(input: {
+  items: Array<{
+    referenceId: string;
+    title: string;
+    abstract: string | null;
+  }>;
+}) {
+  const referencesBlock = input.items
+    .map((item) =>
+      [
+        `Referencia ${item.referenceId}:`,
+        `reference_id: ${item.referenceId}`,
+        `title: ${item.title}`,
+        `abstract: ${item.abstract ?? "NO_DISPONIBLE"}`,
+      ].join("\n"),
+    )
+    .join("\n\n");
+
+  return `
+Eres Ingeniometrix y tu tarea es detectar el idioma principal de referencias academicas.
+
+Reglas:
+- decide el idioma principal del titulo y abstract juntos
+- si el contenido esta principalmente en espanol responde es
+- si esta principalmente en ingles responde en
+- usa pt, fr, de o it cuando aplique claramente
+- usa other solo si el idioma no puede mapearse con confianza razonable
+- no traduzcas
+- no inventes contenido
+- confidence debe reflejar cuan claro es el idioma desde el texto
+
+Referencias:
+${referencesBlock}
+`.trim();
 }
 
 function buildTranslationPrompt(input: {
@@ -227,6 +331,7 @@ ${referencesBlock}
 export function resolveReferenceSourceLanguage(reference: ReferenceRecordLike) {
   return (
     getLanguageFromRawOpenAlex(reference.rawOpenAlexJson) ??
+    getCachedDetectedLanguage(reference.rawOpenAlexJson)?.detectedLanguage ??
     detectLanguageHeuristically(`${reference.title} ${reference.abstract ?? ""}`)
   );
 }
@@ -258,25 +363,85 @@ export async function ensureReferenceTranslationsForLanguage(input: {
   targetLanguage: string;
 }) {
   const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? APP_DEFAULT_LANGUAGE;
+  const sourceLanguages = new Map<string, string | null>();
   const output = new Map<string, CachedReferenceTranslation>();
   const pending: TranslationTarget[] = [];
+  const pendingLanguageDetection: Array<{
+    referenceId: string;
+    title: string;
+    abstract: string | null;
+  }> = [];
 
   for (const reference of input.references) {
+    const sourceLanguage = resolveReferenceSourceLanguage(reference);
+    sourceLanguages.set(reference.id, sourceLanguage);
+
+    if (!sourceLanguage && (reference.title.trim().length > 0 || reference.abstract?.trim())) {
+      pendingLanguageDetection.push({
+        referenceId: reference.id,
+        title: reference.title,
+        abstract: reference.abstract,
+      });
+    }
+  }
+
+  if (pendingLanguageDetection.length > 0) {
+    try {
+      const provider = getConfiguredLlmProvider();
+      const detectionBatch =
+        await generateStructuredObjectWithTextFallback<LanguageDetectionBatchResponse>({
+          provider,
+          prompt: buildLanguageDetectionPrompt({
+            items: pendingLanguageDetection,
+          }),
+          schemaName: "reference_language_detection_batch",
+          schema: referenceLanguageDetectionBatchSchemaJson as Record<string, unknown>,
+        });
+      const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
+
+      await Promise.all(
+        detectionBatch.detections.map(async (item) => {
+          const reference = referencesById.get(item.reference_id);
+
+          if (!reference) {
+            return;
+          }
+
+          const detectedLanguage = normalizeDetectedLanguageValue(item.detected_language);
+          sourceLanguages.set(reference.id, detectedLanguage);
+
+          await prisma.reference.update({
+            where: { id: reference.id },
+            data: {
+              rawOpenAlexJson: buildRawOpenAlexJsonWithLanguageDetection({
+                rawOpenAlexJson: reference.rawOpenAlexJson,
+                detectedLanguage,
+                confidence: item.confidence?.trim().toLowerCase() ?? null,
+                rationale: item.rationale ?? null,
+              }),
+            },
+          });
+        }),
+      );
+    } catch {
+      // Keep heuristic or null resolution when AI language detection is unavailable.
+    }
+  }
+
+  for (const reference of input.references) {
+    const sourceLanguage = sourceLanguages.get(reference.id) ?? null;
     const resolved = resolveReferenceTranslationForLanguage({
       reference,
       targetLanguage,
     });
+    const cachedTranslation = resolved.cachedTranslation;
 
-    if (!resolved.needsTranslation) {
+    if (!sourceLanguage || sourceLanguage === targetLanguage) {
       continue;
     }
 
-    if (resolved.cachedTranslation) {
-      output.set(reference.id, resolved.cachedTranslation);
-      continue;
-    }
-
-    if (!resolved.sourceLanguage) {
+    if (cachedTranslation) {
+      output.set(reference.id, cachedTranslation);
       continue;
     }
 
@@ -284,12 +449,15 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       referenceId: reference.id,
       title: reference.title,
       abstract: reference.abstract,
-      sourceLanguage: resolved.sourceLanguage,
+      sourceLanguage,
     });
   }
 
   if (pending.length === 0) {
-    return output;
+    return {
+      translations: output,
+      sourceLanguages,
+    };
   }
 
   let batch: TranslationBatchResponse;
@@ -306,7 +474,10 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       schema: referenceTranslationBatchSchemaJson as Record<string, unknown>,
     });
   } catch {
-    return output;
+    return {
+      translations: output,
+      sourceLanguages,
+    };
   }
 
   const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
@@ -340,5 +511,8 @@ export async function ensureReferenceTranslationsForLanguage(input: {
     }),
   );
 
-  return output;
+  return {
+    translations: output,
+    sourceLanguages,
+  };
 }
