@@ -3,6 +3,9 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Manrope, Space_Grotesk } from "next/font/google";
 
+import { resolveHtmlLanguage } from "@/lib/language";
+import { getCurrentUser } from "@/server/auth/session";
+
 const headingFont = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-heading",
@@ -22,9 +25,11 @@ type RootLayoutProps = {
   children: ReactNode;
 };
 
-export default function RootLayout({ children }: RootLayoutProps) {
+export default async function RootLayout({ children }: RootLayoutProps) {
+  const currentUser = await getCurrentUser();
+
   return (
-    <html lang="es">
+    <html lang={resolveHtmlLanguage({ userLocale: currentUser?.locale })}>
       <body
         className={`${headingFont.variable} ${bodyFont.variable} font-[var(--font-body)] antialiased`}
       >

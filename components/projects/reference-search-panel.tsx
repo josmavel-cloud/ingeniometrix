@@ -19,12 +19,17 @@ type ReferenceListItem = {
   reference: {
     id: string;
     title: string;
+    translatedTitle: string | null;
     doi: string | null;
     year: number | null;
     venue: string | null;
     abstract: string | null;
+    translatedAbstract: string | null;
     landingPageUrl: string | null;
     authorsJson: unknown;
+    sourceLanguage: string | null;
+    displayLanguage: string;
+    hasAutoTranslation: boolean;
   };
 };
 
@@ -401,8 +406,21 @@ export function ReferenceSearchPanel({
 
               <div className="mt-4">
                 <h3 className="font-[var(--font-heading)] text-lg font-semibold text-slate-950">
-                  {item.reference.title}
+                  {item.reference.translatedTitle ?? item.reference.title}
                 </h3>
+                {item.reference.hasAutoTranslation ? (
+                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Traduccion automatica desde {item.reference.sourceLanguage ?? "otro idioma"} hacia{" "}
+                    {item.reference.displayLanguage}
+                  </p>
+                ) : null}
+                {item.reference.hasAutoTranslation &&
+                item.reference.translatedTitle &&
+                item.reference.translatedTitle !== item.reference.title ? (
+                  <p className="mt-2 text-sm leading-6 text-slate-500">
+                    Titulo original: {item.reference.title}
+                  </p>
+                ) : null}
                 {renderAuthors(item.reference.authorsJson) ? (
                   <p className="mt-2 text-sm leading-6 text-slate-600">
                     {renderAuthors(item.reference.authorsJson)}
@@ -416,8 +434,17 @@ export function ReferenceSearchPanel({
                 </p>
                 {item.reference.abstract ? (
                   <p className="mt-4 text-sm leading-7 text-slate-600">
-                    {item.reference.abstract.slice(0, 320)}
-                    {item.reference.abstract.length > 320 ? "..." : ""}
+                    {(item.reference.translatedAbstract ?? item.reference.abstract).slice(0, 320)}
+                    {(item.reference.translatedAbstract ?? item.reference.abstract).length > 320
+                      ? "..."
+                      : ""}
+                  </p>
+                ) : null}
+                {item.reference.hasAutoTranslation &&
+                item.reference.translatedAbstract &&
+                item.reference.abstract ? (
+                  <p className="mt-2 text-xs leading-6 text-slate-400">
+                    Abstract original disponible en el registro recuperado.
                   </p>
                 ) : null}
                 {item.reference.landingPageUrl ? (

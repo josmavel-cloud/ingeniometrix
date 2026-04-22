@@ -1,8 +1,9 @@
 import { Prisma, ProjectStatus, Provider } from "@prisma/client";
 
+import { resolveLanguageContext } from "@/lib/language";
 import {
   buildSearchQuery,
-  buildSearchQueryAttempts,
+  extractSearchTerms,
   normalizeTitle,
 } from "@/lib/text";
 import {
@@ -19,6 +20,12 @@ import {
   resolveCrossrefTitle,
   searchCrossrefWorks,
 } from "./crossref-client";
+import {
+  ensureReferenceTranslationsForLanguage,
+  getCachedTranslation,
+  resolveReferenceSourceLanguage,
+} from "./reference-translation-service";
+import { buildReferenceSearchPlan } from "./search-query-planner";
 import { searchOpenAlexWorks } from "./openalex-client";
 
 type SearchProjectReferencesResult = {
@@ -40,6 +47,7 @@ type SearchCandidate = {
   doi: string | null;
   title: string | null;
   normalizedTitle: string | null;
+  language?: string | null;
   authors: string[];
   abstract: string | null;
   venue: string | null;
@@ -54,25 +62,89 @@ type SearchCandidate = {
 function buildRelevanceScore(input: {
   title: string;
   abstract: string | null;
-  query: string;
+  intentSummary: string;
+  matchedQuery: string;
+  focusTerms: string[];
+  topic: string;
+  problemContext: string | null;
+  targetPopulation: string | null;
   citationCount: number;
   year: number | null;
 }) {
-  const queryTerms = input.query
-    .toLowerCase()
-    .split(/\s+/)
-    .filter((term) => term.length > 2);
-
-  const haystack = `${input.title} ${input.abstract ?? ""}`.toLowerCase();
-  const termHits = queryTerms.reduce(
-    (total, term) => total + (haystack.includes(term) ? 1 : 0),
+  const normalizedTitleText = normalizeTitle(input.title);
+  const normalizedAbstractText = normalizeTitle(input.abstract);
+  const titleTerms = extractSearchTerms(input.title, { maxTerms: 12, minLength: 3 });
+  const titleTermSet = new Set(titleTerms);
+  const titleHitCount = input.focusTerms.reduce(
+    (total, term) => total + (titleTermSet.has(term) ? 1 : 0),
+    0,
+  );
+  const abstractHitCount = input.focusTerms.reduce(
+    (total, term) => total + (normalizedAbstractText.includes(term) ? 1 : 0),
+    0,
+  );
+  const topicTerms = extractSearchTerms(input.topic, { maxTerms: 6, minLength: 4 });
+  const topicHitCount = topicTerms.reduce(
+    (total, term) =>
+      total +
+      (normalizedTitleText.includes(term) || normalizedAbstractText.includes(term) ? 1 : 0),
+    0,
+  );
+  const problemTerms = extractSearchTerms(input.problemContext ?? "", {
+    maxTerms: 5,
+    minLength: 4,
+  });
+  const problemHitCount = problemTerms.reduce(
+    (total, term) =>
+      total +
+      (normalizedTitleText.includes(term) || normalizedAbstractText.includes(term) ? 1 : 0),
+    0,
+  );
+  const populationTerms = extractSearchTerms(input.targetPopulation ?? "", {
+    maxTerms: 4,
+    minLength: 4,
+  });
+  const populationHitCount = populationTerms.reduce(
+    (total, term) =>
+      total +
+      (normalizedTitleText.includes(term) || normalizedAbstractText.includes(term) ? 1 : 0),
+    0,
+  );
+  const matchedQueryTerms = extractSearchTerms(input.matchedQuery, {
+    maxTerms: 8,
+    minLength: 3,
+  });
+  const matchedQueryHitCount = matchedQueryTerms.reduce(
+    (total, term) =>
+      total +
+      (normalizedTitleText.includes(term) || normalizedAbstractText.includes(term) ? 1 : 0),
+    0,
+  );
+  const intentTerms = extractSearchTerms(input.intentSummary, {
+    maxTerms: 8,
+    minLength: 3,
+  });
+  const intentHitCount = intentTerms.reduce(
+    (total, term) =>
+      total +
+      (normalizedTitleText.includes(term) || normalizedAbstractText.includes(term) ? 1 : 0),
     0,
   );
   const yearBonus =
     input.year && input.year >= new Date().getFullYear() - 5 ? 1 : 0;
   const citationBonus = Math.min(input.citationCount / 50, 2);
 
-  return termHits + yearBonus + citationBonus;
+  return (
+    titleHitCount * 2.5 +
+    abstractHitCount * 1.4 +
+    topicHitCount * 1.8 +
+    problemHitCount * 1.3 +
+    populationHitCount * 1.2 +
+    matchedQueryHitCount +
+    intentHitCount * 1.1 +
+    yearBonus +
+    citationBonus
+  );
 }
 
 export async function searchProjectReferences(
@@ -87,30 +159,45 @@ export async function searchProjectReferences(
     MAX_SELECTED_REFERENCES,
   );
   const aggregationTarget = Math.min(desiredTotal + 2, MAX_SELECTED_REFERENCES + 2);
-  const project = await prisma.project.findFirst({
-    where: {
-      id: projectId,
-      userId,
-    },
-    include: {
-      intake: true,
-    },
-  });
+  const [project, user] = await Promise.all([
+    prisma.project.findFirst({
+      where: {
+        id: projectId,
+        userId,
+      },
+      include: {
+        intake: true,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { locale: true },
+    }),
+  ]);
 
   if (!project || !project.intake) {
     throw new Error("El proyecto no existe o aun no tiene intake.");
   }
 
-  const searchQuery = buildSearchQuery([
+  const languageContext = resolveLanguageContext({
+    userLocale: user?.locale,
+    projectLanguage: project.language,
+  });
+  const searchPlan = await buildReferenceSearchPlan({
+    activeLanguage: languageContext.activeLanguage,
+    topic: project.intake.topic,
+    problemContext: project.intake.problemContext,
+    targetPopulation: project.intake.targetPopulation,
+    preferredMethodology: project.intake.preferredMethodology,
+    program: project.program,
+    researchLine: project.intake.researchLine,
+  });
+  const searchQuery = searchPlan.normalizedTopic || buildSearchQuery([
     project.intake.topic,
     project.intake.problemContext,
     project.program,
   ]);
-  const searchAttempts = buildSearchQueryAttempts({
-    topic: project.intake.topic,
-    problemContext: project.intake.problemContext,
-    program: project.program,
-  });
+  const searchAttempts = searchPlan.searchQueries;
 
   if (!searchQuery || searchAttempts.length === 0) {
     throw new Error("No hay suficiente informacion para buscar fuentes.");
@@ -314,7 +401,12 @@ export async function searchProjectReferences(
         relevanceScore: buildRelevanceScore({
           title: reference.title,
           abstract: reference.abstract,
-          query: result.matchedQuery,
+          intentSummary: searchPlan.intentSummary,
+          matchedQuery: result.matchedQuery,
+          focusTerms: searchPlan.focusTerms,
+          topic: project.intake.topic,
+          problemContext: project.intake.problemContext,
+          targetPopulation: project.intake.targetPopulation,
           citationCount: reference.citationCount ?? 0,
           year: reference.year,
         }),
@@ -326,7 +418,12 @@ export async function searchProjectReferences(
         relevanceScore: buildRelevanceScore({
           title: reference.title,
           abstract: reference.abstract,
-          query: result.matchedQuery,
+          intentSummary: searchPlan.intentSummary,
+          matchedQuery: result.matchedQuery,
+          focusTerms: searchPlan.focusTerms,
+          topic: project.intake.topic,
+          problemContext: project.intake.problemContext,
+          targetPopulation: project.intake.targetPopulation,
           citationCount: reference.citationCount ?? 0,
           year: reference.year,
         }),
@@ -356,6 +453,8 @@ export async function searchProjectReferences(
     projectId: project.id,
     payloadJson: {
       searchQuery,
+      searchIntent: searchPlan.intentSummary,
+      languageContext,
       attemptedQueries: searchAttempts,
       attempts: attemptSummaries,
       resultCount: openAlexResults.length,
@@ -377,24 +476,69 @@ export async function searchProjectReferences(
 }
 
 export async function listProjectReferences(userId: string, projectId: string) {
-  const project = await prisma.project.findFirst({
-    where: {
-      id: projectId,
-      userId,
-    },
-  });
+  const [project, user, references] = await Promise.all([
+    prisma.project.findFirst({
+      where: {
+        id: projectId,
+        userId,
+      },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { locale: true },
+    }),
+    prisma.projectReference.findMany({
+      where: { projectId },
+      orderBy: [{ relevanceScore: "desc" }, { createdAt: "desc" }],
+      take: MAX_SELECTED_REFERENCES,
+      include: {
+        reference: true,
+      },
+    }),
+  ]);
 
   if (!project) {
     throw new Error("Proyecto no encontrado.");
   }
 
-  return prisma.projectReference.findMany({
-    where: { projectId },
-    orderBy: [{ relevanceScore: "desc" }, { createdAt: "desc" }],
-    take: MAX_SELECTED_REFERENCES,
-    include: {
-      reference: true,
-    },
+  const languageContext = resolveLanguageContext({
+    userLocale: user?.locale,
+    projectLanguage: project.language,
+  });
+  const translations = await ensureReferenceTranslationsForLanguage({
+    references: references.map((item) => ({
+      id: item.reference.id,
+      title: item.reference.title,
+      abstract: item.reference.abstract,
+      rawOpenAlexJson: item.reference.rawOpenAlexJson,
+    })),
+    targetLanguage: languageContext.activeLanguage,
+  });
+
+  return references.map((item) => {
+    const sourceLanguage = resolveReferenceSourceLanguage({
+      id: item.reference.id,
+      title: item.reference.title,
+      abstract: item.reference.abstract,
+      rawOpenAlexJson: item.reference.rawOpenAlexJson,
+    });
+    const cachedTranslation =
+      translations.get(item.reference.id) ??
+      getCachedTranslation(item.reference.rawOpenAlexJson, languageContext.activeLanguage);
+
+    return {
+      ...item,
+      reference: {
+        ...item.reference,
+        sourceLanguage,
+        displayLanguage: languageContext.activeLanguage,
+        translatedTitle: cachedTranslation?.translatedTitle ?? null,
+        translatedAbstract: cachedTranslation?.translatedAbstract ?? null,
+        hasAutoTranslation: Boolean(
+          cachedTranslation?.translatedTitle || cachedTranslation?.translatedAbstract,
+        ),
+      },
+    };
   });
 }
 

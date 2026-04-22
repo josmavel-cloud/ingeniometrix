@@ -4,6 +4,7 @@ export type OpenAlexWork = {
   id: string;
   doi: string | null;
   display_name: string | null;
+  language?: string | null;
   publication_year: number | null;
   type: string | null;
   cited_by_count: number | null;
@@ -72,6 +73,7 @@ export async function searchOpenAlexWorks(query: string) {
     doi: work.doi?.replace("https://doi.org/", "") ?? null,
     title: work.display_name?.trim() || null,
     normalizedTitle: work.display_name?.trim() || null,
+    language: work.language?.trim() || null,
     authors: (work.authorships ?? [])
       .map((authorship) => authorship.author?.display_name?.trim())
       .filter((author): author is string => Boolean(author)),
