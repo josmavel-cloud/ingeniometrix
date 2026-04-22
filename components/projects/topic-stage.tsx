@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 type TopicSuggestionItem = {
@@ -118,6 +117,23 @@ export function TopicStage({
   );
   const userSeedSuggestion = useMemo(
     () => items.find((item) => item.sourceType === "USER_SEED") ?? null,
+    [items],
+  );
+  const generatedSuggestions = useMemo(
+    () =>
+      items
+        .filter((item) => item.sourceType !== "USER_SEED")
+        .sort((left, right) => {
+          const priority = {
+            TECHNICAL_REWRITE: 0,
+            VARIANT: 1,
+            CATALOG: 2,
+            USER_SEED: 3,
+          } as const;
+
+          return priority[left.variantKind] - priority[right.variantKind];
+        })
+        .slice(0, 3),
     [items],
   );
 
@@ -237,53 +253,36 @@ export function TopicStage({
 
   return (
     <section className="grid gap-6">
-      <section className="brand-card-primary rounded-[32px] p-6 sm:p-8">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
-              Etapa tema
-            </p>
-            <h2 className="mt-3 font-[var(--font-heading)] text-3xl font-semibold text-white">
-              Elige la base tematica antes de entrar al intake.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-white/76">
-              Aqui ya priorizamos tu idea original. Las otras variantes existen para
-              ayudarte a afinarla, no para reemplazarla si ya tienes una direccion
-              clara.
-            </p>
-          </div>
-
-          <div className="rounded-[24px] bg-white/12 px-4 py-4 text-sm leading-6 text-white/84 lg:min-w-[260px]">
-            <p>
-              <strong>Proyecto:</strong> {projectTitle}
-            </p>
-            <p>
-              <strong>Origen:</strong> {getOriginLabel(topicOriginType)}
-            </p>
-            <p>
-              <strong>Area:</strong> {topicAreaLabel ?? "No especificada"}
-            </p>
-          </div>
-        </div>
-      </section>
-
       <section className="surface-panel rounded-[32px] p-6 sm:p-8">
-        <p className="brand-kicker">Idea semilla</p>
-        <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-          Esta es la idea que usaremos como centro del proyecto.
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+          <span className="rounded-full border border-[rgba(74,58,97,0.1)] bg-[rgba(244,241,248,0.8)] px-3 py-1">
+            Tema
+          </span>
+          <span className="rounded-full border border-[rgba(74,58,97,0.1)] bg-[rgba(244,241,248,0.8)] px-3 py-1">
+            {getOriginLabel(topicOriginType)}
+          </span>
+          <span className="rounded-full border border-[rgba(74,58,97,0.1)] bg-[rgba(244,241,248,0.8)] px-3 py-1">
+            {topicAreaLabel ?? "Area no especificada"}
+          </span>
+        </div>
+
+        <h2 className="mt-4 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
+          Elige una base tematica.
         </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+          Empieza con tu idea original o cambia a una de las tres opciones relacionadas.
+        </p>
+
         <div className="mt-5 rounded-[28px] p-5 brand-card-lilac">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
+            Tu idea original
+          </p>
           <p className="text-sm leading-7 text-[rgba(23,19,31,0.78)]">{topicSeedText}</p>
         </div>
-        <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-          En esta pantalla ya puedes comparar tu idea original con una version mas
-          tecnica y con 2 variantes cercanas. Cada opcion tambien trae una base
-          sugerida de intake para que el siguiente paso llegue mucho mas preciso.
-        </p>
 
         {isBootstrapping ? (
           <div className="mt-5 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/82 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-            Estamos redactando 3 variantes relacionadas con tu idea original para que no tengas que esperar en el alta del proyecto.
+            Estamos preparando tres opciones relacionadas con tu idea.
           </div>
         ) : null}
 
@@ -306,14 +305,6 @@ export function TopicStage({
           >
             {isRefreshing ? "Regenerando..." : "Generar otras ideas"}
           </button>
-          {selectedSuggestion ? (
-            <Link
-              className="brand-button-secondary px-5 py-3 text-sm font-semibold"
-              href={`/projects/${projectId}`}
-            >
-              Continuar al intake
-            </Link>
-          ) : null}
         </div>
       </section>
 
@@ -321,17 +312,17 @@ export function TopicStage({
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
 
       <section className="grid gap-4">
-        {!isBootstrapping && items.length === 0 ? (
+        {!isBootstrapping && generatedSuggestions.length === 0 ? (
           <div className="rounded-[28px] border border-dashed border-[rgba(74,58,97,0.14)] bg-[rgba(255,255,255,0.76)] px-5 py-8 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-            Aun no hay variantes listas. Puedes usar tu idea original o regenerar tres opciones mas cercanas.
+            Aun no hay opciones listas. Puedes usar tu idea original o regenerar tres opciones cercanas.
           </div>
         ) : null}
-        {items.map((item) => (
+        {generatedSuggestions.map((item) => (
           <article
             className={`rounded-[30px] p-5 ${getSourceToneClassName(item.sourceType)}`}
             key={item.id}
           >
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex flex-col gap-4">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-[rgba(23,19,31,0.08)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.72)]">
@@ -354,22 +345,38 @@ export function TopicStage({
                 <h3 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
                   {item.title}
                 </h3>
-                {item.researchLine ? (
-                  <p className="mt-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                    Linea sugerida: {item.researchLine}
-                  </p>
-                ) : null}
                 {item.rationale ? (
                   <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
                     {item.rationale}
                   </p>
                 ) : null}
+                {item.researchLine ? (
+                  <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+                    Linea sugerida: {item.researchLine}
+                  </p>
+                ) : null}
 
-                <div className="mt-4 grid gap-3 rounded-[24px] bg-white/70 p-4">
-                  <div className="grid gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                <div className="mt-4">
+                  <button
+                    className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
+                    disabled={isSelecting}
+                    onClick={() => selectSuggestion(item.id)}
+                    type="button"
+                  >
+                    {isSelecting ? "Guardando..." : "Elegir esta opcion"}
+                  </button>
+                </div>
+              </div>
+
+              <details className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/70 p-4">
+                <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+                  Ver base sugerida
+                </summary>
+                <div className="mt-4 grid gap-3">
+                  <label className="grid gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
                       Problema sugerido
-                    </p>
+                    </span>
                     <textarea
                       className="brand-textarea min-h-[104px] bg-white"
                       onChange={(event) =>
@@ -381,7 +388,7 @@ export function TopicStage({
                       }
                       value={item.suggestedIntake.problemContext ?? ""}
                     />
-                  </div>
+                  </label>
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <label className="grid gap-2">
@@ -419,28 +426,28 @@ export function TopicStage({
                     </label>
                   </div>
 
+                  <label className="grid gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                      Metodologia sugerida
+                    </span>
+                    <textarea
+                      className="brand-textarea min-h-[96px] bg-white"
+                      onChange={(event) =>
+                        updateSuggestionField(
+                          item.id,
+                          "preferredMethodology",
+                          event.target.value,
+                        )
+                      }
+                      value={item.suggestedIntake.preferredMethodology ?? ""}
+                    />
+                  </label>
+
                   <details className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                     <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-                      Editar base sugerida antes de usar
+                      Mas ajustes
                     </summary>
                     <div className="mt-4 grid gap-3">
-                      <label className="grid gap-2">
-                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                          Metodologia sugerida
-                        </span>
-                        <textarea
-                          className="brand-textarea min-h-[96px] bg-white"
-                          onChange={(event) =>
-                            updateSuggestionField(
-                              item.id,
-                              "preferredMethodology",
-                              event.target.value,
-                            )
-                          }
-                          value={item.suggestedIntake.preferredMethodology ?? ""}
-                        />
-                      </label>
-
                       <label className="grid gap-2">
                         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
                           Datos o evidencia sugerida
@@ -494,18 +501,7 @@ export function TopicStage({
                     </div>
                   </details>
                 </div>
-              </div>
-
-              <div className="flex flex-col gap-3 lg:min-w-[220px]">
-                <button
-                  className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-                  disabled={isSelecting}
-                  onClick={() => selectSuggestion(item.id)}
-                  type="button"
-                >
-                  {isSelecting ? "Guardando..." : "Elegir este tema"}
-                </button>
-              </div>
+              </details>
             </div>
           </article>
         ))}

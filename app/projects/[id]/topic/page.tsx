@@ -22,8 +22,8 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
 
     return (
       <ProjectShell
-        title="Define el tema base"
-        description="Antes del intake, elegimos la base tematica del proyecto. Aqui puedes usar tu idea original o una variante generada a partir de ella."
+        title="Elegir tema"
+        description="Compara tu idea original con tres opciones relacionadas y elige una base para el intake."
       >
         <TopicStage
           projectId={project.id}

@@ -124,6 +124,8 @@ export function CreateProjectForm() {
     suggestionEntries.find((entry) => entry.preset.id === selectedSuggestionId)?.preset ??
     suggestionEntries[0]?.preset ??
     null;
+  const hasCustomIdea = interestText.trim().length > 0;
+  const visibleSuggestionEntries = suggestionEntries.slice(0, 3);
 
   useEffect(() => {
     setTemplateKey(getProjectTemplateKeyForUniversity(university));
@@ -147,8 +149,8 @@ export function CreateProjectForm() {
     event.preventDefault();
     setError(null);
 
-    if (!selectedSuggestion) {
-      setError("Selecciona una sugerencia para continuar.");
+    if (!hasCustomIdea && !selectedSuggestion) {
+      setError("Escribe una idea propia o elige una referencia rapida.");
       return;
     }
 
@@ -190,22 +192,18 @@ export function CreateProjectForm() {
   }
 
   return (
-    <form className="grid gap-8" onSubmit={handleSubmit}>
-      <div className="brand-card-primary rounded-[30px] p-5 sm:p-6">
-        <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
-          Menos de 10 segundos
+    <form className="grid gap-6" onSubmit={handleSubmit}>
+      <div className="grid gap-2">
+        <p className="text-sm leading-6 text-[var(--color-muted)]">
+          Completa cuatro datos y continua. En la siguiente pantalla refinaremos el tema.
         </p>
-        <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-white">
-          Define contexto y registra tu idea como punto de partida.
-        </h2>
-        <p className="mt-3 max-w-2xl text-sm leading-7 text-white/76">
-          Este paso ya guarda tu idea original. La siguiente pantalla te mostrara
-          variantes derivadas de esa semilla o de la opcion que elijas aqui.
-        </p>
+        <div className="inline-flex w-fit rounded-full border border-[rgba(74,58,97,0.1)] bg-[rgba(244,241,248,0.8)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+          Paso 1 de 3
+        </div>
       </div>
 
-      <section className="grid gap-6">
-        <div className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-5">
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
             <label
               className="text-sm font-semibold text-[var(--color-muted)]"
@@ -227,6 +225,35 @@ export function CreateProjectForm() {
             </select>
           </div>
 
+          <div className="grid gap-3">
+            <label className="text-sm font-semibold text-[var(--color-muted)]">
+              Universidad
+            </label>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+              {FEATURED_UNIVERSITIES.map((option) => {
+                const isActive = option.code === university;
+
+                return (
+                  <button
+                    className={[
+                      "rounded-[20px] border px-4 py-3 text-left text-sm font-semibold transition-transform",
+                      isActive
+                        ? "border-[rgba(52,20,95,0.34)] bg-[rgba(255,255,255,0.96)] text-[var(--color-ink)] shadow-[0_12px_28px_rgba(52,20,95,0.12)]"
+                        : "border-[rgba(74,58,97,0.1)] bg-[rgba(255,255,255,0.82)] text-[var(--color-muted)] hover:-translate-y-[1px]",
+                    ].join(" ")}
+                    key={option.code}
+                    onClick={() => setUniversity(option.code)}
+                    type="button"
+                  >
+                    {option.shortName}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
           <div className="grid gap-2">
             <label
               className="text-sm font-semibold text-[var(--color-muted)]"
@@ -251,209 +278,140 @@ export function CreateProjectForm() {
               Puedes elegir una opcion sugerida o escribir un area propia.
             </p>
           </div>
-        </div>
 
-        <div className="grid gap-3">
-          <label className="text-sm font-semibold text-[var(--color-muted)]">
-            Universidad base del MVP
-          </label>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            {FEATURED_UNIVERSITIES.map((option) => {
-              const isActive = option.code === university;
-
-              return (
-                <button
-                  className={[
-                    "rounded-[24px] border p-4 text-left",
-                    isActive
-                      ? "border-[rgba(52,20,95,0.34)] bg-[rgba(255,255,255,0.96)] shadow-[0_18px_40px_rgba(52,20,95,0.14)]"
-                      : "border-[rgba(74,58,97,0.1)] bg-[rgba(255,255,255,0.82)] hover:-translate-y-[1px]",
-                  ].join(" ")}
-                  key={option.code}
-                  onClick={() => setUniversity(option.code)}
-                  type="button"
-                >
-                  <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[rgba(100,94,115,0.7)]">
-                    {option.shortName}
-                  </p>
-                  <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
-                    {option.label}
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-                    Plantilla {option.templateKey}
-                  </p>
-                </button>
-              );
-            })}
+          <div className="grid gap-2">
+            <label
+              className="text-sm font-semibold text-[var(--color-muted)]"
+              htmlFor="project-interest"
+            >
+              Idea original
+            </label>
+            <textarea
+              className="brand-textarea"
+              id="project-interest"
+              onChange={(event) => setInterestText(event.target.value)}
+              placeholder="Escribe el problema o tema que quieres investigar."
+              rows={4}
+              value={interestText}
+            />
+            <p className="text-sm leading-6 text-[var(--color-muted)]">
+              Si escribes aqui, esta idea sera la prioridad en la siguiente etapa.
+            </p>
           </div>
-        </div>
-
-        <div className="grid gap-2">
-          <label
-            className="text-sm font-semibold text-[var(--color-muted)]"
-            htmlFor="project-interest"
-          >
-            Tu idea de tema
-          </label>
-          <textarea
-            className="brand-textarea"
-            id="project-interest"
-            onChange={(event) => setInterestText(event.target.value)}
-            placeholder="Ej. IA generativa en procesos administrativos, trazabilidad en cadenas de frio o bienestar laboral en salud."
-            rows={4}
-            value={interestText}
-          />
-          <p className="text-sm leading-6 text-[var(--color-muted)]">
-            Si escribes aqui, Ingeniometrix priorizara esta idea al crear el
-            proyecto y generara otras variantes en la siguiente pantalla.
-          </p>
         </div>
       </section>
 
-      <section className="grid gap-4">
-        <div className="brand-card-lilac flex flex-col gap-3 rounded-[28px] p-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
-              Referencias iniciales
-            </p>
-            <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              El catalogo sigue ayudando, pero ya no manda por encima de tu idea.
-            </p>
-            <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Estas opciones se usan como apoyo. La seleccion definitiva del tema se
-              hara en la siguiente etapa del flujo.
-            </p>
-          </div>
-
-          <div className="rounded-[22px] bg-white/70 px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-            <strong>{suggestionEntries.length}</strong> ideas relacionadas para tomar
-            impulso.
-          </div>
-        </div>
-
-        <div className="grid gap-4">
-          {suggestionEntries.map((entry) => {
-            const isActive = entry.preset.id === selectedSuggestion?.id;
-
-            return (
+      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+          Ajustes opcionales
+        </summary>
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
+                Programa
+              </p>
               <button
-                aria-pressed={isActive}
-                className={getSuggestionCardClassName(entry.tone, isActive)}
-                key={entry.preset.id}
-                onClick={() => setSelectedSuggestionId(entry.preset.id)}
+                className="brand-button-secondary px-4 py-2 text-sm font-semibold"
+                onClick={() => setIsProgramEditable((current) => !current)}
                 type="button"
               >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="max-w-3xl">
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.54)]">
-                      {entry.preset.careerLabel}
-                    </p>
-                    <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-                      {entry.preset.title}
-                    </p>
-                    <p className="mt-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                      Linea sugerida: {entry.preset.researchLine}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-2 lg:max-w-sm lg:justify-items-end">
-                    <div className="inline-flex rounded-full bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
-                      {isActive ? "Base elegida" : "Referencia"}
-                    </div>
-                    <p className="text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:text-right">
-                      {entry.reasons[0]}
-                    </p>
-                  </div>
-                </div>
+                {isProgramEditable ? "Ocultar" : "Editar"}
               </button>
-            );
-          })}
-        </div>
-      </section>
+            </div>
 
-      <section className="brand-card-gold grid gap-4 rounded-[28px] p-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
-              Siguiente etapa
-            </p>
-            <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              Elegir el tema definitivo del proyecto.
-            </p>
-            <p className="mt-2 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-              Despues del alta entraras a una pantalla de tema donde podras usar tu
-              idea tal como esta, elegir una variante o regenerar nuevas opciones.
-            </p>
+            {isProgramEditable ? (
+              <input
+                className={fieldClassName}
+                onChange={(event) => {
+                  setProgram(event.target.value);
+                  setHasManualProgram(true);
+                }}
+                placeholder="Ej. Maestria en Gestion Empresarial"
+                required
+                value={program}
+              />
+            ) : (
+              <p className="text-sm leading-6 text-[var(--color-muted)]">
+                {program}
+              </p>
+            )}
           </div>
 
-          <div className="rounded-[24px] bg-white/70 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:max-w-sm">
+          <div className="grid gap-2 text-sm leading-6 text-[var(--color-muted)] sm:grid-cols-2">
             <p>
-              <strong>Universidad:</strong>{" "}
-              {FEATURED_UNIVERSITIES.find((option) => option.code === university)?.shortName ??
-                university}
+              <strong>Plantilla:</strong> {templateKey}
+            </p>
+            <p>
+              <strong>Area:</strong> {topicAreaLabel || "No especificada"}
             </p>
             <p>
               <strong>Nivel:</strong> {getDegreeLevelLabel(degreeLevel)}
             </p>
             <p>
-              <strong>Plantilla:</strong> {templateKey}
-            </p>
-            <p>
-              <strong>Programa:</strong> {program}
-            </p>
-            <p>
-              <strong>Area:</strong> {topicAreaLabel || "No especificada"}
+              <strong>Universidad:</strong>{" "}
+              {FEATURED_UNIVERSITIES.find((option) => option.code === university)?.shortName ??
+                university}
             </p>
           </div>
         </div>
+      </details>
 
-        <div className="grid gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
-              Programa sugerido
-            </p>
-            <button
-              className="brand-button-secondary px-4 py-2 text-sm font-semibold"
-              onClick={() => setIsProgramEditable((current) => !current)}
-              type="button"
-            >
-              {isProgramEditable ? "Ocultar edicion" : "Editar programa"}
-            </button>
+      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+          {hasCustomIdea
+            ? "Usar una referencia del catalogo en su lugar"
+            : "No tengo idea propia: usar una referencia rapida"}
+        </summary>
+        <div className="mt-4 grid gap-4">
+          <p className="text-sm leading-6 text-[var(--color-muted)]">
+            Elige una referencia corta para arrancar. Luego podras refinar el tema en la siguiente etapa.
+          </p>
+
+          <div className="grid gap-3">
+            {visibleSuggestionEntries.map((entry) => {
+              const isActive = entry.preset.id === selectedSuggestion?.id;
+
+              return (
+                <button
+                  aria-pressed={isActive}
+                  className={getSuggestionCardClassName(entry.tone, isActive)}
+                  key={entry.preset.id}
+                  onClick={() => setSelectedSuggestionId(entry.preset.id)}
+                  type="button"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="max-w-2xl">
+                      <p className="font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
+                        {entry.preset.title}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+                        {entry.reasons[0]}
+                      </p>
+                    </div>
+                    <span className="inline-flex rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
+                      {isActive ? "Elegida" : "Referencia"}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-
-          {isProgramEditable ? (
-            <input
-              className={fieldClassName}
-              onChange={(event) => {
-                setProgram(event.target.value);
-                setHasManualProgram(true);
-              }}
-              placeholder="Ej. Maestria en Gestion Empresarial"
-              required
-              value={program}
-            />
-          ) : (
-            <p className="text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Lo precargamos desde tu area y nivel para que no tengas que pensar de
-              mas en este primer paso.
-            </p>
-          )}
         </div>
-      </section>
+      </details>
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button
           className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-          disabled={isPending || !selectedSuggestion || program.trim().length === 0}
+          disabled={isPending || (!hasCustomIdea && !selectedSuggestion) || program.trim().length === 0}
           type="submit"
         >
-          {isPending ? "Creando..." : "Crear proyecto y pasar a tema"}
+          {isPending ? "Creando..." : "Continuar"}
         </button>
         <p className="text-sm leading-6 text-[var(--color-muted)]">
-          La siguiente pantalla convertira tu idea original o esta referencia en la
-          base tematica definitiva del proyecto.
+          Guardaremos esta base y en la siguiente pantalla elegiras el tema definitivo.
         </p>
       </div>
     </form>
