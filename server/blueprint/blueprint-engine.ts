@@ -1,8 +1,6 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
 import { extractSearchTerms, normalizeTitle } from "@/lib/text";
-import { loadTemplateVersionRuntime } from "@/server/reporting/template-runtime/load-template-version";
-import { resolveTemplateVersionForBlueprint } from "@/server/reporting/template-runtime/resolve-template-version-for-blueprint";
 
 import type {
   BlueprintAssumptionDetail,
@@ -188,84 +186,22 @@ function countTermOverlap(left: string[], right: string[]) {
   return right.filter((term) => leftSet.has(term)).length;
 }
 
-function flattenTemplateSectionKeys(
-  sections: Array<{ semantic_key?: string | null; required: boolean; children?: unknown[] }>,
-) {
-  const available = new Set<string>();
-  const required = new Set<string>();
-
-  function visit(nodes: Array<{ semantic_key?: string | null; required: boolean; children?: unknown[] }>) {
-    for (const node of nodes) {
-      if (node.semantic_key) {
-        available.add(node.semantic_key);
-
-        if (node.required) {
-          required.add(node.semantic_key);
-        }
-      }
-
-      if (Array.isArray(node.children) && node.children.length > 0) {
-        visit(
-          node.children as Array<{ semantic_key?: string | null; required: boolean; children?: unknown[] }>,
-        );
-      }
-    }
-  }
-
-  visit(sections);
-
-  return {
-    availableSectionKeys: Array.from(available).sort(),
-    requiredSectionKeys: Array.from(required).sort(),
-  };
-}
-
 export async function loadBlueprintTemplateContext(project: Project) {
-  try {
-    const resolution = await resolveTemplateVersionForBlueprint({
-      projectTemplateKey: project.templateKey,
-      projectUniversity: project.university,
-      projectDegreeLevel: project.degreeLevel,
-      projectProgram: project.program,
-    });
-    const runtime = await loadTemplateVersionRuntime({
-      templateVersionId: resolution.selectedTemplateVersionId,
-    });
-    const sectionKeys = flattenTemplateSectionKeys(runtime.templateCandidate.sections);
-
-    return {
-      template_key: runtime.templateKey,
-      template_name: runtime.templateName,
-      selected_by_user: true,
-      source: "template_runtime",
-      template_family: runtime.templateCandidate.template_family,
-      university: project.university,
-      program: project.program,
-      degree_level: project.degreeLevel,
-      required_section_keys: sectionKeys.requiredSectionKeys,
-      available_semantic_keys: sectionKeys.availableSectionKeys,
-      guidance_notes: [
-        ...runtime.runtimeWarnings,
-        `TemplateVersion resuelta para blueprint: ${runtime.versionId} (${runtime.templateKey}).`,
-      ],
-    } satisfies BlueprintTemplateContext;
-  } catch {
-    return {
-      template_key: project.templateKey,
-      template_name: project.templateKey,
-      selected_by_user: true,
-      source: "project_selection",
-      template_family: null,
-      university: project.university,
-      program: project.program,
-      degree_level: project.degreeLevel,
-      required_section_keys: [],
-      available_semantic_keys: [],
-      guidance_notes: [
-        "No se cargo una plantilla persistida; se usara la templateKey del proyecto como restriccion base.",
-      ],
-    } satisfies BlueprintTemplateContext;
-  }
+  return {
+    template_key: project.templateKey,
+    template_name: project.templateKey,
+    selected_by_user: true,
+    source: "project_selection",
+    template_family: null,
+    university: project.university,
+    program: project.program,
+    degree_level: project.degreeLevel,
+    required_section_keys: [],
+    available_semantic_keys: [],
+    guidance_notes: [
+      "No se cargo una plantilla runtime publicada; se usara la templateKey del proyecto como restriccion base del MVP.",
+    ],
+  } satisfies BlueprintTemplateContext;
 }
 
 export function buildReferenceInsights(

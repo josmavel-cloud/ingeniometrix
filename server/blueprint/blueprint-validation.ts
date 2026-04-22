@@ -1,29 +1,6 @@
 import { normalizeTitle, extractSearchTerms } from "@/lib/text";
 
-type ReferenceSnapshot = {
-  reference_id: string;
-  title: string;
-  doi?: string;
-};
-
-type BlueprintLike = {
-  problem_statement: string;
-  general_objective: string;
-  specific_objectives: string[];
-  research_questions: string[];
-  proposed_methodology: string;
-  population_and_sample: string;
-  data_collection_techniques: string[];
-  analysis_plan: string;
-  consistency_matrix: Array<{
-    objective: string;
-    question: string;
-    method: string;
-    technique: string;
-  }>;
-  assumptions: string[];
-  references_used: ReferenceSnapshot[];
-};
+import type { ResearchBlueprintRecord } from "./blueprint-types";
 
 type IntakeLike = {
   researchLine?: string | null;
@@ -42,7 +19,7 @@ function keywordOverlap(left: string | null | undefined, right: string | null | 
 }
 
 export function validateBlueprintTraceability(
-  blueprint: BlueprintLike,
+  blueprint: ResearchBlueprintRecord,
   selectedReferences: Array<{ id: string; title: string; doi: string | null }>,
 ) {
   const selectedReferenceIds = new Set(selectedReferences.map((reference) => reference.id));
@@ -61,8 +38,25 @@ export function validateBlueprintTraceability(
   }
 }
 
+export function validateBlueprintCitationPlan(
+  blueprint: ResearchBlueprintRecord,
+  selectedReferences: Array<{ id: string }>,
+) {
+  const selectedReferenceIds = new Set(selectedReferences.map((reference) => reference.id));
+  const invalidSectionReferenceIds =
+    blueprint.citation_plan
+      ?.flatMap((section) => section.supported_reference_ids)
+      .filter((referenceId) => !selectedReferenceIds.has(referenceId)) ?? [];
+
+  if (invalidSectionReferenceIds.length > 0) {
+    throw new Error(
+      `El citation plan usa referencias no seleccionadas: ${Array.from(new Set(invalidSectionReferenceIds)).join(", ")}.`,
+    );
+  }
+}
+
 export function buildCoherenceReport(
-  blueprint: BlueprintLike,
+  blueprint: ResearchBlueprintRecord,
   intake: IntakeLike,
   selectedReferences: Array<{ id: string }>,
 ) {
@@ -84,6 +78,10 @@ export function buildCoherenceReport(
   const invalidTraceability = blueprint.references_used.some(
     (reference) => !selectedReferences.find((item) => item.id === reference.reference_id),
   );
+  const weakCitationCoverage =
+    blueprint.citation_plan?.filter(
+      (section) => section.support_level === "intake_only" || section.support_level === "assumption",
+    ).length ?? 0;
 
   const missingInformationFlags = [
     !intake.researchLine?.trim() ? "La linea de investigacion fue poco precisa o no fue indicada." : null,
@@ -105,6 +103,9 @@ export function buildCoherenceReport(
       : null,
     normalizeTitle(blueprint.population_and_sample).includes("pendiente")
       ? "La delimitacion de poblacion y muestra aun requiere precision."
+      : null,
+    weakCitationCoverage >= 3
+      ? "Varias secciones del blueprint dependen mas del intake o assumptions que de soporte bibliografico directo."
       : null,
   ].filter((flag): flag is string => Boolean(flag));
 
