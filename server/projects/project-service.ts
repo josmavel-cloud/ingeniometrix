@@ -16,6 +16,10 @@ export async function createProjectForUser(userId: string, input: CreateProjectI
       university: input.university,
       program: input.program,
       templateKey: input.templateKey,
+      topicOriginType: input.topicOriginType,
+      topicSeedText: input.customIdeaText ?? input.title,
+      topicAreaId: input.topicAreaId,
+      topicAreaLabel: input.topicAreaLabel,
     },
   });
 }
@@ -26,6 +30,7 @@ export async function listProjectsForUser(userId: string) {
     orderBy: { updatedAt: "desc" },
     include: {
       intake: true,
+      selectedTopicSuggestion: true,
     },
   });
 }
@@ -38,6 +43,15 @@ export async function getProjectForUser(userId: string, projectId: string) {
     },
     include: {
       intake: true,
+      selectedTopicSuggestion: true,
+      topicSuggestions: {
+        include: {
+          primaryConcept: true,
+        },
+        orderBy: {
+          createdAt: "asc",
+        },
+      },
     },
   });
 }

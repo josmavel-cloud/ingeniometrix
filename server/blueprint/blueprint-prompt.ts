@@ -1,5 +1,10 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
+import type {
+  BlueprintReferenceInsight,
+  BlueprintTemplateContext,
+} from "./blueprint-types";
+
 type BlueprintPromptInput = {
   project: Project;
   intake: Intake;
@@ -7,6 +12,8 @@ type BlueprintPromptInput = {
     selectedOrder: number | null;
     reference: Reference;
   }>;
+  referenceInsights: BlueprintReferenceInsight[];
+  templateContext: BlueprintTemplateContext;
 };
 
 function truncate(value: string | null | undefined, maxLength: number) {
@@ -34,11 +41,49 @@ export function buildBlueprintPrompt(input: BlueprintPromptInput) {
       ].join("\n");
     })
     .join("\n\n");
+  const templateBlock = [
+    `template_key: ${input.templateContext.template_key}`,
+    `template_name: ${input.templateContext.template_name}`,
+    `template_source: ${input.templateContext.source}`,
+    `required_section_keys: ${
+      input.templateContext.required_section_keys.length > 0
+        ? input.templateContext.required_section_keys.join(", ")
+        : "NO_DISPONIBLE"
+    }`,
+    `available_semantic_keys: ${
+      input.templateContext.available_semantic_keys.length > 0
+        ? input.templateContext.available_semantic_keys.join(", ")
+        : "NO_DISPONIBLE"
+    }`,
+    `guidance_notes: ${
+      input.templateContext.guidance_notes.length > 0
+        ? input.templateContext.guidance_notes.join(" | ")
+        : "NO_DISPONIBLE"
+    }`,
+  ].join("\n");
+  const insightsBlock = input.referenceInsights
+    .map((insight, index) => {
+      return [
+        `Insight ${index + 1}:`,
+        `reference_id: ${insight.reference_id}`,
+        `evidence_strength: ${insight.evidence_strength}`,
+        `topic_focus: ${
+          insight.topic_focus.length > 0 ? insight.topic_focus.join(", ") : "NO_DISPONIBLE"
+        }`,
+        `problem_signal: ${insight.problem_signal ?? "NO_DISPONIBLE"}`,
+        `method_signal: ${insight.method_signal ?? "NO_DISPONIBLE"}`,
+        `population_or_context_signal: ${insight.population_or_context_signal ?? "NO_DISPONIBLE"}`,
+        `main_finding_signal: ${insight.main_finding_signal ?? "NO_DISPONIBLE"}`,
+        `limitation_signal: ${insight.limitation_signal ?? "NO_DISPONIBLE"}`,
+        `future_line_signal: ${insight.future_line_signal ?? "NO_DISPONIBLE"}`,
+      ].join("\n");
+    })
+    .join("\n\n");
 
   return `
 Eres Ingeniometrix, un asistente etico de planeamiento de tesis para estudiantes de maestria y posgrado en Peru.
 
-Tu tarea es generar UN blueprint de investigacion en ESPANOL, siguiendo el schema exacto solicitado.
+Tu tarea es generar UN blueprint inicial de investigacion en ESPANOL, siguiendo el schema exacto solicitado.
 
 Reglas no negociables:
 - no inventes citas
@@ -49,11 +94,15 @@ Reglas no negociables:
 - si falta informacion, declarala explicitamente en assumptions
 - si un campo clave no puede afirmarse con certeza, usa una formulacion cauta y academica, sin fingir precision
 - el producto NO es una tesis completa; es un plan estructurado y trazable
+- esta version es un blueprint MVP: prioriza claridad, viabilidad y trazabilidad antes que exhaustividad
 
 Reglas de trazabilidad:
 - references_used debe contener solo reference_id reales de la lista entregada
 - no menciones una referencia fuera de la lista
 - si una idea no puede apoyarse en las referencias entregadas, no la presentes como afirmacion bibliografica fuerte
+- la plantilla base ya fue elegida por el usuario y debe orientar la estructura del blueprint
+- usa los reference insights como ideas derivadas de las referencias para problema, metodo, hallazgos utiles y lineas futuras
+- devuelve solo los campos solicitados por el schema; no intentes completar una tesis ni una version extendida
 
 Proyecto:
 - project_title: ${input.project.title}
@@ -61,6 +110,9 @@ Proyecto:
 - university: ${input.project.university}
 - program: ${input.project.program}
 - template_key: ${input.project.templateKey}
+
+Plantilla base seleccionada:
+${templateBlock}
 
 Intake del usuario:
 - topic: ${input.intake.topic}
@@ -75,11 +127,17 @@ Intake del usuario:
 Referencias seleccionadas:
 ${referencesBlock}
 
+Ideas extraidas desde las referencias:
+${insightsBlock}
+
 Instrucciones de calidad:
 - produce un blueprint coherente y defendible
 - el tono debe ser academico, claro y util para revision con asesor
+- si una seccion aun no puede quedar cerrada, formula una version inicial prudente y deja la incertidumbre en assumptions
 - si research_line no fue dada con claridad, usa una formulacion prudente y agregalo tambien a assumptions
-- specific_objectives, research_questions y consistency_matrix deben alinearse entre si
+- specific_objectives y research_questions deben alinearse entre si
 - references_used debe incluir las referencias mas utiles realmente usadas para sustentar el blueprint
+- integra ideas de metodo, contexto, hallazgos y futuras lineas solo cuando puedan sostenerse con los insights entregados
+- si la plantilla exige una seccion pero la evidencia no alcanza, evita inventar contenido y deja la incertidumbre en assumptions
 `.trim();
 }

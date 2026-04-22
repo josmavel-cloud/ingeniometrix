@@ -13,7 +13,6 @@ import { useRouter } from "next/navigation";
 import {
   PROJECT_CAREERS,
   PROJECT_PRESETS,
-  type ProjectPreset,
   type ProjectPresetDegreeLevel,
 } from "@/lib/project-presets";
 import {
@@ -22,6 +21,11 @@ import {
   type ProjectTemplateKey,
   type ProjectUniversityCode,
 } from "@/lib/peru-universities";
+import {
+  buildProjectPresetSuggestionEntries,
+  getTopicAreaLabel,
+  type TopicSuggestionTone,
+} from "@/lib/topic-suggestion-scoring";
 
 const FEATURED_UNIVERSITIES = getFeaturedProjectUniversityOptions();
 const PRIMARY_UNIVERSITY_CODES = ["UPC", "UCV", "USMP"] as const;
@@ -32,42 +36,6 @@ const PRIMARY_UNIVERSITIES = FEATURED_UNIVERSITIES.filter((option) =>
 
 const fieldClassName = "brand-input";
 
-type SuggestionTone = "lilac" | "gold" | "mint" | "blush";
-
-type SuggestionEntry = {
-  preset: ProjectPreset;
-  reasons: string[];
-  score: number;
-  tone: SuggestionTone;
-};
-
-function normalizeSearchText(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function getInterestTokens(value: string) {
-  const normalized = normalizeSearchText(value);
-
-  if (!normalized) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      normalized
-        .split(" ")
-        .map((token) => token.trim())
-        .filter((token) => token.length >= 4),
-    ),
-  );
-}
-
 function getProgramDefault(careerId: string, degreeLevel: ProjectPresetDegreeLevel) {
   return (
     PROJECT_PRESETS.find(
@@ -77,85 +45,7 @@ function getProgramDefault(careerId: string, degreeLevel: ProjectPresetDegreeLev
   );
 }
 
-function buildSuggestionEntries(params: {
-  careerId: string;
-  degreeLevel: ProjectPresetDegreeLevel;
-  university: ProjectUniversityCode;
-  templateKey: ProjectTemplateKey;
-  interestText: string;
-}) {
-  const { careerId, degreeLevel, university, templateKey, interestText } = params;
-  const interestTokens = getInterestTokens(interestText);
-  const normalizedInterest = normalizeSearchText(interestText);
-  const tones: SuggestionTone[] = ["lilac", "gold", "mint", "blush"];
-
-  return PROJECT_PRESETS.filter((preset) => preset.careerId === careerId)
-    .map((preset) => {
-      const reasons: string[] = [];
-      let score = 0;
-
-      if (preset.degreeLevel === degreeLevel) {
-        score += 5;
-        reasons.push(
-          degreeLevel === "MAESTRIA"
-            ? "Encaja con maestria."
-            : "Encaja con posgrado.",
-        );
-      }
-
-      if (preset.university === university) {
-        score += 4;
-        reasons.push("Compatible con la universidad elegida.");
-      } else if (preset.templateKey === templateKey) {
-        score += 2;
-        reasons.push("Compatible con la plantilla activa.");
-      }
-
-      const haystack = normalizeSearchText(
-        [preset.label, preset.title, preset.researchLine].join(" "),
-      );
-
-      const matchingTokens = interestTokens.filter((token) => haystack.includes(token));
-
-      if (matchingTokens.length > 0) {
-        score += matchingTokens.length * 3;
-        reasons.push(
-          `Se acerca a tu interes: ${matchingTokens.slice(0, 2).join(", ")}.`,
-        );
-      } else if (normalizedInterest.length >= 10 && haystack.includes(normalizedInterest)) {
-        score += 4;
-        reasons.push("Se alinea de forma directa con lo que escribiste.");
-      }
-
-      if (reasons.length === 0) {
-        reasons.push("Base corta del catalogo para empezar rapido.");
-      }
-
-      return { preset, reasons, score };
-    })
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-
-      if (left.preset.degreeLevel !== right.preset.degreeLevel) {
-        return left.preset.degreeLevel === degreeLevel ? -1 : 1;
-      }
-
-      if (left.preset.university !== right.preset.university) {
-        return left.preset.university === university ? -1 : 1;
-      }
-
-      return left.preset.title.localeCompare(right.preset.title, "es");
-    })
-    .slice(0, 4)
-    .map((entry, index) => ({
-      ...entry,
-      tone: tones[index % tones.length],
-    }));
-}
-
-function getSuggestionCardClassName(tone: SuggestionTone, isActive: boolean) {
+function getSuggestionCardClassName(tone: TopicSuggestionTone, isActive: boolean) {
   const toneClassName =
     tone === "gold"
       ? "brand-card-gold"
@@ -187,6 +77,8 @@ export function CreateProjectForm() {
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
   const [templateKey, setTemplateKey] =
     useState<ProjectTemplateKey>("UPC_POSGRADO");
+  const [isAreaEditable, setIsAreaEditable] = useState(false);
+  const [customAreaLabel, setCustomAreaLabel] = useState("");
   const [isProgramEditable, setIsProgramEditable] = useState(false);
   const [hasManualProgram, setHasManualProgram] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,12 +87,13 @@ export function CreateProjectForm() {
 
   const suggestionEntries = useMemo(
     () =>
-      buildSuggestionEntries({
-        careerId,
+      buildProjectPresetSuggestionEntries({
+        areaId: careerId,
         degreeLevel,
         university,
         templateKey,
         interestText: deferredInterestText,
+        limit: 4,
       }),
     [careerId, degreeLevel, deferredInterestText, templateKey, university],
   );
@@ -238,18 +131,29 @@ export function CreateProjectForm() {
     }
 
     startTransition(async () => {
+      const trimmedIdea = interestText.trim();
+      const usingCustomIdea = trimmedIdea.length > 0;
+      const resolvedAreaLabel =
+        customAreaLabel.trim().length > 0
+          ? customAreaLabel.trim()
+          : getTopicAreaLabel(careerId) ?? null;
+
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          catalogTopicId: selectedSuggestion.id,
-          title: selectedSuggestion.title,
+          catalogTopicId: usingCustomIdea ? undefined : selectedSuggestion.id,
+          customIdeaText: usingCustomIdea ? trimmedIdea : undefined,
+          title: usingCustomIdea ? trimmedIdea : selectedSuggestion.title,
           degreeLevel,
           university,
           program,
           templateKey,
+          topicAreaId:
+            customAreaLabel.trim().length > 0 ? undefined : careerId,
+          topicAreaLabel: resolvedAreaLabel,
         }),
       });
 
@@ -263,7 +167,7 @@ export function CreateProjectForm() {
         return;
       }
 
-      router.push(`/projects/${payload.project.id}`);
+      router.push(`/projects/${payload.project.id}/topic`);
       router.refresh();
     });
   }
@@ -275,12 +179,11 @@ export function CreateProjectForm() {
           Menos de 10 segundos
         </p>
         <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-white">
-          Define contexto y entra con una base sugerida.
+          Define contexto y registra tu idea como punto de partida.
         </h2>
         <p className="mt-3 max-w-2xl text-sm leading-7 text-white/76">
-          Este paso solo necesita universidad, nivel, area e interes. Ingeniometrix
-          usa el catalogo actual para proponerte temas iniciales y dejar listo el
-          ingreso al workspace.
+          Este paso ya guarda tu idea original. La siguiente pantalla te mostrara
+          variantes derivadas de esa semilla o de la opcion que elijas aqui.
         </p>
       </div>
 
@@ -311,7 +214,7 @@ export function CreateProjectForm() {
               className="text-sm font-semibold text-[var(--color-muted)]"
               htmlFor="project-career"
             >
-              Carrera o area
+              Carrera o area base
             </label>
             <select
               className={fieldClassName}
@@ -325,6 +228,21 @@ export function CreateProjectForm() {
                 </option>
               ))}
             </select>
+            <button
+              className="brand-button-secondary w-fit px-4 py-2 text-sm font-semibold"
+              onClick={() => setIsAreaEditable((current) => !current)}
+              type="button"
+            >
+              {isAreaEditable ? "Ocultar area libre" : "Escribir area propia"}
+            </button>
+            {isAreaEditable ? (
+              <input
+                className={fieldClassName}
+                onChange={(event) => setCustomAreaLabel(event.target.value)}
+                placeholder="Ej. Innovacion educativa aplicada"
+                value={customAreaLabel}
+              />
+            ) : null}
           </div>
         </div>
 
@@ -368,7 +286,7 @@ export function CreateProjectForm() {
             className="text-sm font-semibold text-[var(--color-muted)]"
             htmlFor="project-interest"
           >
-            Tema o interes de investigacion
+            Tu idea de tema
           </label>
           <textarea
             className="brand-textarea"
@@ -379,8 +297,8 @@ export function CreateProjectForm() {
             value={interestText}
           />
           <p className="text-sm leading-6 text-[var(--color-muted)]">
-            Todavia no guardamos este texto como campo propio. Aqui solo lo usamos
-            para priorizar una base del catalogo y acelerar tu entrada al proyecto.
+            Si escribes aqui, Ingeniometrix priorizara esta idea al crear el
+            proyecto y generara otras variantes en la siguiente pantalla.
           </p>
         </div>
       </section>
@@ -389,20 +307,20 @@ export function CreateProjectForm() {
         <div className="flex flex-col gap-3 rounded-[28px] p-5 brand-card-lilac sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
-              Paso 2
+              Referencias iniciales
             </p>
             <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              Elige una sugerencia inicial.
+              El catalogo sigue ayudando, pero ya no manda por encima de tu idea.
             </p>
             <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Estas opciones salen del catalogo actual del MVP. Te damos una base
-              clara hoy y el refinamiento fino queda para el intake.
+              Estas opciones se usan como apoyo. La seleccion definitiva del tema se
+              hara en la siguiente etapa del flujo.
             </p>
           </div>
 
           <div className="rounded-[22px] bg-white/70 px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-            <strong>{suggestionEntries.length}</strong> sugerencias activas para{" "}
-            {degreeLevel === "MAESTRIA" ? "maestria" : "posgrado"}.
+            <strong>{suggestionEntries.length}</strong> ideas relacionadas para tomar
+            impulso.
           </div>
         </div>
 
@@ -433,23 +351,12 @@ export function CreateProjectForm() {
 
                   <div className="grid gap-2 lg:max-w-sm lg:justify-items-end">
                     <div className="inline-flex rounded-full bg-white/70 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
-                      {isActive ? "Seleccionado" : "Sugerencia"}
+                      {isActive ? "Base elegida" : "Referencia"}
                     </div>
                     <p className="text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:text-right">
                       {entry.reasons[0]}
                     </p>
                   </div>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {entry.reasons.map((reason) => (
-                    <span
-                      className="rounded-full bg-white/72 px-3 py-2 text-xs font-medium text-[rgba(23,19,31,0.72)]"
-                      key={reason}
-                    >
-                      {reason}
-                    </span>
-                  ))}
                 </div>
               </button>
             );
@@ -461,15 +368,14 @@ export function CreateProjectForm() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
-              Paso 3
+              Siguiente etapa
             </p>
             <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              Entra al workspace con una base lista.
+              Elegir el tema definitivo del proyecto.
             </p>
             <p className="mt-2 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-              Apenas se cree el proyecto, pasaras al workspace para completar el
-              intake, buscar fuentes y convertir esta idea inicial en un blueprint
-              trazable.
+              Despues del alta entraras a una pantalla de tema donde podras usar tu
+              idea tal como esta, elegir una variante o regenerar nuevas opciones.
             </p>
           </div>
 
@@ -484,6 +390,10 @@ export function CreateProjectForm() {
             </p>
             <p>
               <strong>Programa:</strong> {program}
+            </p>
+            <p>
+              <strong>Area:</strong>{" "}
+              {customAreaLabel.trim() || getTopicAreaLabel(careerId) || "No especificada"}
             </p>
           </div>
         </div>
@@ -530,11 +440,11 @@ export function CreateProjectForm() {
           disabled={isPending || !selectedSuggestion || program.trim().length === 0}
           type="submit"
         >
-          {isPending ? "Creando..." : "Crear proyecto con esta base"}
+          {isPending ? "Creando..." : "Crear proyecto y pasar a tema"}
         </button>
         <p className="text-sm leading-6 text-[var(--color-muted)]">
-          La sugerencia elegida se puede refinar despues. Aqui solo buscamos una
-          salida rapida y coherente hacia el intake.
+          La siguiente pantalla convertira tu idea original o esta referencia en la
+          base tematica definitiva del proyecto.
         </p>
       </div>
     </form>

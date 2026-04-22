@@ -5,7 +5,9 @@ type ProjectContextRibbonProps = {
   degreeLevel: DegreeLevel;
   program: string;
   templateKey: string;
-  topicLabel: string;
+  topicSeedText: string;
+  selectedTopicLabel: string;
+  topicOriginLabel: string;
 };
 
 function getDegreeLevelLabel(degreeLevel: DegreeLevel) {
@@ -17,7 +19,9 @@ export function ProjectContextRibbon({
   degreeLevel,
   program,
   templateKey,
-  topicLabel,
+  topicSeedText,
+  selectedTopicLabel,
+  topicOriginLabel,
 }: ProjectContextRibbonProps) {
   const items = [
     {
@@ -37,8 +41,16 @@ export function ProjectContextRibbon({
       value: templateKey,
     },
     {
-      label: "Base elegida",
-      value: topicLabel,
+      label: "Idea semilla",
+      value: topicSeedText,
+    },
+    {
+      label: "Tema activo",
+      value: selectedTopicLabel,
+    },
+    {
+      label: "Origen",
+      value: topicOriginLabel,
     },
   ];
 
@@ -57,7 +69,7 @@ export function ProjectContextRibbon({
         </div>
       </div>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         {items.map((item) => (
           <article
             className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/76 p-4"

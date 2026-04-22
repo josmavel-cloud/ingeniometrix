@@ -1,2 +1,2 @@
-export const MIN_SELECTED_REFERENCES = 5;
+export const MIN_SELECTED_REFERENCES = 3;
 export const MAX_SELECTED_REFERENCES = 20;

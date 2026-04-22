@@ -2,6 +2,7 @@ import {
   DegreeLevel,
   ProjectStatus,
   TemplateKey,
+  TopicOriginType,
   University,
 } from "@prisma/client";
 
@@ -10,11 +11,15 @@ import { getProjectTemplateKeyForUniversity } from "@/lib/peru-universities";
 
 export type CreateProjectInput = {
   catalogTopicId?: string;
+  customIdeaText?: string;
   title: string;
   degreeLevel: DegreeLevel;
   university: University;
   program: string;
   templateKey: TemplateKey;
+  topicAreaId?: string;
+  topicAreaLabel?: string;
+  topicOriginType: TopicOriginType;
 };
 
 export type IntakeInput = {
@@ -56,6 +61,9 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
 
   const payload = raw as Record<string, unknown>;
   const catalogTopicId = normalizeOptionalText(payload.catalogTopicId);
+  const customIdeaText = normalizeOptionalText(payload.customIdeaText);
+  const topicAreaId = normalizeOptionalText(payload.topicAreaId);
+  const topicAreaLabel = normalizeOptionalText(payload.topicAreaLabel);
   const degreeLevel = payload.degreeLevel;
   const university = payload.university;
   const templateKey = payload.templateKey;
@@ -75,12 +83,17 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
   const title = normalizeRequiredText(payload.title, "title");
   const program = normalizeRequiredText(payload.program, "program");
   const expectedTemplateKey = getProjectTemplateKeyForUniversity(university as University);
+  const topicOriginType = customIdeaText
+    ? catalogTopicId
+      ? TopicOriginType.HYBRID
+      : TopicOriginType.CUSTOM
+    : TopicOriginType.CATALOG;
 
   if (expectedTemplateKey !== (templateKey as TemplateKey)) {
     throw new Error("templateKey no coincide con la universidad seleccionada.");
   }
 
-  if (catalogTopicId) {
+  if (catalogTopicId && !customIdeaText) {
     const preset = getProjectPresetById(catalogTopicId);
 
     if (!preset) {
@@ -95,11 +108,15 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
 
   return {
     catalogTopicId: catalogTopicId ?? undefined,
+    customIdeaText: customIdeaText ?? undefined,
     title,
     degreeLevel: degreeLevel as DegreeLevel,
     university: university as University,
     program,
     templateKey: templateKey as TemplateKey,
+    topicAreaId: topicAreaId ?? undefined,
+    topicAreaLabel: topicAreaLabel ?? undefined,
+    topicOriginType,
   };
 }
 

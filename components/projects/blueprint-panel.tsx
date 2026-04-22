@@ -18,6 +18,12 @@ type BlueprintVersionListItem = {
   coherenceReportJson: Record<string, unknown>;
 };
 
+type BlueprintUiError = {
+  code?: string;
+  message: string;
+  nextAction?: string;
+};
+
 type BlueprintPanelProps = {
   projectId: string;
   projectStatus: string;
@@ -56,7 +62,7 @@ export function BlueprintPanel({
   versions,
 }: BlueprintPanelProps) {
   const router = useRouter();
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<BlueprintUiError | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -67,6 +73,7 @@ export function BlueprintPanel({
         specific_objectives?: string[];
         research_questions?: string[];
         assumptions?: string[];
+        engine_warnings?: string[];
         references_used?: Array<{ reference_id: string; title: string }>;
       }
     | undefined;
@@ -135,10 +142,16 @@ export function BlueprintPanel({
 
       const payload = (await response.json()) as {
         error?: string;
+        code?: string;
+        nextAction?: string;
       };
 
       if (!response.ok) {
-        setError(payload.error ?? "No se pudo generar el blueprint.");
+        setError({
+          code: payload.code,
+          message: payload.error ?? "No se pudo generar el blueprint.",
+          nextAction: payload.nextAction,
+        });
         return;
       }
 
@@ -259,7 +272,16 @@ export function BlueprintPanel({
       ) : null}
 
       <div className="mt-5 grid gap-2">
-        {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+        {error ? (
+          <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
+            <p className="font-semibold">
+              {error.code ? `${error.code}: ` : ""}{error.message}
+            </p>
+            {error.nextAction ? (
+              <p className="mt-2 leading-6">{error.nextAction}</p>
+            ) : null}
+          </div>
+        ) : null}
         {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
       </div>
 
@@ -333,6 +355,17 @@ export function BlueprintPanel({
               )}
             </ul>
           </div>
+
+          {(blueprint?.engine_warnings ?? []).length > 0 ? (
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                Alertas del motor
+              </p>
+              <ul className="mt-3 grid gap-2 text-sm leading-7 text-amber-900">
+                {blueprint?.engine_warnings?.map((item) => <li key={item}>* {item}</li>)}
+              </ul>
+            </div>
+          ) : null}
 
           <div className="rounded-[24px] border border-slate-200 bg-white p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">

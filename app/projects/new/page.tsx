@@ -8,7 +8,7 @@ export default async function NewProjectPage() {
   return (
     <ProjectShell
       title="Activa un proyecto en minutos"
-      description="La entrada del MVP ahora parte del contexto: universidad, nivel, area e interes. Con eso Ingeniometrix sugiere una base inicial y te lleva al workspace sin friccion innecesaria."
+      description="La entrada del MVP ahora parte del contexto y de tu idea original. Primero guardamos esa semilla y luego pasas a una etapa de tema antes del intake."
     >
       <section className="grid gap-6 lg:grid-cols-[0.92fr_1.08fr]">
         <aside className="grid gap-4">
@@ -22,7 +22,7 @@ export default async function NewProjectPage() {
             <p className="mt-4 text-sm leading-7 text-white/76">
               Este primer tramo ya no te pide pensar toda la tesis. Solo define el
               punto de partida academico para que las sugerencias tengan mas ajuste
-              desde el segundo uno.
+              desde el segundo uno y la siguiente pantalla pueda refinar el tema.
             </p>
           </section>
 
@@ -35,8 +35,8 @@ export default async function NewProjectPage() {
             </p>
             <ul className="mt-3 grid gap-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
               <li>Contexto rapido segun universidad, nivel y area.</li>
-              <li>Sugerencias iniciales del catalogo alineadas al MVP.</li>
-              <li>Entrada directa al workspace para refinar con intake.</li>
+              <li>Tu idea original guardada como semilla del proyecto.</li>
+              <li>Segunda etapa para elegir el tema definitivo antes del intake.</li>
             </ul>
           </section>
 

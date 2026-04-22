@@ -13,7 +13,7 @@ type WorkflowStageNavProps = {
 export function WorkflowStageNav({ items }: WorkflowStageNavProps) {
   return (
     <nav className="surface-panel rounded-[28px] p-3 lg:sticky lg:top-24 lg:z-20">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {items.map((item) => (
           <a
             className={`rounded-[22px] border px-4 py-4 transition-transform hover:-translate-y-0.5 ${

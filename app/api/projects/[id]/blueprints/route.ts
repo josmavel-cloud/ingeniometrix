@@ -5,6 +5,7 @@ import {
   generateBlueprintVersion,
   listBlueprintVersionsForUser,
 } from "@/server/blueprint/blueprint-service";
+import { toBlueprintApiError } from "@/server/blueprint/blueprint-errors";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -33,9 +34,8 @@ export async function POST(_request: Request, context: RouteContext) {
 
     return NextResponse.json({ version }, { status: 201 });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "No se pudo generar el blueprint.";
+    const payload = toBlueprintApiError(error);
 
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(payload, { status: 400 });
   }
 }
