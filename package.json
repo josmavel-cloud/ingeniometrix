@@ -5,14 +5,25 @@
   "description": "MVP de Ingeniometrix",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
+    "brand:generate": "powershell -ExecutionPolicy Bypass -File scripts/generate-brand-assets.ps1",
     "debug:providers": "node scripts/debug-research-providers.mjs",
+    "debug:blueprint": "node scripts/debug-blueprint-package.mjs",
+    "debug:blueprint:reuse": "node scripts/debug-blueprint-package.mjs --reuse-server",
+    "debug:blueprint:report": "node scripts/debug-blueprint-report.mjs",
     "debug:workflow": "node scripts/debug-workflow-runner.mjs",
     "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
     "smoke:deployment": "node scripts/smoke-deployment.mjs",
     "smoke:deployment:workspace": "node scripts/smoke-deployment.mjs --workspace",
+    "taxonomy:fetch": "node scripts/fetch-taxonomy-assets.mjs",
+    "taxonomy:seed": "node scripts/seed-taxonomy-catalogs.mjs",
+    "taxonomy:backfill": "node scripts/backfill-reference-taxonomy.mjs",
+    "taxonomy:backfill:projects": "node scripts/backfill-project-knowledge-fields.mjs",
+    "taxonomy:backfill:keywords": "node scripts/backfill-reference-keywords.mjs",
+    "taxonomy:backfill:domains": "node scripts/backfill-applied-domain-mappings.mjs",
+    "taxonomy:refine:keywords": "node scripts/refine-reference-keywords.mjs",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "db:push": "prisma db push",
@@ -22,6 +33,7 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "@tailwindcss/postcss": "^4.2.2",
+    "docx": "^9.6.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^1.8.0",
     "next": "^16.2.4",
@@ -38,6 +50,6 @@
     "typescript": "^6.0.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   }
 }
