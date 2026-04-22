@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/blueprint-context-completion.schema.json",
+  "title": "BlueprintContextCompletion",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "research_line",
+    "problem_frame",
+    "population_frame",
+    "methodology_frame",
+    "analysis_frame",
+    "assumptions",
+    "rationale"
+  ],
+  "properties": {
+    "research_line": { "type": "string", "minLength": 1 },
+    "problem_frame": { "type": "string", "minLength": 1 },
+    "population_frame": { "type": "string", "minLength": 1 },
+    "methodology_frame": { "type": "string", "minLength": 1 },
+    "analysis_frame": { "type": "string", "minLength": 1 },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "rationale": { "type": "string", "minLength": 1 }
+  }
+}

@@ -13,10 +13,13 @@ import { buildBlueprintPrompt } from "./blueprint-prompt";
 import {
   BlueprintGenerationError,
 } from "./blueprint-errors";
+import { generateBlueprintContextCompletion } from "./blueprint-context-completion";
+import { generateStructuredObjectWithTextFallback } from "./blueprint-llm-json";
 import {
   normalizeBlueprintDraft,
   type ResearchBlueprintCoreDraft,
 } from "./blueprint-normalization";
+import { buildBlueprintReadinessSnapshot } from "./blueprint-readiness";
 import {
   buildCoherenceReport,
   validateBlueprintCitationPlan,
@@ -29,7 +32,9 @@ import {
   loadBlueprintTemplateContext,
 } from "./blueprint-engine";
 import type {
+  BlueprintContextCompletion,
   BlueprintCitationPlanSection,
+  BlueprintReadinessSnapshot,
   BlueprintReferenceSnapshot,
 } from "./blueprint-types";
 
@@ -54,67 +59,6 @@ function isCitationPlanErrorMessage(message: string) {
   return message.includes("citation plan usa referencias no seleccionadas");
 }
 
-function buildBlueprintTextFallbackPrompt(prompt: string) {
-  return `${prompt}
-
-Responde exclusivamente con un objeto JSON valido.
-- no uses markdown
-- no uses bloques de codigo
-- no agregues texto antes ni despues del JSON
-- si un campo no puede completarse con precision, devuelve una formulacion prudente o un arreglo vacio segun corresponda
-`.trim();
-}
-
-function extractJsonObject(value: string) {
-  const trimmed = value.trim();
-
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    return trimmed;
-  }
-
-  const fencedMatch = trimmed.match(/```json\s*([\s\S]*?)```/i) ?? trimmed.match(/```\s*([\s\S]*?)```/i);
-
-  if (fencedMatch?.[1]) {
-    return fencedMatch[1].trim();
-  }
-
-  const firstBrace = trimmed.indexOf("{");
-  const lastBrace = trimmed.lastIndexOf("}");
-
-  if (firstBrace >= 0 && lastBrace > firstBrace) {
-    return trimmed.slice(firstBrace, lastBrace + 1);
-  }
-
-  throw new Error("No se encontro un objeto JSON valido en la respuesta del modelo.");
-}
-
-async function generateBlueprintDraftWithFallback(params: {
-  provider: ReturnType<typeof getConfiguredLlmProvider>;
-  prompt: string;
-}) {
-  try {
-    return await params.provider.generateStructuredObject<ResearchBlueprintCoreDraft>({
-      prompt: params.prompt,
-      schemaName: "research_blueprint_core",
-      schema: researchBlueprintCoreSchema as Record<string, unknown>,
-    });
-  } catch (structuredError) {
-    const structuredReason = describeError(structuredError);
-
-    try {
-      const textResponse = await params.provider.generateText({
-        prompt: buildBlueprintTextFallbackPrompt(params.prompt),
-      });
-
-      return JSON.parse(extractJsonObject(textResponse)) as ResearchBlueprintCoreDraft;
-    } catch (textFallbackError) {
-      throw new Error(
-        `Fallo structured output: ${structuredReason}. Fallo fallback JSON: ${describeError(textFallbackError)}.`,
-      );
-    }
-  }
-}
-
 function deriveReferencesUsedFromCitationPlan(input: {
   citationPlan: BlueprintCitationPlanSection[];
   selectedReferences: BlueprintReferenceSnapshot[];
@@ -128,9 +72,27 @@ function deriveReferencesUsedFromCitationPlan(input: {
     ),
   );
 
-  return orderedIds
+  const derivedReferences = orderedIds
     .map((referenceId) => selectedReferencesById.get(referenceId))
     .filter((reference): reference is BlueprintReferenceSnapshot => Boolean(reference));
+
+  if (derivedReferences.length > 0) {
+    return derivedReferences;
+  }
+
+  return input.selectedReferences.slice(0, Math.min(3, input.selectedReferences.length));
+}
+
+async function generateBlueprintDraftAttempt(params: {
+  provider: ReturnType<typeof getConfiguredLlmProvider>;
+  prompt: string;
+}) {
+  return generateStructuredObjectWithTextFallback<ResearchBlueprintCoreDraft>({
+    provider: params.provider,
+    prompt: params.prompt,
+    schemaName: "research_blueprint_core",
+    schema: researchBlueprintCoreSchema as Record<string, unknown>,
+  });
 }
 
 export async function generateBlueprintVersion(userId: string, projectId: string) {
@@ -169,6 +131,8 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     });
   }
 
+  const intake = project.intake;
+
   if (
     project.projectReferences.length < MIN_SELECTED_REFERENCES ||
     project.projectReferences.length > MAX_SELECTED_REFERENCES
@@ -185,12 +149,9 @@ export async function generateBlueprintVersion(userId: string, projectId: string
   const versionNumber = (project.blueprintVersions[0]?.versionNumber ?? 0) + 1;
   const templateContext = await loadBlueprintTemplateContext(project);
   const referenceInsights = buildReferenceInsights(project.projectReferences);
-  const prompt = buildBlueprintPrompt({
-    project,
-    intake: project.intake,
-    selectedReferences: project.projectReferences,
+  const readinessSnapshot = buildBlueprintReadinessSnapshot({
+    intake,
     referenceInsights,
-    templateContext,
   });
 
   await prisma.project.update({
@@ -201,10 +162,50 @@ export async function generateBlueprintVersion(userId: string, projectId: string
   });
 
   try {
-    const rawBlueprint = await generateBlueprintDraftWithFallback({
-      provider,
-      prompt,
-    });
+    const buildAttemptPrompt = (assistedContext: BlueprintContextCompletion | null) =>
+      buildBlueprintPrompt({
+        project,
+        intake,
+        selectedReferences: project.projectReferences,
+        referenceInsights,
+        templateContext,
+        assistedContext,
+        readinessSnapshot,
+      });
+
+    const generateAssistedContextIfNeeded = async () => {
+      return generateBlueprintContextCompletion({
+        provider,
+        project,
+        intake,
+        referenceInsights,
+        readinessSnapshot,
+      });
+    };
+
+    let assistedContext: BlueprintContextCompletion | null =
+      readinessSnapshot.readiness_status === "assisted"
+        ? await generateAssistedContextIfNeeded()
+        : null;
+    let rawBlueprint: ResearchBlueprintCoreDraft;
+
+    try {
+      rawBlueprint = await generateBlueprintDraftAttempt({
+        provider,
+        prompt: buildAttemptPrompt(assistedContext),
+      });
+    } catch (firstAttemptError) {
+      if (!assistedContext) {
+        assistedContext = await generateAssistedContextIfNeeded();
+        rawBlueprint = await generateBlueprintDraftAttempt({
+          provider,
+          prompt: buildAttemptPrompt(assistedContext),
+        });
+      } else {
+        throw firstAttemptError;
+      }
+    }
+
     const selectedReferenceSnapshots = project.projectReferences.map((item) => ({
       reference_id: item.reference.id,
       title: item.reference.title,
@@ -213,11 +214,12 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     const normalizedBlueprint = normalizeBlueprintDraft({
       draft: rawBlueprint,
       project,
-      intake: project.intake,
+      intake,
+      assistedContext,
     });
     const citationPlan = buildCitationPlan({
       blueprint: normalizedBlueprint,
-      intake: project.intake,
+      intake,
       referenceInsights,
     });
     const referencesUsed =
@@ -233,9 +235,22 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     };
     const blueprint = buildEnrichedBlueprintRecord({
       blueprint: finalizedBlueprint,
-      templateContext,
+      templateContext: {
+        ...templateContext,
+        guidance_notes: [
+          ...templateContext.guidance_notes,
+          ...readinessSnapshot.warnings,
+          ...(assistedContext
+            ? [
+                "Se activo contexto asistido para completar vacios del intake y mejorar la estabilidad del motor.",
+              ]
+            : []),
+        ],
+      },
       referenceInsights,
       citationPlan,
+      contextCompletion: assistedContext,
+      readinessSnapshot,
     });
 
     validateBlueprintTraceability(
@@ -255,7 +270,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
 
     const coherenceReport = buildCoherenceReport(
       blueprint,
-      project.intake,
+      intake,
       project.projectReferences.map((item) => ({
         id: item.reference.id,
       })),
@@ -268,15 +283,15 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         model: process.env.LLM_DEFAULT_MODEL?.trim() || "gpt-5.4",
         promptVersion: BLUEPRINT_PROMPT_VERSION,
         intakeSnapshotJson: {
-          topic: project.intake.topic,
-          problemContext: project.intake.problemContext,
-          researchLine: project.intake.researchLine,
-          academicConstraints: project.intake.academicConstraints,
-          targetPopulation: project.intake.targetPopulation,
-          availableData: project.intake.availableData,
-          preferredMethodology: project.intake.preferredMethodology,
-          advisorNotes: project.intake.advisorNotes,
-          searchQuery: project.intake.searchQuery,
+          topic: intake.topic,
+          problemContext: intake.problemContext,
+          researchLine: intake.researchLine,
+          academicConstraints: intake.academicConstraints,
+          targetPopulation: intake.targetPopulation,
+          availableData: intake.availableData,
+          preferredMethodology: intake.preferredMethodology,
+          advisorNotes: intake.advisorNotes,
+          searchQuery: intake.searchQuery,
         },
         selectedReferencesSnapshotJson: project.projectReferences.map((item) => ({
           project_reference_id: item.id,

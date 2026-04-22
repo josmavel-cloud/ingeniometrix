@@ -4,6 +4,29 @@ export type BlueprintReferenceSnapshot = {
   doi?: string | null;
 };
 
+export type BlueprintReadinessSnapshot = {
+  readiness_status: "ready" | "assisted";
+  missing_intake_fields: string[];
+  warnings: string[];
+  evidence_summary: {
+    selected_reference_count: number;
+    abstracts_available_count: number;
+    problem_signal_count: number;
+    method_signal_count: number;
+    population_signal_count: number;
+  };
+};
+
+export type BlueprintContextCompletion = {
+  research_line: string;
+  problem_frame: string;
+  population_frame: string;
+  methodology_frame: string;
+  analysis_frame: string;
+  assumptions: string[];
+  rationale: string;
+};
+
 export type BlueprintReferenceInsight = {
   reference_id: string;
   title: string;
@@ -104,4 +127,6 @@ export type ResearchBlueprintRecord = ResearchBlueprintCore & {
   template_context?: BlueprintTemplateContext;
   assumptions_detailed?: BlueprintAssumptionDetail[];
   engine_warnings?: string[];
+  readiness_snapshot?: BlueprintReadinessSnapshot;
+  context_completion?: BlueprintContextCompletion | null;
 };

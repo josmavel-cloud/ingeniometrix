@@ -3,6 +3,7 @@ import type { Intake, Project } from "@prisma/client";
 import { extractSearchTerms } from "@/lib/text";
 
 import type {
+  BlueprintContextCompletion,
   BlueprintReferenceSnapshot,
   ResearchBlueprintCore,
 } from "./blueprint-types";
@@ -42,6 +43,7 @@ type NormalizeBlueprintDraftInput = {
     | "preferredMethodology"
     | "advisorNotes"
   >;
+  assistedContext?: BlueprintContextCompletion | null;
 };
 
 function normalizeText(value: string | null | undefined, fallback: string) {
@@ -124,6 +126,7 @@ function deriveWorkPlan() {
 export function normalizeBlueprintDraft(
   input: NormalizeBlueprintDraftInput,
 ): ResearchBlueprintCore {
+  const assistedAssumptions = input.assistedContext?.assumptions ?? [];
   const derivedTechniques = deriveTechniques(input.intake);
   const researchQuestions = normalizeList(input.draft.research_questions, [
     toQuestion(`Como abordar ${input.intake.topic} con mayor precision academica`),
@@ -160,11 +163,15 @@ export function normalizeBlueprintDraft(
     program: normalizeText(input.draft.program, input.project.program),
     research_line: normalizeText(
       input.draft.research_line,
+      input.assistedContext?.research_line ??
       input.intake.researchLine ??
         "Linea de investigacion por confirmar con el contexto institucional.",
     ),
     problem_statement: problemStatement,
-    problem_delimitation: problemDelimitation,
+    problem_delimitation: normalizeText(
+      input.draft.problem_delimitation,
+      input.assistedContext?.problem_frame ?? problemDelimitation,
+    ),
     justification: normalizeText(
       input.draft.justification,
       "La justificacion debe revisarse con el asesor para precisar relevancia academica y aplicada.",
@@ -184,12 +191,14 @@ export function normalizeBlueprintDraft(
     proposed_methodology: proposedMethodology,
     population_and_sample: normalizeText(
       input.draft.population_and_sample,
+      input.assistedContext?.population_frame ??
       input.intake.targetPopulation ??
         "Poblacion y muestra pendientes de mayor delimitacion metodologica.",
     ),
     data_collection_techniques: derivedTechniques,
     analysis_plan: normalizeText(
       input.draft.analysis_plan,
+      input.assistedContext?.analysis_frame ??
       input.intake.availableData ??
         "Plan de analisis por precisar segun los datos disponibles y el metodo final.",
     ),
@@ -204,9 +213,13 @@ export function normalizeBlueprintDraft(
         derivedTechniques[0] ?? "Tecnica por definir con mayor precision metodologica",
     })),
     work_plan: deriveWorkPlan(),
-    assumptions: normalizeList(input.draft.assumptions, [
-      "La version inicial del blueprint usa supuestos explicitos mientras se afina el intake y la evidencia seleccionada.",
-    ]),
+    assumptions: Array.from(
+      new Set(
+        normalizeList(input.draft.assumptions, [
+          "La version inicial del blueprint usa supuestos explicitos mientras se afina el intake y la evidencia seleccionada.",
+        ]).concat(assistedAssumptions),
+      ),
+    ),
     limitations: normalizeList(input.draft.limitations, [
       "La version inicial aun requiere refinamiento metodologico y validacion academica manual.",
     ]),

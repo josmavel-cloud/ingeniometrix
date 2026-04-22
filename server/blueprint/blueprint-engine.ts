@@ -4,7 +4,9 @@ import { extractSearchTerms, normalizeTitle } from "@/lib/text";
 
 import type {
   BlueprintAssumptionDetail,
+  BlueprintContextCompletion,
   BlueprintCitationPlanSection,
+  BlueprintReadinessSnapshot,
   BlueprintReferenceInsight,
   BlueprintTemplateContext,
   ResearchBlueprintCore,
@@ -478,6 +480,8 @@ export function buildEnrichedBlueprintRecord(input: {
   templateContext: BlueprintTemplateContext;
   referenceInsights: BlueprintReferenceInsight[];
   citationPlan: BlueprintCitationPlanSection[];
+  contextCompletion?: BlueprintContextCompletion | null;
+  readinessSnapshot?: BlueprintReadinessSnapshot | null;
 }) {
   const assumptionsDetailed = buildAssumptionDetails({
     assumptions: input.blueprint.assumptions,
@@ -496,5 +500,7 @@ export function buildEnrichedBlueprintRecord(input: {
     template_context: input.templateContext,
     assumptions_detailed: assumptionsDetailed,
     engine_warnings: engineWarnings,
+    readiness_snapshot: input.readinessSnapshot ?? undefined,
+    context_completion: input.contextCompletion ?? undefined,
   } satisfies ResearchBlueprintRecord;
 }

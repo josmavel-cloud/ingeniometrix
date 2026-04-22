@@ -1,6 +1,8 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
 import type {
+  BlueprintContextCompletion,
+  BlueprintReadinessSnapshot,
   BlueprintReferenceInsight,
   BlueprintTemplateContext,
 } from "./blueprint-types";
@@ -14,6 +16,8 @@ type BlueprintPromptInput = {
   }>;
   referenceInsights: BlueprintReferenceInsight[];
   templateContext: BlueprintTemplateContext;
+  assistedContext?: BlueprintContextCompletion | null;
+  readinessSnapshot?: BlueprintReadinessSnapshot | null;
 };
 
 function truncate(value: string | null | undefined, maxLength: number) {
@@ -79,6 +83,30 @@ export function buildBlueprintPrompt(input: BlueprintPromptInput) {
       ].join("\n");
     })
     .join("\n\n");
+  const readinessBlock = input.readinessSnapshot
+    ? [
+        `readiness_status: ${input.readinessSnapshot.readiness_status}`,
+        `missing_intake_fields: ${
+          input.readinessSnapshot.missing_intake_fields.join(", ") || "NINGUNO"
+        }`,
+        `warnings: ${input.readinessSnapshot.warnings.join(" | ") || "NINGUNO"}`,
+      ].join("\n")
+    : "NO_DISPONIBLE";
+  const assistedContextBlock = input.assistedContext
+    ? [
+        `research_line: ${input.assistedContext.research_line}`,
+        `problem_frame: ${input.assistedContext.problem_frame}`,
+        `population_frame: ${input.assistedContext.population_frame}`,
+        `methodology_frame: ${input.assistedContext.methodology_frame}`,
+        `analysis_frame: ${input.assistedContext.analysis_frame}`,
+        `assumptions: ${
+          input.assistedContext.assumptions.length > 0
+            ? input.assistedContext.assumptions.join(" | ")
+            : "NINGUNA"
+        }`,
+        `rationale: ${input.assistedContext.rationale}`,
+      ].join("\n")
+    : "NO_DISPONIBLE";
 
   return `
 Eres Ingeniometrix, un asistente etico de planeamiento de tesis para estudiantes de maestria y posgrado en Peru.
@@ -130,10 +158,17 @@ ${referencesBlock}
 Ideas extraidas desde las referencias:
 ${insightsBlock}
 
+Readiness previo del motor:
+${readinessBlock}
+
+Contexto asistido para estabilizar el blueprint:
+${assistedContextBlock}
+
 Instrucciones de calidad:
 - produce un blueprint coherente y defendible
 - el tono debe ser academico, claro y util para revision con asesor
 - si una seccion aun no puede quedar cerrada, formula una version inicial prudente y deja la incertidumbre en assumptions
+- si existe contexto asistido, usalo como apoyo prudente para cerrar vacios del intake sin presentarlo como hecho confirmado
 - si research_line no fue dada con claridad, usa una formulacion prudente y agregalo tambien a assumptions
 - specific_objectives y research_questions deben alinearse entre si
 - references_used debe incluir las referencias mas utiles realmente usadas para sustentar el blueprint
