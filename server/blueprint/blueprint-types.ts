@@ -90,7 +90,12 @@ export type BlueprintAssumptionDetail = {
 export type ResearchBlueprintCore = {
   project_title: string;
   template_key: string;
-  degree_level: "MAESTRIA" | "POSGRADO";
+  degree_level:
+    | "PREGRADO"
+    | "POSGRADO"
+    | "ESPECIALIZACION"
+    | "MAESTRIA"
+    | "DOCTORADO";
   university: string;
   program: string;
   research_line: string;

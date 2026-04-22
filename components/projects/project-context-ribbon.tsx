@@ -1,5 +1,7 @@
 import type { DegreeLevel } from "@prisma/client";
 
+import { getDegreeLevelLabel } from "@/lib/degree-levels";
+
 type ProjectContextRibbonProps = {
   universityLabel: string;
   degreeLevel: DegreeLevel;
@@ -9,10 +11,6 @@ type ProjectContextRibbonProps = {
   selectedTopicLabel: string;
   topicOriginLabel: string;
 };
-
-function getDegreeLevelLabel(degreeLevel: DegreeLevel) {
-  return degreeLevel === "MAESTRIA" ? "Maestria" : "Posgrado";
-}
 
 export function ProjectContextRibbon({
   universityLabel,

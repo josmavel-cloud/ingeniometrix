@@ -21,12 +21,16 @@ enum ProjectStatus {
 }
 
 enum DegreeLevel {
-  MAESTRIA
+  PREGRADO
   POSGRADO
+  ESPECIALIZACION
+  MAESTRIA
+  DOCTORADO
 }
 
 enum University {
   PUCP
+  UPT
   UNMSM
   UNI
   UP

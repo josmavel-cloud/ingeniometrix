@@ -24,7 +24,10 @@
   "properties": {
     "project_title": { "type": "string", "minLength": 1 },
     "template_key": { "type": "string", "minLength": 1 },
-    "degree_level": { "type": "string", "enum": ["MAESTRIA", "POSGRADO"] },
+    "degree_level": {
+      "type": "string",
+      "enum": ["PREGRADO", "POSGRADO", "ESPECIALIZACION", "MAESTRIA", "DOCTORADO"]
+    },
     "university": { "type": "string", "minLength": 1 },
     "program": { "type": "string", "minLength": 1 },
     "research_line": { "type": "string", "minLength": 1 },

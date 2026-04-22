@@ -2,6 +2,7 @@ import peruUniversitiesJson from "@/lib/assets/peru-universities.json";
 
 export type ProjectUniversityCode =
   | "PUCP"
+  | "UPT"
   | "UNMSM"
   | "UNI"
   | "UP"
@@ -56,15 +57,10 @@ export type ProjectUniversityOption = {
 
 const FEATURED_PROJECT_UNIVERSITY_CODES = [
   "PUCP",
-  "UNMSM",
-  "UNI",
-  "UP",
+  "UPT",
   "UPC",
-  "UPCH",
-  "ULIMA",
-  "UDEP",
+  "UNI",
   "USMP",
-  "UCV",
 ] as const satisfies readonly Exclude<ProjectUniversityCode, "OTHER">[];
 
 const FEATURED_PROJECT_UNIVERSITY_SHORT_NAMES: Record<
@@ -72,6 +68,7 @@ const FEATURED_PROJECT_UNIVERSITY_SHORT_NAMES: Record<
   string
 > = {
   PUCP: "PUCP",
+  UPT: "UPT",
   UNMSM: "UNMSM",
   UNI: "UNI",
   UP: "UP",
@@ -85,6 +82,7 @@ const FEATURED_PROJECT_UNIVERSITY_SHORT_NAMES: Record<
 
 const PROJECT_UNIVERSITY_FALLBACK_LABELS: Record<ProjectUniversityCode, string> = {
   PUCP: "Pontificia Universidad Catolica del Peru",
+  UPT: "Universidad Privada de Tacna",
   UNMSM: "Universidad Nacional Mayor de San Marcos",
   UNI: "Universidad Nacional de Ingenieria",
   UP: "Universidad del Pacifico",
@@ -99,6 +97,7 @@ const PROJECT_UNIVERSITY_FALLBACK_LABELS: Record<ProjectUniversityCode, string> 
 
 const PROJECT_UNIVERSITY_TEMPLATE_KEYS: Record<ProjectUniversityCode, ProjectTemplateKey> = {
   PUCP: "GENERIC_POSGRADO_PE",
+  UPT: "GENERIC_POSGRADO_PE",
   UNMSM: "GENERIC_POSGRADO_PE",
   UNI: "GENERIC_POSGRADO_PE",
   UP: "GENERIC_POSGRADO_PE",
@@ -118,6 +117,7 @@ const PROJECT_UNIVERSITY_NAME_HINTS: Record<
   readonly string[]
 > = {
   PUCP: ["pontificia universidad catolica del peru"],
+  UPT: ["universidad privada de tacna"],
   UNMSM: ["universidad nacional mayor de san marcos"],
   UNI: ["universidad nacional de ingenieria"],
   UP: ["universidad del pacifico"],

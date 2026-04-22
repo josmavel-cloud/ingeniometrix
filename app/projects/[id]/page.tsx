@@ -8,6 +8,7 @@ import { ProjectContextRibbon } from "@/components/projects/project-context-ribb
 import { ProjectShell } from "@/components/projects/project-shell";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
+import { getDegreeLevelLabel } from "@/lib/degree-levels";
 import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
 import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
 import { requireCurrentUser } from "@/server/auth/session";
@@ -210,7 +211,7 @@ export default async function ProjectDetailPage({
                   Nivel
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {project.degreeLevel === "MAESTRIA" ? "Maestria" : "Posgrado"}
+                  {getDegreeLevelLabel(project.degreeLevel)}
                 </p>
               </div>
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">

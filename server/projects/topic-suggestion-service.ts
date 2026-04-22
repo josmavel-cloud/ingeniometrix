@@ -6,6 +6,7 @@ import {
   TopicSuggestionSourceType,
 } from "@prisma/client";
 
+import { getPresetDegreeLevelForProject } from "@/lib/degree-levels";
 import { prisma } from "@/lib/prisma";
 import {
   buildProjectPresetSuggestionEntries,
@@ -221,7 +222,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
 
   const catalogSuggestions = buildProjectPresetSuggestionEntries({
     areaId: project.topicAreaId,
-    degreeLevel: project.degreeLevel,
+    degreeLevel: getPresetDegreeLevelForProject(project.degreeLevel),
     university: project.university,
     templateKey: project.templateKey,
     interestText: seedText,

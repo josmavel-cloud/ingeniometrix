@@ -5,15 +5,20 @@ import { BrandBadge } from "@/components/brand/brand-badge";
 
 type FloatingNavbarProps = {
   action?: ReactNode;
+  brandContext?: "product" | "company";
   compact?: boolean;
 };
 
-export function FloatingNavbar({ action, compact = false }: FloatingNavbarProps) {
+export function FloatingNavbar({
+  action,
+  brandContext = "product",
+  compact = false,
+}: FloatingNavbarProps) {
   return (
     <header className="sticky top-4 z-30 mx-auto w-full max-w-6xl px-4 sm:px-6">
       <div className="flex items-center justify-between gap-3 rounded-[30px] border border-[rgba(74,58,97,0.12)] bg-[rgba(255,255,255,0.84)] px-4 py-3 text-[var(--color-ink)] shadow-[0_20px_50px_rgba(23,19,31,0.08)] backdrop-blur sm:px-5 sm:py-4 xl:px-6">
         <Link className="min-w-0 flex-1" href="/">
-          <BrandBadge compact={compact} />
+          <BrandBadge compact={compact} context={brandContext} />
         </Link>
 
         {compact ? null : (

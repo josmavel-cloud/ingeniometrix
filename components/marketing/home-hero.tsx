@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { LoginForm } from "@/components/auth/login-form";
-import { BrandBadge } from "@/components/brand/brand-badge";
 import { FloatingNavbar } from "@/components/ui/floating-navbar";
 
 const workflowSteps = [
@@ -39,8 +38,8 @@ const workflowSteps = [
 
 const valueCards = [
   {
-    label: "UPC, UCV y USMP",
-    detail: "Plantillas iniciales para posgrado en Peru.",
+    label: "PUCP, UPT, UPC, UNI y USMP",
+    detail: "Universidades iniciales visibles para arrancar el MVP.",
     cardClassName: "brand-card-lilac",
   },
   {
@@ -73,7 +72,7 @@ const guardrails = [
 export function HomeHero() {
   return (
     <main className="min-h-screen px-4 pb-12 pt-6 sm:px-6 lg:px-8">
-      <FloatingNavbar />
+      <FloatingNavbar brandContext="company" compact />
 
       <section className="mx-auto flex w-full max-w-[var(--page-max-width)] flex-col gap-8">
         <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -87,12 +86,6 @@ export function HomeHero() {
               <div className="brand-pill">
                 <span className="inline-flex size-2 rounded-full bg-[var(--color-coral)]" />
                 Ingeniometrix para maestria y posgrado en Peru
-              </div>
-              <div className="rounded-[22px] border border-[rgba(74,58,97,0.08)] bg-white/86 px-4 py-3 shadow-[0_12px_30px_rgba(23,19,31,0.05)]">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[rgba(100,94,115,0.62)]">
-                  Construido por
-                </p>
-                <BrandBadge context="company" />
               </div>
             </div>
 

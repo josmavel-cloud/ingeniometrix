@@ -14,10 +14,18 @@ export function BrandBadge({
       <div className="flex items-center gap-3">
         <Image
           alt="Ingeniometrix"
-          className="h-auto w-[174px] sm:w-[220px] lg:w-[248px]"
+          className={
+            compact
+              ? "h-auto w-[146px] sm:w-[170px] lg:w-[184px]"
+              : "h-auto w-[174px] sm:w-[220px] lg:w-[248px]"
+          }
           height={48}
           priority
-          sizes="(max-width: 640px) 174px, (max-width: 1024px) 220px, 248px"
+          sizes={
+            compact
+              ? "(max-width: 640px) 146px, (max-width: 1024px) 170px, 184px"
+              : "(max-width: 640px) 174px, (max-width: 1024px) 220px, 248px"
+          }
           src="/brand/ingeniometrix-lockup-640.png"
           width={248}
         />

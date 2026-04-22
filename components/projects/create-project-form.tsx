@@ -1,5 +1,6 @@
 "use client";
 
+import { type DegreeLevel } from "@prisma/client";
 import {
   FormEvent,
   useDeferredValue,
@@ -11,10 +12,12 @@ import {
 import { useRouter } from "next/navigation";
 
 import {
-  PROJECT_CAREERS,
-  PROJECT_PRESETS,
-  type ProjectPresetDegreeLevel,
-} from "@/lib/project-presets";
+  getDegreeLevelLabel,
+  getGenericProgramDefault,
+  getPresetDegreeLevelForProject,
+  PROJECT_DEGREE_LEVEL_OPTIONS,
+} from "@/lib/degree-levels";
+import { PROJECT_CAREERS, PROJECT_PRESETS } from "@/lib/project-presets";
 import {
   getFeaturedProjectUniversityOptions,
   getProjectTemplateKeyForUniversity,
@@ -24,24 +27,39 @@ import {
 import {
   buildProjectPresetSuggestionEntries,
   getTopicAreaLabel,
+  normalizeSearchText,
   type TopicSuggestionTone,
 } from "@/lib/topic-suggestion-scoring";
 
 const FEATURED_UNIVERSITIES = getFeaturedProjectUniversityOptions();
-const PRIMARY_UNIVERSITY_CODES = ["UPC", "UCV", "USMP"] as const;
-const PRIMARY_UNIVERSITY_CODE_SET = new Set<ProjectUniversityCode>(PRIMARY_UNIVERSITY_CODES);
-const PRIMARY_UNIVERSITIES = FEATURED_UNIVERSITIES.filter((option) =>
-  PRIMARY_UNIVERSITY_CODE_SET.has(option.code),
-);
-
 const fieldClassName = "brand-input";
 
-function getProgramDefault(careerId: string, degreeLevel: ProjectPresetDegreeLevel) {
+function findCareerMatch(value: string) {
+  const normalizedValue = normalizeSearchText(value);
+
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return (
+    PROJECT_CAREERS.find(
+      (career) => normalizeSearchText(career.label) === normalizedValue,
+    ) ??
+    PROJECT_CAREERS.find((career) =>
+      normalizeSearchText(career.label).includes(normalizedValue),
+    ) ??
+    null
+  );
+}
+
+function getProgramDefault(careerId: string | null, degreeLevel: DegreeLevel) {
+  const presetDegreeLevel = getPresetDegreeLevelForProject(degreeLevel);
+
   return (
     PROJECT_PRESETS.find(
       (preset) =>
-        preset.careerId === careerId && preset.degreeLevel === degreeLevel,
-    )?.program ?? ""
+        preset.careerId === careerId && preset.degreeLevel === presetDegreeLevel,
+    )?.program ?? getGenericProgramDefault(degreeLevel)
   );
 }
 
@@ -66,36 +84,40 @@ function getSuggestionCardClassName(tone: TopicSuggestionTone, isActive: boolean
 
 export function CreateProjectForm() {
   const router = useRouter();
-  const [careerId, setCareerId] = useState(PROJECT_CAREERS[0]?.id ?? "");
-  const [degreeLevel, setDegreeLevel] =
-    useState<ProjectPresetDegreeLevel>("MAESTRIA");
-  const [university, setUniversity] = useState<ProjectUniversityCode>("UPC");
+  const [degreeLevel, setDegreeLevel] = useState<DegreeLevel>("POSGRADO");
+  const [university, setUniversity] = useState<ProjectUniversityCode>("PUCP");
+  const [areaQuery, setAreaQuery] = useState(PROJECT_CAREERS[0]?.label ?? "");
   const [program, setProgram] = useState(
-    getProgramDefault(PROJECT_CAREERS[0]?.id ?? "", "MAESTRIA"),
+    getProgramDefault(PROJECT_CAREERS[0]?.id ?? null, "POSGRADO"),
   );
   const [interestText, setInterestText] = useState("");
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
   const [templateKey, setTemplateKey] =
-    useState<ProjectTemplateKey>("UPC_POSGRADO");
-  const [isAreaEditable, setIsAreaEditable] = useState(false);
-  const [customAreaLabel, setCustomAreaLabel] = useState("");
+    useState<ProjectTemplateKey>("GENERIC_POSGRADO_PE");
   const [isProgramEditable, setIsProgramEditable] = useState(false);
   const [hasManualProgram, setHasManualProgram] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const deferredInterestText = useDeferredValue(interestText);
 
+  const matchedCareer = useMemo(() => findCareerMatch(areaQuery), [areaQuery]);
+  const topicAreaId = matchedCareer?.id ?? null;
+  const topicAreaLabel =
+    areaQuery.trim().length > 0
+      ? areaQuery.trim()
+      : getTopicAreaLabel(topicAreaId) ?? null;
+
   const suggestionEntries = useMemo(
     () =>
       buildProjectPresetSuggestionEntries({
-        areaId: careerId,
-        degreeLevel,
+        areaId: topicAreaId,
+        degreeLevel: getPresetDegreeLevelForProject(degreeLevel),
         university,
         templateKey,
         interestText: deferredInterestText,
         limit: 4,
       }),
-    [careerId, degreeLevel, deferredInterestText, templateKey, university],
+    [deferredInterestText, degreeLevel, templateKey, topicAreaId, university],
   );
 
   const selectedSuggestion =
@@ -112,8 +134,8 @@ export function CreateProjectForm() {
       return;
     }
 
-    setProgram(getProgramDefault(careerId, degreeLevel));
-  }, [careerId, degreeLevel, hasManualProgram]);
+    setProgram(getProgramDefault(topicAreaId, degreeLevel));
+  }, [degreeLevel, hasManualProgram, topicAreaId]);
 
   useEffect(() => {
     if (selectedSuggestion && selectedSuggestionId !== selectedSuggestion.id) {
@@ -133,10 +155,6 @@ export function CreateProjectForm() {
     startTransition(async () => {
       const trimmedIdea = interestText.trim();
       const usingCustomIdea = trimmedIdea.length > 0;
-      const resolvedAreaLabel =
-        customAreaLabel.trim().length > 0
-          ? customAreaLabel.trim()
-          : getTopicAreaLabel(careerId) ?? null;
 
       const response = await fetch("/api/projects", {
         method: "POST",
@@ -151,9 +169,8 @@ export function CreateProjectForm() {
           university,
           program,
           templateKey,
-          topicAreaId:
-            customAreaLabel.trim().length > 0 ? undefined : careerId,
-          topicAreaLabel: resolvedAreaLabel,
+          topicAreaId: topicAreaId ?? undefined,
+          topicAreaLabel: topicAreaLabel ?? undefined,
         }),
       });
 
@@ -174,7 +191,7 @@ export function CreateProjectForm() {
 
   return (
     <form className="grid gap-8" onSubmit={handleSubmit}>
-      <div className="rounded-[30px] p-5 brand-card-primary sm:p-6">
+      <div className="brand-card-primary rounded-[30px] p-5 sm:p-6">
         <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
           Menos de 10 segundos
         </p>
@@ -199,13 +216,14 @@ export function CreateProjectForm() {
             <select
               className={fieldClassName}
               id="project-degree"
-              onChange={(event) =>
-                setDegreeLevel(event.target.value as ProjectPresetDegreeLevel)
-              }
+              onChange={(event) => setDegreeLevel(event.target.value as DegreeLevel)}
               value={degreeLevel}
             >
-              <option value="MAESTRIA">Maestria</option>
-              <option value="POSGRADO">Posgrado</option>
+              {PROJECT_DEGREE_LEVEL_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -216,33 +234,22 @@ export function CreateProjectForm() {
             >
               Carrera o area base
             </label>
-            <select
+            <input
               className={fieldClassName}
               id="project-career"
-              onChange={(event) => setCareerId(event.target.value)}
-              value={careerId}
-            >
+              list="project-career-options"
+              onChange={(event) => setAreaQuery(event.target.value)}
+              placeholder="Selecciona de la lista o escribe tu propia area"
+              value={areaQuery}
+            />
+            <datalist id="project-career-options">
               {PROJECT_CAREERS.map((career) => (
-                <option key={career.id} value={career.id}>
-                  {career.label}
-                </option>
+                <option key={career.id} value={career.label} />
               ))}
-            </select>
-            <button
-              className="brand-button-secondary w-fit px-4 py-2 text-sm font-semibold"
-              onClick={() => setIsAreaEditable((current) => !current)}
-              type="button"
-            >
-              {isAreaEditable ? "Ocultar area libre" : "Escribir area propia"}
-            </button>
-            {isAreaEditable ? (
-              <input
-                className={fieldClassName}
-                onChange={(event) => setCustomAreaLabel(event.target.value)}
-                placeholder="Ej. Innovacion educativa aplicada"
-                value={customAreaLabel}
-              />
-            ) : null}
+            </datalist>
+            <p className="text-sm leading-6 text-[var(--color-muted)]">
+              Puedes elegir una opcion sugerida o escribir un area propia.
+            </p>
           </div>
         </div>
 
@@ -250,8 +257,8 @@ export function CreateProjectForm() {
           <label className="text-sm font-semibold text-[var(--color-muted)]">
             Universidad base del MVP
           </label>
-          <div className="grid gap-3 sm:grid-cols-3">
-            {PRIMARY_UNIVERSITIES.map((option) => {
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            {FEATURED_UNIVERSITIES.map((option) => {
               const isActive = option.code === university;
 
               return (
@@ -304,7 +311,7 @@ export function CreateProjectForm() {
       </section>
 
       <section className="grid gap-4">
-        <div className="flex flex-col gap-3 rounded-[28px] p-5 brand-card-lilac sm:flex-row sm:items-end sm:justify-between">
+        <div className="brand-card-lilac flex flex-col gap-3 rounded-[28px] p-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
               Referencias iniciales
@@ -364,7 +371,7 @@ export function CreateProjectForm() {
         </div>
       </section>
 
-      <section className="grid gap-4 rounded-[28px] p-5 brand-card-gold">
+      <section className="brand-card-gold grid gap-4 rounded-[28px] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
@@ -386,14 +393,16 @@ export function CreateProjectForm() {
                 university}
             </p>
             <p>
+              <strong>Nivel:</strong> {getDegreeLevelLabel(degreeLevel)}
+            </p>
+            <p>
               <strong>Plantilla:</strong> {templateKey}
             </p>
             <p>
               <strong>Programa:</strong> {program}
             </p>
             <p>
-              <strong>Area:</strong>{" "}
-              {customAreaLabel.trim() || getTopicAreaLabel(careerId) || "No especificada"}
+              <strong>Area:</strong> {topicAreaLabel || "No especificada"}
             </p>
           </div>
         </div>
