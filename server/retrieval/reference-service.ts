@@ -59,6 +59,65 @@ type SearchCandidate = {
   rawCrossrefJson: CrossrefMessage | null;
 };
 
+type RankedReferenceCandidate = {
+  candidate: SearchCandidate;
+  resolvedTitle: string;
+  normalizedTitle: string;
+  authors: string[];
+  abstract: string | null;
+  venue: string | null;
+  year: number | null;
+  workType: string | null;
+  landingPageUrl: string | null;
+  citationCount: number;
+  crossrefMetadata: CrossrefMessage | null;
+  score: number;
+};
+
+function extractAccessSignals(input: {
+  rawOpenAlexJson: unknown | null;
+  landingPageUrl: string | null;
+  doi: string | null;
+}) {
+  const record =
+    typeof input.rawOpenAlexJson === "object" &&
+    input.rawOpenAlexJson !== null &&
+    !Array.isArray(input.rawOpenAlexJson)
+      ? (input.rawOpenAlexJson as Record<string, unknown>)
+      : null;
+  const bestOaLocation =
+    record &&
+    typeof record.best_oa_location === "object" &&
+    record.best_oa_location !== null
+      ? (record.best_oa_location as Record<string, unknown>)
+      : null;
+  const primaryLocation =
+    record &&
+    typeof record.primary_location === "object" &&
+    record.primary_location !== null
+      ? (record.primary_location as Record<string, unknown>)
+      : null;
+  const openAccess =
+    record &&
+    typeof record.open_access === "object" &&
+    record.open_access !== null
+      ? (record.open_access as Record<string, unknown>)
+      : null;
+  const pdfUrl =
+    (typeof bestOaLocation?.pdf_url === "string" && bestOaLocation.pdf_url) ||
+    (typeof primaryLocation?.pdf_url === "string" && primaryLocation.pdf_url) ||
+    null;
+
+  return {
+    hasPdfUrl: Boolean(pdfUrl),
+    isOpenAccess:
+      openAccess?.is_oa === true ||
+      Boolean(pdfUrl) ||
+      Boolean(input.landingPageUrl) ||
+      Boolean(input.doi),
+  };
+}
+
 function buildRelevanceScore(input: {
   title: string;
   abstract: string | null;
@@ -70,6 +129,8 @@ function buildRelevanceScore(input: {
   targetPopulation: string | null;
   citationCount: number;
   year: number | null;
+  hasPdfUrl: boolean;
+  isOpenAccess: boolean;
 }) {
   const normalizedTitleText = normalizeTitle(input.title);
   const normalizedAbstractText = normalizeTitle(input.abstract);
@@ -130,20 +191,29 @@ function buildRelevanceScore(input: {
       (normalizedTitleText.includes(term) || normalizedAbstractText.includes(term) ? 1 : 0),
     0,
   );
-  const yearBonus =
-    input.year && input.year >= new Date().getFullYear() - 5 ? 1 : 0;
+  const currentYear = new Date().getFullYear();
+  const recencyBonus =
+    input.year && input.year >= currentYear - 5
+      ? 2.2
+      : input.year && input.year >= currentYear - 8
+        ? 0.9
+        : 0;
   const citationBonus = Math.min(input.citationCount / 50, 2);
+  const abstractBonus = input.abstract?.trim() ? 2.8 : -1.6;
+  const accessBonus = input.hasPdfUrl ? 1.5 : input.isOpenAccess ? 0.7 : 0;
 
   return (
     titleHitCount * 2.5 +
-    abstractHitCount * 1.4 +
+    abstractHitCount * 1.9 +
     topicHitCount * 1.8 +
-    problemHitCount * 1.3 +
-    populationHitCount * 1.2 +
+    problemHitCount * 1.9 +
+    populationHitCount * 1.5 +
     matchedQueryHitCount +
     intentHitCount * 1.1 +
-    yearBonus +
-    citationBonus
+    recencyBonus +
+    citationBonus +
+    abstractBonus +
+    accessBonus
   );
 }
 
@@ -158,7 +228,7 @@ export async function searchProjectReferences(
     Math.max(options?.desiredTotal ?? REFERENCE_BATCH_SIZE, MIN_SELECTED_REFERENCES),
     MAX_SELECTED_REFERENCES,
   );
-  const aggregationTarget = Math.min(desiredTotal + 2, MAX_SELECTED_REFERENCES + 2);
+  const aggregationTarget = Math.max(desiredTotal + 10, 16);
   const [project, user] = await Promise.all([
     prisma.project.findFirst({
       where: {
@@ -285,13 +355,14 @@ export async function searchProjectReferences(
     }
   }
 
-  const openAlexResults = Array.from(aggregatedResults.values()).slice(0, desiredTotal);
+  const candidatePool = Array.from(aggregatedResults.values()).slice(0, aggregationTarget);
+  const rankedCandidates: RankedReferenceCandidate[] = [];
 
   let createdCount = 0;
   let updatedCount = 0;
   let skippedCount = 0;
 
-  for (const result of openAlexResults) {
+  for (const result of candidatePool) {
     let crossrefMetadata: CrossrefMessage | null = result.rawCrossrefJson ?? null;
 
     if (!crossrefMetadata && result.doi) {
@@ -311,6 +382,58 @@ export async function searchProjectReferences(
       continue;
     }
 
+    const resolvedAuthors =
+      crossrefMetadata?.author?.map((author) =>
+        [author.given, author.family].filter(Boolean).join(" "),
+      ) ?? result.authors;
+    const resolvedAbstract = crossrefMetadata?.abstract ?? result.abstract;
+    const resolvedVenue = crossrefMetadata?.publisher ?? result.venue;
+    const resolvedYear =
+      crossrefMetadata?.issued?.["date-parts"]?.[0]?.[0] ?? result.year;
+    const resolvedWorkType = crossrefMetadata?.type ?? result.workType;
+    const resolvedLandingPageUrl = crossrefMetadata?.URL ?? result.landingPageUrl;
+    const accessSignals = extractAccessSignals({
+      rawOpenAlexJson: result.rawOpenAlexJson,
+      landingPageUrl: resolvedLandingPageUrl,
+      doi: result.doi,
+    });
+
+    rankedCandidates.push({
+      candidate: result,
+      resolvedTitle,
+      normalizedTitle,
+      authors: resolvedAuthors,
+      abstract: resolvedAbstract,
+      venue: resolvedVenue,
+      year: resolvedYear,
+      workType: resolvedWorkType,
+      landingPageUrl: resolvedLandingPageUrl,
+      citationCount: result.citationCount,
+      crossrefMetadata,
+      score: buildRelevanceScore({
+        title: resolvedTitle,
+        abstract: resolvedAbstract,
+        intentSummary: searchPlan.intentSummary,
+        matchedQuery: result.matchedQuery,
+        focusTerms: searchPlan.focusTerms,
+        topic: project.intake.topic,
+        problemContext: project.intake.problemContext,
+        targetPopulation: project.intake.targetPopulation,
+        citationCount: result.citationCount,
+        year: resolvedYear,
+        hasPdfUrl: accessSignals.hasPdfUrl,
+        isOpenAccess: accessSignals.isOpenAccess,
+      }),
+    });
+  }
+
+  const selectedCandidates = rankedCandidates
+    .sort((left, right) => right.score - left.score)
+    .slice(0, desiredTotal);
+
+  for (const ranked of selectedCandidates) {
+    const result = ranked.candidate;
+
     const lookupKeys: Array<{ doi: string } | { openAlexId: string }> = [];
 
     if (result.doi) {
@@ -329,8 +452,8 @@ export async function searchProjectReferences(
         : lookupKeys.length === 1
           ? lookupKeys[0]
         : {
-            normalizedTitle,
-            year: result.year ?? undefined,
+            normalizedTitle: ranked.normalizedTitle,
+            year: ranked.year ?? undefined,
           },
     });
 
@@ -340,46 +463,36 @@ export async function searchProjectReferences(
           data: {
             doi: result.doi ?? existingReference.doi,
             openAlexId: result.openAlexId,
-            crossrefId: crossrefMetadata?.DOI ?? existingReference.crossrefId,
-            title: resolvedTitle,
-            normalizedTitle,
-            authorsJson:
-              crossrefMetadata?.author?.map((author) =>
-                [author.given, author.family].filter(Boolean).join(" "),
-              ) ?? result.authors,
-            abstract: crossrefMetadata?.abstract ?? result.abstract,
-            venue: crossrefMetadata?.publisher ?? result.venue,
-            year:
-              crossrefMetadata?.issued?.["date-parts"]?.[0]?.[0] ??
-              result.year ??
-              existingReference.year,
-            workType: crossrefMetadata?.type ?? result.workType,
-            landingPageUrl: crossrefMetadata?.URL ?? result.landingPageUrl,
-            citationCount: result.citationCount,
+            crossrefId: ranked.crossrefMetadata?.DOI ?? existingReference.crossrefId,
+            title: ranked.resolvedTitle,
+            normalizedTitle: ranked.normalizedTitle,
+            authorsJson: ranked.authors,
+            abstract: ranked.abstract,
+            venue: ranked.venue,
+            year: ranked.year ?? existingReference.year,
+            workType: ranked.workType,
+            landingPageUrl: ranked.landingPageUrl,
+            citationCount: ranked.citationCount,
             rawOpenAlexJson: (result.rawOpenAlexJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-            rawCrossrefJson: (crossrefMetadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            rawCrossrefJson: (ranked.crossrefMetadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
           },
         })
       : await prisma.reference.create({
           data: {
             doi: result.doi,
             openAlexId: result.openAlexId,
-            crossrefId: crossrefMetadata?.DOI ?? null,
-            title: resolvedTitle,
-            normalizedTitle,
-            authorsJson:
-              crossrefMetadata?.author?.map((author) =>
-                [author.given, author.family].filter(Boolean).join(" "),
-              ) ?? result.authors,
-            abstract: crossrefMetadata?.abstract ?? result.abstract,
-            venue: crossrefMetadata?.publisher ?? result.venue,
-            year:
-              crossrefMetadata?.issued?.["date-parts"]?.[0]?.[0] ?? result.year,
-            workType: crossrefMetadata?.type ?? result.workType,
-            landingPageUrl: crossrefMetadata?.URL ?? result.landingPageUrl,
-            citationCount: result.citationCount,
+            crossrefId: ranked.crossrefMetadata?.DOI ?? null,
+            title: ranked.resolvedTitle,
+            normalizedTitle: ranked.normalizedTitle,
+            authorsJson: ranked.authors,
+            abstract: ranked.abstract,
+            venue: ranked.venue,
+            year: ranked.year,
+            workType: ranked.workType,
+            landingPageUrl: ranked.landingPageUrl,
+            citationCount: ranked.citationCount,
             rawOpenAlexJson: (result.rawOpenAlexJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
-            rawCrossrefJson: (crossrefMetadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            rawCrossrefJson: (ranked.crossrefMetadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
           },
         });
 
@@ -398,35 +511,13 @@ export async function searchProjectReferences(
       },
       update: {
         sourceProvider: result.sourceProvider,
-        relevanceScore: buildRelevanceScore({
-          title: reference.title,
-          abstract: reference.abstract,
-          intentSummary: searchPlan.intentSummary,
-          matchedQuery: result.matchedQuery,
-          focusTerms: searchPlan.focusTerms,
-          topic: project.intake.topic,
-          problemContext: project.intake.problemContext,
-          targetPopulation: project.intake.targetPopulation,
-          citationCount: reference.citationCount ?? 0,
-          year: reference.year,
-        }),
+        relevanceScore: ranked.score,
       },
       create: {
         projectId: project.id,
         referenceId: reference.id,
         sourceProvider: result.sourceProvider,
-        relevanceScore: buildRelevanceScore({
-          title: reference.title,
-          abstract: reference.abstract,
-          intentSummary: searchPlan.intentSummary,
-          matchedQuery: result.matchedQuery,
-          focusTerms: searchPlan.focusTerms,
-          topic: project.intake.topic,
-          problemContext: project.intake.problemContext,
-          targetPopulation: project.intake.targetPopulation,
-          citationCount: reference.citationCount ?? 0,
-          year: reference.year,
-        }),
+        relevanceScore: ranked.score,
       },
     });
   }
@@ -457,7 +548,8 @@ export async function searchProjectReferences(
       languageContext,
       attemptedQueries: searchAttempts,
       attempts: attemptSummaries,
-      resultCount: openAlexResults.length,
+      candidatePoolSize: candidatePool.length,
+      resultCount: selectedCandidates.length,
       createdCount,
       updatedCount,
       skippedCount,
@@ -468,7 +560,7 @@ export async function searchProjectReferences(
   return {
     searchQuery,
     attemptedQueries: searchAttempts,
-    totalResults: openAlexResults.length,
+    totalResults: selectedCandidates.length,
     createdCount,
     updatedCount,
     providerBreakdown,

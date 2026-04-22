@@ -34,11 +34,13 @@ export type BlueprintReferenceInsight = {
   year: number | null;
   venue: string | null;
   abstract_available: boolean;
+  is_recent: boolean;
   evidence_strength: "high" | "medium" | "low";
   topic_focus: string[];
   problem_signal: string | null;
   method_signal: string | null;
   population_or_context_signal: string | null;
+  technical_solution_signal: string | null;
   main_finding_signal: string | null;
   limitation_signal: string | null;
   future_line_signal: string | null;

@@ -16,9 +16,18 @@ export type OpenAlexWork = {
   abstract_inverted_index?: Record<string, number[]>;
   primary_location?: {
     landing_page_url?: string | null;
+    pdf_url?: string | null;
     source?: {
       display_name?: string | null;
     } | null;
+  } | null;
+  best_oa_location?: {
+    landing_page_url?: string | null;
+    pdf_url?: string | null;
+  } | null;
+  open_access?: {
+    is_oa?: boolean | null;
+    oa_url?: string | null;
   } | null;
 };
 
@@ -44,7 +53,7 @@ function buildAbstract(invertedIndex?: Record<string, number[]>) {
 function buildOpenAlexUrl(query: string) {
   const url = new URL("/works", OPENALEX_BASE_URL);
   url.searchParams.set("search", query);
-  url.searchParams.set("per-page", "25");
+  url.searchParams.set("per-page", "35");
 
   const apiKey = process.env.OPENALEX_API_KEY?.trim();
   if (apiKey) {
@@ -81,7 +90,11 @@ export async function searchOpenAlexWorks(query: string) {
     venue: work.primary_location?.source?.display_name ?? null,
     year: work.publication_year,
     workType: work.type,
-    landingPageUrl: work.primary_location?.landing_page_url ?? null,
+    landingPageUrl:
+      work.best_oa_location?.landing_page_url ??
+      work.open_access?.oa_url ??
+      work.primary_location?.landing_page_url ??
+      null,
     citationCount: work.cited_by_count ?? 0,
     rawOpenAlexJson: work,
   }));

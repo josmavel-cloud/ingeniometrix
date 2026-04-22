@@ -38,6 +38,7 @@ export function buildBlueprintPrompt(input: BlueprintPromptInput) {
         `reference_id: ${reference.id}`,
         `title: ${reference.title}`,
         `doi: ${reference.doi ?? "NO_DISPONIBLE"}`,
+        `access_url: ${reference.landingPageUrl ?? (reference.doi ? `https://doi.org/${reference.doi}` : "NO_DISPONIBLE")}`,
         `authors: ${Array.isArray(reference.authorsJson) ? reference.authorsJson.join(", ") : "NO_DISPONIBLE"}`,
         `year: ${reference.year ?? "NO_DISPONIBLE"}`,
         `venue: ${reference.venue ?? "NO_DISPONIBLE"}`,
@@ -71,12 +72,14 @@ export function buildBlueprintPrompt(input: BlueprintPromptInput) {
         `Insight ${index + 1}:`,
         `reference_id: ${insight.reference_id}`,
         `evidence_strength: ${insight.evidence_strength}`,
+        `is_recent: ${insight.is_recent ? "SI" : "NO"}`,
         `topic_focus: ${
           insight.topic_focus.length > 0 ? insight.topic_focus.join(", ") : "NO_DISPONIBLE"
         }`,
         `problem_signal: ${insight.problem_signal ?? "NO_DISPONIBLE"}`,
         `method_signal: ${insight.method_signal ?? "NO_DISPONIBLE"}`,
         `population_or_context_signal: ${insight.population_or_context_signal ?? "NO_DISPONIBLE"}`,
+        `technical_solution_signal: ${insight.technical_solution_signal ?? "NO_DISPONIBLE"}`,
         `main_finding_signal: ${insight.main_finding_signal ?? "NO_DISPONIBLE"}`,
         `limitation_signal: ${insight.limitation_signal ?? "NO_DISPONIBLE"}`,
         `future_line_signal: ${insight.future_line_signal ?? "NO_DISPONIBLE"}`,
@@ -130,6 +133,8 @@ Reglas de trazabilidad:
 - si una idea no puede apoyarse en las referencias entregadas, no la presentes como afirmacion bibliografica fuerte
 - la plantilla base ya fue elegida por el usuario y debe orientar la estructura del blueprint
 - usa los reference insights como ideas derivadas de las referencias para problema, metodo, hallazgos utiles y lineas futuras
+- trata las referencias como antecedentes recientes cuando su year este dentro de los ultimos 5 anos
+- prioriza antecedentes que describan soluciones tecnicas, enfoques metodologicos o vacios aun no resueltos
 - devuelve solo los campos solicitados por el schema; no intentes completar una tesis ni una version extendida
 
 Proyecto:
@@ -171,6 +176,9 @@ Instrucciones de calidad:
 - si existe contexto asistido, usalo como apoyo prudente para cerrar vacios del intake sin presentarlo como hecho confirmado
 - si research_line no fue dada con claridad, usa una formulacion prudente y agregalo tambien a assumptions
 - specific_objectives y research_questions deben alinearse entre si
+- intenta sostener el blueprint con al menos 5 antecedentes recientes si estan disponibles dentro de las referencias seleccionadas
+- revisa limitation_signal y future_line_signal para detectar que falta por investigar y usa eso para mejorar general_objective y specific_objectives
+- si technical_solution_signal aparece en los antecedentes, aprovecha esas soluciones como base comparativa para justificar el enfoque propuesto
 - references_used debe incluir las referencias mas utiles realmente usadas para sustentar el blueprint
 - integra ideas de metodo, contexto, hallazgos y futuras lineas solo cuando puedan sostenerse con los insights entregados
 - si la plantilla exige una seccion pero la evidencia no alcanza, evita inventar contenido y deja la incertidumbre en assumptions

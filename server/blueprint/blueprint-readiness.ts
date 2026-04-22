@@ -19,6 +19,9 @@ export function buildBlueprintReadinessSnapshot(input: {
   const abstractsAvailableCount = input.referenceInsights.filter(
     (insight) => insight.abstract_available,
   ).length;
+  const recentAbstractCount = input.referenceInsights.filter(
+    (insight) => insight.abstract_available && insight.is_recent,
+  ).length;
   const problemSignalCount = input.referenceInsights.filter((insight) =>
     Boolean(insight.problem_signal),
   ).length;
@@ -35,6 +38,9 @@ export function buildBlueprintReadinessSnapshot(input: {
       : null,
     abstractsAvailableCount < 2
       ? "Hay pocas referencias con abstract utilizable para sostener el blueprint."
+      : null,
+    recentAbstractCount < 2
+      ? "Hay pocos antecedentes recientes con abstract utilizable para sostener el blueprint."
       : null,
     problemSignalCount === 0
       ? "Las fuentes seleccionadas no muestran una senal clara de problema."

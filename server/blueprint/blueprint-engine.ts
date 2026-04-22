@@ -245,6 +245,7 @@ export function buildReferenceInsights(
   return selectedReferences.map((item) => {
     const reference = item.reference;
     const abstract = reference.abstract ?? "";
+    const currentYear = new Date().getFullYear();
 
     return {
       reference_id: reference.id,
@@ -253,6 +254,8 @@ export function buildReferenceInsights(
       year: reference.year ?? null,
       venue: reference.venue ?? null,
       abstract_available: abstract.trim().length > 0,
+      is_recent:
+        typeof reference.year === "number" && reference.year >= currentYear - 5,
       evidence_strength: buildEvidenceStrength(reference),
       topic_focus: [
         ...extractSearchTerms(reference.title, { maxTerms: 5, minLength: 4 }),
@@ -271,6 +274,9 @@ export function buildReferenceInsights(
         ],
         1,
       ),
+      technical_solution_signal: findSentenceByPatterns(abstract, [
+        /framework|model|system|algorithm|architecture|prototype|tool|platform|approach|intervention|technique|solution|modelo|sistema|algoritmo|arquitectura|prototipo|herramienta|plataforma|tecnica|solucion/i,
+      ]),
       main_finding_signal: findSentenceByPatterns(abstract, [
         /result|finding|found|show|demonstrate|suggest|indicate|conclude|results|hallazgo|resultado|conclusion|demuestra|sugiere|indica/i,
       ]),

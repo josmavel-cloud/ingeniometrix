@@ -88,11 +88,15 @@ Objetivo:
 - reformular el tema del usuario como una intencion academica breve y clara
 - proponer consultas mas utiles para OpenAlex
 - incluir variantes en ingles cuando eso aumente la probabilidad de encontrar literatura relevante
+- priorizar antecedentes recientes y tecnicamente utiles para construir un blueprint trazable
 
 Reglas:
 - no inventes datos ni resultados
 - no conviertas la consulta en una tesis completa
 - prioriza palabras que ayuden a encontrar articulos relevantes
+- busca antecedentes sobre el tema elegido que aborden problemas actuales del area
+- intenta favorecer consultas que traigan al menos 5 antecedentes con abstract, soluciones tecnicas o enfoques metodologicos aprovechables
+- prioriza literatura de los ultimos 5 anos cuando eso no distorsione el foco del tema
 - evita nombres institucionales salvo que realmente sean parte del objeto de estudio
 - usa terminologia academica breve, no frases demasiado largas
 - si el usuario ya escribio algo tecnico, preserva ese foco
