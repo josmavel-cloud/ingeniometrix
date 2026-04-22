@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/normalized-template-source-document.schema.json",
+  "title": "NormalizedTemplateSourceDocument",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "source_id",
+    "source_type",
+    "document_kind",
+    "language",
+    "institution",
+    "assets",
+    "cover",
+    "blocks",
+    "warnings"
+  ],
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["pdf_native_text", "pdf_image", "docx", "text", "manual"]
+    },
+    "document_kind": {
+      "type": "string",
+      "enum": ["thesis_plan_instance", "template_guide", "thesis_final_instance", "unknown"]
+    },
+    "language": {
+      "type": "string",
+      "minLength": 2
+    },
+    "institution": {
+      "$ref": "#/$defs/institution"
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assetCandidate"
+      }
+    },
+    "cover": {
+      "$ref": "#/$defs/cover"
+    },
+    "blocks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/block"
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "pageSpan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_page", "end_page"],
+      "properties": {
+        "start_page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "end_page": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "institution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["university_name"],
+      "properties": {
+        "university_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "school_name": {
+          "type": ["string", "null"]
+        },
+        "program_name": {
+          "type": ["string", "null"]
+        },
+        "mention": {
+          "type": ["string", "null"]
+        },
+        "degree_level": {
+          "type": ["string", "null"]
+        },
+        "discipline_area": {
+          "type": ["string", "null"]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "assetCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["asset_key", "kind", "source_strategy"],
+      "properties": {
+        "asset_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["logo", "seal", "cover_image", "unknown"]
+        },
+        "source_strategy": {
+          "type": "string",
+          "enum": ["provided_file", "extracted_from_document", "placeholder"]
+        },
+        "source_path": {
+          "type": ["string", "null"]
+        },
+        "page_number": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "mime_type": {
+          "type": ["string", "null"]
+        },
+        "width_px": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "height_px": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "has_transparency": {
+          "type": ["boolean", "null"]
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    },
+    "cover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_text"],
+      "properties": {
+        "raw_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "university_name": {
+          "type": ["string", "null"]
+        },
+        "school_name": {
+          "type": ["string", "null"]
+        },
+        "program_name": {
+          "type": ["string", "null"]
+        },
+        "document_label": {
+          "type": ["string", "null"]
+        },
+        "author_lines": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "advisor_lines": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "place_label": {
+          "type": ["string", "null"]
+        },
+        "date_label": {
+          "type": ["string", "null"]
+        },
+        "logo_asset_key": {
+          "type": ["string", "null"]
+        },
+        "page_span": {
+          "$ref": "#/$defs/pageSpan"
+        }
+      }
+    },
+    "listItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ordinal": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    },
+    "tableCell": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text"],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "col_span": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "row_span": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        }
+      }
+    },
+    "tableRow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cells"],
+      "properties": {
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/tableCell"
+          }
+        }
+      }
+    },
+    "table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rows"],
+      "properties": {
+        "caption": {
+          "type": ["string", "null"]
+        },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/tableRow"
+          }
+        }
+      }
+    },
+    "referenceEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["raw_text"],
+      "properties": {
+        "raw_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authors": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "year": {
+          "type": ["integer", "null"]
+        },
+        "title": {
+          "type": ["string", "null"]
+        },
+        "doi": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "block": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "page_span", "raw_text"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "cover",
+            "field",
+            "section",
+            "subsection",
+            "paragraph",
+            "bullet_list",
+            "numbered_list",
+            "table",
+            "references",
+            "unknown"
+          ]
+        },
+        "label": {
+          "type": ["string", "null"]
+        },
+        "ordinal": {
+          "type": ["string", "null"]
+        },
+        "level": {
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "maximum": 5
+        },
+        "semantic_key": {
+          "type": ["string", "null"]
+        },
+        "raw_text": {
+          "type": "string"
+        },
+        "normalized_text": {
+          "type": ["string", "null"]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/listItem"
+          }
+        },
+        "table": {
+          "$ref": "#/$defs/table"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/referenceEntry"
+          }
+        },
+        "page_span": {
+          "$ref": "#/$defs/pageSpan"
+        },
+        "confidence": {
+          "$ref": "#/$defs/confidence"
+        }
+      }
+    }
+  }
+}
