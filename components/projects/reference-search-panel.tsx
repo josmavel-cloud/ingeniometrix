@@ -6,6 +6,7 @@ import { ExternalLink, Search, Sparkles } from "lucide-react";
 
 import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
 import {
+  REFERENCE_BATCH_SIZE,
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
 } from "@/lib/research-workflow";
@@ -56,6 +57,9 @@ export function ReferenceSearchPanel({
 }: ReferenceSearchPanelProps) {
   const router = useRouter();
   const [references, setReferences] = useState(initialReferences);
+  const [visibleCount, setVisibleCount] = useState(
+    Math.min(initialReferences.length, REFERENCE_BATCH_SIZE),
+  );
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -66,6 +70,12 @@ export function ReferenceSearchPanel({
     () => references.filter((reference) => reference.selected).length,
     [references],
   );
+  const visibleReferences = useMemo(
+    () => references.slice(0, visibleCount),
+    [references, visibleCount],
+  );
+  const nextVisibleTarget = Math.min(visibleCount + REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES);
+  const canExpand = visibleCount < Math.min(references.length, MAX_SELECTED_REFERENCES);
   const statusMeta = getProjectStatusMeta(status);
   const intakeChecklist = [
     {
@@ -109,7 +119,7 @@ export function ReferenceSearchPanel({
     });
   }
 
-  function runSearch() {
+  function runSearch(desiredTotal: number) {
     setError(null);
     setMessage(null);
     setInfo(null);
@@ -124,6 +134,10 @@ export function ReferenceSearchPanel({
     startSearchTransition(async () => {
       const response = await fetch(`/api/projects/${projectId}/search`, {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ desiredTotal }),
       });
 
       const payload = (await response.json()) as {
@@ -151,12 +165,15 @@ export function ReferenceSearchPanel({
       }
 
       setReferences(refreshPayload.references);
+      setVisibleCount(Math.min(refreshPayload.references.length, desiredTotal));
 
       const totalResults = payload.result?.totalResults ?? 0;
 
       if (totalResults > 0) {
         setMessage(
-          `Busqueda completada. Revisa y selecciona entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} fuentes.`,
+          desiredTotal > REFERENCE_BATCH_SIZE
+            ? `Cargamos hasta ${Math.min(refreshPayload.references.length, desiredTotal)} fuentes para esta revision inicial.`
+            : `Busqueda completada. Revisa las primeras ${Math.min(refreshPayload.references.length, REFERENCE_BATCH_SIZE)} fuentes y selecciona entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} referencias para continuar.`,
         );
         setInfo(null);
       } else if ((refreshPayload.references?.length ?? 0) > 0) {
@@ -173,6 +190,23 @@ export function ReferenceSearchPanel({
 
       router.refresh();
     });
+  }
+
+  function expandReferences() {
+    setError(null);
+    setMessage(null);
+    setInfo(null);
+
+    if (canExpand) {
+      setVisibleCount(nextVisibleTarget);
+      return;
+    }
+
+    if (!hasIntakeMinimum || references.length >= MAX_SELECTED_REFERENCES) {
+      return;
+    }
+
+    runSearch(nextVisibleTarget);
   }
 
   function saveSelection() {
@@ -242,7 +276,7 @@ export function ReferenceSearchPanel({
           <button
             className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
             disabled={isSearching || !hasIntakeMinimum}
-            onClick={runSearch}
+            onClick={() => runSearch(REFERENCE_BATCH_SIZE)}
             type="button"
           >
             <Search className="mr-2 size-4" />
@@ -315,9 +349,15 @@ export function ReferenceSearchPanel({
         <p className="text-sm leading-6 text-slate-600">
           Seleccionadas: <strong>{selectedCount}</strong> / {MAX_SELECTED_REFERENCES}
         </p>
-        <p className="text-sm leading-6 text-slate-500">
-          El estado pasa a <strong>SOURCES_SELECTED</strong> cuando guardas entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} fuentes.
-        </p>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <p className="text-sm leading-6 text-slate-500">
+            Mostrando <strong>{visibleReferences.length}</strong> de{" "}
+            <strong>{references.length}</strong> fuentes en esta revision.
+          </p>
+          <p className="text-sm leading-6 text-slate-500">
+            El estado pasa a <strong>SOURCES_SELECTED</strong> cuando guardas entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} fuentes.
+          </p>
+        </div>
       </div>
 
       <div className="mt-5 grid gap-2">
@@ -337,7 +377,7 @@ export function ReferenceSearchPanel({
         </div>
       ) : (
         <div className="mt-8 grid gap-4">
-          {references.map((item) => (
+          {visibleReferences.map((item) => (
             <article
               className="surface-panel rounded-[28px] p-5"
               key={item.id}
@@ -396,6 +436,23 @@ export function ReferenceSearchPanel({
           ))}
         </div>
       )}
+
+      {references.length > 0 && visibleCount < MAX_SELECTED_REFERENCES ? (
+        <div className="mt-6 flex justify-start">
+          <button
+            className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
+            disabled={isSearching || (!canExpand && references.length >= MAX_SELECTED_REFERENCES)}
+            onClick={expandReferences}
+            type="button"
+          >
+            {isSearching
+              ? "Cargando..."
+              : canExpand
+                ? `Ver ${Math.min(REFERENCE_BATCH_SIZE, references.length - visibleCount)} mas`
+                : `Buscar ${Math.min(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES - references.length)} mas`}
+          </button>
+        </div>
+      ) : null}
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-6 text-slate-500">

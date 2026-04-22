@@ -8,6 +8,7 @@ import {
 import {
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
+  REFERENCE_BATCH_SIZE,
 } from "@/lib/research-workflow";
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent } from "@/server/audit/audit-service";
@@ -77,7 +78,15 @@ function buildRelevanceScore(input: {
 export async function searchProjectReferences(
   userId: string,
   projectId: string,
+  options?: {
+    desiredTotal?: number;
+  },
 ): Promise<SearchProjectReferencesResult> {
+  const desiredTotal = Math.min(
+    Math.max(options?.desiredTotal ?? REFERENCE_BATCH_SIZE, MIN_SELECTED_REFERENCES),
+    MAX_SELECTED_REFERENCES,
+  );
+  const aggregationTarget = Math.min(desiredTotal + 2, MAX_SELECTED_REFERENCES + 2);
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
@@ -157,12 +166,12 @@ export async function searchProjectReferences(
       }
     }
 
-    if (aggregatedResults.size >= 12) {
+    if (aggregatedResults.size >= aggregationTarget) {
       break;
     }
   }
 
-  if (aggregatedResults.size < MIN_SELECTED_REFERENCES) {
+  if (aggregatedResults.size < desiredTotal) {
     const crossrefAttempts = [...searchAttempts].reverse();
 
     for (const attemptQuery of crossrefAttempts) {
@@ -183,13 +192,13 @@ export async function searchProjectReferences(
         }
       }
 
-      if (aggregatedResults.size >= 12) {
+      if (aggregatedResults.size >= aggregationTarget) {
         break;
       }
     }
   }
 
-  const openAlexResults = Array.from(aggregatedResults.values()).slice(0, 25);
+  const openAlexResults = Array.from(aggregatedResults.values()).slice(0, desiredTotal);
 
   let createdCount = 0;
   let updatedCount = 0;
@@ -382,6 +391,7 @@ export async function listProjectReferences(userId: string, projectId: string) {
   return prisma.projectReference.findMany({
     where: { projectId },
     orderBy: [{ relevanceScore: "desc" }, { createdAt: "desc" }],
+    take: MAX_SELECTED_REFERENCES,
     include: {
       reference: true,
     },

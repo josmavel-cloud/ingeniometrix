@@ -11,7 +11,12 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const result = await searchProjectReferences(user.id, id);
+    const body = (await _request.json().catch(() => ({}))) as {
+      desiredTotal?: number;
+    };
+    const result = await searchProjectReferences(user.id, id, {
+      desiredTotal: body.desiredTotal,
+    });
 
     return NextResponse.json({ result });
   } catch (error) {
