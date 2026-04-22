@@ -27,6 +27,23 @@ export type BlueprintContextCompletion = {
   rationale: string;
 };
 
+export type BlueprintAntecedentSummary = {
+  reference_id: string;
+  title: string;
+  authors: string;
+  year: number | null;
+  download_url: string | null;
+  summary: string;
+  technical_solution: string;
+  unresolved_gap: string;
+};
+
+export type BlueprintAntecedentSynthesis = {
+  summaries: BlueprintAntecedentSummary[];
+  gap_overview: string;
+  objective_guidance: string[];
+};
+
 export type BlueprintReferenceInsight = {
   reference_id: string;
   title: string;
@@ -136,4 +153,5 @@ export type ResearchBlueprintRecord = ResearchBlueprintCore & {
   engine_warnings?: string[];
   readiness_snapshot?: BlueprintReadinessSnapshot;
   context_completion?: BlueprintContextCompletion | null;
+  antecedent_synthesis?: BlueprintAntecedentSynthesis | null;
 };

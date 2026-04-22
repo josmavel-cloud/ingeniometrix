@@ -14,6 +14,7 @@ import { buildBlueprintPrompt } from "./blueprint-prompt";
 import {
   BlueprintGenerationError,
 } from "./blueprint-errors";
+import { generateBlueprintAntecedentSynthesis } from "./blueprint-antecedent-synthesis";
 import { generateBlueprintContextCompletion } from "./blueprint-context-completion";
 import { generateStructuredObjectWithTextFallback } from "./blueprint-llm-json";
 import {
@@ -33,13 +34,14 @@ import {
   loadBlueprintTemplateContext,
 } from "./blueprint-engine";
 import type {
+  BlueprintAntecedentSynthesis,
   BlueprintContextCompletion,
   BlueprintCitationPlanSection,
   BlueprintReadinessSnapshot,
   BlueprintReferenceSnapshot,
 } from "./blueprint-types";
 
-const BLUEPRINT_PROMPT_VERSION = "ingeniometrix-blueprint-v2";
+const BLUEPRINT_PROMPT_VERSION = "ingeniometrix-blueprint-v3";
 
 function describeError(error: unknown) {
   if (error instanceof Error) {
@@ -199,6 +201,20 @@ export async function generateBlueprintVersion(userId: string, projectId: string
   });
 
   try {
+    let antecedentSynthesis: BlueprintAntecedentSynthesis | null = null;
+
+    try {
+      antecedentSynthesis = await generateBlueprintAntecedentSynthesis({
+        provider,
+        project,
+        intake,
+        selectedReferences: project.projectReferences,
+        referenceInsights,
+      });
+    } catch {
+      antecedentSynthesis = null;
+    }
+
     const buildAttemptPrompt = (assistedContext: BlueprintContextCompletion | null) =>
       buildBlueprintPrompt({
         project,
@@ -206,6 +222,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         selectedReferences: project.projectReferences,
         referenceInsights,
         templateContext,
+        antecedentSynthesis,
         assistedContext,
         readinessSnapshot,
       });
@@ -292,6 +309,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
       citationPlan,
       contextCompletion: assistedContext,
       readinessSnapshot,
+      antecedentSynthesis,
     });
 
     validateBlueprintTraceability(

@@ -521,6 +521,7 @@ export function buildEnrichedBlueprintRecord(input: {
   citationPlan: BlueprintCitationPlanSection[];
   contextCompletion?: BlueprintContextCompletion | null;
   readinessSnapshot?: BlueprintReadinessSnapshot | null;
+  antecedentSynthesis?: import("./blueprint-types").BlueprintAntecedentSynthesis | null;
 }) {
   const assumptionsDetailed = buildAssumptionDetails({
     assumptions: input.blueprint.assumptions,
@@ -541,5 +542,6 @@ export function buildEnrichedBlueprintRecord(input: {
     engine_warnings: engineWarnings,
     readiness_snapshot: input.readinessSnapshot ?? undefined,
     context_completion: input.contextCompletion ?? undefined,
+    antecedent_synthesis: input.antecedentSynthesis ?? undefined,
   } satisfies ResearchBlueprintRecord;
 }

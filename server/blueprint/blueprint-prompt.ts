@@ -1,6 +1,7 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
 import type {
+  BlueprintAntecedentSynthesis,
   BlueprintContextCompletion,
   BlueprintReadinessSnapshot,
   BlueprintReferenceInsight,
@@ -16,6 +17,7 @@ type BlueprintPromptInput = {
   }>;
   referenceInsights: BlueprintReferenceInsight[];
   templateContext: BlueprintTemplateContext;
+  antecedentSynthesis?: BlueprintAntecedentSynthesis | null;
   assistedContext?: BlueprintContextCompletion | null;
   readinessSnapshot?: BlueprintReadinessSnapshot | null;
 };
@@ -95,6 +97,29 @@ export function buildBlueprintPrompt(input: BlueprintPromptInput) {
         `warnings: ${input.readinessSnapshot.warnings.join(" | ") || "NINGUNO"}`,
       ].join("\n")
     : "NO_DISPONIBLE";
+  const antecedentSynthesisBlock = input.antecedentSynthesis
+    ? [
+        `gap_overview: ${input.antecedentSynthesis.gap_overview}`,
+        `objective_guidance: ${
+          input.antecedentSynthesis.objective_guidance.join(" | ") || "NO_DISPONIBLE"
+        }`,
+        input.antecedentSynthesis.summaries
+          .map((item, index) =>
+            [
+              `Antecedente sintetizado ${index + 1}:`,
+              `reference_id: ${item.reference_id}`,
+              `title: ${item.title}`,
+              `authors: ${item.authors}`,
+              `year: ${item.year ?? "NO_DISPONIBLE"}`,
+              `download_url: ${item.download_url ?? "NO_DISPONIBLE"}`,
+              `summary: ${item.summary}`,
+              `technical_solution: ${item.technical_solution}`,
+              `unresolved_gap: ${item.unresolved_gap}`,
+            ].join("\n"),
+          )
+          .join("\n\n"),
+      ].join("\n")
+    : "NO_DISPONIBLE";
   const assistedContextBlock = input.assistedContext
     ? [
         `research_line: ${input.assistedContext.research_line}`,
@@ -166,6 +191,9 @@ ${insightsBlock}
 Readiness previo del motor:
 ${readinessBlock}
 
+Sintesis de antecedentes:
+${antecedentSynthesisBlock}
+
 Contexto asistido para estabilizar el blueprint:
 ${assistedContextBlock}
 
@@ -179,6 +207,8 @@ Instrucciones de calidad:
 - intenta sostener el blueprint con al menos 5 antecedentes recientes si estan disponibles dentro de las referencias seleccionadas
 - revisa limitation_signal y future_line_signal para detectar que falta por investigar y usa eso para mejorar general_objective y specific_objectives
 - si technical_solution_signal aparece en los antecedentes, aprovecha esas soluciones como base comparativa para justificar el enfoque propuesto
+- usa la sintesis de antecedentes para detectar que falta por resolver y traducirlo en objetivos especificos y preguntas mas precisas
+- si objective_guidance aporta mejores focos para los objetivos, incorporalos de forma prudente y trazable
 - references_used debe incluir las referencias mas utiles realmente usadas para sustentar el blueprint
 - integra ideas de metodo, contexto, hallazgos y futuras lineas solo cuando puedan sostenerse con los insights entregados
 - si la plantilla exige una seccion pero la evidencia no alcanza, evita inventar contenido y deja la incertidumbre en assumptions
