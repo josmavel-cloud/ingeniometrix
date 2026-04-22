@@ -41,7 +41,9 @@ export default async function ProjectDetailPage({
   );
   const latestBlueprint = blueprintVersions[0] ?? null;
   const selectedTopicLabel =
-    project.selectedTopicSuggestion?.title ?? project.topicSeedText ?? project.title;
+    project.topicSelectionStatus === "SELECTED"
+      ? project.title
+      : project.topicSeedText ?? project.title;
   const topicOriginLabel =
     project.topicOriginType === "CUSTOM"
       ? "Idea propia"

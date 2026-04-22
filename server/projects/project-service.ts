@@ -30,7 +30,6 @@ export async function listProjectsForUser(userId: string) {
     orderBy: { updatedAt: "desc" },
     include: {
       intake: true,
-      selectedTopicSuggestion: true,
     },
   });
 }
@@ -43,7 +42,6 @@ export async function getProjectForUser(userId: string, projectId: string) {
     },
     include: {
       intake: true,
-      selectedTopicSuggestion: true,
       topicSuggestions: {
         include: {
           primaryConcept: true,
