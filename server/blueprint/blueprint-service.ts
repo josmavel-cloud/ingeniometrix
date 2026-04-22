@@ -43,6 +43,27 @@ import type {
 
 const BLUEPRINT_PROMPT_VERSION = "ingeniometrix-blueprint-v3";
 
+async function logBlueprintStage(input: {
+  userId: string;
+  projectId: string;
+  stageKey: string;
+  label: string;
+  progress: number;
+}) {
+  await logAuditEvent({
+    eventType: "BLUEPRINT_STAGE_UPDATED",
+    actorType: "SYSTEM",
+    provider: Provider.OPENAI,
+    userId: input.userId,
+    projectId: input.projectId,
+    payloadJson: {
+      stageKey: input.stageKey,
+      label: input.label,
+      progress: input.progress,
+    },
+  });
+}
+
 function describeError(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -201,9 +222,24 @@ export async function generateBlueprintVersion(userId: string, projectId: string
   });
 
   try {
+    await logBlueprintStage({
+      userId,
+      projectId: project.id,
+      stageKey: "preparing_context",
+      label: "Preparando contexto",
+      progress: 12,
+    });
+
     let antecedentSynthesis: BlueprintAntecedentSynthesis | null = null;
 
     try {
+      await logBlueprintStage({
+        userId,
+        projectId: project.id,
+        stageKey: "synthesizing_antecedents",
+        label: "Sintetizando antecedentes",
+        progress: 28,
+      });
       antecedentSynthesis = await generateBlueprintAntecedentSynthesis({
         provider,
         project,
@@ -228,6 +264,13 @@ export async function generateBlueprintVersion(userId: string, projectId: string
       });
 
     const generateAssistedContextIfNeeded = async () => {
+      await logBlueprintStage({
+        userId,
+        projectId: project.id,
+        stageKey: "stabilizing_context",
+        label: "Completando vacios del intake",
+        progress: 42,
+      });
       return generateBlueprintContextCompletion({
         provider,
         project,
@@ -244,6 +287,13 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     let rawBlueprint: ResearchBlueprintCoreDraft;
 
     try {
+      await logBlueprintStage({
+        userId,
+        projectId: project.id,
+        stageKey: "drafting_blueprint",
+        label: "Redactando blueprint",
+        progress: 64,
+      });
       rawBlueprint = await generateBlueprintDraftAttempt({
         provider,
         prompt: buildAttemptPrompt(assistedContext),
@@ -270,6 +320,13 @@ export async function generateBlueprintVersion(userId: string, projectId: string
       project,
       intake,
       assistedContext,
+    });
+    await logBlueprintStage({
+      userId,
+      projectId: project.id,
+      stageKey: "validating_traceability",
+      label: "Validando trazabilidad y coherencia",
+      progress: 82,
     });
     const citationPlan = buildCitationPlan({
       blueprint: normalizedBlueprint,
@@ -376,6 +433,14 @@ export async function generateBlueprintVersion(userId: string, projectId: string
       },
     });
 
+    await logBlueprintStage({
+      userId,
+      projectId: project.id,
+      stageKey: "completed",
+      label: "Blueprint listo",
+      progress: 100,
+    });
+
     await logAuditEvent({
       eventType: "BLUEPRINT_GENERATED",
       actorType: "SYSTEM",
@@ -391,6 +456,14 @@ export async function generateBlueprintVersion(userId: string, projectId: string
 
     return createdVersion;
   } catch (error) {
+    await logBlueprintStage({
+      userId,
+      projectId: project.id,
+      stageKey: "failed",
+      label: "La generacion encontro un bloqueo",
+      progress: 100,
+    }).catch(() => undefined);
+
     await prisma.project.update({
       where: { id: project.id },
       data: {
@@ -493,4 +566,47 @@ export async function getBlueprintVersionForUser(
 export async function getLatestBlueprintVersionForUser(userId: string, projectId: string) {
   const versions = await listBlueprintVersionsForUser(userId, projectId);
   return versions[0] ?? null;
+}
+
+export async function getBlueprintProgressForUser(userId: string, projectId: string) {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      userId,
+    },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+
+  if (!project) {
+    throw new Error("Proyecto no encontrado.");
+  }
+
+  const latestProgressLog = await prisma.auditLog.findFirst({
+    where: {
+      projectId,
+      eventType: "BLUEPRINT_STAGE_UPDATED",
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  const payload =
+    latestProgressLog?.payloadJson &&
+    typeof latestProgressLog.payloadJson === "object" &&
+    !Array.isArray(latestProgressLog.payloadJson)
+      ? (latestProgressLog.payloadJson as Record<string, unknown>)
+      : null;
+
+  return {
+    projectStatus: project.status,
+    stageKey: typeof payload?.stageKey === "string" ? payload.stageKey : null,
+    label: typeof payload?.label === "string" ? payload.label : null,
+    progress:
+      typeof payload?.progress === "number" ? Math.max(0, Math.min(100, payload.progress)) : null,
+    updatedAt: latestProgressLog?.createdAt.toISOString() ?? null,
+  };
 }

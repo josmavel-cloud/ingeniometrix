@@ -87,6 +87,48 @@ function toQuestion(value: string) {
   return `${trimmed}?`;
 }
 
+function normalizeSentenceTerminal(value: string) {
+  return value.replace(/[.?!]+$/g, "").trim();
+}
+
+function deriveQuestionFromObjective(objective: string) {
+  const normalized = normalizeSentenceTerminal(objective);
+  const lowered = normalized.charAt(0).toLowerCase() + normalized.slice(1);
+
+  if (/^identificar\s+/i.test(normalized)) {
+    return `Cuales son ${normalized.replace(/^identificar\s+/i, "")}?`;
+  }
+
+  if (/^determinar\s+/i.test(normalized)) {
+    return `Como se puede determinar ${normalized.replace(/^determinar\s+/i, "")}?`;
+  }
+
+  if (/^analizar\s+/i.test(normalized)) {
+    return `Como se analiza ${normalized.replace(/^analizar\s+/i, "")}?`;
+  }
+
+  if (/^evaluar\s+/i.test(normalized)) {
+    return `Como se evalua ${normalized.replace(/^evaluar\s+/i, "")}?`;
+  }
+
+  if (/^proponer\s+/i.test(normalized)) {
+    return `Que propuesta permite ${normalized.replace(/^proponer\s+/i, "")}?`;
+  }
+
+  return `Como se puede ${lowered}?`;
+}
+
+function alignQuestionsToObjectives(
+  objectives: string[],
+  questions: string[],
+) {
+  const normalizedQuestions = questions.map(toQuestion);
+
+  return objectives.map((objective, index) =>
+    normalizedQuestions[index] ?? toQuestion(deriveQuestionFromObjective(objective)),
+  );
+}
+
 function deriveKeyConstructs(input: {
   topic: string;
   objective: string;
@@ -147,10 +189,14 @@ export function normalizeBlueprintDraft(
   const derivedTechniques = deriveTechniques(input.intake);
   const researchQuestions = normalizeList(input.draft.research_questions, [
     toQuestion(`Como abordar ${input.intake.topic} con mayor precision academica`),
-  ]).map(toQuestion);
+  ]);
   const specificObjectives = normalizeList(input.draft.specific_objectives, [
     "Precisar mejor el alcance del estudio con base en el intake y las fuentes seleccionadas.",
   ]);
+  const alignedResearchQuestions = alignQuestionsToObjectives(
+    specificObjectives,
+    researchQuestions,
+  );
   const proposedMethodology = normalizeText(
     input.draft.proposed_methodology,
     input.intake.preferredMethodology ??
@@ -198,8 +244,8 @@ export function normalizeBlueprintDraft(
       `Desarrollar una base investigativa mas clara sobre ${input.intake.topic}.`,
     ),
     specific_objectives: specificObjectives,
-    research_questions: researchQuestions,
-    hypotheses_or_guiding_questions: researchQuestions,
+    research_questions: alignedResearchQuestions,
+    hypotheses_or_guiding_questions: alignedResearchQuestions,
     key_constructs_or_variables: deriveKeyConstructs({
       topic: input.intake.topic,
       objective: input.draft.general_objective,
@@ -222,8 +268,8 @@ export function normalizeBlueprintDraft(
     consistency_matrix: specificObjectives.map((objective, index) => ({
       objective,
       question:
-        researchQuestions[index] ??
-        researchQuestions[researchQuestions.length - 1] ??
+        alignedResearchQuestions[index] ??
+        alignedResearchQuestions[alignedResearchQuestions.length - 1] ??
         "Como se operacionaliza el objetivo propuesto?",
       method: proposedMethodology,
       technique:

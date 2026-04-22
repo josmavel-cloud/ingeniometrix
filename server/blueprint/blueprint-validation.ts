@@ -74,8 +74,15 @@ export function buildCoherenceReport(
     blueprint.problem_statement,
     blueprint.general_objective,
   );
-  const objectiveQuestionGap =
-    blueprint.specific_objectives.length - blueprint.research_questions.length;
+  const objectiveQuestionGap = Math.abs(
+    blueprint.specific_objectives.length - blueprint.research_questions.length,
+  );
+  const matrixGap = Math.abs(
+    blueprint.consistency_matrix.length - blueprint.specific_objectives.length,
+  );
+  const allQuestionsMapped = blueprint.consistency_matrix.every(
+    (row, index) => row.question === blueprint.research_questions[index],
+  );
   const hasMethodAndMatrix =
     blueprint.proposed_methodology.trim().length > 0 &&
     blueprint.consistency_matrix.length > 0;
@@ -101,6 +108,12 @@ export function buildCoherenceReport(
       : null,
     !intake.advisorNotes?.trim()
       ? "No se registraron observaciones del asesor en esta version."
+      : null,
+    objectiveQuestionGap > 0
+      ? "La cantidad de objetivos especificos y preguntas de investigacion no coincide."
+      : null,
+    matrixGap > 0 || !allQuestionsMapped
+      ? "La matriz de consistencia no refleja una relacion 1 a 1 entre objetivos y preguntas."
       : null,
   ].filter((flag): flag is string => Boolean(flag));
 
@@ -135,11 +148,18 @@ export function buildCoherenceReport(
             : "El objetivo general no evidencia alineacion suficiente con el problema planteado.",
     },
     objective_question_alignment: {
-      status: objectiveQuestionGap <= 0 ? "pass" : "warning",
+      status:
+        objectiveQuestionGap === 0 && matrixGap === 0 && allQuestionsMapped
+          ? "pass"
+          : objectiveQuestionGap <= 1
+            ? "warning"
+            : "fail",
       notes:
-        objectiveQuestionGap <= 0
-          ? "La cantidad de preguntas de investigacion es consistente con los objetivos especificos."
-          : "Hay menos preguntas que objetivos especificos; conviene revisar cobertura.",
+        objectiveQuestionGap === 0 && matrixGap === 0 && allQuestionsMapped
+          ? "Cada objetivo especifico tiene una pregunta de investigacion alineada y una matriz consistente."
+          : objectiveQuestionGap <= 1
+            ? "La relacion entre objetivos, preguntas o matriz aun necesita un ajuste fino para quedar 1 a 1."
+            : "Existe un desbalance claro entre objetivos especificos, preguntas y matriz de consistencia.",
     },
     objective_method_alignment: {
       status: hasMethodAndMatrix ? "pass" : "warning",

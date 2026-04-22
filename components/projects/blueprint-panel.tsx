@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileStack, Sparkles } from "lucide-react";
 
@@ -42,6 +42,66 @@ type CoherencePanelItem = {
   check?: CoherenceCheck;
 };
 
+type BlueprintProgress = {
+  projectStatus: string;
+  stageKey: string | null;
+  label: string | null;
+  progress: number | null;
+  updatedAt: string | null;
+};
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildKeywordList(
+  keyConstructs: string[],
+  text: string,
+) {
+  const tokens = new Set<string>();
+
+  for (const construct of keyConstructs) {
+    if (construct.trim().length >= 4) {
+      tokens.add(construct.trim());
+    }
+  }
+
+  for (const token of text.split(/\s+/)) {
+    const normalized = token.replace(/[^\p{L}\p{N}]+/gu, "");
+    if (/ar$|er$|ir$/i.test(normalized) && normalized.length >= 5) {
+      tokens.add(normalized);
+    }
+  }
+
+  return Array.from(tokens).slice(0, 8);
+}
+
+function renderHighlightedText(text: string, keywords: string[]) {
+  if (keywords.length === 0) {
+    return text;
+  }
+
+  const pattern = new RegExp(`(${keywords.map(escapeRegExp).join("|")})`, "gi");
+  const parts = text.split(pattern);
+
+  return parts.map((part, index) => {
+    const isKeyword = keywords.some(
+      (keyword) => keyword.toLowerCase() === part.toLowerCase(),
+    );
+
+    return isKeyword ? (
+      <mark
+        className="rounded-md bg-[rgba(219,193,255,0.42)] px-1 py-0.5 text-[var(--color-ink)]"
+        key={`${part}-${index}`}
+      >
+        {part}
+      </mark>
+    ) : (
+      <Fragment key={`${part}-${index}`}>{part}</Fragment>
+    );
+  });
+}
+
 function renderStatusPill(status: CoherenceCheck["status"]) {
   if (status === "pass") {
     return "bg-emerald-50 text-emerald-700 border-emerald-200";
@@ -64,6 +124,7 @@ export function BlueprintPanel({
   const router = useRouter();
   const [error, setError] = useState<BlueprintUiError | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [progress, setProgress] = useState<BlueprintProgress | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const latestVersion = versions[0] ?? null;
@@ -75,6 +136,21 @@ export function BlueprintPanel({
         assumptions?: string[];
         engine_warnings?: string[];
         references_used?: Array<{ reference_id: string; title: string }>;
+        key_constructs_or_variables?: string[];
+        antecedent_synthesis?: {
+          gap_overview?: string;
+          objective_guidance?: string[];
+          summaries?: Array<{
+            reference_id: string;
+            title: string;
+            authors: string;
+            year: number | null;
+            download_url: string | null;
+            summary: string;
+            technical_solution: string;
+            unresolved_gap: string;
+          }>;
+        };
       }
     | undefined;
   const coherence = latestVersion?.coherenceReportJson as
@@ -100,6 +176,21 @@ export function BlueprintPanel({
         { label: "Trazabilidad de citas", check: coherence.citation_traceability },
       ]
     : [];
+  const keyConstructs = blueprint?.key_constructs_or_variables ?? [];
+  const specificObjectiveKeywords = useMemo(
+    () =>
+      (blueprint?.specific_objectives ?? []).map((item) =>
+        buildKeywordList(keyConstructs, item),
+      ),
+    [blueprint?.specific_objectives, keyConstructs],
+  );
+  const questionKeywords = useMemo(
+    () =>
+      (blueprint?.research_questions ?? []).map((item) =>
+        buildKeywordList(keyConstructs, item),
+      ),
+    [blueprint?.research_questions, keyConstructs],
+  );
 
   const canGenerate =
     projectStatus === "SOURCES_SELECTED" ||
@@ -131,9 +222,41 @@ export function BlueprintPanel({
   ];
   const readyCount = preparationChecklist.filter((item) => item.ready).length;
 
+  useEffect(() => {
+    if (!isPending) {
+      return;
+    }
+
+    let isCancelled = false;
+    const interval = globalThis.setInterval(async () => {
+      const response = await fetch(`/api/projects/${projectId}/blueprints/progress`, {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as { progress?: BlueprintProgress };
+
+      if (isCancelled || !response.ok || !payload.progress) {
+        return;
+      }
+
+      setProgress(payload.progress);
+    }, 1000);
+
+    return () => {
+      isCancelled = true;
+      globalThis.clearInterval(interval);
+    };
+  }, [isPending, projectId]);
+
   function generateBlueprint() {
     setError(null);
     setMessage(null);
+    setProgress({
+      projectStatus,
+      stageKey: "queued",
+      label: "Iniciando generacion",
+      progress: 6,
+      updatedAt: null,
+    });
 
     startTransition(async () => {
       const response = await fetch(`/api/projects/${projectId}/blueprints`, {
@@ -155,6 +278,13 @@ export function BlueprintPanel({
         return;
       }
 
+      setProgress({
+        projectStatus: "BLUEPRINT_READY",
+        stageKey: "completed",
+        label: "Blueprint listo",
+        progress: 100,
+        updatedAt: new Date().toISOString(),
+      });
       setMessage("Blueprint generado correctamente.");
       router.refresh();
     });
@@ -285,6 +415,28 @@ export function BlueprintPanel({
         {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
       </div>
 
+      {isPending && progress ? (
+        <div className="mt-5 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white p-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-[var(--color-ink)]">
+              {progress.label ?? "Generando blueprint"}
+            </p>
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+              {progress.progress ?? 0}%
+            </span>
+          </div>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[rgba(74,58,97,0.08)]">
+            <div
+              className="h-full rounded-full bg-[linear-gradient(90deg,#0f766e_0%,#4f46e5_100%)] transition-all duration-500"
+              style={{ width: `${progress.progress ?? 0}%` }}
+            />
+          </div>
+          <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
+            Etapas reales del motor: contexto, antecedentes, redaccion, validacion y cierre.
+          </p>
+        </div>
+      ) : null}
+
       {!latestVersion ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
           <p className="font-[var(--font-heading)] text-xl font-semibold text-slate-950">
@@ -319,14 +471,68 @@ export function BlueprintPanel({
             </div>
           ) : null}
 
+          {(blueprint?.antecedent_synthesis?.summaries ?? []).length > 0 ? (
+            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                Antecedentes clave
+              </p>
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                {blueprint?.antecedent_synthesis?.gap_overview}
+              </p>
+
+              <div className="mt-5 grid gap-4">
+                {blueprint?.antecedent_synthesis?.summaries?.map((item) => (
+                  <article
+                    className="rounded-[20px] border border-slate-200 bg-slate-50/80 p-4"
+                    key={item.reference_id}
+                  >
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="font-semibold text-slate-950">{item.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-500">
+                          {item.authors} {item.year ? `| ${item.year}` : ""}
+                        </p>
+                      </div>
+                      <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                        {item.reference_id}
+                      </span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">{item.summary}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-700">
+                      <strong>Solucion tecnica:</strong> {item.technical_solution}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-700">
+                      <strong>Vacio pendiente:</strong> {item.unresolved_gap}
+                    </p>
+                  </article>
+                ))}
+              </div>
+
+              {(blueprint?.antecedent_synthesis?.objective_guidance ?? []).length > 0 ? (
+                <div className="mt-5 rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.7)] p-4">
+                  <p className="text-sm font-semibold text-slate-900">
+                    Guia para mejorar objetivos
+                  </p>
+                  <ul className="mt-3 grid gap-2 text-sm leading-6 text-slate-700">
+                    {blueprint?.antecedent_synthesis?.objective_guidance?.map((item) => (
+                      <li key={item}>* {item}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="grid gap-6 xl:grid-cols-2">
             <div className="rounded-[24px] border border-slate-200 bg-white p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                 Objetivos especificos
               </p>
               <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
-                {(blueprint?.specific_objectives ?? []).map((item) => (
-                  <li key={item}>* {item}</li>
+                {(blueprint?.specific_objectives ?? []).map((item, index) => (
+                  <li key={item}>
+                    * {renderHighlightedText(item, specificObjectiveKeywords[index] ?? [])}
+                  </li>
                 ))}
               </ul>
             </div>
@@ -336,8 +542,10 @@ export function BlueprintPanel({
                 Preguntas de investigacion
               </p>
               <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
-                {(blueprint?.research_questions ?? []).map((item) => (
-                  <li key={item}>* {item}</li>
+                {(blueprint?.research_questions ?? []).map((item, index) => (
+                  <li key={item}>
+                    * {renderHighlightedText(item, questionKeywords[index] ?? [])}
+                  </li>
                 ))}
               </ul>
             </div>

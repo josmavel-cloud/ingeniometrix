@@ -14,24 +14,28 @@ type ExportPanelProps = {
 
 const exportFormats = [
   {
+    formatKey: "docx",
     title: "DOCX",
     description: "Plan editable para revision academica y siguientes iteraciones.",
     toneClassName: "brand-card-lilac",
     readyWhen: "Blueprint disponible",
   },
   {
+    formatKey: "bibtex",
     title: "BibTeX",
     description: "Salida bibliografica para flujos tecnicos y gestores de referencias.",
     toneClassName: "brand-card-gold",
     readyWhen: "Fuentes seleccionadas",
   },
   {
+    formatKey: "ris",
     title: "RIS",
     description: "Intercambio simple con gestores bibliograficos compatibles.",
     toneClassName: "brand-card-mint",
     readyWhen: "Fuentes seleccionadas",
   },
   {
+    formatKey: "evidence",
     title: "evidence_log.json",
     description: "Registro trazable de fuentes, decisiones y supuestos del proceso.",
     toneClassName: "brand-card-blush",
@@ -52,10 +56,16 @@ export function ExportPanel({
 }: ExportPanelProps) {
   const exportReady = projectStatus === "EXPORT_READY";
   const canPrepare = hasBlueprint || exportReady;
-  const docxDownloadUrl =
+  const baseExportUrl =
     latestBlueprintId && canPrepare
-      ? `/api/projects/${projectId}/blueprints/${latestBlueprintId}/docx`
+      ? `/api/projects/${projectId}/blueprints/${latestBlueprintId}`
       : null;
+  const exportDownloadUrls = {
+    docx: baseExportUrl ? `${baseExportUrl}/docx` : null,
+    bibtex: baseExportUrl ? `${baseExportUrl}/bibtex` : null,
+    ris: baseExportUrl ? `${baseExportUrl}/ris` : null,
+    evidence: baseExportUrl ? `${baseExportUrl}/evidence-log` : null,
+  };
   const readinessItems = [
     {
       label: "Base estructurada",
@@ -76,10 +86,10 @@ export function ExportPanel({
     },
     {
       label: "Descarga conectada",
-      complete: Boolean(docxDownloadUrl),
-      description: docxDownloadUrl
-        ? "El DOCX ya puede descargarse desde esta misma etapa."
-        : "La salida documental aun no esta lista para descargarse.",
+      complete: Object.values(exportDownloadUrls).every(Boolean),
+      description: Object.values(exportDownloadUrls).every(Boolean)
+        ? "DOCX, BibTeX, RIS y evidence_log ya pueden descargarse desde esta misma etapa."
+        : "Las salidas documentales aun no estan listas para descargarse.",
     },
   ];
 
@@ -101,10 +111,10 @@ export function ExportPanel({
           </p>
         </div>
 
-        {docxDownloadUrl ? (
+        {exportDownloadUrls.docx ? (
           <a
             className="brand-button-secondary px-5 py-3 text-sm font-semibold"
-            href={docxDownloadUrl}
+            href={exportDownloadUrls.docx}
           >
             <Download className="mr-2 inline size-4" />
             Descargar DOCX
@@ -127,7 +137,7 @@ export function ExportPanel({
         </p>
         <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
           {canPrepare
-            ? "La base para exportar ya existe porque el proyecto tiene blueprint o llego a estado final. Falta conectar la descarga real."
+            ? "La base para exportar ya existe porque el proyecto tiene blueprint o llego a estado final. Las descargas ya pueden abrirse desde esta etapa."
             : "Primero necesitamos un blueprint revisable. Luego activamos las salidas finales sin cambiar la navegacion."}
         </p>
 
@@ -196,7 +206,11 @@ export function ExportPanel({
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        {exportFormats.map((format) => (
+        {exportFormats.map((format) => {
+          const downloadUrl =
+            exportDownloadUrls[format.formatKey as keyof typeof exportDownloadUrls];
+
+          return (
           <article className={`rounded-[28px] p-5 ${format.toneClassName}`} key={format.title}>
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -216,24 +230,22 @@ export function ExportPanel({
             </div>
 
             <div className="mt-4">
-              <span
-                className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                  format.title === "DOCX" && docxDownloadUrl
-                    ? "border-[rgba(24,169,153,0.18)] bg-[rgba(213,247,239,0.86)] text-[#127b6f]"
-                    : canPrepare
-                    ? "border-[rgba(24,169,153,0.18)] bg-[rgba(213,247,239,0.86)] text-[#127b6f]"
-                    : "border-[rgba(74,58,97,0.12)] bg-white/72 text-[var(--color-muted)]"
-                }`}
-              >
-                {format.title === "DOCX" && docxDownloadUrl
-                  ? "Descarga activa"
-                  : canPrepare
-                    ? "Preparado visualmente"
-                    : "Esperando blueprint"}
-              </span>
+              {downloadUrl ? (
+                <a
+                  className="inline-flex rounded-full border border-[rgba(24,169,153,0.18)] bg-[rgba(213,247,239,0.86)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#127b6f]"
+                  href={downloadUrl}
+                >
+                  Descargar ahora
+                </a>
+              ) : (
+                <span className="inline-flex rounded-full border border-[rgba(74,58,97,0.12)] bg-white/72 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                  Esperando blueprint
+                </span>
+              )}
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
