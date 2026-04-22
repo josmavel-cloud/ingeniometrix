@@ -35,6 +35,14 @@ import type {
 
 const BLUEPRINT_PROMPT_VERSION = "ingeniometrix-blueprint-v2";
 
+function describeError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Razon no identificada.";
+}
+
 function isTraceabilityErrorMessage(message: string) {
   return (
     message.includes("referencias no seleccionadas") ||
@@ -44,6 +52,67 @@ function isTraceabilityErrorMessage(message: string) {
 
 function isCitationPlanErrorMessage(message: string) {
   return message.includes("citation plan usa referencias no seleccionadas");
+}
+
+function buildBlueprintTextFallbackPrompt(prompt: string) {
+  return `${prompt}
+
+Responde exclusivamente con un objeto JSON valido.
+- no uses markdown
+- no uses bloques de codigo
+- no agregues texto antes ni despues del JSON
+- si un campo no puede completarse con precision, devuelve una formulacion prudente o un arreglo vacio segun corresponda
+`.trim();
+}
+
+function extractJsonObject(value: string) {
+  const trimmed = value.trim();
+
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    return trimmed;
+  }
+
+  const fencedMatch = trimmed.match(/```json\s*([\s\S]*?)```/i) ?? trimmed.match(/```\s*([\s\S]*?)```/i);
+
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+
+  throw new Error("No se encontro un objeto JSON valido en la respuesta del modelo.");
+}
+
+async function generateBlueprintDraftWithFallback(params: {
+  provider: ReturnType<typeof getConfiguredLlmProvider>;
+  prompt: string;
+}) {
+  try {
+    return await params.provider.generateStructuredObject<ResearchBlueprintCoreDraft>({
+      prompt: params.prompt,
+      schemaName: "research_blueprint_core",
+      schema: researchBlueprintCoreSchema as Record<string, unknown>,
+    });
+  } catch (structuredError) {
+    const structuredReason = describeError(structuredError);
+
+    try {
+      const textResponse = await params.provider.generateText({
+        prompt: buildBlueprintTextFallbackPrompt(params.prompt),
+      });
+
+      return JSON.parse(extractJsonObject(textResponse)) as ResearchBlueprintCoreDraft;
+    } catch (textFallbackError) {
+      throw new Error(
+        `Fallo structured output: ${structuredReason}. Fallo fallback JSON: ${describeError(textFallbackError)}.`,
+      );
+    }
+  }
 }
 
 function deriveReferencesUsedFromCitationPlan(input: {
@@ -132,10 +201,9 @@ export async function generateBlueprintVersion(userId: string, projectId: string
   });
 
   try {
-    const rawBlueprint = await provider.generateStructuredObject<ResearchBlueprintCoreDraft>({
+    const rawBlueprint = await generateBlueprintDraftWithFallback({
+      provider,
       prompt,
-      schemaName: "research_blueprint_core",
-      schema: researchBlueprintCoreSchema as Record<string, unknown>,
     });
     const selectedReferenceSnapshots = project.projectReferences.map((item) => ({
       reference_id: item.reference.id,
@@ -261,6 +329,12 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     }
 
     if (error instanceof Error) {
+      console.error("[blueprint] generation failed", {
+        projectId: project.id,
+        userId,
+        reason: error.message,
+      });
+
       if (isTraceabilityErrorMessage(error.message)) {
         throw new BlueprintGenerationError({
           code: "TRACEABILITY_FAILED",
@@ -283,9 +357,9 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     throw new BlueprintGenerationError({
       code: "MODEL_OUTPUT_INVALID",
       message:
-        "La version inicial del blueprint no pudo estructurarse de forma valida en este intento.",
+        "No pudimos convertir este intento en un blueprint valido con el modelo actual.",
       nextAction:
-        "Prueba otra vez con un intake mas preciso o regenerando despues de revisar tus fuentes semilla.",
+        "Prueba otra vez. Si se repite, ajusta el intake para que problema, poblacion y metodologia queden mas concretos, o cambia una o dos fuentes semilla por referencias mas alineadas.",
     });
   }
 }
