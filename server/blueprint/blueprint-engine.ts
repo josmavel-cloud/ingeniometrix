@@ -1,6 +1,7 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
 import { extractSearchTerms, normalizeTitle } from "@/lib/text";
+import { resolveBlueprintTemplateRuntime } from "@/server/reporting/template-runtime/resolve-blueprint-template-runtime";
 
 import type {
   BlueprintAssumptionDetail,
@@ -134,6 +135,31 @@ const SECTION_DEFINITIONS: SectionDefinition[] = [
   },
 ];
 
+type TemplateSectionNode = {
+  semantic_key?: string | null;
+  children?: TemplateSectionNode[];
+};
+
+function collectTemplateSemanticKeys(sections: TemplateSectionNode[]) {
+  const keys = new Set<string>();
+
+  function visit(nodes: TemplateSectionNode[]) {
+    for (const node of nodes) {
+      if (typeof node.semantic_key === "string" && node.semantic_key.trim().length > 0) {
+        keys.add(node.semantic_key);
+      }
+
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        visit(node.children);
+      }
+    }
+  }
+
+  visit(sections);
+
+  return Array.from(keys);
+}
+
 function normalizeSentenceWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -189,20 +215,27 @@ function countTermOverlap(left: string[], right: string[]) {
 }
 
 export async function loadBlueprintTemplateContext(project: Project) {
+  const { runtime, resolution } = await resolveBlueprintTemplateRuntime({
+    projectTemplateKey: project.templateKey,
+    projectUniversity: project.university,
+    projectDegreeLevel: project.degreeLevel,
+    projectProgram: project.program,
+  });
+
+  const availableSemanticKeys = collectTemplateSemanticKeys(runtime.templateCandidate.sections);
+
   return {
-    template_key: project.templateKey,
-    template_name: project.templateKey,
+    template_key: runtime.templateKey,
+    template_name: runtime.templateName,
     selected_by_user: true,
-    source: "project_selection",
-    template_family: null,
-    university: project.university,
-    program: project.program,
-    degree_level: project.degreeLevel,
-    required_section_keys: [],
-    available_semantic_keys: [],
-    guidance_notes: [
-      "No se cargo una plantilla runtime publicada; se usara la templateKey del proyecto como restriccion base del MVP.",
-    ],
+    source: "template_runtime",
+    template_family: runtime.templateCandidate.template_family ?? null,
+    university: runtime.templateCandidate.institution.university_name ?? project.university,
+    program: runtime.templateCandidate.institution.program_name ?? project.program,
+    degree_level: runtime.templateCandidate.institution.degree_level ?? project.degreeLevel,
+    required_section_keys: availableSemanticKeys,
+    available_semantic_keys: availableSemanticKeys,
+    guidance_notes: resolution.guidanceNotes,
   } satisfies BlueprintTemplateContext;
 }
 
