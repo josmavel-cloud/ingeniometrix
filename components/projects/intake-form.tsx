@@ -73,6 +73,15 @@ export function IntakeForm({ project }: IntakeFormProps) {
     form.targetPopulation.trim().length > 0,
   ].filter(Boolean).length;
   const quickIntakeReady = quickFieldsReady === 3;
+  const hasSuggestedIntakeBase = [
+    form.problemContext,
+    form.researchLine,
+    form.targetPopulation,
+    form.preferredMethodology,
+    form.availableData,
+    form.academicConstraints,
+    form.advisorNotes,
+  ].some((value) => value.trim().length > 0);
 
   function applyPreset(preset: IntakePreset) {
     setActivePresetId(preset.id);
@@ -272,8 +281,9 @@ export function IntakeForm({ project }: IntakeFormProps) {
         </div>
       ) : (
         <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-4 text-sm leading-6 text-amber-900">
-          No se encontro una variante relacionada para este proyecto. Puedes
-          completar el intake manualmente y seguir con el flujo sin problema.
+          {hasSuggestedIntakeBase
+            ? "No encontramos una variante de catalogo para este proyecto, pero ya tienes una base sugerida editable en este intake."
+            : "No encontramos una variante relacionada de catalogo para este proyecto. Puedes completar el intake manualmente o volver a la etapa Tema para generar otra base asistida."}
         </div>
       )}
 

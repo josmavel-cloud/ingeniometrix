@@ -217,6 +217,58 @@ function buildGeneratedSuggestionMetadata(suggestion: {
   } satisfies TopicSuggestionMetadata;
 }
 
+function mergeSuggestedIntake(
+  primary: TopicSuggestionSuggestedIntake,
+  fallback: TopicSuggestionSuggestedIntake,
+) {
+  return {
+    researchLine: primary.researchLine ?? fallback.researchLine ?? null,
+    problemContext: primary.problemContext ?? fallback.problemContext ?? null,
+    targetPopulation: primary.targetPopulation ?? fallback.targetPopulation ?? null,
+    preferredMethodology:
+      primary.preferredMethodology ?? fallback.preferredMethodology ?? null,
+    availableData: primary.availableData ?? fallback.availableData ?? null,
+    academicConstraints:
+      primary.academicConstraints ?? fallback.academicConstraints ?? null,
+    advisorNotes: primary.advisorNotes ?? fallback.advisorNotes ?? null,
+  } satisfies TopicSuggestionSuggestedIntake;
+}
+
+function buildAiAssistedUserSeedMetadata(input: {
+  project: TopicProjectRecord;
+  areaLabel: string | null;
+  seedText: string;
+  suggestion: {
+    researchLine: string;
+    problemContext: string;
+    targetPopulation: string;
+    preferredMethodology: string;
+    availableData: string;
+    academicConstraints: string;
+    advisorNotes: string;
+  };
+}) {
+  const baseMetadata = buildUserSeedMetadata({
+    project: input.project,
+    areaLabel: input.areaLabel,
+    seedText: input.seedText,
+  });
+
+  return {
+    ...baseMetadata,
+    generatedFrom: "llm_assisted_seed",
+    suggestedIntake: mergeSuggestedIntake(baseMetadata.suggestedIntake ?? {}, {
+      researchLine: input.suggestion.researchLine,
+      problemContext: input.suggestion.problemContext,
+      targetPopulation: input.suggestion.targetPopulation,
+      preferredMethodology: input.suggestion.preferredMethodology,
+      availableData: input.suggestion.availableData,
+      academicConstraints: input.suggestion.academicConstraints,
+      advisorNotes: input.suggestion.advisorNotes,
+    }),
+  } satisfies TopicSuggestionMetadata;
+}
+
 function getTopicSeedText(project: TopicProjectRecord) {
   return project.topicSeedText?.trim() || project.title.trim();
 }
@@ -460,8 +512,23 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
       });
 
       for (const suggestion of generatedSuggestions) {
-        if (normalizeSearchText(suggestion.title) === normalizeSearchText(seedText)) {
-          continue;
+        if (suggestion.variantKind === "TECHNICAL_REWRITE") {
+          await upsertSuggestion({
+            projectId: project.id,
+            sourceType: TopicSuggestionSourceType.USER_SEED,
+            seedText,
+            title: seedText,
+            researchLine:
+              project.intake?.researchLine ?? suggestion.researchLine ?? areaLabel,
+            rationale: "Idea original registrada al crear el proyecto.",
+            metadataJson: buildAiAssistedUserSeedMetadata({
+              project,
+              areaLabel,
+              seedText,
+              suggestion,
+            }) as unknown as Prisma.InputJsonValue,
+            areaLabel,
+          });
         }
 
         await upsertSuggestion({
@@ -513,6 +580,24 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
   });
 
   for (const suggestion of generatedSuggestions) {
+    if (suggestion.variantKind === "TECHNICAL_REWRITE") {
+      await upsertSuggestion({
+        projectId: project.id,
+        sourceType: TopicSuggestionSourceType.USER_SEED,
+        seedText,
+        title: seedText,
+        researchLine: project.intake?.researchLine ?? suggestion.researchLine ?? areaLabel,
+        rationale: "Idea original registrada al crear el proyecto.",
+        metadataJson: buildAiAssistedUserSeedMetadata({
+          project,
+          areaLabel,
+          seedText,
+          suggestion,
+        }) as unknown as Prisma.InputJsonValue,
+        areaLabel,
+      });
+    }
+
     await upsertSuggestion({
       projectId: project.id,
       sourceType: TopicSuggestionSourceType.AI_GENERATED,
