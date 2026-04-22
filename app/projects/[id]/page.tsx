@@ -294,11 +294,13 @@ export default async function ProjectDetailPage({
           <ExportPanel
             hasBlueprint={blueprintVersions.length > 0}
             hasIntakeMinimum={hasIntakeMinimum}
+            latestBlueprintId={latestBlueprint?.id ?? null}
             latestBlueprintCreatedAt={
               latestBlueprint ? latestBlueprint.createdAt.toLocaleString("es-PE") : null
             }
             latestBlueprintReferenceCount={latestBlueprintJson?.references_used?.length ?? 0}
             latestBlueprintVersionNumber={latestBlueprint?.versionNumber ?? null}
+            projectId={project.id}
             projectStatus={project.status}
             selectedReferenceCount={selectedReferenceCount}
           />

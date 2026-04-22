@@ -6,6 +6,7 @@ import {
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
 } from "@/lib/research-workflow";
+import { normalizeTitle } from "@/lib/text";
 import { getConfiguredLlmProvider } from "@/llm";
 import { logAuditEvent } from "@/server/audit/audit-service";
 
@@ -81,6 +82,42 @@ function deriveReferencesUsedFromCitationPlan(input: {
   }
 
   return input.selectedReferences.slice(0, Math.min(3, input.selectedReferences.length));
+}
+
+function resolveReferencesUsedFromModel(input: {
+  candidateReferences: BlueprintReferenceSnapshot[];
+  selectedReferences: BlueprintReferenceSnapshot[];
+}) {
+  const selectedById = new Map(
+    input.selectedReferences.map((reference) => [reference.reference_id, reference]),
+  );
+  const selectedByDoi = new Map(
+    input.selectedReferences
+      .filter((reference) => reference.doi?.trim())
+      .map((reference) => [reference.doi!.trim().toLowerCase(), reference]),
+  );
+  const selectedByTitle = new Map(
+    input.selectedReferences.map((reference) => [normalizeTitle(reference.title), reference]),
+  );
+  const resolved = new Map<string, BlueprintReferenceSnapshot>();
+
+  for (const candidate of input.candidateReferences) {
+    const candidateId = candidate.reference_id?.trim() ?? "";
+    const candidateDoi = candidate.doi?.trim().toLowerCase() ?? "";
+    const candidateTitle = normalizeTitle(candidate.title);
+    const matchedReference =
+      (candidateId ? selectedById.get(candidateId) : undefined) ??
+      (candidateDoi ? selectedByDoi.get(candidateDoi) : undefined) ??
+      (candidateTitle ? selectedByTitle.get(candidateTitle) : undefined);
+
+    if (!matchedReference) {
+      continue;
+    }
+
+    resolved.set(matchedReference.reference_id, matchedReference);
+  }
+
+  return Array.from(resolved.values());
 }
 
 async function generateBlueprintDraftAttempt(params: {
@@ -222,9 +259,13 @@ export async function generateBlueprintVersion(userId: string, projectId: string
       intake,
       referenceInsights,
     });
+    const resolvedReferencesFromModel = resolveReferencesUsedFromModel({
+      candidateReferences: normalizedBlueprint.references_used,
+      selectedReferences: selectedReferenceSnapshots,
+    });
     const referencesUsed =
-      normalizedBlueprint.references_used.length > 0
-        ? normalizedBlueprint.references_used
+      resolvedReferencesFromModel.length > 0
+        ? resolvedReferencesFromModel
         : deriveReferencesUsedFromCitationPlan({
             citationPlan,
             selectedReferences: selectedReferenceSnapshots,

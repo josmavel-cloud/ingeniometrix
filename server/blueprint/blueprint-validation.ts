@@ -23,13 +23,23 @@ export function validateBlueprintTraceability(
   selectedReferences: Array<{ id: string; title: string; doi: string | null }>,
 ) {
   const selectedReferenceIds = new Set(selectedReferences.map((reference) => reference.id));
+  const unresolvedReferenceEntries = blueprint.references_used.filter(
+    (reference) => !reference.reference_id?.trim(),
+  );
   const invalidReferenceIds = blueprint.references_used
-    .map((reference) => reference.reference_id)
+    .map((reference) => reference.reference_id?.trim())
+    .filter((referenceId): referenceId is string => Boolean(referenceId))
     .filter((referenceId) => !selectedReferenceIds.has(referenceId));
+
+  if (unresolvedReferenceEntries.length > 0) {
+    throw new Error(
+      `El blueprint devolvio ${unresolvedReferenceEntries.length} referencia(s) sin ID resoluble dentro del set seleccionado.`,
+    );
+  }
 
   if (invalidReferenceIds.length > 0) {
     throw new Error(
-      `El blueprint usa referencias no seleccionadas: ${invalidReferenceIds.join(", ")}.`,
+      `El blueprint usa referencias no seleccionadas: ${Array.from(new Set(invalidReferenceIds)).join(", ")}.`,
     );
   }
 

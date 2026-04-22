@@ -1,10 +1,12 @@
 import { Download, FileArchive, FileBadge2 } from "lucide-react";
 
 type ExportPanelProps = {
+  projectId: string;
   projectStatus: string;
   hasBlueprint: boolean;
   hasIntakeMinimum: boolean;
   selectedReferenceCount: number;
+  latestBlueprintId: string | null;
   latestBlueprintVersionNumber: number | null;
   latestBlueprintCreatedAt: string | null;
   latestBlueprintReferenceCount: number;
@@ -38,16 +40,22 @@ const exportFormats = [
 ];
 
 export function ExportPanel({
+  projectId,
   projectStatus,
   hasBlueprint,
   hasIntakeMinimum,
   selectedReferenceCount,
+  latestBlueprintId,
   latestBlueprintVersionNumber,
   latestBlueprintCreatedAt,
   latestBlueprintReferenceCount,
 }: ExportPanelProps) {
   const exportReady = projectStatus === "EXPORT_READY";
   const canPrepare = hasBlueprint || exportReady;
+  const docxDownloadUrl =
+    latestBlueprintId && canPrepare
+      ? `/api/projects/${projectId}/blueprints/${latestBlueprintId}/docx`
+      : null;
   const readinessItems = [
     {
       label: "Base estructurada",
@@ -68,8 +76,10 @@ export function ExportPanel({
     },
     {
       label: "Descarga conectada",
-      complete: false,
-      description: "La UI ya esta lista; el siguiente tramo conectara los archivos reales.",
+      complete: Boolean(docxDownloadUrl),
+      description: docxDownloadUrl
+        ? "El DOCX ya puede descargarse desde esta misma etapa."
+        : "La salida documental aun no esta lista para descargarse.",
     },
   ];
 
@@ -91,14 +101,24 @@ export function ExportPanel({
           </p>
         </div>
 
-        <button
-          className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-          disabled
-          type="button"
-        >
-          <Download className="mr-2 size-4" />
-          Proximamente
-        </button>
+        {docxDownloadUrl ? (
+          <a
+            className="brand-button-secondary px-5 py-3 text-sm font-semibold"
+            href={docxDownloadUrl}
+          >
+            <Download className="mr-2 inline size-4" />
+            Descargar DOCX
+          </a>
+        ) : (
+          <button
+            className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+            disabled
+            type="button"
+          >
+            <Download className="mr-2 size-4" />
+            Proximamente
+          </button>
+        )}
       </div>
 
       <div className="mt-6 rounded-[26px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.7)] p-5">
@@ -198,12 +218,18 @@ export function ExportPanel({
             <div className="mt-4">
               <span
                 className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                  canPrepare
+                  format.title === "DOCX" && docxDownloadUrl
+                    ? "border-[rgba(24,169,153,0.18)] bg-[rgba(213,247,239,0.86)] text-[#127b6f]"
+                    : canPrepare
                     ? "border-[rgba(24,169,153,0.18)] bg-[rgba(213,247,239,0.86)] text-[#127b6f]"
                     : "border-[rgba(74,58,97,0.12)] bg-white/72 text-[var(--color-muted)]"
                 }`}
               >
-                {canPrepare ? "Preparado visualmente" : "Esperando blueprint"}
+                {format.title === "DOCX" && docxDownloadUrl
+                  ? "Descarga activa"
+                  : canPrepare
+                    ? "Preparado visualmente"
+                    : "Esperando blueprint"}
               </span>
             </div>
           </article>

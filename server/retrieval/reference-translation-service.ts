@@ -36,6 +36,61 @@ type TranslationTarget = {
   sourceLanguage: string;
 };
 
+const LANGUAGE_STOPWORDS = {
+  es: [
+    "de",
+    "la",
+    "el",
+    "los",
+    "las",
+    "para",
+    "con",
+    "sobre",
+    "estudio",
+    "analisis",
+    "investigacion",
+    "metodologia",
+  ],
+  en: [
+    "the",
+    "and",
+    "of",
+    "for",
+    "with",
+    "study",
+    "analysis",
+    "research",
+    "method",
+    "among",
+    "using",
+    "based",
+  ],
+  pt: [
+    "de",
+    "da",
+    "do",
+    "para",
+    "com",
+    "estudo",
+    "analise",
+    "pesquisa",
+    "metodologia",
+    "entre",
+  ],
+  fr: [
+    "de",
+    "la",
+    "le",
+    "les",
+    "pour",
+    "avec",
+    "etude",
+    "analyse",
+    "recherche",
+    "methode",
+  ],
+} as const;
+
 function isRecord(value: Prisma.JsonValue | null | undefined): value is Record<string, Prisma.JsonValue> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -47,6 +102,35 @@ function getLanguageFromRawOpenAlex(rawOpenAlexJson: Prisma.JsonValue | null) {
 
   const rawLanguage = rawOpenAlexJson.language;
   return typeof rawLanguage === "string" ? normalizeLanguageCode(rawLanguage) : null;
+}
+
+function normalizeTextForLanguageDetection(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectLanguageHeuristically(value: string | null | undefined) {
+  const normalized = normalizeTextForLanguageDetection(value);
+
+  if (!normalized || normalized.length < 24) {
+    return null;
+  }
+
+  const scores = Object.entries(LANGUAGE_STOPWORDS).map(([language, stopwords]) => ({
+    language,
+    score: stopwords.reduce(
+      (total, term) => total + (normalized.includes(` ${term} `) ? 1 : 0),
+      0,
+    ),
+  }));
+  const winner = scores.sort((left, right) => right.score - left.score)[0];
+
+  return winner && winner.score >= 2 ? winner.language : null;
 }
 
 export function getCachedTranslation(
@@ -141,7 +225,10 @@ ${referencesBlock}
 }
 
 export function resolveReferenceSourceLanguage(reference: ReferenceRecordLike) {
-  return getLanguageFromRawOpenAlex(reference.rawOpenAlexJson);
+  return (
+    getLanguageFromRawOpenAlex(reference.rawOpenAlexJson) ??
+    detectLanguageHeuristically(`${reference.title} ${reference.abstract ?? ""}`)
+  );
 }
 
 export function resolveReferenceTranslationForLanguage(input: {

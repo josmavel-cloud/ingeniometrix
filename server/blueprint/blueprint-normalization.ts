@@ -65,6 +65,18 @@ function normalizeList(values: string[] | null | undefined, fallback: string[]) 
   return items.length > 0 ? items : fallback;
 }
 
+function normalizeReferenceSnapshots(values: BlueprintReferenceSnapshot[] | null | undefined) {
+  return (
+    values
+      ?.map((value) => ({
+        reference_id: value.reference_id?.trim() ?? "",
+        title: value.title?.replace(/\s+/g, " ").trim() ?? "",
+        doi: value.doi?.trim() ?? null,
+      }))
+      .filter((value) => value.reference_id || value.title || value.doi) ?? []
+  );
+}
+
 function toQuestion(value: string) {
   const trimmed = value.trim();
 
@@ -228,6 +240,6 @@ export function normalizeBlueprintDraft(
     limitations: normalizeList(input.draft.limitations, [
       "La version inicial aun requiere refinamiento metodologico y validacion academica manual.",
     ]),
-    references_used: input.draft.references_used ?? [],
+    references_used: normalizeReferenceSnapshots(input.draft.references_used),
   };
 }
