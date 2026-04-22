@@ -14,6 +14,13 @@ type GeneratedTopicSuggestion = {
   title: string;
   researchLine: string;
   rationale: string;
+  variantKind: "TECHNICAL_REWRITE" | "VARIANT";
+  problemContext: string;
+  targetPopulation: string;
+  preferredMethodology: string;
+  availableData: string;
+  academicConstraints: string;
+  advisorNotes: string;
 };
 
 type TopicSuggestionBatch = {
@@ -31,15 +38,19 @@ export async function generateTopicSuggestionsInRealTime(
 
   const response = await provider.generateStructuredObject<TopicSuggestionBatch>({
     prompt: `
-Eres Ingeniometrix. Genera sugerencias de temas de tesis en espanol para maestria o posgrado en Peru.
+Eres Ingeniometrix. Genera sugerencias de temas de tesis en espanol para contexto universitario en Peru.
 
 Reglas:
 - no generes una tesis completa
 - no inventes resultados
 - devuelve solo ideas de tema defendibles y acotadas
 - deben sonar viables para revision academica
-- evita repetir literalmente la semilla del usuario
 - prioriza cercania a la idea original, no creatividad vacia
+- la primera sugerencia debe ser una version tecnica y mejor redactada de la idea original
+- las otras sugerencias pueden variar el enfoque, pero deben seguir alineadas con la semilla
+- si faltan datos concretos, propone formulaciones prudentes y editables
+- llena tambien una base sugerida de intake para problema, poblacion, metodologia y contexto
+- no uses placeholders como "por definir", "pendiente" o "no disponible"
 
 Contexto del proyecto:
 - universidad: ${input.university}
@@ -49,11 +60,22 @@ Contexto del proyecto:
 - idea semilla del usuario: ${input.seedText}
 - hints taxonomicos: ${taxonomyHints}
 
-Genera entre 3 y 4 variantes.
+Genera entre 3 y 4 sugerencias.
 Cada variante debe incluir:
 - title
 - researchLine
 - rationale
+- variantKind
+- problemContext
+- targetPopulation
+- preferredMethodology
+- availableData
+- academicConstraints
+- advisorNotes
+
+variantKind:
+- usa TECHNICAL_REWRITE solo en la primera sugerencia, que debe ser la mas cercana a la semilla
+- usa VARIANT en las demas
     `.trim(),
     schemaName: "topic_suggestion_batch",
     schema: topicSuggestionSchema as Record<string, unknown>,

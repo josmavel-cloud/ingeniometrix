@@ -33,6 +33,190 @@ type TopicProjectRecord = Prisma.ProjectGetPayload<{
   };
 }>;
 
+type TopicSuggestionVariantKind =
+  | "USER_SEED"
+  | "CATALOG"
+  | "TECHNICAL_REWRITE"
+  | "VARIANT";
+
+type TopicSuggestionSuggestedIntake = {
+  researchLine?: string | null;
+  problemContext?: string | null;
+  targetPopulation?: string | null;
+  preferredMethodology?: string | null;
+  availableData?: string | null;
+  academicConstraints?: string | null;
+  advisorNotes?: string | null;
+};
+
+type TopicSuggestionMetadata = {
+  topicOriginType?: string;
+  generatedFrom?: string;
+  variantKind?: TopicSuggestionVariantKind;
+  score?: number;
+  reasons?: string[];
+  careerId?: string;
+  suggestedIntake?: TopicSuggestionSuggestedIntake;
+};
+
+type TopicSuggestionViewModel = {
+  id: string;
+  sourceType: TopicSuggestionSourceType;
+  title: string;
+  researchLine: string | null;
+  rationale: string | null;
+  selected: boolean;
+  primaryConcept: {
+    prefLabel: string;
+  } | null;
+  variantKind: TopicSuggestionVariantKind;
+  suggestedIntake: TopicSuggestionSuggestedIntake;
+};
+
+function asObjectRecord(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function normalizeOptionalText(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseTopicSuggestionMetadata(value: Prisma.JsonValue | null | undefined) {
+  const record = asObjectRecord(value);
+
+  if (!record) {
+    return {
+      variantKind: "VARIANT",
+      suggestedIntake: {},
+    } satisfies TopicSuggestionMetadata;
+  }
+
+  const suggestedIntakeRecord = asObjectRecord(record.suggestedIntake);
+
+  return {
+    topicOriginType: normalizeOptionalText(record.topicOriginType) ?? undefined,
+    generatedFrom: normalizeOptionalText(record.generatedFrom) ?? undefined,
+    variantKind:
+      (normalizeOptionalText(record.variantKind) as TopicSuggestionVariantKind | null) ??
+      undefined,
+    score: typeof record.score === "number" ? record.score : undefined,
+    reasons: Array.isArray(record.reasons)
+      ? record.reasons.filter((item): item is string => typeof item === "string")
+      : undefined,
+    careerId: normalizeOptionalText(record.careerId) ?? undefined,
+    suggestedIntake: suggestedIntakeRecord
+      ? {
+          researchLine: normalizeOptionalText(suggestedIntakeRecord.researchLine),
+          problemContext: normalizeOptionalText(suggestedIntakeRecord.problemContext),
+          targetPopulation: normalizeOptionalText(suggestedIntakeRecord.targetPopulation),
+          preferredMethodology: normalizeOptionalText(
+            suggestedIntakeRecord.preferredMethodology,
+          ),
+          availableData: normalizeOptionalText(suggestedIntakeRecord.availableData),
+          academicConstraints: normalizeOptionalText(
+            suggestedIntakeRecord.academicConstraints,
+          ),
+          advisorNotes: normalizeOptionalText(suggestedIntakeRecord.advisorNotes),
+        }
+      : {},
+  } satisfies TopicSuggestionMetadata;
+}
+
+function toTopicSuggestionViewModel(
+  suggestion: TopicProjectRecord["topicSuggestions"][number],
+): TopicSuggestionViewModel {
+  const metadata = parseTopicSuggestionMetadata(suggestion.metadataJson);
+
+  return {
+    id: suggestion.id,
+    sourceType: suggestion.sourceType,
+    title: suggestion.title,
+    researchLine: suggestion.researchLine,
+    rationale: suggestion.rationale,
+    selected: suggestion.selected,
+    primaryConcept: suggestion.primaryConcept
+      ? { prefLabel: suggestion.primaryConcept.prefLabel }
+      : null,
+    variantKind:
+      metadata.variantKind ??
+      (suggestion.sourceType === TopicSuggestionSourceType.USER_SEED
+        ? "USER_SEED"
+        : suggestion.sourceType === TopicSuggestionSourceType.CATALOG
+          ? "CATALOG"
+          : "VARIANT"),
+    suggestedIntake: metadata.suggestedIntake ?? {},
+  };
+}
+
+function buildUserSeedMetadata(input: {
+  project: TopicProjectRecord;
+  areaLabel: string | null;
+  seedText: string;
+}) {
+  return {
+    topicOriginType: input.project.topicOriginType,
+    variantKind: "USER_SEED",
+    suggestedIntake: {
+      researchLine: input.project.intake?.researchLine ?? input.areaLabel,
+      problemContext: input.project.intake?.problemContext ?? null,
+      targetPopulation: input.project.intake?.targetPopulation ?? null,
+      preferredMethodology: input.project.intake?.preferredMethodology ?? null,
+      availableData: input.project.intake?.availableData ?? null,
+      academicConstraints: input.project.intake?.academicConstraints ?? null,
+      advisorNotes:
+        input.project.intake?.advisorNotes ??
+        "Puedes mantener esta idea original o elegir una version mas tecnica antes del intake.",
+    },
+  } satisfies TopicSuggestionMetadata;
+}
+
+function buildCatalogSuggestedIntake(
+  preset: ReturnType<typeof buildProjectPresetSuggestionEntries>[number]["preset"],
+) {
+  const baseIntake = preset.intakePresets[0] ?? null;
+
+  return {
+    researchLine: preset.researchLine,
+    problemContext: baseIntake?.problemContext ?? null,
+    targetPopulation: baseIntake?.targetPopulation ?? null,
+    preferredMethodology: baseIntake?.preferredMethodology ?? null,
+    availableData: baseIntake?.availableData ?? null,
+    academicConstraints: baseIntake?.academicConstraints ?? null,
+    advisorNotes: baseIntake?.advisorNotes ?? null,
+  } satisfies TopicSuggestionSuggestedIntake;
+}
+
+function buildGeneratedSuggestionMetadata(suggestion: {
+  variantKind: "TECHNICAL_REWRITE" | "VARIANT";
+  researchLine: string;
+  problemContext: string;
+  targetPopulation: string;
+  preferredMethodology: string;
+  availableData: string;
+  academicConstraints: string;
+  advisorNotes: string;
+}) {
+  return {
+    variantKind: suggestion.variantKind,
+    suggestedIntake: {
+      researchLine: suggestion.researchLine,
+      problemContext: suggestion.problemContext,
+      targetPopulation: suggestion.targetPopulation,
+      preferredMethodology: suggestion.preferredMethodology,
+      availableData: suggestion.availableData,
+      academicConstraints: suggestion.academicConstraints,
+      advisorNotes: suggestion.advisorNotes,
+    },
+  } satisfies TopicSuggestionMetadata;
+}
+
 function getTopicSeedText(project: TopicProjectRecord) {
   return project.topicSeedText?.trim() || project.title.trim();
 }
@@ -190,7 +374,7 @@ export async function listTopicSuggestionsForUser(userId: string, projectId: str
     throw new Error("Proyecto no encontrado.");
   }
 
-  return project.topicSuggestions;
+  return project.topicSuggestions.map(toTopicSuggestionViewModel);
 }
 
 export async function ensureTopicSuggestionsForUser(userId: string, projectId: string) {
@@ -200,25 +384,34 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
     throw new Error("Proyecto no encontrado.");
   }
 
-  if (project.topicSuggestions.length > 0) {
-    return project.topicSuggestions;
-  }
-
   const seedText = getTopicSeedText(project);
   const areaLabel = project.topicAreaLabel ?? getTopicAreaLabel(project.topicAreaId);
+  const existingMetadata = project.topicSuggestions.map((suggestion) =>
+    parseTopicSuggestionMetadata(suggestion.metadataJson),
+  );
+  const hasUserSeed = project.topicSuggestions.some(
+    (suggestion) => suggestion.sourceType === TopicSuggestionSourceType.USER_SEED,
+  );
+  const hasTechnicalRewrite = existingMetadata.some(
+    (metadata) => metadata.variantKind === "TECHNICAL_REWRITE",
+  );
 
-  await upsertSuggestion({
-    projectId: project.id,
-    sourceType: TopicSuggestionSourceType.USER_SEED,
-    seedText,
-    title: seedText,
-    researchLine: project.intake?.researchLine ?? areaLabel,
-    rationale: "Idea original registrada al crear el proyecto.",
-    metadataJson: {
-      topicOriginType: project.topicOriginType,
-    },
-    areaLabel,
-  });
+  if (!hasUserSeed) {
+    await upsertSuggestion({
+      projectId: project.id,
+      sourceType: TopicSuggestionSourceType.USER_SEED,
+      seedText,
+      title: seedText,
+      researchLine: project.intake?.researchLine ?? areaLabel,
+      rationale: "Idea original registrada al crear el proyecto.",
+      metadataJson: buildUserSeedMetadata({
+        project,
+        areaLabel,
+        seedText,
+      }) as unknown as Prisma.InputJsonValue,
+      areaLabel,
+    });
+  }
 
   const catalogSuggestions = buildProjectPresetSuggestionEntries({
     areaId: project.topicAreaId,
@@ -239,17 +432,21 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
       researchLine: entry.preset.researchLine,
       rationale: entry.reasons.join(" "),
       metadataJson: {
+        variantKind: "CATALOG",
         score: entry.score,
         reasons: entry.reasons,
         careerId: entry.preset.careerId,
+        suggestedIntake: buildCatalogSuggestedIntake(entry.preset),
       },
       areaLabel,
     });
   }
 
   const strongCatalogCount = catalogSuggestions.filter((entry) => entry.score >= 7).length;
+  const shouldGenerateAiSuggestions =
+    project.topicOriginType !== TopicOriginType.CATALOG || strongCatalogCount < 2;
 
-  if (strongCatalogCount < 2) {
+  if (shouldGenerateAiSuggestions && !hasTechnicalRewrite) {
     try {
       const taxonomyHints = await loadTaxonomyHints(seedText, areaLabel);
 
@@ -276,6 +473,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
           rationale: suggestion.rationale,
           metadataJson: {
             generatedFrom: "llm",
+            ...buildGeneratedSuggestionMetadata(suggestion),
           },
           areaLabel,
         });
@@ -291,7 +489,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
     throw new Error("Proyecto no encontrado.");
   }
 
-  return refreshedProject.topicSuggestions;
+  return refreshedProject.topicSuggestions.map(toTopicSuggestionViewModel);
 }
 
 export async function regenerateTopicSuggestionsForUser(userId: string, projectId: string) {
@@ -324,6 +522,7 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
       rationale: suggestion.rationale,
       metadataJson: {
         generatedFrom: "llm_refresh",
+        ...buildGeneratedSuggestionMetadata(suggestion),
       },
       areaLabel,
     });
@@ -335,13 +534,14 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
     throw new Error("Proyecto no encontrado.");
   }
 
-  return refreshedProject.topicSuggestions;
+  return refreshedProject.topicSuggestions.map(toTopicSuggestionViewModel);
 }
 
 export async function selectTopicSuggestionForUser(params: {
   userId: string;
   projectId: string;
   suggestionId: string;
+  edits?: TopicSuggestionSuggestedIntake;
 }) {
   const project = await getProjectTopicRecord(params.userId, params.projectId);
 
@@ -356,6 +556,38 @@ export async function selectTopicSuggestionForUser(params: {
   if (!suggestion) {
     throw new Error("Sugerencia de tema no encontrada.");
   }
+
+  const suggestionMetadata = parseTopicSuggestionMetadata(suggestion.metadataJson);
+  const editedIntake = {
+    researchLine:
+      normalizeOptionalText(params.edits?.researchLine) ??
+      suggestionMetadata.suggestedIntake?.researchLine ??
+      suggestion.researchLine,
+    problemContext:
+      normalizeOptionalText(params.edits?.problemContext) ??
+      suggestionMetadata.suggestedIntake?.problemContext ??
+      null,
+    targetPopulation:
+      normalizeOptionalText(params.edits?.targetPopulation) ??
+      suggestionMetadata.suggestedIntake?.targetPopulation ??
+      null,
+    preferredMethodology:
+      normalizeOptionalText(params.edits?.preferredMethodology) ??
+      suggestionMetadata.suggestedIntake?.preferredMethodology ??
+      null,
+    availableData:
+      normalizeOptionalText(params.edits?.availableData) ??
+      suggestionMetadata.suggestedIntake?.availableData ??
+      null,
+    academicConstraints:
+      normalizeOptionalText(params.edits?.academicConstraints) ??
+      suggestionMetadata.suggestedIntake?.academicConstraints ??
+      null,
+    advisorNotes:
+      normalizeOptionalText(params.edits?.advisorNotes) ??
+      suggestionMetadata.suggestedIntake?.advisorNotes ??
+      null,
+  } satisfies TopicSuggestionSuggestedIntake;
 
   await prisma.$transaction(async (tx) => {
     await tx.projectTopicSuggestion.updateMany({
@@ -373,6 +605,18 @@ export async function selectTopicSuggestionForUser(params: {
       },
       data: {
         selected: true,
+        researchLine: editedIntake.researchLine ?? suggestion.researchLine,
+        metadataJson: {
+          ...(asObjectRecord(suggestion.metadataJson) ?? {}),
+          suggestedIntake: editedIntake,
+          variantKind:
+            suggestionMetadata.variantKind ??
+            (suggestion.sourceType === TopicSuggestionSourceType.AI_GENERATED
+              ? "VARIANT"
+              : suggestion.sourceType === TopicSuggestionSourceType.CATALOG
+                ? "CATALOG"
+                : "USER_SEED"),
+        },
       },
     });
 
@@ -394,11 +638,41 @@ export async function selectTopicSuggestionForUser(params: {
           upsert: {
             create: {
               topic: suggestion.title,
-              researchLine: suggestion.researchLine,
+              researchLine: editedIntake.researchLine,
+              problemContext: editedIntake.problemContext,
+              targetPopulation: editedIntake.targetPopulation,
+              preferredMethodology: editedIntake.preferredMethodology,
+              availableData: editedIntake.availableData,
+              academicConstraints: editedIntake.academicConstraints,
+              advisorNotes: editedIntake.advisorNotes,
             },
             update: {
               topic: suggestion.title,
-              researchLine: suggestion.researchLine ?? undefined,
+              researchLine: editedIntake.researchLine ?? undefined,
+              problemContext:
+                project.intake?.problemContext?.trim().length
+                  ? project.intake.problemContext
+                  : editedIntake.problemContext ?? undefined,
+              targetPopulation:
+                project.intake?.targetPopulation?.trim().length
+                  ? project.intake.targetPopulation
+                  : editedIntake.targetPopulation ?? undefined,
+              preferredMethodology:
+                project.intake?.preferredMethodology?.trim().length
+                  ? project.intake.preferredMethodology
+                  : editedIntake.preferredMethodology ?? undefined,
+              availableData:
+                project.intake?.availableData?.trim().length
+                  ? project.intake.availableData
+                  : editedIntake.availableData ?? undefined,
+              academicConstraints:
+                project.intake?.academicConstraints?.trim().length
+                  ? project.intake.academicConstraints
+                  : editedIntake.academicConstraints ?? undefined,
+              advisorNotes:
+                project.intake?.advisorNotes?.trim().length
+                  ? project.intake.advisorNotes
+                  : editedIntake.advisorNotes ?? undefined,
             },
           },
         },
@@ -464,3 +738,5 @@ export async function getTopicProjectForUser(userId: string, projectId: string) 
 
   return project;
 }
+
+export type { TopicSuggestionSuggestedIntake, TopicSuggestionViewModel };

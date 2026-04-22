@@ -11,6 +11,16 @@ type TopicSuggestionItem = {
   researchLine: string | null;
   rationale: string | null;
   selected: boolean;
+  variantKind: "USER_SEED" | "CATALOG" | "TECHNICAL_REWRITE" | "VARIANT";
+  suggestedIntake: {
+    researchLine?: string | null;
+    problemContext?: string | null;
+    targetPopulation?: string | null;
+    preferredMethodology?: string | null;
+    availableData?: string | null;
+    academicConstraints?: string | null;
+    advisorNotes?: string | null;
+  };
   primaryConcept: {
     prefLabel: string;
   } | null;
@@ -35,6 +45,22 @@ function getSourceLabel(sourceType: TopicSuggestionItem["sourceType"]) {
   }
 
   return "Catalogo";
+}
+
+function getVariantLabel(item: TopicSuggestionItem) {
+  if (item.variantKind === "TECHNICAL_REWRITE") {
+    return "Version tecnica";
+  }
+
+  if (item.variantKind === "USER_SEED") {
+    return "Idea original";
+  }
+
+  if (item.variantKind === "CATALOG") {
+    return "Base catalogada";
+  }
+
+  return "Variante";
 }
 
 function getSourceToneClassName(sourceType: TopicSuggestionItem["sourceType"]) {
@@ -110,9 +136,35 @@ export function TopicStage({
     });
   }
 
+  function updateSuggestionField(
+    suggestionId: string,
+    field: keyof TopicSuggestionItem["suggestedIntake"],
+    value: string,
+  ) {
+    setItems((current) =>
+      current.map((item) =>
+        item.id === suggestionId
+          ? {
+              ...item,
+              suggestedIntake: {
+                ...item.suggestedIntake,
+                [field]: value,
+              },
+            }
+          : item,
+      ),
+    );
+  }
+
   function selectSuggestion(suggestionId: string) {
     setError(null);
     setMessage(null);
+    const selectedItem = items.find((item) => item.id === suggestionId);
+
+    if (!selectedItem) {
+      setError("No se encontro la sugerencia seleccionada.");
+      return;
+    }
 
     startSelectTransition(async () => {
       const response = await fetch(`/api/projects/${projectId}/topic-suggestions`, {
@@ -120,7 +172,10 @@ export function TopicStage({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ suggestionId }),
+        body: JSON.stringify({
+          suggestionId,
+          edits: selectedItem.suggestedIntake,
+        }),
       });
 
       const payload = (await response.json()) as { error?: string };
@@ -175,6 +230,11 @@ export function TopicStage({
         <div className="mt-5 rounded-[28px] p-5 brand-card-lilac">
           <p className="text-sm leading-7 text-[rgba(23,19,31,0.78)]">{topicSeedText}</p>
         </div>
+        <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
+          En esta pantalla ya puedes comparar tu idea original con una version mas
+          tecnica y con variantes cercanas. Cada opcion tambien trae una base
+          sugerida de intake para que el siguiente paso llegue mucho mas preciso.
+        </p>
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           {userSeedSuggestion ? (
@@ -218,6 +278,9 @@ export function TopicStage({
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-3xl">
                 <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-[rgba(23,19,31,0.08)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.72)]">
+                    {getVariantLabel(item)}
+                  </span>
                   <span className="rounded-full bg-white/72 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
                     {getSourceLabel(item.sourceType)}
                   </span>
@@ -245,6 +308,136 @@ export function TopicStage({
                     {item.rationale}
                   </p>
                 ) : null}
+
+                <div className="mt-4 grid gap-3 rounded-[24px] bg-white/70 p-4">
+                  <div className="grid gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                      Problema sugerido
+                    </p>
+                    <textarea
+                      className="brand-textarea min-h-[104px] bg-white"
+                      onChange={(event) =>
+                        updateSuggestionField(
+                          item.id,
+                          "problemContext",
+                          event.target.value,
+                        )
+                      }
+                      value={item.suggestedIntake.problemContext ?? ""}
+                    />
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                        Linea sugerida
+                      </span>
+                      <input
+                        className="brand-input bg-white"
+                        onChange={(event) =>
+                          updateSuggestionField(
+                            item.id,
+                            "researchLine",
+                            event.target.value,
+                          )
+                        }
+                        value={item.suggestedIntake.researchLine ?? item.researchLine ?? ""}
+                      />
+                    </label>
+
+                    <label className="grid gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                        Poblacion sugerida
+                      </span>
+                      <textarea
+                        className="brand-textarea min-h-[92px] bg-white"
+                        onChange={(event) =>
+                          updateSuggestionField(
+                            item.id,
+                            "targetPopulation",
+                            event.target.value,
+                          )
+                        }
+                        value={item.suggestedIntake.targetPopulation ?? ""}
+                      />
+                    </label>
+                  </div>
+
+                  <details className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                    <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+                      Editar base sugerida antes de usar
+                    </summary>
+                    <div className="mt-4 grid gap-3">
+                      <label className="grid gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                          Metodologia sugerida
+                        </span>
+                        <textarea
+                          className="brand-textarea min-h-[96px] bg-white"
+                          onChange={(event) =>
+                            updateSuggestionField(
+                              item.id,
+                              "preferredMethodology",
+                              event.target.value,
+                            )
+                          }
+                          value={item.suggestedIntake.preferredMethodology ?? ""}
+                        />
+                      </label>
+
+                      <label className="grid gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                          Datos o evidencia sugerida
+                        </span>
+                        <textarea
+                          className="brand-textarea min-h-[96px] bg-white"
+                          onChange={(event) =>
+                            updateSuggestionField(
+                              item.id,
+                              "availableData",
+                              event.target.value,
+                            )
+                          }
+                          value={item.suggestedIntake.availableData ?? ""}
+                        />
+                      </label>
+
+                      <label className="grid gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                          Restricciones sugeridas
+                        </span>
+                        <textarea
+                          className="brand-textarea min-h-[96px] bg-white"
+                          onChange={(event) =>
+                            updateSuggestionField(
+                              item.id,
+                              "academicConstraints",
+                              event.target.value,
+                            )
+                          }
+                          value={item.suggestedIntake.academicConstraints ?? ""}
+                        />
+                      </label>
+
+                      <label className="grid gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                          Nota inicial para el intake
+                        </span>
+                        <textarea
+                          className="brand-textarea min-h-[96px] bg-white"
+                          onChange={(event) =>
+                            updateSuggestionField(
+                              item.id,
+                              "advisorNotes",
+                              event.target.value,
+                            )
+                          }
+                          value={item.suggestedIntake.advisorNotes ?? ""}
+                        />
+                      </label>
+                    </div>
+                  </details>
+                </div>
               </div>
 
               <div className="flex flex-col gap-3 lg:min-w-[220px]">

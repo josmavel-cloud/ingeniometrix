@@ -28,19 +28,7 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
         <TopicStage
           projectId={project.id}
           projectTitle={project.title}
-          suggestions={suggestions.map((item) => ({
-            id: item.id,
-            sourceType: item.sourceType,
-            title: item.title,
-            researchLine: item.researchLine,
-            rationale: item.rationale,
-            selected: item.selected,
-            primaryConcept: item.primaryConcept
-              ? {
-                  prefLabel: item.primaryConcept.prefLabel,
-                }
-              : null,
-          }))}
+          suggestions={suggestions}
           topicAreaLabel={project.topicAreaLabel}
           topicOriginType={project.topicOriginType}
           topicSeedText={project.topicSeedText?.trim() || project.title}

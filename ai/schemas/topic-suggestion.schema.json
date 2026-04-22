@@ -13,11 +13,32 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "researchLine", "rationale"],
+        "required": [
+          "title",
+          "researchLine",
+          "rationale",
+          "variantKind",
+          "problemContext",
+          "targetPopulation",
+          "preferredMethodology",
+          "availableData",
+          "academicConstraints",
+          "advisorNotes"
+        ],
         "properties": {
           "title": { "type": "string", "minLength": 1 },
           "researchLine": { "type": "string", "minLength": 1 },
-          "rationale": { "type": "string", "minLength": 1 }
+          "rationale": { "type": "string", "minLength": 1 },
+          "variantKind": {
+            "type": "string",
+            "enum": ["TECHNICAL_REWRITE", "VARIANT"]
+          },
+          "problemContext": { "type": "string", "minLength": 1 },
+          "targetPopulation": { "type": "string", "minLength": 1 },
+          "preferredMethodology": { "type": "string", "minLength": 1 },
+          "availableData": { "type": "string", "minLength": 1 },
+          "academicConstraints": { "type": "string", "minLength": 1 },
+          "advisorNotes": { "type": "string", "minLength": 1 }
         }
       }
     }

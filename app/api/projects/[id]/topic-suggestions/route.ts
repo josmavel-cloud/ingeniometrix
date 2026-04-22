@@ -45,7 +45,18 @@ export async function PUT(request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const body = (await request.json()) as { suggestionId?: string };
+    const body = (await request.json()) as {
+      suggestionId?: string;
+      edits?: {
+        researchLine?: string;
+        problemContext?: string;
+        targetPopulation?: string;
+        preferredMethodology?: string;
+        availableData?: string;
+        academicConstraints?: string;
+        advisorNotes?: string;
+      };
+    };
 
     if (!body.suggestionId) {
       return NextResponse.json(
@@ -58,6 +69,7 @@ export async function PUT(request: Request, context: RouteContext) {
       userId: user.id,
       projectId: id,
       suggestionId: body.suggestionId,
+      edits: body.edits,
     });
 
     return NextResponse.json({ project });
