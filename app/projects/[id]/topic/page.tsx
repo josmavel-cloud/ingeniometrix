@@ -4,8 +4,8 @@ import { TopicStage } from "@/components/projects/topic-stage";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { requireCurrentUser } from "@/server/auth/session";
 import {
-  ensureTopicSuggestionsForUser,
   getTopicProjectForUser,
+  listTopicSuggestionsForUser,
 } from "@/server/projects/topic-suggestion-service";
 
 type TopicStagePageProps = {
@@ -18,7 +18,7 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
 
   try {
     const project = await getTopicProjectForUser(user.id, id);
-    const suggestions = await ensureTopicSuggestionsForUser(user.id, id);
+    const suggestions = await listTopicSuggestionsForUser(user.id, id);
 
     return (
       <ProjectShell

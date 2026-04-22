@@ -60,7 +60,7 @@ Contexto del proyecto:
 - idea semilla del usuario: ${input.seedText}
 - hints taxonomicos: ${taxonomyHints}
 
-Genera entre 3 y 4 sugerencias.
+Genera exactamente 3 sugerencias.
 Cada variante debe incluir:
 - title
 - researchLine
@@ -81,5 +81,5 @@ variantKind:
     schema: topicSuggestionSchema as Record<string, unknown>,
   });
 
-  return response.suggestions;
+  return response.suggestions.slice(0, 3);
 }

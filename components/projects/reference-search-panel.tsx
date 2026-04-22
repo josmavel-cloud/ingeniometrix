@@ -53,6 +53,47 @@ function renderAuthors(authorsJson: unknown) {
   return authorsJson.filter((author): author is string => typeof author === "string").join(", ");
 }
 
+function mergeReferenceLists(
+  current: ReferenceListItem[],
+  incoming: ReferenceListItem[],
+) {
+  if (current.length === 0) {
+    return incoming;
+  }
+
+  const currentByReferenceId = new Map(
+    current.map((item, index) => [item.reference.id, { item, index }] as const),
+  );
+  const merged = [...current];
+
+  for (const nextItem of incoming) {
+    const existing = currentByReferenceId.get(nextItem.reference.id);
+
+    if (!existing) {
+      merged.push(nextItem);
+      continue;
+    }
+
+    const preservedSelection =
+      existing.item.selected || existing.item.selectedOrder !== null
+        ? {
+            selected: existing.item.selected,
+            selectedOrder: existing.item.selectedOrder,
+          }
+        : {
+            selected: nextItem.selected,
+            selectedOrder: nextItem.selectedOrder,
+          };
+
+    merged[existing.index] = {
+      ...nextItem,
+      ...preservedSelection,
+    };
+  }
+
+  return merged;
+}
+
 export function ReferenceSearchPanel({
   projectId,
   status,
@@ -169,19 +210,29 @@ export function ReferenceSearchPanel({
         return;
       }
 
-      setReferences(refreshPayload.references);
-      setVisibleCount(Math.min(refreshPayload.references.length, desiredTotal));
+      let mergedReferencesLength = refreshPayload.references.length;
+      let newUniqueCount = refreshPayload.references.length;
+
+      setReferences((current) => {
+        const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
+        mergedReferencesLength = merged.length;
+        newUniqueCount = Math.max(0, merged.length - current.length);
+        return merged;
+      });
+      setVisibleCount((current) =>
+        Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
+      );
 
       const totalResults = payload.result?.totalResults ?? 0;
 
-      if (totalResults > 0) {
+      if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
         setMessage(
           desiredTotal > REFERENCE_BATCH_SIZE
-            ? `Cargamos hasta ${Math.min(refreshPayload.references.length, desiredTotal)} fuentes para esta revision inicial.`
-            : `Busqueda completada. Revisa las primeras ${Math.min(refreshPayload.references.length, REFERENCE_BATCH_SIZE)} fuentes y selecciona entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} referencias para continuar.`,
+            ? `Anadimos ${newUniqueCount} fuente(s) nueva(s) y mantuvimos tu seleccion actual.`
+            : `Busqueda completada. Revisa las primeras ${Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE)} fuentes y selecciona entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} referencias para continuar.`,
         );
         setInfo(null);
-      } else if ((refreshPayload.references?.length ?? 0) > 0) {
+      } else if (mergedReferencesLength > 0) {
         setMessage(null);
         setInfo(
           "No encontramos referencias nuevas en este intento, pero mantuvimos las fuentes ya cargadas en el proyecto.",
@@ -193,7 +244,6 @@ export function ReferenceSearchPanel({
         );
       }
 
-      router.refresh();
     });
   }
 

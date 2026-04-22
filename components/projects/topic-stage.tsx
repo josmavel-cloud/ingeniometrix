@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -34,6 +34,13 @@ type TopicStageProps = {
   topicAreaLabel: string | null;
   suggestions: TopicSuggestionItem[];
 };
+
+function shouldBootstrapSuggestions(items: TopicSuggestionItem[]) {
+  return (
+    items.length === 0 ||
+    items.every((item) => item.sourceType === "USER_SEED")
+  );
+}
 
 function getSourceLabel(sourceType: TopicSuggestionItem["sourceType"]) {
   if (sourceType === "USER_SEED") {
@@ -99,6 +106,9 @@ export function TopicStage({
   const [items, setItems] = useState(suggestions);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [isBootstrapping, setIsBootstrapping] = useState(
+    shouldBootstrapSuggestions(suggestions),
+  );
   const [isRefreshing, startRefreshTransition] = useTransition();
   const [isSelecting, startSelectTransition] = useTransition();
 
@@ -110,6 +120,41 @@ export function TopicStage({
     () => items.find((item) => item.sourceType === "USER_SEED") ?? null,
     [items],
   );
+
+  useEffect(() => {
+    if (!shouldBootstrapSuggestions(suggestions)) {
+      setIsBootstrapping(false);
+      return;
+    }
+
+    let isCancelled = false;
+    setIsBootstrapping(true);
+
+    void (async () => {
+      const response = await fetch(`/api/projects/${projectId}/topic-suggestions`);
+      const payload = (await response.json()) as {
+        error?: string;
+        suggestions?: TopicSuggestionItem[];
+      };
+
+      if (isCancelled) {
+        return;
+      }
+
+      if (!response.ok || !payload.suggestions) {
+        setError(payload.error ?? "No se pudieron preparar las ideas relacionadas.");
+        setIsBootstrapping(false);
+        return;
+      }
+
+      setItems(payload.suggestions);
+      setIsBootstrapping(false);
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [projectId, suggestions]);
 
   function refreshSuggestions() {
     setError(null);
@@ -232,9 +277,15 @@ export function TopicStage({
         </div>
         <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
           En esta pantalla ya puedes comparar tu idea original con una version mas
-          tecnica y con variantes cercanas. Cada opcion tambien trae una base
+          tecnica y con 2 variantes cercanas. Cada opcion tambien trae una base
           sugerida de intake para que el siguiente paso llegue mucho mas preciso.
         </p>
+
+        {isBootstrapping ? (
+          <div className="mt-5 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/82 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+            Estamos redactando 3 variantes relacionadas con tu idea original para que no tengas que esperar en el alta del proyecto.
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
           {userSeedSuggestion ? (
@@ -270,6 +321,11 @@ export function TopicStage({
       {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
 
       <section className="grid gap-4">
+        {!isBootstrapping && items.length === 0 ? (
+          <div className="rounded-[28px] border border-dashed border-[rgba(74,58,97,0.14)] bg-[rgba(255,255,255,0.76)] px-5 py-8 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
+            Aun no hay variantes listas. Puedes usar tu idea original o regenerar tres opciones mas cercanas.
+          </div>
+        ) : null}
         {items.map((item) => (
           <article
             className={`rounded-[30px] p-5 ${getSourceToneClassName(item.sourceType)}`}

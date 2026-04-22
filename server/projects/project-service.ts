@@ -1,3 +1,5 @@
+import { TopicSuggestionSourceType } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 
 import {
@@ -7,6 +9,8 @@ import {
 } from "./project-validation";
 
 export async function createProjectForUser(userId: string, input: CreateProjectInput) {
+  const seedText = input.customIdeaText ?? input.title;
+
   return prisma.project.create({
     data: {
       userId,
@@ -17,9 +21,27 @@ export async function createProjectForUser(userId: string, input: CreateProjectI
       program: input.program,
       templateKey: input.templateKey,
       topicOriginType: input.topicOriginType,
-      topicSeedText: input.customIdeaText ?? input.title,
+      topicSeedText: seedText,
       topicAreaId: input.topicAreaId,
       topicAreaLabel: input.topicAreaLabel,
+      topicSuggestions: {
+        create: {
+          sourceType: TopicSuggestionSourceType.USER_SEED,
+          seedText,
+          title: seedText,
+          researchLine: input.topicAreaLabel ?? null,
+          rationale: "Idea original registrada al crear el proyecto.",
+          metadataJson: {
+            topicOriginType: input.topicOriginType,
+            variantKind: "USER_SEED",
+            suggestedIntake: {
+              researchLine: input.topicAreaLabel ?? null,
+              advisorNotes:
+                "Puedes mantener esta idea original o elegir una version mas tecnica antes del intake.",
+            },
+          },
+        },
+      },
     },
   });
 }

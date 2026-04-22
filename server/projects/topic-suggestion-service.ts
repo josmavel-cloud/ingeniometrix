@@ -73,6 +73,10 @@ type TopicSuggestionViewModel = {
   suggestedIntake: TopicSuggestionSuggestedIntake;
 };
 
+function shouldUseCatalogSuggestions(originType: TopicOriginType) {
+  return originType === TopicOriginType.CATALOG;
+}
+
 function asObjectRecord(value: unknown) {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -153,6 +157,17 @@ function toTopicSuggestionViewModel(
           : "VARIANT"),
     suggestedIntake: metadata.suggestedIntake ?? {},
   };
+}
+
+function buildSuggestionViewModels(project: TopicProjectRecord) {
+  const visibleSuggestions = shouldUseCatalogSuggestions(project.topicOriginType)
+    ? project.topicSuggestions
+    : project.topicSuggestions.filter(
+        (suggestion) =>
+          suggestion.sourceType !== TopicSuggestionSourceType.CATALOG,
+      );
+
+  return visibleSuggestions.map(toTopicSuggestionViewModel);
 }
 
 function buildUserSeedMetadata(input: {
@@ -426,7 +441,7 @@ export async function listTopicSuggestionsForUser(userId: string, projectId: str
     throw new Error("Proyecto no encontrado.");
   }
 
-  return project.topicSuggestions.map(toTopicSuggestionViewModel);
+  return buildSuggestionViewModels(project);
 }
 
 export async function ensureTopicSuggestionsForUser(userId: string, projectId: string) {
@@ -465,33 +480,37 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
     });
   }
 
-  const catalogSuggestions = buildProjectPresetSuggestionEntries({
-    areaId: project.topicAreaId,
-    degreeLevel: getPresetDegreeLevelForProject(project.degreeLevel),
-    university: project.university,
-    templateKey: project.templateKey,
-    interestText: seedText,
-    limit: 4,
-  });
+  let catalogSuggestions: ReturnType<typeof buildProjectPresetSuggestionEntries> = [];
 
-  for (const entry of catalogSuggestions) {
-    await upsertSuggestion({
-      projectId: project.id,
-      sourceType: TopicSuggestionSourceType.CATALOG,
-      catalogTopicId: entry.preset.id,
-      seedText,
-      title: entry.preset.title,
-      researchLine: entry.preset.researchLine,
-      rationale: entry.reasons.join(" "),
-      metadataJson: {
-        variantKind: "CATALOG",
-        score: entry.score,
-        reasons: entry.reasons,
-        careerId: entry.preset.careerId,
-        suggestedIntake: buildCatalogSuggestedIntake(entry.preset),
-      },
-      areaLabel,
+  if (shouldUseCatalogSuggestions(project.topicOriginType)) {
+    catalogSuggestions = buildProjectPresetSuggestionEntries({
+      areaId: project.topicAreaId,
+      degreeLevel: getPresetDegreeLevelForProject(project.degreeLevel),
+      university: project.university,
+      templateKey: project.templateKey,
+      interestText: seedText,
+      limit: 3,
     });
+
+    for (const entry of catalogSuggestions) {
+      await upsertSuggestion({
+        projectId: project.id,
+        sourceType: TopicSuggestionSourceType.CATALOG,
+        catalogTopicId: entry.preset.id,
+        seedText,
+        title: entry.preset.title,
+        researchLine: entry.preset.researchLine,
+        rationale: entry.reasons.join(" "),
+        metadataJson: {
+          variantKind: "CATALOG",
+          score: entry.score,
+          reasons: entry.reasons,
+          careerId: entry.preset.careerId,
+          suggestedIntake: buildCatalogSuggestedIntake(entry.preset),
+        },
+        areaLabel,
+      });
+    }
   }
 
   const strongCatalogCount = catalogSuggestions.filter((entry) => entry.score >= 7).length;
@@ -556,7 +575,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
     throw new Error("Proyecto no encontrado.");
   }
 
-  return refreshedProject.topicSuggestions.map(toTopicSuggestionViewModel);
+  return buildSuggestionViewModels(refreshedProject);
 }
 
 export async function regenerateTopicSuggestionsForUser(userId: string, projectId: string) {
@@ -619,7 +638,7 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
     throw new Error("Proyecto no encontrado.");
   }
 
-  return refreshedProject.topicSuggestions.map(toTopicSuggestionViewModel);
+  return buildSuggestionViewModels(refreshedProject);
 }
 
 export async function selectTopicSuggestionForUser(params: {
