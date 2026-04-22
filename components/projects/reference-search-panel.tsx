@@ -308,17 +308,16 @@ export function ReferenceSearchPanel({
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl">
+        <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
             <Sparkles className="size-3.5 text-lime-500" />
             Fuentes bibliograficas
           </div>
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Encuentra y depura tus fuentes semilla.
+            Elige tus fuentes semilla.
           </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            Ejecuta la busqueda con OpenAlex y enriquece metadatos con Crossref.
-            Luego selecciona entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} referencias para continuar.
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Busca, revisa y guarda entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} referencias.
           </p>
         </div>
 
@@ -344,75 +343,25 @@ export function ReferenceSearchPanel({
         </div>
       </div>
 
-      <section
-        className={`mt-6 rounded-[28px] p-5 ${
-          hasIntakeMinimum ? "brand-card-gold" : "brand-card-blush"
+      <div
+        className={`mt-6 rounded-[24px] border px-4 py-4 text-sm leading-6 ${
+          hasIntakeMinimum
+            ? "border-[rgba(24,169,153,0.16)] bg-[rgba(213,247,239,0.42)] text-[var(--color-ink)]"
+            : "border-[rgba(233,87,87,0.12)] bg-[rgba(255,236,238,0.72)] text-[var(--color-ink)]"
         }`}
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.54)]">
-              Puente hacia fuentes
-            </p>
-            <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              {hasIntakeMinimum
-                ? "Tu base ya esta lista para buscar evidencia."
-                : "Aun falta contexto minimo antes de buscar."}
-            </p>
-            <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-              {hasIntakeMinimum
-                ? "La busqueda ya puede usar tema, problema y poblacion para formular consultas mas utiles en OpenAlex y Crossref."
-                : "Sin esos 3 campos, la recuperacion pierde precision y el usuario siente que la app busca sin criterio suficiente."}
-            </p>
-          </div>
-
-          <div className="rounded-[24px] bg-white/72 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:min-w-[240px]">
-            <p>
-              <strong>Checklist:</strong>{" "}
-              {intakeChecklist.filter((item) => item.ready).length}/3
-            </p>
-            <p>
-              <strong>Siguiente accion:</strong>{" "}
-              {hasIntakeMinimum ? "Lanzar busqueda" : "Volver al intake minimo"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-3">
-          {intakeChecklist.map((item) => (
-            <article
-              className="rounded-[22px] border border-white/55 bg-white/68 p-4"
-              key={item.label}
-            >
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                {item.label}
-              </p>
-              <div className="mt-2 inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.62)]">
-                {item.ready ? "Listo" : "Pendiente"}
-              </div>
-              <p className="mt-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                {item.ready
-                  ? item.value
-                  : "Completa este campo en el intake para mejorar la busqueda."}
-              </p>
-            </article>
-          ))}
-        </div>
-      </section>
+        {hasIntakeMinimum
+          ? "La base ya esta lista para buscar evidencia."
+          : "Falta completar tema, problema y poblacion para mejorar la busqueda."}
+      </div>
 
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-6 text-slate-600">
           Seleccionadas: <strong>{selectedCount}</strong> / {MAX_SELECTED_REFERENCES}
         </p>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
-          <p className="text-sm leading-6 text-slate-500">
-            Mostrando <strong>{visibleReferences.length}</strong> de{" "}
-            <strong>{references.length}</strong> fuentes en esta revision.
-          </p>
-          <p className="text-sm leading-6 text-slate-500">
-            El estado pasa a <strong>SOURCES_SELECTED</strong> cuando guardas entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} fuentes.
-          </p>
-        </div>
+        <p className="text-sm leading-6 text-slate-500">
+          Mostrando <strong>{visibleReferences.length}</strong> de <strong>{references.length}</strong>
+        </p>
       </div>
 
       <div className="mt-5 grid gap-2">
@@ -420,6 +369,27 @@ export function ReferenceSearchPanel({
         {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
         {info ? <p className="text-sm text-slate-500">{info}</p> : null}
       </div>
+
+      <details className="mt-4 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+          Ver contexto de busqueda
+        </summary>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          {intakeChecklist.map((item) => (
+            <article
+              className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4"
+              key={item.label}
+            >
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                {item.label}
+              </p>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                {item.ready ? item.value : "Pendiente"}
+              </p>
+            </article>
+          ))}
+        </div>
+      </details>
 
       {references.length === 0 ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
@@ -458,30 +428,26 @@ export function ReferenceSearchPanel({
                 <h3 className="font-[var(--font-heading)] text-lg font-semibold text-slate-950">
                   {item.reference.translatedTitle ?? item.reference.title}
                 </h3>
-                {item.reference.hasAutoTranslation ? (
-                  <p className="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Traduccion automatica desde {item.reference.sourceLanguage ?? "otro idioma"} hacia{" "}
-                    {item.reference.displayLanguage}
-                  </p>
-                ) : null}
-                {item.reference.hasAutoTranslation &&
-                item.reference.translatedTitle &&
-                item.reference.translatedTitle !== item.reference.title ? (
-                  <p className="mt-2 text-sm leading-6 text-slate-500">
-                    Titulo original: {item.reference.title}
-                  </p>
-                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
+                    {[item.reference.venue, item.reference.year].filter(Boolean).join(" | ") || "Sin fecha"}
+                  </span>
+                  {item.reference.abstract ? (
+                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
+                      Abstract
+                    </span>
+                  ) : null}
+                  {item.reference.hasAutoTranslation ? (
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
+                      Traducida
+                    </span>
+                  ) : null}
+                </div>
                 {renderAuthors(item.reference.authorsJson) ? (
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                  <p className="mt-3 text-sm leading-6 text-slate-600">
                     {renderAuthors(item.reference.authorsJson)}
                   </p>
                 ) : null}
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  {[item.reference.venue, item.reference.year].filter(Boolean).join(" | ")}
-                </p>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  DOI: {item.reference.doi ?? "No disponible"}
-                </p>
                 {item.reference.abstract ? (
                   <p className="mt-4 text-sm leading-7 text-slate-600">
                     {(item.reference.translatedAbstract ?? item.reference.abstract).slice(0, 320)}
@@ -490,24 +456,38 @@ export function ReferenceSearchPanel({
                       : ""}
                   </p>
                 ) : null}
-                {item.reference.hasAutoTranslation &&
-                item.reference.translatedAbstract &&
-                item.reference.abstract ? (
-                  <p className="mt-2 text-xs leading-6 text-slate-400">
-                    Abstract original disponible en el registro recuperado.
-                  </p>
-                ) : null}
-                {item.reference.landingPageUrl ? (
-                  <a
-                    className="mt-4 inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-950"
-                    href={item.reference.landingPageUrl}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    Ver fuente
-                    <ExternalLink className="ml-2 size-4" />
-                  </a>
-                ) : null}
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {item.reference.landingPageUrl ? (
+                    <a
+                      className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-950"
+                      href={item.reference.landingPageUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Ver fuente
+                      <ExternalLink className="ml-2 size-4" />
+                    </a>
+                  ) : null}
+
+                  <details className="text-sm text-slate-500">
+                    <summary className="cursor-pointer font-semibold text-slate-600">
+                      Ver detalles
+                    </summary>
+                    <div className="mt-3 grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
+                      <p>DOI: {item.reference.doi ?? "No disponible"}</p>
+                      {item.reference.hasAutoTranslation &&
+                      item.reference.translatedTitle &&
+                      item.reference.translatedTitle !== item.reference.title ? (
+                        <p>Titulo original: {item.reference.title}</p>
+                      ) : null}
+                      {item.reference.hasAutoTranslation &&
+                      item.reference.translatedAbstract &&
+                      item.reference.abstract ? (
+                        <p>Abstract original disponible en el registro recuperado.</p>
+                      ) : null}
+                    </div>
+                  </details>
+                </div>
               </div>
             </article>
           ))}
@@ -532,9 +512,7 @@ export function ReferenceSearchPanel({
       ) : null}
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm leading-6 text-slate-500">
-          Guarda la seleccion cuando tengas un set semilla suficientemente representativo.
-        </p>
+        <p className="text-sm leading-6 text-slate-500">Guarda la seleccion para continuar al blueprint.</p>
         <button
           className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
           disabled={isSaving || references.length === 0}

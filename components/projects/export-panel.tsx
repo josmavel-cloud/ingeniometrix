@@ -96,18 +96,16 @@ export function ExportPanel({
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8" id="exportacion">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl">
+        <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
             <FileArchive className="size-3.5 text-[var(--color-coral)]" />
             Exportacion
           </div>
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Prepara las salidas finales del MVP.
+            Descarga tus archivos.
           </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            Esta etapa ya queda representada en la UI para que el flujo completo se
-            entienda desde ahora. La conexion funcional de descargas puede llegar en
-            el siguiente tramo sin cambiar la estructura visual.
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Cuando el blueprint esta listo, puedes exportar el documento y los archivos de soporte.
           </p>
         </div>
 
@@ -131,40 +129,16 @@ export function ExportPanel({
         )}
       </div>
 
-      <div className="mt-6 rounded-[26px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.7)] p-5">
-        <p className="text-sm font-semibold text-[var(--color-ink)]">
-          Estado de la etapa
-        </p>
-        <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-          {canPrepare
-            ? "La base para exportar ya existe porque el proyecto tiene blueprint o llego a estado final. Las descargas ya pueden abrirse desde esta etapa."
-            : "Primero necesitamos un blueprint revisable. Luego activamos las salidas finales sin cambiar la navegacion."}
-        </p>
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-2">
-          {readinessItems.map((item) => (
-            <div
-              className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4"
-              key={item.label}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-[var(--color-ink)]">{item.label}</p>
-                <span
-                  className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
-                    item.complete
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                      : "border-[rgba(74,58,97,0.12)] bg-[rgba(244,241,248,0.9)] text-[var(--color-muted)]"
-                  }`}
-                >
-                  {item.complete ? "Listo" : "Pendiente"}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-                {item.description}
-              </p>
-            </div>
-          ))}
-        </div>
+      <div
+        className={`mt-6 rounded-[24px] border px-4 py-4 text-sm leading-6 ${
+          canPrepare
+            ? "border-[rgba(24,169,153,0.16)] bg-[rgba(213,247,239,0.42)] text-[var(--color-ink)]"
+            : "border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.72)] text-[var(--color-ink)]"
+        }`}
+      >
+        {canPrepare
+          ? "El blueprint ya esta listo para exportar."
+          : "Primero necesitas una version de blueprint para activar las descargas."}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
@@ -247,6 +221,36 @@ export function ExportPanel({
           );
         })}
       </div>
+
+      <details className="mt-6 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+          Ver estado de exportacion
+        </summary>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {readinessItems.map((item) => (
+            <div
+              className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4"
+              key={item.label}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--color-ink)]">{item.label}</p>
+                <span
+                  className={`inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${
+                    item.complete
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                      : "border-[rgba(74,58,97,0.12)] bg-[rgba(244,241,248,0.9)] text-[var(--color-muted)]"
+                  }`}
+                >
+                  {item.complete ? "Listo" : "Pendiente"}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                {item.description}
+              </p>
+            </div>
+          ))}
+        </div>
+      </details>
     </section>
   );
 }

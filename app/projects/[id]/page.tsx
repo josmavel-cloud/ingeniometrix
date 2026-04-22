@@ -102,7 +102,7 @@ export default async function ProjectDetailPage({
   return (
     <ProjectShell
       title={project.title}
-      description="Convierte tu tema en una ruta de investigacion mejor estructurada, con intake guiado, fuentes trazables y un siguiente paso siempre visible."
+      description="Avanza por etapas: intake, fuentes, blueprint y exportacion."
     >
       <ProjectContextRibbon
         degreeLevel={project.degreeLevel}
@@ -113,25 +113,6 @@ export default async function ProjectDetailPage({
         topicSeedText={project.topicSeedText?.trim() || project.title}
         universityLabel={getUniversityDisplayNameByCode(project.university)}
       />
-
-      <section className="grid gap-4 lg:grid-cols-4">
-        {stageCards.map((card) => (
-          <article
-            className={`rounded-[28px] p-5 ${card.active ? card.cardClassName : "surface-panel"}`}
-            key={card.step}
-          >
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
-              Paso {card.step}
-            </p>
-            <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-              {card.title}
-            </p>
-            <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              {card.description}
-            </p>
-          </article>
-        ))}
-      </section>
 
       <WorkflowStageNav items={stageCards} />
 
@@ -185,8 +166,10 @@ export default async function ProjectDetailPage({
             </div>
           </section>
 
-          <section className="surface-panel rounded-[32px] p-6 sm:p-8">
-            <p className="brand-kicker">Resumen del proyecto</p>
+          <details className="surface-panel rounded-[32px] p-6 sm:p-8">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+              Ver datos del proyecto
+            </summary>
             <div className="mt-5 grid gap-4">
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
@@ -227,21 +210,7 @@ export default async function ProjectDetailPage({
                 <p className="mt-2 text-sm leading-6 text-slate-700">{project.templateKey}</p>
               </div>
             </div>
-          </section>
-
-          <section className="surface-panel rounded-[32px] p-6 sm:p-8">
-            <p className="brand-kicker">
-              Como avanzar
-            </p>
-            <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              Un paso bien hecho desbloquea el siguiente.
-            </h2>
-            <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-              Primero cierra la etapa de tema. Despues deja una base suficiente en
-              el intake, busca y guarda fuentes semilla, y solo entonces conviene
-              generar un blueprint.
-            </p>
-          </section>
+          </details>
         </aside>
 
         <section className="grid gap-6">

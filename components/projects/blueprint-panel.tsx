@@ -293,16 +293,16 @@ export function BlueprintPanel({
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl">
+        <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
             <FileStack className="size-3.5 text-lime-500" />
             Blueprint de investigacion
           </div>
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Genera una version estructurada del plan de tesis.
+            Genera el blueprint.
           </h2>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            Este paso usa el intake y las fuentes seleccionadas para construir un blueprint en espanol, con trazabilidad a las referencias elegidas por el usuario.
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Usa tu intake y las fuentes elegidas para construir una primera version trazable.
           </p>
         </div>
 
@@ -317,81 +317,41 @@ export function BlueprintPanel({
         </button>
       </div>
 
-      <section
-        className={`mt-6 rounded-[28px] p-5 ${
-          canGenerate ? "brand-card-mint" : "brand-card-lilac"
+      <div
+        className={`mt-6 rounded-[24px] border px-4 py-4 text-sm leading-6 ${
+          canGenerate
+            ? "border-[rgba(24,169,153,0.16)] bg-[rgba(213,247,239,0.42)] text-[var(--color-ink)]"
+            : "border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.72)] text-[var(--color-ink)]"
         }`}
       >
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.54)]">
-              Puente hacia blueprint
-            </p>
-            <p className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-              {canGenerate
-                ? "Ya puedes convertir tus fuentes en una estructura inicial."
-                : "Aun falta cerrar la preparacion antes de generar."}
-            </p>
-            <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-              {canGenerate
-                ? "Ingeniometrix usara el intake y las fuentes elegidas para proponer objetivo general, preguntas, supuestos y un chequeo de coherencia trazable."
-                : "La generacion funciona mejor cuando ya existe base minima y un set semilla de fuentes suficientemente representativo."}
-            </p>
-          </div>
+        {canGenerate
+          ? `Listo para generar. Tienes ${selectedReferenceCount} fuente(s) seleccionada(s).`
+          : "Completa intake minimo y guarda fuentes antes de generar el blueprint."}
+      </div>
 
-          <div className="rounded-[24px] bg-white/72 px-4 py-4 text-sm leading-6 text-[rgba(23,19,31,0.72)] lg:min-w-[250px]">
-            <p>
-              <strong>Checklist:</strong> {readyCount}/3
-            </p>
-            <p>
-              <strong>Estado:</strong> {statusMeta.label}
-            </p>
-            <p>
-              <strong>Siguiente accion:</strong>{" "}
-              {canGenerate ? "Generar blueprint" : "Cerrar etapa de fuentes"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+      <details className="mt-4 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
+          Ver preparacion
+        </summary>
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {preparationChecklist.map((item) => (
             <article
-              className="rounded-[22px] border border-white/55 bg-white/68 p-4"
+              className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4"
               key={item.label}
             >
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
                 {item.label}
               </p>
-              <div className="mt-2 inline-flex rounded-full bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.62)]">
-                {item.ready ? "Listo" : "Pendiente"}
-              </div>
-              <p className="mt-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+              <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
                 {item.detail}
               </p>
             </article>
           ))}
         </div>
-
-        <div className="mt-5 rounded-[24px] border border-white/55 bg-white/68 p-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-            Lo que veras al generar
-          </p>
-          <div className="mt-3 grid gap-3 lg:grid-cols-4">
-            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Objetivo general
-            </div>
-            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Preguntas y objetivos especificos
-            </div>
-            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Supuestos y referencias usadas
-            </div>
-            <div className="rounded-[20px] bg-white px-4 py-3 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-              Reporte de coherencia
-            </div>
-          </div>
-        </div>
-      </section>
+        <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">
+          Estado actual: <strong>{statusMeta.label}</strong>. Checklist {readyCount}/3.
+        </p>
+      </details>
 
       {!canGenerate ? (
         <p className="mt-5 text-sm leading-6 text-slate-500">
@@ -460,23 +420,77 @@ export function BlueprintPanel({
             </p>
           </div>
 
-          {blueprint?.general_objective ? (
+          {(blueprint?.general_objective || (blueprint?.specific_objectives ?? []).length > 0) ? (
             <div className="rounded-[24px] border border-slate-200 bg-white p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Objetivo general
+                Vista ejecutiva
               </p>
-              <p className="mt-3 text-sm leading-7 text-slate-700">
-                {blueprint.general_objective}
+              {blueprint?.general_objective ? (
+                <p className="mt-3 text-sm leading-7 text-slate-700">
+                  {blueprint.general_objective}
+                </p>
+              ) : null}
+
+              <div className="mt-5 grid gap-6 xl:grid-cols-2">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Objetivos especificos
+                  </p>
+                  <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
+                    {(blueprint?.specific_objectives ?? []).map((item, index) => (
+                      <li key={item}>
+                        * {renderHighlightedText(item, specificObjectiveKeywords[index] ?? [])}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Preguntas
+                  </p>
+                  <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
+                    {(blueprint?.research_questions ?? []).map((item, index) => (
+                      <li key={item}>
+                        * {renderHighlightedText(item, questionKeywords[index] ?? [])}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+              Supuestos
+            </p>
+            <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
+              {(blueprint?.assumptions ?? []).length > 0 ? (
+                blueprint?.assumptions?.map((item) => <li key={item}>* {item}</li>)
+              ) : (
+                <li>No se registraron supuestos en esta version.</li>
+              )}
+            </ul>
+          </div>
+
+          {(blueprint?.engine_warnings ?? []).length > 0 ? (
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                Alertas del motor
               </p>
+              <ul className="mt-3 grid gap-2 text-sm leading-7 text-amber-900">
+                {blueprint?.engine_warnings?.map((item) => <li key={item}>* {item}</li>)}
+              </ul>
             </div>
           ) : null}
 
           {(blueprint?.antecedent_synthesis?.summaries ?? []).length > 0 ? (
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Antecedentes clave
-              </p>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
+            <details className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+                Ver antecedentes clave
+              </summary>
+              <p className="mt-4 text-sm leading-7 text-slate-600">
                 {blueprint?.antecedent_synthesis?.gap_overview}
               </p>
 
@@ -520,130 +534,86 @@ export function BlueprintPanel({
                   </ul>
                 </div>
               ) : null}
-            </div>
+            </details>
           ) : null}
 
-          <div className="grid gap-6 xl:grid-cols-2">
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Objetivos especificos
-              </p>
-              <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
-                {(blueprint?.specific_objectives ?? []).map((item, index) => (
-                  <li key={item}>
-                    * {renderHighlightedText(item, specificObjectiveKeywords[index] ?? [])}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          <details className="rounded-[24px] border border-slate-200 bg-white p-5">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-900">
+              Ver referencias y coherencia
+            </summary>
 
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Preguntas de investigacion
-              </p>
-              <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
-                {(blueprint?.research_questions ?? []).map((item, index) => (
-                  <li key={item}>
-                    * {renderHighlightedText(item, questionKeywords[index] ?? [])}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Supuestos
-            </p>
-            <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
-              {(blueprint?.assumptions ?? []).length > 0 ? (
-                blueprint?.assumptions?.map((item) => <li key={item}>* {item}</li>)
-              ) : (
-                <li>No se registraron supuestos en esta version.</li>
-              )}
-            </ul>
-          </div>
-
-          {(blueprint?.engine_warnings ?? []).length > 0 ? (
-            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                Alertas del motor
-              </p>
-              <ul className="mt-3 grid gap-2 text-sm leading-7 text-amber-900">
-                {blueprint?.engine_warnings?.map((item) => <li key={item}>* {item}</li>)}
-              </ul>
-            </div>
-          ) : null}
-
-          <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Referencias usadas
-            </p>
-            <ul className="mt-3 grid gap-3 text-sm leading-7 text-slate-700">
-              {(blueprint?.references_used ?? []).map((reference) => (
-                <li key={reference.reference_id}>
-                  <strong>{reference.reference_id}</strong>: {reference.title}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {coherence ? (
-            <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Reporte de coherencia
-              </p>
-
-              <div className="mt-4 grid gap-3">
-                {coherenceItems.map(({ label, check }) =>
-                  check ? (
-                    <div
-                      className="flex flex-col gap-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4"
-                      key={label}
-                    >
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                        <p className="text-sm font-semibold text-slate-900">{label}</p>
-                        <span
-                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${renderStatusPill(check.status)}`}
-                        >
-                          {check.status}
-                        </span>
-                      </div>
-                      <p className="text-sm leading-6 text-slate-600">{check.notes}</p>
-                    </div>
-                  ) : null,
-                )}
+            <div className="mt-5 grid gap-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                  Referencias usadas
+                </p>
+                <ul className="mt-3 grid gap-3 text-sm leading-7 text-slate-700">
+                  {(blueprint?.references_used ?? []).map((reference) => (
+                    <li key={reference.reference_id}>
+                      <strong>{reference.reference_id}</strong>: {reference.title}
+                    </li>
+                  ))}
+                </ul>
               </div>
 
-              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+              {coherence ? (
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    Faltantes detectados
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                    Reporte de coherencia
                   </p>
-                  <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
-                    {(coherence.missing_information_flags ?? []).length > 0 ? (
-                      coherence.missing_information_flags?.map((item) => (
-                        <li key={item}>* {item}</li>
-                      ))
-                    ) : (
-                      <li>No se detectaron faltantes relevantes.</li>
-                    )}
-                  </ul>
-                </div>
 
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Riesgos</p>
-                  <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
-                    {(coherence.risk_flags ?? []).length > 0 ? (
-                      coherence.risk_flags?.map((item) => <li key={item}>* {item}</li>)
-                    ) : (
-                      <li>No se detectaron riesgos mayores en esta version.</li>
+                  <div className="mt-4 grid gap-3">
+                    {coherenceItems.map(({ label, check }) =>
+                      check ? (
+                        <div
+                          className="flex flex-col gap-3 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4"
+                          key={label}
+                        >
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                            <p className="text-sm font-semibold text-slate-900">{label}</p>
+                            <span
+                              className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${renderStatusPill(check.status)}`}
+                            >
+                              {check.status}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-6 text-slate-600">{check.notes}</p>
+                        </div>
+                      ) : null,
                     )}
-                  </ul>
+                  </div>
+
+                  <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        Faltantes detectados
+                      </p>
+                      <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
+                        {(coherence.missing_information_flags ?? []).length > 0 ? (
+                          coherence.missing_information_flags?.map((item) => (
+                            <li key={item}>* {item}</li>
+                          ))
+                        ) : (
+                          <li>No se detectaron faltantes relevantes.</li>
+                        )}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Riesgos</p>
+                      <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
+                        {(coherence.risk_flags ?? []).length > 0 ? (
+                          coherence.risk_flags?.map((item) => <li key={item}>* {item}</li>)
+                        ) : (
+                          <li>No se detectaron riesgos mayores en esta version.</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
-          ) : null}
+          </details>
         </div>
       )}
     </section>
