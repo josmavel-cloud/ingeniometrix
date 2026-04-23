@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { generateBlueprintVersion } from "@/server/blueprint-v2";
 import {
-  generateBlueprintVersion,
   listBlueprintVersionsForUser,
 } from "@/server/blueprint/blueprint-service";
 import { toBlueprintApiError } from "@/server/blueprint/blueprint-errors";

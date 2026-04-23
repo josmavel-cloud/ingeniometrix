@@ -42,16 +42,22 @@ function normalizeOptionalText(value: unknown) {
     return undefined;
   }
 
-  const trimmed = value.trim();
+  const trimmed = value.replace(/\u0000/g, "").trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeRequiredText(value: unknown, fieldName: string) {
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (typeof value !== "string") {
     throw new Error(`El campo ${fieldName} es obligatorio.`);
   }
 
-  return value.trim();
+  const normalized = value.replace(/\u0000/g, "").trim();
+
+  if (normalized.length === 0) {
+    throw new Error(`El campo ${fieldName} es obligatorio.`);
+  }
+
+  return normalized;
 }
 
 export function parseCreateProjectInput(raw: unknown): CreateProjectInput {

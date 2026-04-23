@@ -13,6 +13,8 @@
     "debug:blueprint": "node scripts/debug-blueprint-package.mjs",
     "debug:blueprint:reuse": "node scripts/debug-blueprint-package.mjs --reuse-server",
     "debug:blueprint:report": "node scripts/debug-blueprint-report.mjs",
+    "debug:master-blueprint": "node scripts/debug-master-blueprint-engine.mjs",
+    "debug:master-blueprint:reuse": "node scripts/debug-master-blueprint-engine.mjs --reuse-server",
     "debug:workflow": "node scripts/debug-workflow-runner.mjs",
     "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
     "smoke:deployment": "node scripts/smoke-deployment.mjs",
