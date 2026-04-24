@@ -9,7 +9,7 @@ import {
   type ProjectUniversityCode,
 } from "@/lib/peru-universities";
 
-import { generateTopicSuggestionsInRealTime } from "./topic-suggestion-generator";
+import { generateQuickIdeaDraft } from "./quick-idea-draft-generator";
 import { resolveAndRecordTopicArea } from "./topic-area-service";
 
 type GenerateIdeaDraftsInput = {
@@ -20,6 +20,7 @@ type GenerateIdeaDraftsInput = {
   topicAreaId?: string | null;
   topicAreaLabel?: string | null;
   seedText?: string | null;
+  existingTitles?: string[];
 };
 
 type IdeaDraft = {
@@ -46,27 +47,24 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
   });
   const areaLabel = resolvedArea.topicAreaLabel ?? input.topicAreaLabel ?? null;
   const universityContext = buildUniversityResearchContext(input.university);
+  const existingTitles = Array.isArray(input.existingTitles)
+    ? input.existingTitles
+    : [];
 
   try {
-    const suggestions = await generateTopicSuggestionsInRealTime({
+    const bundle = await generateQuickIdeaDraft({
       university: getUniversityDisplayNameByCode(input.university),
       universityContext: universityContext.contextSummary,
       degreeLevel: input.degreeLevel,
       program: input.program,
       areaLabel,
       seedText,
-      taxonomyHints: areaLabel ? [areaLabel] : [],
+      existingTitles,
     });
 
     return {
-      generatedIdea: suggestions[0]?.title ?? seedText,
-      relatedIdeas: suggestions.map(
-        (suggestion) =>
-          ({
-            title: suggestion.title,
-            rationale: suggestion.rationale,
-          }) satisfies IdeaDraft,
-      ),
+      generatedIdea: bundle.generatedIdea,
+      relatedIdeas: bundle.relatedIdeas,
       resolvedArea,
     };
   } catch {
@@ -76,7 +74,7 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
       university: input.university,
       templateKey: input.templateKey,
       interestText: seedText,
-      limit: 3,
+      limit: 5,
     }).map(
       (entry) =>
         ({
@@ -84,10 +82,16 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
           rationale: entry.reasons[0] ?? "Idea breve relacionada con tu area.",
         }) satisfies IdeaDraft,
     );
+    const normalizedExistingTitles = new Set(
+      existingTitles.map((title) => normalizeSearchText(title)),
+    );
+    const uniqueFallbackIdeas = fallbackSuggestions.filter(
+      (idea) => !normalizedExistingTitles.has(normalizeSearchText(idea.title)),
+    );
 
-    const relatedIdeas =
-      fallbackSuggestions.length > 0
-        ? fallbackSuggestions
+    const allIdeas =
+      uniqueFallbackIdeas.length > 0
+        ? uniqueFallbackIdeas
         : [
             {
               title: areaLabel
@@ -97,11 +101,12 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
                 "Idea base generada como respaldo para que puedas arrancar y editarla manualmente.",
             },
           ];
-
-    const generatedIdea =
-      relatedIdeas.find((item) =>
-        normalizeSearchText(item.title).includes(normalizeSearchText(areaLabel ?? "")),
-      )?.title ?? relatedIdeas[0]?.title ?? seedText;
+    const generatedIdea = allIdeas[0] ?? {
+      title: seedText,
+      rationale:
+        "Idea base generada como respaldo para que puedas arrancar y editarla manualmente.",
+    };
+    const relatedIdeas = allIdeas.slice(1, 5);
 
     return {
       generatedIdea,

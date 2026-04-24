@@ -14,6 +14,8 @@ import {
   BookOpenText,
   Building2,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
   GraduationCap,
   Lightbulb,
@@ -57,6 +59,12 @@ type IdeaDraft = {
   title: string;
   rationale: string;
 };
+
+type NormalizedAreaResult = TopicAreaOption & {
+  confidence: "high" | "medium" | "low";
+};
+
+const MAX_GENERATED_IDEAS = 5;
 
 async function readJsonSafe<T>(response: Response) {
   try {
@@ -114,6 +122,27 @@ function getSuggestionCardClassName(tone: TopicSuggestionTone, isActive: boolean
   ].join(" ");
 }
 
+function buildDefaultAreaOptions() {
+  return PROJECT_CAREERS.map((career) => ({
+    label: career.label,
+    canonicalAreaId: career.id,
+    canonicalAreaLabel: career.label,
+    source: "catalog" as const,
+  }));
+}
+
+function mergeTopicAreaOptions(...groups: TopicAreaOption[][]) {
+  const merged = new Map<string, TopicAreaOption>();
+
+  for (const group of groups) {
+    for (const option of group) {
+      merged.set(normalizeSearchText(option.label), option);
+    }
+  }
+
+  return Array.from(merged.values());
+}
+
 export function CreateProjectForm() {
   const router = useRouter();
   const [degreeLevel, setDegreeLevel] = useState<DegreeLevel>("POSGRADO");
@@ -125,22 +154,21 @@ export function CreateProjectForm() {
   const [interestText, setInterestText] = useState("");
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
   const [areaOptions, setAreaOptions] = useState<TopicAreaOption[]>(
-    PROJECT_CAREERS.slice(0, 6).map((career) => ({
-      label: career.label,
-      canonicalAreaId: career.id,
-      canonicalAreaLabel: career.label,
-      source: "catalog",
-    })),
+    buildDefaultAreaOptions(),
   );
   const [isAreaDropdownOpen, setIsAreaDropdownOpen] = useState(false);
-  const [quickIdeaOptions, setQuickIdeaOptions] = useState<IdeaDraft[]>([]);
+  const [generatedIdeas, setGeneratedIdeas] = useState<IdeaDraft[]>([]);
+  const [activeGeneratedIdeaIndex, setActiveGeneratedIdeaIndex] = useState(0);
+  const [relatedIdeaOptions, setRelatedIdeaOptions] = useState<IdeaDraft[]>([]);
   const [ideaDraftError, setIdeaDraftError] = useState<string | null>(null);
   const [ideaDraftMessage, setIdeaDraftMessage] = useState<string | null>(null);
+  const [normalizedAreaMessage, setNormalizedAreaMessage] = useState<string | null>(null);
   const [isProgramEditable, setIsProgramEditable] = useState(false);
   const [hasManualProgram, setHasManualProgram] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isGeneratingIdeas, startIdeaTransition] = useTransition();
+  const [isNormalizingArea, startNormalizingAreaTransition] = useTransition();
   const deferredInterestText = useDeferredValue(interestText);
   const deferredAreaQuery = useDeferredValue(areaQuery);
 
@@ -182,7 +210,7 @@ export function CreateProjectForm() {
         university,
         templateKey: SYSTEM_MASTER_TEMPLATE_KEY,
         interestText: deferredInterestText,
-        limit: 4,
+        limit: 5,
       }),
     [deferredInterestText, degreeLevel, topicAreaId, university],
   );
@@ -191,12 +219,36 @@ export function CreateProjectForm() {
     suggestionEntries.find((entry) => entry.preset.id === selectedSuggestionId)?.preset ??
     suggestionEntries[0]?.preset ??
     null;
+  const activeGeneratedIdea = generatedIdeas[activeGeneratedIdeaIndex] ?? null;
   const hasCustomIdea = interestText.trim().length > 0;
-  const visibleSuggestionEntries = suggestionEntries.slice(0, 3);
+  const visibleSuggestionEntries = suggestionEntries.slice(0, 5);
   const normalizedAreaQuery = normalizeSearchText(areaQuery);
   const hasExactAreaOption = areaOptions.some(
     (option) => normalizeSearchText(option.label) === normalizedAreaQuery,
   );
+  const canGenerateIdeas =
+    generatedIdeas.length < MAX_GENERATED_IDEAS &&
+    (!isGeneratingIdeas && (!!topicAreaLabel || interestText.trim().length > 0));
+
+  function resetGeneratedIdeas() {
+    setGeneratedIdeas([]);
+    setActiveGeneratedIdeaIndex(0);
+    setRelatedIdeaOptions([]);
+    setIdeaDraftMessage(null);
+    setIdeaDraftError(null);
+  }
+
+  function applyGeneratedIdea(index: number) {
+    const idea = generatedIdeas[index];
+
+    if (!idea) {
+      return;
+    }
+
+    setActiveGeneratedIdeaIndex(index);
+    setInterestText(idea.title);
+    setIdeaDraftMessage(`Estas viendo la idea ${index + 1} de ${generatedIdeas.length}.`);
+  }
 
   useEffect(() => {
     let isCancelled = false;
@@ -215,7 +267,9 @@ export function CreateProjectForm() {
           return;
         }
 
-        setAreaOptions(payload.suggestions);
+        setAreaOptions(
+          mergeTopicAreaOptions(buildDefaultAreaOptions(), payload.suggestions),
+        );
       } catch {
         // Mantiene las opciones locales sin romper la pantalla.
       }
@@ -225,6 +279,72 @@ export function CreateProjectForm() {
       isCancelled = true;
     };
   }, [deferredAreaQuery]);
+
+  useEffect(() => {
+    const trimmedQuery = deferredAreaQuery.trim();
+
+    if (!trimmedQuery || hasExactAreaOption) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const timer = window.setTimeout(() => {
+      startNormalizingAreaTransition(async () => {
+        try {
+          const response = await fetch("/api/topic-areas", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              label: trimmedQuery,
+            }),
+          });
+          const payload = await readJsonSafe<{
+            error?: string;
+            normalizedArea?: NormalizedAreaResult | null;
+          }>(response);
+
+          if (isCancelled || !response.ok || !payload?.normalizedArea) {
+            return;
+          }
+
+          const normalizedArea = payload.normalizedArea;
+          const normalizedOption: TopicAreaOption = {
+            label: normalizedArea.label,
+            canonicalAreaId: normalizedArea.canonicalAreaId,
+            canonicalAreaLabel: normalizedArea.canonicalAreaLabel,
+            source: normalizedArea.source,
+          };
+
+          setAreaOptions((current) =>
+            mergeTopicAreaOptions([normalizedOption], current, buildDefaultAreaOptions()),
+          );
+
+          if (
+            normalizedArea.confidence !== "low" &&
+            normalizeSearchText(trimmedQuery) !== normalizeSearchText(normalizedArea.label)
+          ) {
+            setAreaQuery(normalizedArea.label);
+          }
+
+          setNormalizedAreaMessage(
+            normalizedArea.confidence === "low"
+              ? `Registramos "${normalizedArea.label}" como area personalizada.`
+              : `Normalizamos el area como "${normalizedArea.label}".`,
+          );
+        } catch {
+          // Evita romper el formulario si la normalizacion falla.
+        }
+      });
+    }, 450);
+
+    return () => {
+      isCancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [deferredAreaQuery, hasExactAreaOption, startNormalizingAreaTransition]);
 
   useEffect(() => {
     if (hasManualProgram) {
@@ -242,7 +362,6 @@ export function CreateProjectForm() {
 
   async function requestIdeaDrafts(options?: {
     seedText?: string;
-    fillGeneratedIdea?: boolean;
   }) {
     const normalizedSeedText = options?.seedText?.trim() ?? interestText.trim();
 
@@ -268,11 +387,12 @@ export function CreateProjectForm() {
             topicAreaId: topicAreaId ?? undefined,
             topicAreaLabel: topicAreaLabel ?? undefined,
             seedText: normalizedSeedText || undefined,
+            existingTitles: generatedIdeas.map((idea) => idea.title),
           }),
         });
         const payload = await readJsonSafe<{
           error?: string;
-          generatedIdea?: string;
+          generatedIdea?: IdeaDraft;
           relatedIdeas?: IdeaDraft[];
           resolvedArea?: {
             topicAreaId: string | null;
@@ -280,31 +400,45 @@ export function CreateProjectForm() {
           };
         }>(response);
 
-        if (!response.ok || !payload?.relatedIdeas) {
+        if (!response.ok || !payload?.generatedIdea) {
           setIdeaDraftError(
             payload?.error ?? "No se pudieron preparar ideas relacionadas.",
           );
           return;
         }
 
-        setQuickIdeaOptions(payload.relatedIdeas.slice(0, 3));
+        const normalizedGeneratedTitle = normalizeSearchText(payload.generatedIdea.title);
+        const nextIdeas = (() => {
+          const alreadyExists = generatedIdeas.some(
+            (idea) =>
+              normalizeSearchText(idea.title) === normalizedGeneratedTitle,
+          );
+
+          if (alreadyExists) {
+            return generatedIdeas;
+          }
+
+          return [...generatedIdeas, payload.generatedIdea].slice(0, MAX_GENERATED_IDEAS);
+        })();
+        const nextIndex = Math.max(
+          nextIdeas.findIndex(
+            (idea) => normalizeSearchText(idea.title) === normalizedGeneratedTitle,
+          ),
+          0,
+        );
+
+        setGeneratedIdeas(nextIdeas);
+        setActiveGeneratedIdeaIndex(nextIndex);
+        setRelatedIdeaOptions(payload.relatedIdeas?.slice(0, 4) ?? []);
 
         if (payload.resolvedArea?.topicAreaLabel && !areaQuery.trim()) {
           setAreaQuery(payload.resolvedArea.topicAreaLabel);
         }
 
-        if (options?.fillGeneratedIdea ?? true) {
-          setInterestText(
-            payload.generatedIdea ??
-              payload.relatedIdeas[0]?.title ??
-              normalizedSeedText,
-          );
-          setIdeaDraftMessage(
-            "Cargamos una idea inicial editable basada en tu area.",
-          );
-        } else {
-          setIdeaDraftMessage("Ya tienes ideas relacionadas para arrancar mas rapido.");
-        }
+        setInterestText(payload.generatedIdea.title ?? normalizedSeedText);
+        setIdeaDraftMessage(
+          `Generamos ${nextIdeas.length} de ${MAX_GENERATED_IDEAS} ideas disponibles para esta base.`,
+        );
       } catch {
         setIdeaDraftError(
           "No pudimos generar ideas ahora. Revisa la configuracion LLM o intenta de nuevo.",
@@ -323,7 +457,7 @@ export function CreateProjectForm() {
     }
 
     startTransition(async () => {
-      const trimmedIdea = interestText.trim();
+      const trimmedIdea = (activeGeneratedIdea?.title ?? interestText).trim();
       const usingCustomIdea = trimmedIdea.length > 0;
 
       const response = await fetch("/api/projects", {
@@ -452,6 +586,8 @@ export function CreateProjectForm() {
                   window.setTimeout(() => setIsAreaDropdownOpen(false), 120);
                 }}
                 onChange={(event) => {
+                  resetGeneratedIdeas();
+                  setNormalizedAreaMessage(null);
                   setAreaQuery(event.target.value);
                   setIsAreaDropdownOpen(true);
                 }}
@@ -484,6 +620,8 @@ export function CreateProjectForm() {
                         key={`${option.source}-${option.label}`}
                         onMouseDown={(event) => {
                           event.preventDefault();
+                          resetGeneratedIdeas();
+                          setNormalizedAreaMessage(null);
                           setAreaQuery(option.label);
                           setIsAreaDropdownOpen(false);
                         }}
@@ -499,6 +637,8 @@ export function CreateProjectForm() {
                       className="mt-1 flex w-full items-center justify-between rounded-[16px] border border-dashed border-[rgba(74,58,97,0.12)] px-3 py-3 text-left text-sm text-[var(--color-ink)] hover:bg-[rgba(74,58,97,0.04)]"
                       onMouseDown={(event) => {
                         event.preventDefault();
+                        resetGeneratedIdeas();
+                        setNormalizedAreaMessage(null);
                         setIsAreaDropdownOpen(false);
                       }}
                       type="button"
@@ -511,8 +651,18 @@ export function CreateProjectForm() {
               ) : null}
             </div>
             <p className="text-sm leading-6 text-[var(--color-muted)]">
-              Puedes elegir una opcion sugerida o escribir un area propia. La normalizaremos al guardar el proyecto.
+              Puedes elegir una opcion sugerida o escribir un area propia. La normalizaremos y registraremos en tiempo real.
             </p>
+            {normalizedAreaMessage ? (
+              <p className="text-sm text-emerald-700">
+                {normalizedAreaMessage}
+                {isNormalizingArea ? " Ajustando..." : ""}
+              </p>
+            ) : isNormalizingArea ? (
+              <p className="text-sm text-[var(--color-muted)]">
+                Validando semanticamente el area...
+              </p>
+            ) : null}
           </div>
 
           <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
@@ -530,30 +680,81 @@ export function CreateProjectForm() {
               </div>
               <button
                 className="brand-button-secondary px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-                disabled={isGeneratingIdeas || (!topicAreaLabel && interestText.trim().length === 0)}
-                onClick={() => requestIdeaDrafts({ fillGeneratedIdea: true })}
+                disabled={!canGenerateIdeas}
+                onClick={() => requestIdeaDrafts()}
                 type="button"
               >
                 <WandSparkles className="mr-2 size-4" />
-                {isGeneratingIdeas ? "Generando..." : "Generar idea"}
+                {isGeneratingIdeas
+                  ? "Generando..."
+                  : generatedIdeas.length >= MAX_GENERATED_IDEAS
+                    ? "Limite alcanzado"
+                    : "Generar idea"}
               </button>
             </div>
             <textarea
               className="brand-textarea"
               id="project-interest"
-              onChange={(event) => setInterestText(event.target.value)}
+              onChange={(event) => {
+                resetGeneratedIdeas();
+                setInterestText(event.target.value);
+              }}
               placeholder="Escribe el problema o tema que quieres investigar."
               rows={4}
               value={interestText}
             />
             <p className="text-sm leading-6 text-[var(--color-muted)]">
-              Si escribes aqui, esta idea sera la prioridad en la siguiente etapa.
+              Si escribes aqui, esta idea sera la prioridad en la siguiente etapa. En este paso solo generamos el tema general.
             </p>
             {ideaDraftError ? (
               <p className="text-sm text-rose-600">{ideaDraftError}</p>
             ) : null}
             {ideaDraftMessage ? (
               <p className="text-sm text-emerald-700">{ideaDraftMessage}</p>
+            ) : null}
+            {generatedIdeas.length > 0 ? (
+              <div className="rounded-[22px] border border-[rgba(74,58,97,0.08)] bg-[rgba(250,247,253,0.9)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--color-ink)]">
+                      Idea generada actual
+                    </p>
+                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                      {activeGeneratedIdeaIndex + 1}/{generatedIdeas.length} ideas
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      aria-label="Idea anterior"
+                      className="inline-flex size-9 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
+                      disabled={activeGeneratedIdeaIndex === 0}
+                      onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex - 1)}
+                      type="button"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                    <button
+                      aria-label="Idea siguiente"
+                      className="inline-flex size-9 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
+                      disabled={activeGeneratedIdeaIndex >= generatedIdeas.length - 1}
+                      onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex + 1)}
+                      type="button"
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                  </div>
+                </div>
+                {activeGeneratedIdea ? (
+                  <div className="mt-3 grid gap-2">
+                    <p className="font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
+                      {activeGeneratedIdea.title}
+                    </p>
+                    <p className="text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+                      {activeGeneratedIdea.rationale}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
@@ -615,36 +816,33 @@ export function CreateProjectForm() {
         </div>
       </details>
 
-      <details
-        className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5"
-        onToggle={(event) => {
-          const details = event.currentTarget;
-
-          if (details.open && quickIdeaOptions.length === 0) {
-            void requestIdeaDrafts({ fillGeneratedIdea: false });
-          }
-        }}
-      >
+      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
           {hasCustomIdea
-            ? "Usar una idea relacionada o una base del catalogo"
-            : "No tengo idea propia: usar una idea rapida"}
+            ? "Ver temas relacionados con tu idea"
+            : "Explorar temas relacionados dentro del area"}
         </summary>
         <div className="mt-4 grid gap-4">
           <p className="text-sm leading-6 text-[var(--color-muted)]">
-            Si ya escribiste una idea, priorizaremos variantes cercanas. Si no, te mostraremos una base rapida dentro del area elegida.
+            Aqui solo mostramos temas relacionados con tu idea actual y con la carrera elegida, ya sea por variantes generadas o por el catalogo.
           </p>
 
-          {quickIdeaOptions.length > 0 ? (
+          {relatedIdeaOptions.length > 0 ? (
             <div className="grid gap-3">
-              {quickIdeaOptions.slice(0, 3).map((idea, index) => (
+              <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
+                Variantes relacionadas
+              </p>
+              {relatedIdeaOptions.map((idea, index) => (
                 <button
                   className={getSuggestionCardClassName(
                     index === 0 ? "mint" : index === 1 ? "lilac" : "gold",
                     normalizeSearchText(interestText) === normalizeSearchText(idea.title),
                   )}
                   key={`${idea.title}-${index}`}
-                  onClick={() => setInterestText(idea.title)}
+                  onClick={() => {
+                    resetGeneratedIdeas();
+                    setInterestText(idea.title);
+                  }}
                   type="button"
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -666,6 +864,9 @@ export function CreateProjectForm() {
           ) : null}
 
           <div className="grid gap-3">
+            <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
+              Temas del catalogo relacionados
+            </p>
             {visibleSuggestionEntries.map((entry) => {
               const isActive = entry.preset.id === selectedSuggestion?.id;
 

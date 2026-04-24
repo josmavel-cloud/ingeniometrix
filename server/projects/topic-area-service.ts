@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { PROJECT_CAREERS } from "@/lib/project-presets";
 import { getTopicAreaLabel, normalizeSearchText } from "@/lib/topic-suggestion-scoring";
+import { normalizeTopicAreaSemantically } from "@/server/projects/topic-area-normalizer";
 
 type TopicAreaSuggestion = {
   label: string;
@@ -13,6 +14,8 @@ type ResolveTopicAreaInput = {
   topicAreaId?: string | null;
   topicAreaLabel?: string | null;
 };
+
+type TopicAreaMatchConfidence = "high" | "medium" | "low";
 
 function getCatalogCareerById(careerId: string | null | undefined) {
   if (!careerId) {
@@ -63,6 +66,55 @@ function findBestCareerMatch(label: string | null | undefined) {
   return bestScore > 0 ? bestMatch : null;
 }
 
+function evaluateCareerMatch(label: string | null | undefined) {
+  const normalizedLabel = normalizeSearchText(label ?? "");
+
+  if (!normalizedLabel) {
+    return {
+      career: null,
+      confidence: "low" as TopicAreaMatchConfidence,
+    };
+  }
+
+  const exactMatch =
+    PROJECT_CAREERS.find(
+      (career) => normalizeSearchText(career.label) === normalizedLabel,
+    ) ?? null;
+
+  if (exactMatch) {
+    return {
+      career: exactMatch,
+      confidence: "high" as TopicAreaMatchConfidence,
+    };
+  }
+
+  const partialMatch = findBestCareerMatch(label);
+
+  if (!partialMatch) {
+    return {
+      career: null,
+      confidence: "low" as TopicAreaMatchConfidence,
+    };
+  }
+
+  const normalizedCareerLabel = normalizeSearchText(partialMatch.label);
+
+  if (
+    normalizedCareerLabel.includes(normalizedLabel) ||
+    normalizedLabel.includes(normalizedCareerLabel)
+  ) {
+    return {
+      career: partialMatch,
+      confidence: "medium" as TopicAreaMatchConfidence,
+    };
+  }
+
+  return {
+    career: partialMatch,
+    confidence: "low" as TopicAreaMatchConfidence,
+  };
+}
+
 function toTopicAreaSuggestion(input: {
   label: string;
   canonicalAreaId?: string | null;
@@ -75,6 +127,39 @@ function toTopicAreaSuggestion(input: {
     canonicalAreaLabel: input.canonicalAreaLabel ?? null,
     source: input.source,
   } satisfies TopicAreaSuggestion;
+}
+
+async function persistTopicAreaEntry(input: {
+  displayLabel: string;
+  catalogCareer?: (typeof PROJECT_CAREERS)[number] | null;
+}) {
+  const normalizedLabel = normalizeSearchText(input.displayLabel);
+
+  await prisma.topicAreaCatalogEntry.upsert({
+    where: {
+      normalizedLabel,
+    },
+    update: {
+      displayLabel: input.displayLabel,
+      canonicalAreaId: input.catalogCareer?.id ?? null,
+      canonicalAreaLabel: input.catalogCareer?.label ?? null,
+      usageCount: {
+        increment: 1,
+      },
+    },
+    create: {
+      normalizedLabel,
+      displayLabel: input.displayLabel,
+      canonicalAreaId: input.catalogCareer?.id ?? null,
+      canonicalAreaLabel: input.catalogCareer?.label ?? null,
+      usageCount: 1,
+    },
+  });
+
+  return {
+    topicAreaId: input.catalogCareer?.id ?? null,
+    topicAreaLabel: input.catalogCareer?.label ?? input.displayLabel,
+  };
 }
 
 export async function listTopicAreaSuggestions(query?: string) {
@@ -149,6 +234,64 @@ export async function listTopicAreaSuggestions(query?: string) {
   return Array.from(merged.values()).slice(0, 10);
 }
 
+export async function normalizeTopicAreaInRealTime(rawLabel: string) {
+  const trimmedLabel = rawLabel.trim();
+
+  if (!trimmedLabel) {
+    return null;
+  }
+
+  const heuristicMatch = evaluateCareerMatch(trimmedLabel);
+
+  if (heuristicMatch.confidence !== "low") {
+    const persisted = await persistTopicAreaEntry({
+      displayLabel: heuristicMatch.career?.label ?? trimmedLabel,
+      catalogCareer: heuristicMatch.career,
+    });
+
+    return {
+      label: persisted.topicAreaLabel,
+      canonicalAreaId: persisted.topicAreaId,
+      canonicalAreaLabel: persisted.topicAreaLabel,
+      source: heuristicMatch.career ? "catalog" : "custom",
+      confidence: heuristicMatch.confidence,
+    } satisfies TopicAreaSuggestion & { confidence: TopicAreaMatchConfidence };
+  }
+
+  try {
+    const normalized = await normalizeTopicAreaSemantically(trimmedLabel);
+    const catalogCareer =
+      getCatalogCareerById(normalized.canonicalAreaId) ??
+      findBestCareerMatch(normalized.canonicalAreaLabel ?? normalized.normalizedLabel);
+    const displayLabel = catalogCareer?.label ?? normalized.normalizedLabel;
+    const persisted = await persistTopicAreaEntry({
+      displayLabel,
+      catalogCareer,
+    });
+
+    return {
+      label: persisted.topicAreaLabel,
+      canonicalAreaId: persisted.topicAreaId,
+      canonicalAreaLabel: persisted.topicAreaLabel,
+      source: catalogCareer ? "catalog" : "custom",
+      confidence: normalized.confidence,
+    } satisfies TopicAreaSuggestion & { confidence: TopicAreaMatchConfidence };
+  } catch {
+    const persisted = await persistTopicAreaEntry({
+      displayLabel: trimmedLabel,
+      catalogCareer: null,
+    });
+
+    return {
+      label: persisted.topicAreaLabel,
+      canonicalAreaId: persisted.topicAreaId,
+      canonicalAreaLabel: persisted.topicAreaLabel,
+      source: "custom",
+      confidence: "low",
+    } satisfies TopicAreaSuggestion & { confidence: TopicAreaMatchConfidence };
+  }
+}
+
 export async function resolveAndRecordTopicArea(input: ResolveTopicAreaInput) {
   const fallbackLabel = input.topicAreaLabel?.trim() || getTopicAreaLabel(input.topicAreaId);
 
@@ -161,31 +304,9 @@ export async function resolveAndRecordTopicArea(input: ResolveTopicAreaInput) {
 
   const catalogCareer =
     getCatalogCareerById(input.topicAreaId) ?? findBestCareerMatch(fallbackLabel);
-  const normalizedLabel = normalizeSearchText(fallbackLabel);
 
-  await prisma.topicAreaCatalogEntry.upsert({
-    where: {
-      normalizedLabel,
-    },
-    update: {
-      displayLabel: fallbackLabel,
-      canonicalAreaId: catalogCareer?.id ?? null,
-      canonicalAreaLabel: catalogCareer?.label ?? null,
-      usageCount: {
-        increment: 1,
-      },
-    },
-    create: {
-      normalizedLabel,
-      displayLabel: fallbackLabel,
-      canonicalAreaId: catalogCareer?.id ?? null,
-      canonicalAreaLabel: catalogCareer?.label ?? null,
-      usageCount: 1,
-    },
+  return persistTopicAreaEntry({
+    displayLabel: fallbackLabel,
+    catalogCareer,
   });
-
-  return {
-    topicAreaId: catalogCareer?.id ?? null,
-    topicAreaLabel: catalogCareer?.label ?? fallbackLabel,
-  };
 }

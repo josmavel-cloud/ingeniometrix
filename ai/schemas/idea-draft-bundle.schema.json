@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/idea-draft-bundle.schema.json",
+  "title": "IdeaDraftBundle",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["generatedIdea", "relatedIdeas"],
+  "properties": {
+    "generatedIdea": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "rationale"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    },
+    "relatedIdeas": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "rationale"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

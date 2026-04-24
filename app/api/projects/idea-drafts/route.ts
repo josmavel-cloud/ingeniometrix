@@ -41,6 +41,9 @@ export async function POST(request: Request) {
       topicAreaId: normalizeOptionalText(payload.topicAreaId) ?? null,
       topicAreaLabel: normalizeOptionalText(payload.topicAreaLabel) ?? null,
       seedText: normalizeOptionalText(payload.seedText) ?? null,
+      existingTitles: Array.isArray(payload.existingTitles)
+        ? payload.existingTitles.filter((item): item is string => typeof item === "string")
+        : [],
     });
 
     return NextResponse.json(result);
