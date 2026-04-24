@@ -2,7 +2,12 @@ import { DegreeLevel } from "@prisma/client";
 
 import { getPresetDegreeLevelForProject } from "@/lib/degree-levels";
 import { buildProjectPresetSuggestionEntries, normalizeSearchText } from "@/lib/topic-suggestion-scoring";
-import { getUniversityDisplayNameByCode, type ProjectTemplateKey, type ProjectUniversityCode } from "@/lib/peru-universities";
+import {
+  buildUniversityResearchContext,
+  getUniversityDisplayNameByCode,
+  type ProjectTemplateKey,
+  type ProjectUniversityCode,
+} from "@/lib/peru-universities";
 
 import { generateTopicSuggestionsInRealTime } from "./topic-suggestion-generator";
 import { resolveAndRecordTopicArea } from "./topic-area-service";
@@ -40,10 +45,12 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
     topicAreaLabel: resolvedArea.topicAreaLabel ?? input.topicAreaLabel ?? null,
   });
   const areaLabel = resolvedArea.topicAreaLabel ?? input.topicAreaLabel ?? null;
+  const universityContext = buildUniversityResearchContext(input.university);
 
   try {
     const suggestions = await generateTopicSuggestionsInRealTime({
       university: getUniversityDisplayNameByCode(input.university),
+      universityContext: universityContext.contextSummary,
       degreeLevel: input.degreeLevel,
       program: input.program,
       areaLabel,

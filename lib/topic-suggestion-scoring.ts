@@ -80,14 +80,6 @@ export function buildProjectPresetSuggestionEntries(params: {
         );
       }
 
-      if (preset.university === university) {
-        score += 4;
-        reasons.push("Compatible con la universidad elegida.");
-      } else if (preset.templateKey === templateKey) {
-        score += 2;
-        reasons.push("Compatible con la plantilla activa.");
-      }
-
       if (areaId && preset.careerId === areaId) {
         score += 3;
         reasons.push("Se alinea con el area definida.");
@@ -121,10 +113,6 @@ export function buildProjectPresetSuggestionEntries(params: {
 
       if (left.preset.degreeLevel !== right.preset.degreeLevel) {
         return left.preset.degreeLevel === degreeLevel ? -1 : 1;
-      }
-
-      if (left.preset.university !== right.preset.university) {
-        return left.preset.university === university ? -1 : 1;
       }
 
       return left.preset.title.localeCompare(right.preset.title, "es");

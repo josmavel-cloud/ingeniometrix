@@ -3,6 +3,7 @@ import { getConfiguredLlmProvider } from "@/llm";
 
 type TopicSuggestionGeneratorInput = {
   university: string;
+  universityContext: string;
   degreeLevel: string;
   program: string;
   areaLabel: string | null;
@@ -38,22 +39,28 @@ export async function generateTopicSuggestionsInRealTime(
 
   const response = await provider.generateStructuredObject<TopicSuggestionBatch>({
     prompt: `
-Eres Ingeniometrix. Genera sugerencias de temas de tesis en espanol para contexto universitario en Peru.
+Actua como un asesor experto en formulacion de temas de tesis aplicados para programas universitarios en Peru.
 
 Reglas:
 - no generes una tesis completa
 - no inventes resultados
 - devuelve solo ideas de tema defendibles y acotadas
 - deben sonar viables para revision academica
+- prioriza temas de tendencia con valor aplicado y delimitacion realista
 - prioriza cercania a la idea original, no creatividad vacia
 - la primera sugerencia debe ser una version tecnica y mejor redactada de la idea original
 - las otras sugerencias pueden variar el enfoque, pero deben seguir alineadas con la semilla
 - si faltan datos concretos, propone formulaciones prudentes y editables
 - llena tambien una base sugerida de intake para problema, poblacion, metodologia y contexto
 - no uses placeholders como "por definir", "pendiente" o "no disponible"
+- alinea las propuestas con lineas de investigacion plausibles para el area, el programa y el contexto de la universidad elegida
+- usa la universidad solo para contextualizar el ambito de investigacion, su ubicacion y tendencias aplicadas plausibles
+- no la uses como plantilla fija ni como filtro rigido
+- no inventes lineas oficiales de investigacion que no hayan sido provistas
 
 Contexto del proyecto:
 - universidad: ${input.university}
+- contexto universitario: ${input.universityContext}
 - nivel: ${input.degreeLevel}
 - programa: ${input.program}
 - area: ${input.areaLabel ?? "No especificada"}

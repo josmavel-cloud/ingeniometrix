@@ -206,6 +206,34 @@ export function getUniversityDisplayNameByCode(code: ProjectUniversityCode) {
   return getUniversityRecordByProjectCode(code)?.name ?? PROJECT_UNIVERSITY_FALLBACK_LABELS[code];
 }
 
+export function buildUniversityResearchContext(code: ProjectUniversityCode) {
+  const record = getUniversityRecordByProjectCode(code);
+  const displayName = getUniversityDisplayNameByCode(code);
+  const locationParts = [record?.district, record?.province, record?.department].filter(
+    (value): value is string => Boolean(value?.trim()),
+  );
+  const locationLabel =
+    locationParts.length > 0 ? `${locationParts.join(", ")}, Peru` : "Peru";
+  const managementLabel =
+    record?.managementType === "PUBLICA"
+      ? "universidad publica"
+      : record?.managementType === "PRIVADA"
+        ? "universidad privada"
+        : "universidad";
+  const territorialScope =
+    record?.department?.trim().toLowerCase() === "lima"
+      ? "entorno metropolitano y urbano con alta demanda de investigacion aplicada"
+      : "entorno regional donde conviene priorizar problemas aplicados y observables";
+
+  return {
+    universityName: displayName,
+    locationLabel,
+    managementLabel,
+    territorialScope,
+    contextSummary: `${displayName}, ${managementLabel}, ubicada en ${locationLabel}. Considera este dato solo como contexto academico y territorial para delimitar problemas, tendencias y lineas de investigacion plausibles.`,
+  };
+}
+
 export const PERU_UNIVERSITIES_SOURCE = {
   dataset:
     "SUNEDU - Licenciamiento Institucional (datosabiertos.gob.pe, recurso CSV)",

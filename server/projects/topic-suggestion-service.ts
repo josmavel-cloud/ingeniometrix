@@ -14,7 +14,10 @@ import {
   getTopicAreaLabel,
   normalizeSearchText,
 } from "@/lib/topic-suggestion-scoring";
-import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
+import {
+  buildUniversityResearchContext,
+  getUniversityDisplayNameByCode,
+} from "@/lib/peru-universities";
 
 import { generateTopicSuggestionsInRealTime } from "./topic-suggestion-generator";
 
@@ -523,6 +526,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
 
       const generatedSuggestions = await generateTopicSuggestionsInRealTime({
         university: getUniversityDisplayNameByCode(project.university),
+        universityContext: buildUniversityResearchContext(project.university).contextSummary,
         degreeLevel: project.degreeLevel,
         program: project.program,
         areaLabel,
@@ -591,6 +595,7 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
 
   const generatedSuggestions = await generateTopicSuggestionsInRealTime({
     university: getUniversityDisplayNameByCode(project.university),
+    universityContext: buildUniversityResearchContext(project.university).contextSummary,
     degreeLevel: project.degreeLevel,
     program: project.program,
     areaLabel,
