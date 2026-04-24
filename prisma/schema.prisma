@@ -218,6 +218,19 @@ model Project {
   selectedTopicSuggestion ProjectTopicSuggestion? @relation("ProjectSelectedTopicSuggestion", fields: [selectedTopicSuggestionId], references: [id], onDelete: SetNull)
 }
 
+model TopicAreaCatalogEntry {
+  id                 String   @id @default(uuid())
+  normalizedLabel    String   @unique @db.Text
+  displayLabel       String   @db.Text
+  canonicalAreaId    String?
+  canonicalAreaLabel String?  @db.Text
+  usageCount         Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([canonicalAreaId])
+}
+
 model Intake {
   id                   String   @id @default(uuid())
   projectId            String   @unique
@@ -501,6 +514,10 @@ model TemplateSource {
   documentKind     TemplateDocumentKind
   originalFilePath String?              @db.Text
   storedFilePath   String?              @db.Text
+  fileName         String?
+  mimeType         String?
+  fileHash         String?
+  fileData         Bytes?
   metadataJson     Json?
   createdAt        DateTime             @default(now())
   templateVersion  TemplateVersion      @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
@@ -516,7 +533,10 @@ model TemplateAsset {
   sourceStrategy   TemplateAssetSourceStrategy
   originalFilePath String?                     @db.Text
   storedFilePath   String?                     @db.Text
+  fileName         String?
   mimeType         String?
+  fileHash         String?
+  fileData         Bytes?
   widthPx          Int?
   heightPx         Int?
   hasTransparency  Boolean?
