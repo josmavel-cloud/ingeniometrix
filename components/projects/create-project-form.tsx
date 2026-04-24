@@ -58,6 +58,14 @@ type IdeaDraft = {
   rationale: string;
 };
 
+async function readJsonSafe<T>(response: Response) {
+  try {
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 function findCareerMatch(value: string) {
   const normalizedValue = normalizeSearchText(value);
 
@@ -194,19 +202,23 @@ export function CreateProjectForm() {
     let isCancelled = false;
 
     void (async () => {
-      const response = await fetch(
-        `/api/topic-areas?q=${encodeURIComponent(deferredAreaQuery.trim())}`,
-      );
-      const payload = (await response.json()) as {
-        error?: string;
-        suggestions?: TopicAreaOption[];
-      };
+      try {
+        const response = await fetch(
+          `/api/topic-areas?q=${encodeURIComponent(deferredAreaQuery.trim())}`,
+        );
+        const payload = await readJsonSafe<{
+          error?: string;
+          suggestions?: TopicAreaOption[];
+        }>(response);
 
-      if (isCancelled || !response.ok || !payload.suggestions) {
-        return;
+        if (isCancelled || !response.ok || !payload?.suggestions) {
+          return;
+        }
+
+        setAreaOptions(payload.suggestions);
+      } catch {
+        // Mantiene las opciones locales sin romper la pantalla.
       }
-
-      setAreaOptions(payload.suggestions);
     })();
 
     return () => {
@@ -243,46 +255,60 @@ export function CreateProjectForm() {
     setIdeaDraftMessage(null);
 
     startIdeaTransition(async () => {
-      const response = await fetch("/api/projects/idea-drafts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          degreeLevel,
-          university,
-          program,
-          topicAreaId: topicAreaId ?? undefined,
-          topicAreaLabel: topicAreaLabel ?? undefined,
-          seedText: normalizedSeedText || undefined,
-        }),
-      });
-      const payload = (await response.json()) as {
-        error?: string;
-        generatedIdea?: string;
-        relatedIdeas?: IdeaDraft[];
-        resolvedArea?: {
-          topicAreaId: string | null;
-          topicAreaLabel: string | null;
-        };
-      };
+      try {
+        const response = await fetch("/api/projects/idea-drafts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            degreeLevel,
+            university,
+            program,
+            topicAreaId: topicAreaId ?? undefined,
+            topicAreaLabel: topicAreaLabel ?? undefined,
+            seedText: normalizedSeedText || undefined,
+          }),
+        });
+        const payload = await readJsonSafe<{
+          error?: string;
+          generatedIdea?: string;
+          relatedIdeas?: IdeaDraft[];
+          resolvedArea?: {
+            topicAreaId: string | null;
+            topicAreaLabel: string | null;
+          };
+        }>(response);
 
-      if (!response.ok || !payload.relatedIdeas) {
-        setIdeaDraftError(payload.error ?? "No se pudieron preparar ideas relacionadas.");
-        return;
-      }
+        if (!response.ok || !payload?.relatedIdeas) {
+          setIdeaDraftError(
+            payload?.error ?? "No se pudieron preparar ideas relacionadas.",
+          );
+          return;
+        }
 
-      setQuickIdeaOptions(payload.relatedIdeas.slice(0, 3));
+        setQuickIdeaOptions(payload.relatedIdeas.slice(0, 3));
 
-      if (payload.resolvedArea?.topicAreaLabel && !areaQuery.trim()) {
-        setAreaQuery(payload.resolvedArea.topicAreaLabel);
-      }
+        if (payload.resolvedArea?.topicAreaLabel && !areaQuery.trim()) {
+          setAreaQuery(payload.resolvedArea.topicAreaLabel);
+        }
 
-      if (options?.fillGeneratedIdea ?? true) {
-        setInterestText(payload.generatedIdea ?? payload.relatedIdeas[0]?.title ?? normalizedSeedText);
-        setIdeaDraftMessage("Cargamos una idea inicial editable basada en tu area.");
-      } else {
-        setIdeaDraftMessage("Ya tienes ideas relacionadas para arrancar mas rapido.");
+        if (options?.fillGeneratedIdea ?? true) {
+          setInterestText(
+            payload.generatedIdea ??
+              payload.relatedIdeas[0]?.title ??
+              normalizedSeedText,
+          );
+          setIdeaDraftMessage(
+            "Cargamos una idea inicial editable basada en tu area.",
+          );
+        } else {
+          setIdeaDraftMessage("Ya tienes ideas relacionadas para arrancar mas rapido.");
+        }
+      } catch {
+        setIdeaDraftError(
+          "No pudimos generar ideas ahora. Revisa la configuracion LLM o intenta de nuevo.",
+        );
       }
     });
   }
