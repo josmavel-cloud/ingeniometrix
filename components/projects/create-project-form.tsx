@@ -275,14 +275,14 @@ export function CreateProjectForm() {
     flowStage === "topic_confirmed" &&
     generatedIdeas.length < MAX_GENERATED_IDEAS &&
     (!isGeneratingIdeas && !!confirmedTopic);
-  const finalTopicTitle = selectedVariantTitle ?? selectedIdea?.title ?? confirmedTopic ?? null;
-  const hasFinalIdeaSelection = generatedIdeas.length === 0 || !!selectedIdea;
+  const finalTopicTitle = selectedVariantTitle ?? selectedIdea?.title ?? null;
+  const hasFinalIdeaSelection = !!selectedIdea;
   const canContinue =
     !isPending &&
     program.trim().length > 0 &&
     !!finalTopicTitle &&
     hasFinalIdeaSelection &&
-    flowStage !== "topic_input";
+    flowStage === "variant_selection";
 
   function resetIdeaFlowState() {
     setGeneratedIdeas([]);
@@ -300,6 +300,8 @@ export function CreateProjectForm() {
     setPendingTopicConfirmation(null);
     setInterestText("");
     setSelectedSuggestionId("");
+    setNormalizedAreaMessage(null);
+    setIsAreaDropdownOpen(false);
     resetIdeaFlowState();
     setError(null);
   }
@@ -333,6 +335,7 @@ export function CreateProjectForm() {
     setInterestText(confirmedTitle);
     setConfirmedTopic(confirmedTitle);
     setPendingTopicConfirmation(null);
+    setSelectedSuggestionId("");
     resetIdeaFlowState();
     setFlowStage("topic_confirmed");
     setIdeaDraftMessage(
@@ -570,8 +573,8 @@ export function CreateProjectForm() {
     event.preventDefault();
     setError(null);
 
-    if (!finalTopicTitle || !hasFinalIdeaSelection) {
-      setError("Confirma un tema base y, si generaste ideas, elige una antes de continuar.");
+    if (!finalTopicTitle || !hasFinalIdeaSelection || flowStage !== "variant_selection") {
+      setError("Confirma el tema, elige una idea principal y luego decide si usaras una variante.");
       return;
     }
 
@@ -1082,19 +1085,24 @@ export function CreateProjectForm() {
         </div>
       </details>
 
-      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
+      <details
+        className={[
+          "rounded-[28px] border p-5",
+          flowStage === "variant_selection"
+            ? "border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)]"
+            : "border-dashed border-[rgba(74,58,97,0.12)] bg-[rgba(249,247,252,0.72)] opacity-80",
+        ].join(" ")}
+      >
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
           {flowStage === "variant_selection"
             ? "Elegir una variante final"
-            : hasCustomIdea
-              ? "Ver temas relacionados con tu idea"
-              : "Explorar temas relacionados dentro del area"}
+            : "Variantes e ideas relacionadas"}
         </summary>
         <div className="mt-4 grid gap-4">
           <p className="text-sm leading-6 text-[var(--color-muted)]">
             {flowStage === "variant_selection"
               ? "Ahora ya no editamos lo anterior. Si eliges una variante, esa sera la base final; si no, se usara la idea principal que fijaste."
-              : "Aqui solo mostramos temas relacionados con tu idea actual y con la carrera elegida para ayudarte a cerrar el tema base."}
+              : "Este bloque se activa despues de elegir una idea principal. Antes de eso, debes confirmar el tema y generar ideas."}
           </p>
 
           {flowStage === "variant_selection" && selectedIdea ? (
@@ -1152,49 +1160,13 @@ export function CreateProjectForm() {
             </div>
           ) : null}
 
-          {flowStage !== "variant_selection" ? (
-            <div className="grid gap-3">
-              <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
-                Temas del catalogo relacionados
-              </p>
-              {visibleSuggestionEntries.map((entry) => {
-                const isActive = entry.preset.id === selectedSuggestion?.id;
-
-                return (
-                  <button
-                    aria-pressed={isActive}
-                    className={getSuggestionCardClassName(entry.tone, isActive)}
-                    key={entry.preset.id}
-                    onClick={() => {
-                      setSelectedSuggestionId(entry.preset.id);
-
-                      if (flowStage === "topic_input") {
-                        setInterestText(entry.preset.title);
-                        openTopicConfirmation(entry.preset.title);
-                      }
-                    }}
-                    type="button"
-                  >
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="max-w-2xl">
-                        <p className="font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
-                          {entry.preset.title}
-                        </p>
-                        <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                          {entry.reasons[0]}
-                        </p>
-                      </div>
-                      <span className="inline-flex rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
-                        {isActive ? "Elegida" : "Referencia"}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
+          {flowStage === "variant_selection" ? (
+            <div className="rounded-[22px] border border-dashed border-[rgba(74,58,97,0.12)] px-4 py-4 text-sm leading-6 text-[var(--color-muted)]">
+              Si no eliges una variante, continuaremos con la idea principal seleccionada.
             </div>
           ) : (
             <div className="rounded-[22px] border border-dashed border-[rgba(74,58,97,0.12)] px-4 py-4 text-sm leading-6 text-[var(--color-muted)]">
-              Si no eliges una variante, continuaremos con la idea principal seleccionada.
+              Aqui apareceran las variantes y temas relacionados cuando fijes una idea principal.
             </div>
           )}
         </div>
