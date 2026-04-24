@@ -10,6 +10,16 @@ import {
   useTransition,
 } from "react";
 import { useRouter } from "next/navigation";
+import {
+  BookOpenText,
+  Building2,
+  Check,
+  ChevronDown,
+  GraduationCap,
+  Lightbulb,
+  Sparkles,
+  WandSparkles,
+} from "lucide-react";
 
 import {
   getDegreeLevelLabel,
@@ -20,10 +30,12 @@ import {
 import { PROJECT_CAREERS, PROJECT_PRESETS } from "@/lib/project-presets";
 import {
   getFeaturedProjectUniversityOptions,
-  getProjectTemplateKeyForUniversity,
-  type ProjectTemplateKey,
   type ProjectUniversityCode,
 } from "@/lib/peru-universities";
+import {
+  SYSTEM_MASTER_TEMPLATE_ALIAS,
+  SYSTEM_MASTER_TEMPLATE_KEY,
+} from "@/lib/system-master-template";
 import {
   buildProjectPresetSuggestionEntries,
   getTopicAreaLabel,
@@ -33,6 +45,18 @@ import {
 
 const FEATURED_UNIVERSITIES = getFeaturedProjectUniversityOptions();
 const fieldClassName = "brand-input";
+
+type TopicAreaOption = {
+  label: string;
+  canonicalAreaId: string | null;
+  canonicalAreaLabel: string | null;
+  source: "catalog" | "custom";
+};
+
+type IdeaDraft = {
+  title: string;
+  rationale: string;
+};
 
 function findCareerMatch(value: string) {
   const normalizedValue = normalizeSearchText(value);
@@ -92,20 +116,55 @@ export function CreateProjectForm() {
   );
   const [interestText, setInterestText] = useState("");
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
-  const [templateKey, setTemplateKey] =
-    useState<ProjectTemplateKey>("GENERIC_POSGRADO_PE");
+  const [areaOptions, setAreaOptions] = useState<TopicAreaOption[]>(
+    PROJECT_CAREERS.slice(0, 6).map((career) => ({
+      label: career.label,
+      canonicalAreaId: career.id,
+      canonicalAreaLabel: career.label,
+      source: "catalog",
+    })),
+  );
+  const [isAreaDropdownOpen, setIsAreaDropdownOpen] = useState(false);
+  const [quickIdeaOptions, setQuickIdeaOptions] = useState<IdeaDraft[]>([]);
+  const [ideaDraftError, setIdeaDraftError] = useState<string | null>(null);
+  const [ideaDraftMessage, setIdeaDraftMessage] = useState<string | null>(null);
   const [isProgramEditable, setIsProgramEditable] = useState(false);
   const [hasManualProgram, setHasManualProgram] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isGeneratingIdeas, startIdeaTransition] = useTransition();
   const deferredInterestText = useDeferredValue(interestText);
+  const deferredAreaQuery = useDeferredValue(areaQuery);
 
-  const matchedCareer = useMemo(() => findCareerMatch(areaQuery), [areaQuery]);
-  const topicAreaId = matchedCareer?.id ?? null;
+  const selectedAreaOption = useMemo(() => {
+    const normalizedAreaQuery = normalizeSearchText(areaQuery);
+
+    if (!normalizedAreaQuery) {
+      return null;
+    }
+
+    return (
+      areaOptions.find(
+        (option) => normalizeSearchText(option.label) === normalizedAreaQuery,
+      ) ?? null
+    );
+  }, [areaOptions, areaQuery]);
+
+  const matchedCareer = useMemo(() => {
+    if (selectedAreaOption?.canonicalAreaId) {
+      return (
+        PROJECT_CAREERS.find((career) => career.id === selectedAreaOption.canonicalAreaId) ??
+        findCareerMatch(areaQuery)
+      );
+    }
+
+    return findCareerMatch(areaQuery);
+  }, [areaQuery, selectedAreaOption]);
+  const topicAreaId = selectedAreaOption?.canonicalAreaId ?? matchedCareer?.id ?? null;
   const topicAreaLabel =
     areaQuery.trim().length > 0
       ? areaQuery.trim()
-      : getTopicAreaLabel(topicAreaId) ?? null;
+      : selectedAreaOption?.canonicalAreaLabel ?? getTopicAreaLabel(topicAreaId) ?? null;
 
   const suggestionEntries = useMemo(
     () =>
@@ -113,11 +172,11 @@ export function CreateProjectForm() {
         areaId: topicAreaId,
         degreeLevel: getPresetDegreeLevelForProject(degreeLevel),
         university,
-        templateKey,
+        templateKey: SYSTEM_MASTER_TEMPLATE_KEY,
         interestText: deferredInterestText,
         limit: 4,
       }),
-    [deferredInterestText, degreeLevel, templateKey, topicAreaId, university],
+    [deferredInterestText, degreeLevel, topicAreaId, university],
   );
 
   const selectedSuggestion =
@@ -126,10 +185,34 @@ export function CreateProjectForm() {
     null;
   const hasCustomIdea = interestText.trim().length > 0;
   const visibleSuggestionEntries = suggestionEntries.slice(0, 3);
+  const normalizedAreaQuery = normalizeSearchText(areaQuery);
+  const hasExactAreaOption = areaOptions.some(
+    (option) => normalizeSearchText(option.label) === normalizedAreaQuery,
+  );
 
   useEffect(() => {
-    setTemplateKey(getProjectTemplateKeyForUniversity(university));
-  }, [university]);
+    let isCancelled = false;
+
+    void (async () => {
+      const response = await fetch(
+        `/api/topic-areas?q=${encodeURIComponent(deferredAreaQuery.trim())}`,
+      );
+      const payload = (await response.json()) as {
+        error?: string;
+        suggestions?: TopicAreaOption[];
+      };
+
+      if (isCancelled || !response.ok || !payload.suggestions) {
+        return;
+      }
+
+      setAreaOptions(payload.suggestions);
+    })();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [deferredAreaQuery]);
 
   useEffect(() => {
     if (hasManualProgram) {
@@ -144,6 +227,65 @@ export function CreateProjectForm() {
       setSelectedSuggestionId(selectedSuggestion.id);
     }
   }, [selectedSuggestion, selectedSuggestionId]);
+
+  async function requestIdeaDrafts(options?: {
+    seedText?: string;
+    fillGeneratedIdea?: boolean;
+  }) {
+    const normalizedSeedText = options?.seedText?.trim() ?? interestText.trim();
+
+    if (!topicAreaLabel && normalizedSeedText.length === 0) {
+      setIdeaDraftError("Escribe un area o una idea para poder sugerir variantes.");
+      return;
+    }
+
+    setIdeaDraftError(null);
+    setIdeaDraftMessage(null);
+
+    startIdeaTransition(async () => {
+      const response = await fetch("/api/projects/idea-drafts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          degreeLevel,
+          university,
+          program,
+          topicAreaId: topicAreaId ?? undefined,
+          topicAreaLabel: topicAreaLabel ?? undefined,
+          seedText: normalizedSeedText || undefined,
+        }),
+      });
+      const payload = (await response.json()) as {
+        error?: string;
+        generatedIdea?: string;
+        relatedIdeas?: IdeaDraft[];
+        resolvedArea?: {
+          topicAreaId: string | null;
+          topicAreaLabel: string | null;
+        };
+      };
+
+      if (!response.ok || !payload.relatedIdeas) {
+        setIdeaDraftError(payload.error ?? "No se pudieron preparar ideas relacionadas.");
+        return;
+      }
+
+      setQuickIdeaOptions(payload.relatedIdeas.slice(0, 3));
+
+      if (payload.resolvedArea?.topicAreaLabel && !areaQuery.trim()) {
+        setAreaQuery(payload.resolvedArea.topicAreaLabel);
+      }
+
+      if (options?.fillGeneratedIdea ?? true) {
+        setInterestText(payload.generatedIdea ?? payload.relatedIdeas[0]?.title ?? normalizedSeedText);
+        setIdeaDraftMessage("Cargamos una idea inicial editable basada en tu area.");
+      } else {
+        setIdeaDraftMessage("Ya tienes ideas relacionadas para arrancar mas rapido.");
+      }
+    });
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -170,7 +312,6 @@ export function CreateProjectForm() {
           degreeLevel,
           university,
           program,
-          templateKey,
           topicAreaId: topicAreaId ?? undefined,
           topicAreaLabel: topicAreaLabel ?? undefined,
         }),
@@ -204,13 +345,18 @@ export function CreateProjectForm() {
 
       <section className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2">
-            <label
-              className="text-sm font-semibold text-[var(--color-muted)]"
-              htmlFor="project-degree"
-            >
-              Nivel
-            </label>
+          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(219,193,255,0.3)] text-[var(--color-plum)]">
+                <GraduationCap className="size-4" />
+              </span>
+              <label
+                className="text-sm font-semibold text-[var(--color-muted)]"
+                htmlFor="project-degree"
+              >
+                Nivel
+              </label>
+            </div>
             <select
               className={fieldClassName}
               id="project-degree"
@@ -225,10 +371,15 @@ export function CreateProjectForm() {
             </select>
           </div>
 
-          <div className="grid gap-3">
-            <label className="text-sm font-semibold text-[var(--color-muted)]">
-              Universidad
-            </label>
+          <div className="grid gap-3 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(157,231,214,0.28)] text-[var(--color-mint-strong)]">
+                <Building2 className="size-4" />
+              </span>
+              <label className="text-sm font-semibold text-[var(--color-muted)]">
+                Universidad
+              </label>
+            </div>
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
               {FEATURED_UNIVERSITIES.map((option) => {
                 const isActive = option.code === university;
@@ -254,38 +405,113 @@ export function CreateProjectForm() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2">
-            <label
-              className="text-sm font-semibold text-[var(--color-muted)]"
-              htmlFor="project-career"
-            >
-              Carrera o area base
-            </label>
-            <input
-              className={fieldClassName}
-              id="project-career"
-              list="project-career-options"
-              onChange={(event) => setAreaQuery(event.target.value)}
-              placeholder="Selecciona de la lista o escribe tu propia area"
-              value={areaQuery}
-            />
-            <datalist id="project-career-options">
-              {PROJECT_CAREERS.map((career) => (
-                <option key={career.id} value={career.label} />
-              ))}
-            </datalist>
+          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+            <div className="flex items-center gap-3">
+              <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(255,190,201,0.28)] text-[var(--color-coral)]">
+                <BookOpenText className="size-4" />
+              </span>
+              <label
+                className="text-sm font-semibold text-[var(--color-muted)]"
+                htmlFor="project-career"
+              >
+                Carrera o area base
+              </label>
+            </div>
+            <div className="relative">
+              <input
+                autoComplete="off"
+                className={`${fieldClassName} pr-11`}
+                id="project-career"
+                onBlur={() => {
+                  window.setTimeout(() => setIsAreaDropdownOpen(false), 120);
+                }}
+                onChange={(event) => {
+                  setAreaQuery(event.target.value);
+                  setIsAreaDropdownOpen(true);
+                }}
+                onFocus={() => setIsAreaDropdownOpen(true)}
+                placeholder="Selecciona una opcion o escribe tu propia area"
+                value={areaQuery}
+              />
+              <button
+                aria-label="Mostrar areas sugeridas"
+                className="absolute inset-y-0 right-3 my-auto inline-flex size-8 items-center justify-center rounded-full text-[var(--color-muted)] hover:bg-[rgba(74,58,97,0.06)]"
+                onClick={() => setIsAreaDropdownOpen((current) => !current)}
+                type="button"
+              >
+                <ChevronDown className="size-4" />
+              </button>
+              {isAreaDropdownOpen ? (
+                <div className="absolute z-20 mt-2 max-h-64 w-full overflow-auto rounded-[22px] border border-[rgba(74,58,97,0.12)] bg-white p-2 shadow-[0_18px_44px_rgba(23,19,31,0.1)]">
+                  {areaOptions.map((option) => {
+                    const isSelected =
+                      normalizeSearchText(option.label) === normalizedAreaQuery;
+
+                    return (
+                      <button
+                        className={[
+                          "flex w-full items-center justify-between rounded-[16px] px-3 py-3 text-left text-sm",
+                          isSelected
+                            ? "bg-[rgba(219,193,255,0.22)] text-[var(--color-ink)]"
+                            : "text-[var(--color-muted)] hover:bg-[rgba(74,58,97,0.04)]",
+                        ].join(" ")}
+                        key={`${option.source}-${option.label}`}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                          setAreaQuery(option.label);
+                          setIsAreaDropdownOpen(false);
+                        }}
+                        type="button"
+                      >
+                        <span>{option.label}</span>
+                        {isSelected ? <Check className="size-4 text-[var(--color-plum)]" /> : null}
+                      </button>
+                    );
+                  })}
+                  {areaQuery.trim() && !hasExactAreaOption ? (
+                    <button
+                      className="mt-1 flex w-full items-center justify-between rounded-[16px] border border-dashed border-[rgba(74,58,97,0.12)] px-3 py-3 text-left text-sm text-[var(--color-ink)] hover:bg-[rgba(74,58,97,0.04)]"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        setIsAreaDropdownOpen(false);
+                      }}
+                      type="button"
+                    >
+                      <span>Usar "{areaQuery.trim()}" como area nueva</span>
+                      <Sparkles className="size-4 text-[var(--color-plum)]" />
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
             <p className="text-sm leading-6 text-[var(--color-muted)]">
-              Puedes elegir una opcion sugerida o escribir un area propia.
+              Puedes elegir una opcion sugerida o escribir un area propia. La normalizaremos al guardar el proyecto.
             </p>
           </div>
 
-          <div className="grid gap-2">
-            <label
-              className="text-sm font-semibold text-[var(--color-muted)]"
-              htmlFor="project-interest"
-            >
-              Idea original
-            </label>
+          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(239,193,77,0.24)] text-[var(--color-gold)]">
+                  <Lightbulb className="size-4" />
+                </span>
+                <label
+                  className="text-sm font-semibold text-[var(--color-muted)]"
+                  htmlFor="project-interest"
+                >
+                  Idea original
+                </label>
+              </div>
+              <button
+                className="brand-button-secondary px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
+                disabled={isGeneratingIdeas || (!topicAreaLabel && interestText.trim().length === 0)}
+                onClick={() => requestIdeaDrafts({ fillGeneratedIdea: true })}
+                type="button"
+              >
+                <WandSparkles className="mr-2 size-4" />
+                {isGeneratingIdeas ? "Generando..." : "Generar idea"}
+              </button>
+            </div>
             <textarea
               className="brand-textarea"
               id="project-interest"
@@ -297,6 +523,12 @@ export function CreateProjectForm() {
             <p className="text-sm leading-6 text-[var(--color-muted)]">
               Si escribes aqui, esta idea sera la prioridad en la siguiente etapa.
             </p>
+            {ideaDraftError ? (
+              <p className="text-sm text-rose-600">{ideaDraftError}</p>
+            ) : null}
+            {ideaDraftMessage ? (
+              <p className="text-sm text-emerald-700">{ideaDraftMessage}</p>
+            ) : null}
           </div>
         </div>
       </section>
@@ -340,7 +572,7 @@ export function CreateProjectForm() {
 
           <div className="grid gap-2 text-sm leading-6 text-[var(--color-muted)] sm:grid-cols-2">
             <p>
-              <strong>Plantilla:</strong> {templateKey}
+              <strong>Plantilla:</strong> {SYSTEM_MASTER_TEMPLATE_ALIAS}
             </p>
             <p>
               <strong>Area:</strong> {topicAreaLabel || "No especificada"}
@@ -357,16 +589,55 @@ export function CreateProjectForm() {
         </div>
       </details>
 
-      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
+      <details
+        className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5"
+        onToggle={(event) => {
+          const details = event.currentTarget;
+
+          if (details.open && quickIdeaOptions.length === 0) {
+            void requestIdeaDrafts({ fillGeneratedIdea: false });
+          }
+        }}
+      >
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
           {hasCustomIdea
-            ? "Usar una referencia del catalogo en su lugar"
-            : "No tengo idea propia: usar una referencia rapida"}
+            ? "Usar una idea relacionada o una base del catalogo"
+            : "No tengo idea propia: usar una idea rapida"}
         </summary>
         <div className="mt-4 grid gap-4">
           <p className="text-sm leading-6 text-[var(--color-muted)]">
-            Elige una referencia corta para arrancar. Luego podras refinar el tema en la siguiente etapa.
+            Si ya escribiste una idea, priorizaremos variantes cercanas. Si no, te mostraremos una base rapida dentro del area elegida.
           </p>
+
+          {quickIdeaOptions.length > 0 ? (
+            <div className="grid gap-3">
+              {quickIdeaOptions.slice(0, 3).map((idea, index) => (
+                <button
+                  className={getSuggestionCardClassName(
+                    index === 0 ? "mint" : index === 1 ? "lilac" : "gold",
+                    normalizeSearchText(interestText) === normalizeSearchText(idea.title),
+                  )}
+                  key={`${idea.title}-${index}`}
+                  onClick={() => setInterestText(idea.title)}
+                  type="button"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="max-w-2xl">
+                      <p className="font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
+                        {idea.title}
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
+                        {idea.rationale}
+                      </p>
+                    </div>
+                    <span className="inline-flex rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
+                      Idea sugerida
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="grid gap-3">
             {visibleSuggestionEntries.map((entry) => {

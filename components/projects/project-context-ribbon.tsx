@@ -1,6 +1,7 @@
 import type { DegreeLevel } from "@prisma/client";
 
 import { getDegreeLevelLabel } from "@/lib/degree-levels";
+import { getTemplateDisplayLabel } from "@/lib/system-master-template";
 
 type ProjectContextRibbonProps = {
   universityLabel: string;
@@ -36,7 +37,7 @@ export function ProjectContextRibbon({
     },
     {
       label: "Plantilla",
-      value: templateKey,
+      value: getTemplateDisplayLabel(templateKey),
     },
     {
       label: "Idea semilla",

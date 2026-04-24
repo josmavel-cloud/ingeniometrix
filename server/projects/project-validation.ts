@@ -1,13 +1,13 @@
 import {
   DegreeLevel,
   ProjectStatus,
-  TemplateKey,
   TopicOriginType,
   University,
 } from "@prisma/client";
 
 import { getProjectPresetById } from "@/lib/project-presets";
-import { getProjectTemplateKeyForUniversity } from "@/lib/peru-universities";
+import { resolveTemplateKeyForMvp } from "@/lib/system-master-template";
+import type { ProjectTemplateKey } from "@/lib/peru-universities";
 
 export type CreateProjectInput = {
   catalogTopicId?: string;
@@ -16,7 +16,7 @@ export type CreateProjectInput = {
   degreeLevel: DegreeLevel;
   university: University;
   program: string;
-  templateKey: TemplateKey;
+  templateKey: ProjectTemplateKey;
   topicAreaId?: string;
   topicAreaLabel?: string;
   topicOriginType: TopicOriginType;
@@ -35,7 +35,6 @@ export type IntakeInput = {
 
 const DEGREE_LEVEL_VALUES = new Set(Object.values(DegreeLevel));
 const UNIVERSITY_VALUES = new Set(Object.values(University));
-const TEMPLATE_KEY_VALUES = new Set(Object.values(TemplateKey));
 
 function normalizeOptionalText(value: unknown) {
   if (typeof value !== "string") {
@@ -72,7 +71,7 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
   const topicAreaLabel = normalizeOptionalText(payload.topicAreaLabel);
   const degreeLevel = payload.degreeLevel;
   const university = payload.university;
-  const templateKey = payload.templateKey;
+  const templateKey = resolveTemplateKeyForMvp(payload.templateKey);
 
   if (!DEGREE_LEVEL_VALUES.has(degreeLevel as DegreeLevel)) {
     throw new Error("degreeLevel invalido.");
@@ -82,22 +81,13 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
     throw new Error("university invalida.");
   }
 
-  if (!TEMPLATE_KEY_VALUES.has(templateKey as TemplateKey)) {
-    throw new Error("templateKey invalida.");
-  }
-
   const title = normalizeRequiredText(payload.title, "title");
   const program = normalizeRequiredText(payload.program, "program");
-  const expectedTemplateKey = getProjectTemplateKeyForUniversity(university as University);
   const topicOriginType = customIdeaText
     ? catalogTopicId
       ? TopicOriginType.HYBRID
       : TopicOriginType.CUSTOM
     : TopicOriginType.CATALOG;
-
-  if (expectedTemplateKey !== (templateKey as TemplateKey)) {
-    throw new Error("templateKey no coincide con la universidad seleccionada.");
-  }
 
   if (catalogTopicId && !customIdeaText) {
     const preset = getProjectPresetById(catalogTopicId);
@@ -119,7 +109,7 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
     degreeLevel: degreeLevel as DegreeLevel,
     university: university as University,
     program,
-    templateKey: templateKey as TemplateKey,
+    templateKey,
     topicAreaId: topicAreaId ?? undefined,
     topicAreaLabel: topicAreaLabel ?? undefined,
     topicOriginType,

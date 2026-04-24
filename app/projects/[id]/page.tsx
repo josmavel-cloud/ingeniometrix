@@ -11,6 +11,7 @@ import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
 import { getDegreeLevelLabel } from "@/lib/degree-levels";
 import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
 import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
+import { getTemplateDisplayLabel } from "@/lib/system-master-template";
 import { requireCurrentUser } from "@/server/auth/session";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
 import { getProjectForUser } from "@/server/projects/project-service";
@@ -207,7 +208,9 @@ export default async function ProjectDetailPage({
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Plantilla
                 </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">{project.templateKey}</p>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  {getTemplateDisplayLabel(project.templateKey)}
+                </p>
               </div>
             </div>
           </details>
