@@ -15,8 +15,12 @@
     "debug:blueprint:report": "node scripts/debug-blueprint-report.mjs",
     "debug:master-blueprint": "node scripts/debug-master-blueprint-engine.mjs",
     "debug:master-blueprint:reuse": "node scripts/debug-master-blueprint-engine.mjs --reuse-server",
+    "lab:master-blueprint:steps-5-11": "tsx scripts/run-master-blueprint-lab-steps-5-11.ts",
+    "lab:master-blueprint:step-10": "tsx scripts/run-master-blueprint-step-10.ts",
+    "lab:master-blueprint:steps-11-13": "tsx scripts/run-master-blueprint-steps-11-13.ts",
     "debug:workflow": "node scripts/debug-workflow-runner.mjs",
     "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
+    "lab:benchmark": "tsx scripts/run-blueprint-launch-benchmarks.ts",
     "smoke:deployment": "node scripts/smoke-deployment.mjs",
     "smoke:deployment:workspace": "node scripts/smoke-deployment.mjs --workspace",
     "taxonomy:fetch": "node scripts/fetch-taxonomy-assets.mjs",
@@ -37,6 +41,7 @@
     "@tailwindcss/postcss": "^4.2.2",
     "docx": "^9.6.1",
     "framer-motion": "^12.38.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^1.8.0",
     "next": "^16.2.4",
     "openai": "^6.34.0",
@@ -49,6 +54,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "prisma": "^6.19.3",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.3"
   },
   "engines": {

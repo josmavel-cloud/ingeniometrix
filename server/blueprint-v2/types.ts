@@ -259,6 +259,152 @@ export type SectionPromptPlan = {
   prompt_manifest: SectionPromptManifestItem[];
 };
 
+export type DomainGenerationProfile = {
+  domain_family:
+    | "arquitectura_urbanismo"
+    | "ingenieria_tecnica"
+    | "salud_clinica"
+    | "ciencias_sociales"
+    | "educacion"
+    | "negocios_gestion"
+    | "derecho_politica_publica"
+    | "general";
+  evidence_style: "conceptual" | "empirical" | "technical" | "normative" | "mixed";
+  preferred_output_modes: Array<
+    | "narrative"
+    | "comparative"
+    | "criteria_table"
+    | "equation_supported"
+    | "figure_supported"
+    | "code_or_algorithm"
+    | "normative_matrix"
+  >;
+  reasoning: string[];
+};
+
+export type SectionInlineMark =
+  | "bold"
+  | "italic"
+  | "underline"
+  | "strike"
+  | "code"
+  | "subscript"
+  | "superscript"
+  | "highlight";
+
+export type SectionInlineSpan = {
+  span_id: string;
+  text: string;
+  marks?: SectionInlineMark[];
+  link_url?: string | null;
+  citation_source_ids?: string[];
+  assumption_ids?: string[];
+  snippet_ids?: string[];
+  meta?: Record<string, unknown>;
+};
+
+export type SectionStructuredData = {
+  schema_type:
+    | "table"
+    | "chart"
+    | "equation"
+    | "matrix"
+    | "timeline"
+    | "tree"
+    | "graph"
+    | "form"
+    | "dataset"
+    | "custom";
+  columns?: string[];
+  rows?: Array<Array<string | number | boolean | null>>;
+  values?: Record<string, unknown>;
+  raw?: Record<string, unknown>;
+};
+
+export type SectionAssetRef = {
+  asset_key: string;
+  asset_kind?: string | null;
+  title?: string | null;
+  caption?: string | null;
+  mime_type?: string | null;
+  source_ids?: string[];
+  snippet_ids?: string[];
+  page_number?: number | null;
+  meta?: Record<string, unknown>;
+};
+
+export type SectionContentBlock = {
+  block_id: string;
+  kind:
+    | "node"
+    | "group"
+    | "rich_text"
+    | "structured_data"
+    | "asset"
+    | "embed"
+    | "annotation";
+  role:
+    | "heading"
+    | "subheading"
+    | "paragraph"
+    | "lead"
+    | "abstract"
+    | "keyword_list"
+    | "list"
+    | "list_item"
+    | "table"
+    | "table_row"
+    | "table_cell"
+    | "figure"
+    | "chart"
+    | "diagram"
+    | "equation"
+    | "equation_derivation"
+    | "formula_definition"
+    | "code"
+    | "algorithm"
+    | "quote"
+    | "citation"
+    | "footnote"
+    | "definition"
+    | "proposition"
+    | "theorem"
+    | "lemma"
+    | "proof"
+    | "example"
+    | "case"
+    | "result"
+    | "finding"
+    | "discussion"
+    | "warning"
+    | "assumption"
+    | "limitation"
+    | "recommendation"
+    | "appendix_item"
+    | "reference_entry"
+    | "matrix"
+    | "timeline"
+    | "budget"
+    | "unknown";
+  variant?: string | null;
+  title?: string | null;
+  text?: string | null;
+  spans?: SectionInlineSpan[];
+  structured_data?: SectionStructuredData | null;
+  asset_ref?: SectionAssetRef | null;
+  children?: SectionContentBlock[];
+  order?: number;
+  layout_hint?: "full_width" | "inline" | "left" | "right" | "grid" | "stack" | null;
+  semantics?: string[];
+  source_ids?: string[];
+  pdf_source_ids?: string[];
+  web_source_ids?: string[];
+  assumption_ids?: string[];
+  snippet_ids?: string[];
+  warnings?: string[];
+  meta?: Record<string, unknown>;
+};
+
 export type SectionSupportLevel =
   | "reference_supported"
   | "pdf_supported"
@@ -272,12 +418,88 @@ export type MasterSectionDraft = {
   phase: SectionGenerationPhase;
   content: string;
   content_kind: string;
+  wave?: string;
+  generation_strategy?: string;
+  prompt_mode?: string;
+  domain_profile?: DomainGenerationProfile;
+  content_blocks?: SectionContentBlock[];
+  content_format_version?: string;
   support_level: SectionSupportLevel;
   supported_source_ids: string[];
   supported_pdf_source_ids: string[];
   supported_web_source_ids: string[];
   supported_assumption_ids: string[];
   evidence_snippet_ids: string[];
+  used_evidence_ids?: string[];
+  used_original_excerpt_ids?: string[];
+  used_asset_keys?: string[];
+  used_reference_ids?: string[];
+  citation_policy?: {
+    expected_density: "none" | "low" | "medium" | "high";
+    citation_mode:
+      | "inline_required"
+      | "inline_optional"
+      | "references_only"
+      | "deferred_to_docx";
+  };
+  execution_profile?: {
+    complexity: "micro" | "light" | "medium" | "heavy";
+    execution_mode: "deterministic" | "llm-low" | "llm-medium" | "llm-high";
+    timeout_ms: number;
+    max_retry_attempts: number;
+    prompt_budget: "tiny" | "small" | "medium";
+    model_tier: "high" | "medium" | "low" | "deterministic";
+  };
+  llm_metrics?: {
+    provider: string;
+    model: string;
+    input_tokens: number;
+    cached_input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cost_usd: number;
+    cost_cad: number;
+    duration_ms: number;
+  };
+  citation_intents?: Array<{
+    reference_id: string;
+    source_id: string;
+    evidence_id: string | null;
+    target_block_id: string | null;
+    target_sentence_hint: string | null;
+    citation_role:
+      | "supporting"
+      | "comparative"
+      | "methodological"
+      | "theoretical";
+    strength: "required" | "recommended" | "optional";
+    insertion_mode: "defer_to_docx";
+  }>;
+  asset_placement_intents?: Array<{
+    asset_key: string;
+    placement_role: "figure" | "table" | "equation" | "annex";
+    anchor_block_id: string | null;
+    insert_after_block_id: string | null;
+    caption_override?: string | null;
+    required_for_docx: boolean;
+  }>;
+  attempt_count?: number;
+  retry_reasons?: string[];
+  fallback_cause?: string | null;
+  prompt_hash?: string;
+  bundle_hash?: string | null;
+  quality_checks?: {
+    min_words_pass: boolean;
+    max_words_pass: boolean;
+    required_structure_pass: boolean;
+    critical_assets_pass: boolean;
+    claims_guard_pass: boolean;
+    language_pass: boolean;
+    format_contamination_pass: boolean;
+    citation_deferred_pass: boolean;
+    punctuation_pass: boolean;
+    research_logic_shape_pass?: boolean;
+  };
   warnings: string[];
   prompt: string;
 };
@@ -370,9 +592,68 @@ export type MasterBlueprintQualityReport = {
 export type UniversityBlueprintSection = {
   section_key: string;
   title: string;
+  level?: number;
+  path_titles?: string[];
   content: string;
   derived_from_master_keys: string[];
   generated_for_template: boolean;
+  source_ids?: string[];
+  evidence_snippet_ids?: string[];
+  used_asset_keys?: string[];
+  reduction_strategy?:
+    | "llm_reduced_merge"
+    | "llm_reduced_exact"
+    | "deterministic_merge"
+    | "deterministic_exact"
+    | "deterministic_gap";
+  reduction_summary?: string;
+  warnings?: string[];
+};
+
+export type UniversityBlueprintBrandingAsset = {
+  role: "institution_logo";
+  label: string;
+  asset_key: string;
+  file_path: string | null;
+  content_base64: string | null;
+  mime_type: string | null;
+  width_px: number | null;
+  height_px: number | null;
+  source: "template_runtime_db" | "template_runtime_fixture" | "local_fallback";
+  warnings: string[];
+};
+
+export type UniversityBlueprintReductionPlan = {
+  artifact_type: "university_blueprint_reduction_plan";
+  artifact_version: "v1";
+  generated_at: string;
+  reducer: "llm_global_reducer" | "deterministic_fallback";
+  llm_used: boolean;
+  llm_generation: {
+    provider: string;
+    model: string;
+    tracking_label: string;
+    input_tokens: number;
+    cached_input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cost_usd: number;
+    cost_cad: number;
+    duration_ms: number;
+  } | null;
+  master_section_count: number;
+  template_section_count: number;
+  generated_section_count: number;
+  section_mappings: Array<{
+    target_section_key: string;
+    target_title: string;
+    target_level: number;
+    matched_master_keys: string[];
+    strategy: UniversityBlueprintSection["reduction_strategy"];
+    reason: string;
+    warnings: string[];
+  }>;
+  warnings: string[];
 };
 
 export type UniversityBlueprintPackage = {
@@ -380,6 +661,8 @@ export type UniversityBlueprintPackage = {
   template_name: string;
   template_version_id: string;
   sections: UniversityBlueprintSection[];
+  branding_assets?: UniversityBlueprintBrandingAsset[];
+  reduction_plan?: UniversityBlueprintReductionPlan;
   warnings: string[];
 };
 
