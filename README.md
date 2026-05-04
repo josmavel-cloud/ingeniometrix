@@ -41,6 +41,7 @@ Not implemented yet:
 - `ai/schemas/`: structured output schemas
 - `prisma/`: database schema
 - `scripts/`: local dev and debug scripts
+- `blueprint_launch/`: isolated workspace for the independent blueprint launch track
 - `docs/`: Codex workflow docs, ADRs, runbooks, checklists, thread briefs
 - `docs/prompts/`: reusable chat starters and operating prompts
 - `artifacts-local/`: local debug outputs, intentionally untracked

@@ -2,6 +2,19 @@
 
 :root {
   color-scheme: light;
+  --font-heading:
+    "Aptos Display",
+    "Segoe UI Variable Display",
+    "Trebuchet MS",
+    "Helvetica Neue",
+    sans-serif;
+  --font-body:
+    "Aptos",
+    "Segoe UI Variable Text",
+    "Segoe UI",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
   --color-ink: #17131f;
   --color-muted: #645e73;
   --color-surface: rgba(255, 255, 255, 0.92);
@@ -27,16 +40,29 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
   min-height: 100vh;
+  overflow-x: hidden;
+  font-family: var(--font-body);
   background:
     radial-gradient(circle at top left, rgba(219, 193, 255, 0.42), transparent 24rem),
     radial-gradient(circle at 92% 14%, rgba(255, 190, 201, 0.3), transparent 22rem),
     radial-gradient(circle at 75% 85%, rgba(157, 231, 214, 0.26), transparent 24rem),
     linear-gradient(180deg, #fffaf4 0%, #f8f4fc 46%, #f3f8f7 100%);
   color: var(--color-ink);
+}
+
+.font-\[var\(--font-heading\)\] {
+  font-family: var(--font-heading) !important;
+  font-weight: inherit;
+}
+
+.font-\[var\(--font-body\)\] {
+  font-family: var(--font-body) !important;
+  font-weight: inherit;
 }
 
 body::before {

@@ -1,0 +1,67 @@
+{
+  "case_id": "case-004-random-knowledge-area",
+  "case_name": "Analitica de aprendizaje para alerta temprana universitaria",
+  "project_id": "fixture-case-004",
+  "user_id": "fixture-user-backend",
+  "project_context": {
+    "title": "Modelo de alerta temprana basado en analitica de aprendizaje para reducir el riesgo de desercion en estudiantes universitarios peruanos",
+    "degree_level": "maestria",
+    "university": "Universidad Peruana de Ciencias Aplicadas",
+    "program": "Maestria en Educacion",
+    "knowledge_area_label": "Educacion y analitica de aprendizaje",
+    "template_key": "UPC",
+    "country": "PE",
+    "language": "es"
+  },
+  "intake": {
+    "topic": "Diseno de un modelo de alerta temprana basado en analitica de aprendizaje para identificar riesgo de desercion en estudiantes universitarios peruanos.",
+    "problemContext": "Las universidades peruanas enfrentan retos de permanencia estudiantil relacionados con rendimiento academico, factores socioeconomicos, participacion en plataformas digitales y acceso a apoyo oportuno. Un modelo de alerta temprana podria ayudar a priorizar intervenciones de acompanamiento si se disena con criterios eticos y trazables.",
+    "researchLine": "Innovacion educativa, analitica de aprendizaje, permanencia universitaria y gestion academica basada en datos.",
+    "academicConstraints": "El estudio no usara datos personales reales en esta fase. Cualquier aplicacion futura debe incorporar consentimiento, minimizacion de datos, explicabilidad y supervision humana.",
+    "targetPopulation": "Estudiantes universitarios de pregrado o posgrado en instituciones peruanas con registros academicos y de interaccion educativa disponibles bajo reglas eticas.",
+    "availableData": "Literatura sobre learning analytics, modelos de alerta temprana, retencion estudiantil, intervenciones academicas y gobernanza etica de datos educativos.",
+    "preferredMethodology": "Revision aplicada, analisis comparativo de variables predictoras y propuesta de marco metodologico para un modelo de alerta temprana con validacion institucional futura.",
+    "advisorNotes": "Evitar automatizar decisiones sancionadoras; el modelo debe apoyar acompanamiento humano y declarar sesgos potenciales."
+  },
+  "source_policy": {
+    "mode": "auto_search",
+    "max_selected_sources": 6,
+    "min_selected_sources": 4,
+    "providers": ["openalex", "crossref"],
+    "allow_public_pdf_download": true,
+    "allow_web_fulltext_capture": true,
+    "require_complete_public_content": true
+  },
+  "selected_reference_ids": [],
+  "execution_options": {
+    "run_steps": [1, 2, 3, 4, 5, 6],
+    "force_rerun": false,
+    "use_llm": false,
+    "persist_debug_prompts": true,
+    "persist_full_text": true,
+    "persist_pdfs": true,
+    "cache_namespace": "fixture-case-004-learning-analytics",
+    "prompt_version": "evidence-engine-dry-run-v1"
+  },
+  "source_selection_checkpoint": {
+    "required": true,
+    "selection_mode": "manual_pending",
+    "future_options": ["frontend_basic", "codex_review", "fixture_selected_sources"],
+    "instructions_es": "Las fuentes candidatas deben ser revisadas por una persona antes de continuar. La seleccion debe priorizar evidencia sobre analitica de aprendizaje, retencion y etica de datos educativos.",
+    "selected_reference_ids": [],
+    "notes_es": "No hay fuentes preseleccionadas. La revision humana debe evitar fuentes que promuevan vigilancia invasiva o decisiones automatizadas sin supervision."
+  },
+  "expected_focus": [
+    "variables academicas y de interaccion educativa",
+    "alerta temprana y acompanamiento institucional",
+    "explicabilidad, sesgos y gobernanza de datos",
+    "validacion futura con datos anonimizados"
+  ],
+  "expected_risks": [
+    "automatizar decisiones academicas de alto impacto",
+    "usar datos personales sin base etica",
+    "confundir correlacion con causalidad",
+    "ignorar sesgos socioeconomicos o digitales"
+  ]
+}
+

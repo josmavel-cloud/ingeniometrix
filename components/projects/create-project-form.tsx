@@ -272,9 +272,9 @@ export function CreateProjectForm() {
   }, [interestText, visibleSuggestionEntries]);
   const hasCustomIdea = interestText.trim().length > 0;
   const canGenerateIdeas =
-    flowStage === "topic_confirmed" &&
+    flowStage !== "variant_selection" &&
     generatedIdeas.length < MAX_GENERATED_IDEAS &&
-    (!isGeneratingIdeas && !!confirmedTopic);
+    (!isGeneratingIdeas && (!!topicAreaLabel || interestText.trim().length > 0));
   const finalTopicTitle = selectedVariantTitle ?? selectedIdea?.title ?? null;
   const hasFinalIdeaSelection = !!selectedIdea;
   const canContinue =
@@ -351,7 +351,28 @@ export function CreateProjectForm() {
     }
 
     setActiveGeneratedIdeaIndex(index);
+    setInterestText(idea.title);
     setIdeaDraftMessage(`Estas viendo la idea ${index + 1} de ${generatedIdeas.length}.`);
+  }
+
+  function handleIdeaTextChange(nextValue: string) {
+    setInterestText(nextValue);
+    setError(null);
+
+    if (generatedIdeas.length === 0 || !generatedIdeas[activeGeneratedIdeaIndex]) {
+      return;
+    }
+
+    setGeneratedIdeas((current) =>
+      current.map((idea, index) =>
+        index === activeGeneratedIdeaIndex
+          ? {
+              ...idea,
+              title: nextValue,
+            }
+          : idea,
+      ),
+    );
   }
 
   function lockIdeaSelection() {
@@ -483,7 +504,10 @@ export function CreateProjectForm() {
     seedText?: string;
   }) {
     const normalizedSeedText =
-      options?.seedText?.trim() ?? confirmedTopic?.trim() ?? interestText.trim();
+      options?.seedText?.trim() ||
+      interestText.trim() ||
+      confirmedTopic?.trim() ||
+      "";
 
     if (!topicAreaLabel && normalizedSeedText.length === 0) {
       setIdeaDraftError("Escribe un area o una idea para poder sugerir variantes.");
@@ -553,6 +577,7 @@ export function CreateProjectForm() {
           ...current,
           [normalizedGeneratedTitle]: payload.relatedIdeas?.slice(0, 4) ?? [],
         }));
+        setInterestText(payload.generatedIdea.title);
 
         if (payload.resolvedArea?.topicAreaLabel && !areaQuery.trim()) {
           setAreaQuery(payload.resolvedArea.topicAreaLabel);
@@ -643,7 +668,7 @@ export function CreateProjectForm() {
 
       <section className="grid gap-5">
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4 md:col-span-2">
             <div className="flex items-center gap-3">
               <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(219,193,255,0.3)] text-[var(--color-plum)]">
                 <GraduationCap className="size-4" />
@@ -829,60 +854,22 @@ export function CreateProjectForm() {
                   className="text-sm font-semibold text-[var(--color-muted)]"
                   htmlFor="project-interest"
                 >
-                  Tema base
+                  Genear idea
                 </label>
               </div>
             </div>
             <div className="relative">
-              <input
-                className={fieldClassName}
-                disabled={flowStage !== "topic_input"}
+              <textarea
+                className="brand-textarea"
+                disabled={flowStage === "variant_selection"}
                 id="project-interest"
                 onChange={(event) => {
-                  beginTopicEditing();
-                  setInterestText(event.target.value);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    openTopicConfirmation(
-                      interestText.trim() || topicLiveSuggestions[0]?.title || "",
-                    );
-                  }
+                  handleIdeaTextChange(event.target.value);
                 }}
                 placeholder="Escribe el tema que quieres investigar."
+                rows={3}
                 value={interestText}
               />
-              {flowStage === "topic_input" && topicLiveSuggestions.length > 0 ? (
-                <div className="absolute z-20 mt-2 max-h-72 w-full overflow-auto rounded-[22px] border border-[rgba(74,58,97,0.12)] bg-white p-2 shadow-[0_18px_44px_rgba(23,19,31,0.1)]">
-                  {topicLiveSuggestions.map((suggestion, index) => {
-                    const isTypedSuggestion =
-                      index === 0 &&
-                      normalizeSearchText(suggestion.title) ===
-                        normalizeSearchText(interestText.trim());
-
-                    return (
-                      <button
-                        className="flex w-full flex-col rounded-[16px] px-3 py-3 text-left text-sm text-[var(--color-muted)] hover:bg-[rgba(74,58,97,0.04)]"
-                        key={`${suggestion.title}-${index}`}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          if (!isTypedSuggestion) {
-                            setInterestText(suggestion.title);
-                          }
-                          openTopicConfirmation(suggestion.title);
-                        }}
-                        type="button"
-                      >
-                        <span className="font-semibold text-[var(--color-ink)]">
-                          {suggestion.title}
-                        </span>
-                        <span className="mt-1 leading-6">{suggestion.rationale}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
             </div>
             <p className="text-sm leading-6 text-[var(--color-muted)]">
               Escribe el tema y pulsa `Enter` para confirmarlo. Mientras escribes, veras sugerencias relacionadas como en un buscador.
@@ -929,20 +916,47 @@ export function CreateProjectForm() {
                 </p>
               </div>
             ) : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                className="brand-button-secondary px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-                disabled={!canGenerateIdeas}
-                onClick={() => requestIdeaDrafts({ seedText: confirmedTopic ?? undefined })}
-                type="button"
-              >
-                <WandSparkles className="mr-2 size-4" />
-                {isGeneratingIdeas
-                  ? "Generando..."
-                  : generatedIdeas.length >= MAX_GENERATED_IDEAS
-                    ? "Limite alcanzado"
-                    : "Generar idea"}
-              </button>
+            <div className="flex flex-wrap items-start gap-3">
+              <div className="grid gap-2">
+                <button
+                  className="brand-button-secondary px-4 py-2 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
+                  disabled={!canGenerateIdeas}
+                  onClick={() => requestIdeaDrafts()}
+                  type="button"
+                >
+                  <WandSparkles className="mr-2 size-4" />
+                  {isGeneratingIdeas
+                    ? "Generando..."
+                    : generatedIdeas.length >= MAX_GENERATED_IDEAS
+                      ? "Limite alcanzado"
+                      : generatedIdeas.length > 0
+                        ? "Nueva idea"
+                        : "Genear idea"}
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    aria-label="Idea anterior"
+                    className="inline-flex size-8 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
+                    disabled={activeGeneratedIdeaIndex === 0 || flowStage === "variant_selection"}
+                    onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex - 1)}
+                    type="button"
+                  >
+                    <ChevronLeft className="size-4" />
+                  </button>
+                  <button
+                    aria-label="Idea siguiente"
+                    className="inline-flex size-8 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
+                    disabled={
+                      activeGeneratedIdeaIndex >= generatedIdeas.length - 1 ||
+                      flowStage === "variant_selection"
+                    }
+                    onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex + 1)}
+                    type="button"
+                  >
+                    <ChevronRight className="size-4" />
+                  </button>
+                </div>
+              </div>
               <p className="text-sm leading-6 text-[var(--color-muted)]">
                 {flowStage === "topic_input"
                   ? "Primero confirma el tema."
@@ -959,38 +973,13 @@ export function CreateProjectForm() {
             ) : null}
             {generatedIdeas.length > 0 ? (
               <div className="rounded-[22px] border border-[rgba(74,58,97,0.08)] bg-[rgba(250,247,253,0.9)] p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--color-ink)]">
-                      Idea generada actual
-                    </p>
-                    <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-                      {activeGeneratedIdeaIndex + 1}/{generatedIdeas.length} ideas
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      aria-label="Idea anterior"
-                      className="inline-flex size-9 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
-                      disabled={activeGeneratedIdeaIndex === 0 || flowStage === "variant_selection"}
-                      onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex - 1)}
-                      type="button"
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                    <button
-                      aria-label="Idea siguiente"
-                      className="inline-flex size-9 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
-                      disabled={
-                        activeGeneratedIdeaIndex >= generatedIdeas.length - 1 ||
-                        flowStage === "variant_selection"
-                      }
-                      onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex + 1)}
-                      type="button"
-                    >
-                      <ChevronRight className="size-4" />
-                    </button>
-                  </div>
+                <div>
+                  <p className="text-sm font-semibold text-[var(--color-ink)]">
+                    Idea generada actual
+                  </p>
+                  <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
+                    {activeGeneratedIdeaIndex + 1}/{generatedIdeas.length} ideas
+                  </p>
                 </div>
                 {activeGeneratedIdea ? (
                   <div className="mt-3 grid gap-3">

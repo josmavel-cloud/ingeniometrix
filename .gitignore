@@ -12,3 +12,5 @@ artifacts-local/*
 prisma/dev.db
 *.log
 *.tsbuildinfo
+
+.vercel

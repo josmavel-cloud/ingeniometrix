@@ -9,21 +9,21 @@ export function BrandBadge({
   context = "product",
   compact = false,
 }: BrandBadgeProps) {
-  if (context === "company") {
+  if (context === "company" || compact) {
     return (
       <div className="flex items-center gap-3">
         <Image
           alt="Ingeniometrix"
           className={
             compact
-              ? "h-auto w-[146px] sm:w-[170px] lg:w-[184px]"
+              ? "h-auto w-[132px] sm:w-[170px] lg:w-[184px]"
               : "h-auto w-[174px] sm:w-[220px] lg:w-[248px]"
           }
           height={48}
           priority
           sizes={
             compact
-              ? "(max-width: 640px) 146px, (max-width: 1024px) 170px, 184px"
+              ? "(max-width: 640px) 132px, (max-width: 1024px) 170px, 184px"
               : "(max-width: 640px) 174px, (max-width: 1024px) 220px, 248px"
           }
           src="/brand/ingeniometrix-lockup-640.png"

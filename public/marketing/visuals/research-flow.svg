@@ -1,0 +1,27 @@
+<svg width="960" height="360" viewBox="0 0 960 360" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="360" rx="44" fill="#FFFDF9"/>
+  <circle cx="100" cy="62" r="90" fill="#DBC1FF" fill-opacity=".45"/>
+  <circle cx="824" cy="292" r="110" fill="#9DE7D6" fill-opacity=".35"/>
+  <path d="M120 182H840" stroke="#34145F" stroke-opacity=".18" stroke-width="8" stroke-linecap="round"/>
+  <g font-family="Segoe UI, Arial, sans-serif" font-size="23" font-weight="700" fill="#17131F">
+    <text x="78" y="142">Tema</text>
+    <text x="238" y="142">Snapshot</text>
+    <text x="415" y="142">Plan</text>
+    <text x="586" y="142">Revisión</text>
+    <text x="748" y="142">Exportación</text>
+  </g>
+  <g>
+    <circle cx="120" cy="182" r="38" fill="#DBC1FF" stroke="#34145F" stroke-width="5"/>
+    <circle cx="300" cy="182" r="38" fill="#9DE7D6" stroke="#34145F" stroke-width="5"/>
+    <circle cx="480" cy="182" r="38" fill="#EFC14D" stroke="#34145F" stroke-width="5"/>
+    <circle cx="660" cy="182" r="38" fill="#FFBEC9" stroke="#34145F" stroke-width="5"/>
+    <circle cx="840" cy="182" r="38" fill="#FFFFFF" stroke="#34145F" stroke-width="5"/>
+  </g>
+  <g stroke="#34145F" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M113 182H127"/>
+    <path d="M293 174L307 188M307 174L293 188"/>
+    <path d="M470 181L477 188L491 174"/>
+    <path d="M648 190C654 176 668 176 674 190"/>
+    <path d="M829 174H851M829 183H851M829 192H842"/>
+  </g>
+</svg>

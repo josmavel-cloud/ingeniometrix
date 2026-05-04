@@ -1,0 +1,153 @@
+{
+  "caseName": "blueprint-launch-latest",
+  "runDir": "C:\\projects\\ingeniometrix\\artifacts-local\\blueprint-v2-lab\\steps-5-11\\blueprint-launch-latest\\2026-05-02T20-26-29-898Z",
+  "executedStep": "consistency_matrix",
+  "executedOnlyStep10": true,
+  "generatedAt": "2026-05-02T23:47:32.167Z",
+  "durationMs": 14643,
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
+    "model_tier": "low",
+    "tracking_label": "step10_consistency_matrix_llm_aligned",
+    "input_hash": "b41fd93f984edced",
+    "prompt_char_count": 38656,
+    "input_tokens": 8084,
+    "cached_input_tokens": 7424,
+    "output_tokens": 2238,
+    "total_tokens": 10322,
+    "cost_usd": 0.011123,
+    "cost_cad": 0.015218,
+    "duration_ms": 14603
+  },
+  "status": "warn",
+  "canContinueStep11": true,
+  "rowCount": 4,
+  "warnings": [
+    "No se detectaron variables independiente/dependiente explicitas.",
+    "Gaps declarados por LLM: No se dispone de una formulación completa de la hipótesis general en el texto base, aunque el sentido central sí es recuperable. | No se explicita una validación experta efectiva; el propio material la condiciona a acceso verificable. | No se cuenta con delimitación cerrada del número de casos o tipologías de la muestra. | La evidencia local de Toronto se mantiene como contraste prudente y no como validación definitiva.",
+    "Notas de confianza: La matriz mantiene alta correspondencia conceptual con el contenido de Step 9 y preserva el carácter preliminar, aplicado y comparativo del proyecto. | Se ajustaron las hipótesis específicas para asegurar congruencia con interrogantes y objetivos, evitando afirmaciones causales no justificadas. | Se evitó inventar datos, resultados o validaciones locales; donde el insumo no fue suficiente, se consignó null o se registró el vacío como gap."
+  ],
+  "blockers": [],
+  "tableModel": {
+    "orientation": "landscape",
+    "caption": "Matriz de consistencia",
+    "columns": [
+      {
+        "key": "codigo",
+        "label": "Codigo",
+        "width_pct": 6,
+        "align": "center"
+      },
+      {
+        "key": "interrogante",
+        "label": "Interrogante especifica",
+        "width_pct": 22,
+        "align": "left"
+      },
+      {
+        "key": "objetivo",
+        "label": "Objetivo especifico",
+        "width_pct": 22,
+        "align": "left"
+      },
+      {
+        "key": "hipotesis",
+        "label": "Hipotesis especifica",
+        "width_pct": 18,
+        "align": "left"
+      },
+      {
+        "key": "variable",
+        "label": "Variable/categoria",
+        "width_pct": 13,
+        "align": "left"
+      },
+      {
+        "key": "metodo",
+        "label": "Metodo",
+        "width_pct": 10,
+        "align": "left"
+      },
+      {
+        "key": "tecnica",
+        "label": "Tecnica/instrumento",
+        "width_pct": 9,
+        "align": "left"
+      }
+    ],
+    "header_rows": [
+      [
+        "Codigo",
+        "Interrogante especifica",
+        "Objetivo especifico",
+        "Hipotesis especifica",
+        "Variable/categoria",
+        "Metodo",
+        "Tecnica/instrumento"
+      ]
+    ],
+    "body_rows": [
+      {
+        "row_id": "OE1",
+        "cells": [
+          "OE1",
+          "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+          "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+          "Un marco de factibilidad multicriterio que incorpore explícitamente la vacancia y la subutilización como criterios de evaluación permitirá valorar con mayor pertinencia el potencial de reutilización adaptativa de edificios comerciales tipo B y C.",
+          "Condición de vacancia, subutilización y obsolescencia",
+          "Enfoque aplicado, cualitativo y comparado",
+          "Revisión sistemática y crítica de literatura; análisis comparado de precedentes / Matriz de revisión bibliográfica y documental; ficha comparativa de precedentes y casos"
+        ],
+        "warnings": []
+      },
+      {
+        "row_id": "OE2",
+        "cells": [
+          "OE2",
+          "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+          "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+          "La integración entre reutilización adaptativa y sostenibilidad puede traducirse en criterios arquitectónicos, regulatorios y de negocio útiles para comparar casos y ordenar decisiones de intervención.",
+          "Criterios de evaluación para reconversión habitacional",
+          "Estudio aplicado de base cualitativa-comparada",
+          "Revisión crítica de literatura; análisis tipológico-comparado / Matriz de revisión bibliográfica y documental; matriz preliminar de criterios multicriterio"
+        ],
+        "warnings": []
+      },
+      {
+        "row_id": "OE3",
+        "cells": [
+          "OE3",
+          "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+          "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+          "La organización de criterios en una estructura multicriterio permitirá valorar preliminarmente condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención, sin afirmar viabilidad definitiva.",
+          "Factibilidad regulatoria y de negocio",
+          "Diseño comparativo-aplicado",
+          "Síntesis cualitativa; construcción de matriz de criterios / Matriz preliminar de criterios multicriterio"
+        ],
+        "warnings": []
+      },
+      {
+        "row_id": "OE4",
+        "cells": [
+          "OE4",
+          "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?",
+          "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva.",
+          "La sobre-elevación en madera maciza estructural podría considerarse, de manera preliminar, como una estrategia complementaria de densificación en edificios existentes seleccionados, siempre que las condiciones tipológicas, estructurales, normativas y operativas del caso permitan su contraste con el marco propuesto y no se superen las restricciones identificadas en el estudio.",
+          "Sobre-elevación en madera maciza estructural",
+          "Estudio aplicado, cualitativo-comparado y proyectivo",
+          "Análisis comparado de precedentes; contraste preliminar del marco propuesto / Ficha comparativa de precedentes y casos; matriz preliminar de criterios multicriterio"
+        ],
+        "warnings": []
+      }
+    ],
+    "render_hints": {
+      "repeat_header": true,
+      "font_size_pt": 8,
+      "table_width_pct": 100,
+      "autofit": false,
+      "allow_page_break_inside_rows": false,
+      "cell_padding_twips": 90
+    }
+  }
+}

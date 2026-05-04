@@ -1,0 +1,86 @@
+{
+  "minimum_required_sources": 3,
+  "selected_source_count": 3,
+  "missing_source_count": 0,
+  "fallback_required": true,
+  "coverage_warnings": [
+    "El set sintetico de laboratorio mantiene cobertura suficiente, pero deja faltantes operativos para probar assumptions y soporte web contextual en ingenieria civil."
+  ],
+  "selected_sources": [
+    {
+      "source_id": "lab-selected-source-001",
+      "reference_id": "lab-selected-source-001",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "normalized_title": "sintetica practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil A"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio que describe secuenciacion de frentes de concreto, estandarizacion de tareas criticas y control operativo para reducir desperdicio y mantener seguridad en obra.",
+      "landing_page_url": "https://lab.local/civil/source-001",
+      "pdf_url": "https://lab.local/pdf/civil-source-001.pdf",
+      "query": null,
+      "snippet": null,
+      "selected_order": 1,
+      "citation_count": 9,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-selected-source-002",
+      "reference_id": "lab-selected-source-002",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "normalized_title": "sintetica disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil B"
+      ],
+      "year": 2023,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio con enfasis en observacion estructurada, checklists de seguridad, tiempos improductivos y delimitacion prudente de unidades de analisis en obra.",
+      "landing_page_url": "https://lab.local/civil/source-002",
+      "pdf_url": null,
+      "query": null,
+      "snippet": null,
+      "selected_order": 2,
+      "citation_count": 6,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-selected-source-003",
+      "reference_id": "lab-selected-source-003",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Lineamientos de consistencia entre seguridad, productividad y evidencia en proyectos de edificacion",
+      "normalized_title": "sintetica lineamientos de consistencia entre seguridad productividad y evidencia en proyectos de edificacion",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil C"
+      ],
+      "year": 2022,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio orientado a consistencia vertical, construccion tardia de la matriz y uso responsable de assumptions cuando faltan detalles operativos del caso.",
+      "landing_page_url": "https://lab.local/civil/source-003",
+      "pdf_url": "https://lab.local/pdf/civil-source-003.pdf",
+      "query": null,
+      "snippet": null,
+      "selected_order": 3,
+      "citation_count": 5,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    }
+  ]
+}

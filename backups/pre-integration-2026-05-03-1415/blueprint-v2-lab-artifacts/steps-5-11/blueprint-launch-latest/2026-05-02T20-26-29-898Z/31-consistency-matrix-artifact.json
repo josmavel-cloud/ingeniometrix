@@ -1,0 +1,347 @@
+{
+  "artifact_type": "consistency_matrix",
+  "artifact_version": "v3_llm_aligned",
+  "generated_at": "2026-05-02T23:47:32.167Z",
+  "llm_used": true,
+  "llm_generation": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
+    "model_tier": "low",
+    "tracking_label": "step10_consistency_matrix_llm_aligned",
+    "input_hash": "b41fd93f984edced",
+    "prompt_char_count": 38656,
+    "input_tokens": 8084,
+    "cached_input_tokens": 7424,
+    "output_tokens": 2238,
+    "total_tokens": 10322,
+    "cost_usd": 0.011123,
+    "cost_cad": 0.015218,
+    "duration_ms": 14603
+  },
+  "status": "warn",
+  "can_continue_step_11": true,
+  "general_block": {
+    "problema_principal": "¿Cómo formular un marco de factibilidad multicriterio, de alcance preliminar, para evaluar la reconversión habitacional y la sobre-elevación en madera maciza estructural de edificios comerciales tipo B y C subutilizados u obsoletos en Toronto?",
+    "objetivo_general": "Formular un marco de factibilidad multicriterio, de alcance arquitectónico, regulatorio y de negocio, que, a partir de antecedentes comparados, oriente preliminarmente la reconversión habitacional y eventual sobre-elevación en madera maciza estructural de edificios comerciales tipo B y C subutilizados en Toronto.",
+    "hipotesis_general": "Se plantea que un marco de factibilidad multicriterio que incorpore vacancia/subuso y criterios de sostenibilidad de la reutilización adaptativa permitiría identificar, de forma preliminar y contrastable, edificios comerciales tipo B y C en Toronto con mayor potencial de reconversión habitacional y eventual sobre-elevación en madera maciza estructural, sujeto a validación normativa y técnica local."
+  },
+  "specific_rows": [
+    {
+      "index": 1,
+      "row_id": "OE1",
+      "interrogante_especifica": "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+      "objetivo_especifico": "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+      "hipotesis_especifica": "Un marco de factibilidad multicriterio que incorpore explícitamente la vacancia y la subutilización como criterios de evaluación permitirá valorar con mayor pertinencia el potencial de reutilización adaptativa de edificios comerciales tipo B y C.",
+      "variable_o_categoria": "Condición de vacancia, subutilización y obsolescencia",
+      "dimension_o_criterio": "Arquitectónico-tipológica",
+      "metodo_vinculado": "Enfoque aplicado, cualitativo y comparado",
+      "tecnica": "Revisión sistemática y crítica de literatura; análisis comparado de precedentes",
+      "instrumento": "Matriz de revisión bibliográfica y documental; ficha comparativa de precedentes y casos",
+      "alignment_score": 0.391,
+      "question_derivation_source": "llm_aligned",
+      "objective_derivation_source": "llm_aligned",
+      "hypothesis_derivation_source": "llm_aligned",
+      "status": "complete",
+      "warnings": []
+    },
+    {
+      "index": 2,
+      "row_id": "OE2",
+      "interrogante_especifica": "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+      "objetivo_especifico": "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+      "hipotesis_especifica": "La integración entre reutilización adaptativa y sostenibilidad puede traducirse en criterios arquitectónicos, regulatorios y de negocio útiles para comparar casos y ordenar decisiones de intervención.",
+      "variable_o_categoria": "Criterios de evaluación para reconversión habitacional",
+      "dimension_o_criterio": "Arquitectónico, regulatorio y de negocio",
+      "metodo_vinculado": "Estudio aplicado de base cualitativa-comparada",
+      "tecnica": "Revisión crítica de literatura; análisis tipológico-comparado",
+      "instrumento": "Matriz de revisión bibliográfica y documental; matriz preliminar de criterios multicriterio",
+      "alignment_score": 0.091,
+      "question_derivation_source": "llm_aligned",
+      "objective_derivation_source": "llm_aligned",
+      "hypothesis_derivation_source": "llm_aligned",
+      "status": "complete",
+      "warnings": []
+    },
+    {
+      "index": 3,
+      "row_id": "OE3",
+      "interrogante_especifica": "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+      "objetivo_especifico": "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+      "hipotesis_especifica": "La organización de criterios en una estructura multicriterio permitirá valorar preliminarmente condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención, sin afirmar viabilidad definitiva.",
+      "variable_o_categoria": "Factibilidad regulatoria y de negocio",
+      "dimension_o_criterio": "Regulatorio y de negocio",
+      "metodo_vinculado": "Diseño comparativo-aplicado",
+      "tecnica": "Síntesis cualitativa; construcción de matriz de criterios",
+      "instrumento": "Matriz preliminar de criterios multicriterio",
+      "alignment_score": 0.105,
+      "question_derivation_source": "llm_aligned",
+      "objective_derivation_source": "llm_aligned",
+      "hypothesis_derivation_source": "llm_aligned",
+      "status": "complete",
+      "warnings": []
+    },
+    {
+      "index": 4,
+      "row_id": "OE4",
+      "interrogante_especifica": "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?",
+      "objetivo_especifico": "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva.",
+      "hipotesis_especifica": "La sobre-elevación en madera maciza estructural podría considerarse, de manera preliminar, como una estrategia complementaria de densificación en edificios existentes seleccionados, siempre que las condiciones tipológicas, estructurales, normativas y operativas del caso permitan su contraste con el marco propuesto y no se superen las restricciones identificadas en el estudio.",
+      "variable_o_categoria": "Sobre-elevación en madera maciza estructural",
+      "dimension_o_criterio": "Aptitud para densificación y compatibilidad material",
+      "metodo_vinculado": "Estudio aplicado, cualitativo-comparado y proyectivo",
+      "tecnica": "Análisis comparado de precedentes; contraste preliminar del marco propuesto",
+      "instrumento": "Ficha comparativa de precedentes y casos; matriz preliminar de criterios multicriterio",
+      "alignment_score": 0.083,
+      "question_derivation_source": "llm_aligned",
+      "objective_derivation_source": "llm_aligned",
+      "hypothesis_derivation_source": "llm_aligned",
+      "status": "complete",
+      "warnings": []
+    }
+  ],
+  "variables_block": {
+    "variable_independiente": null,
+    "indicadores_independiente": [],
+    "variable_dependiente": null,
+    "indicadores_dependiente": [],
+    "categorias": [
+      "Condición de vacancia, subutilización y obsolescencia",
+      "Criterios de evaluación para reconversión habitacional",
+      "Factibilidad regulatoria y de negocio",
+      "Sobre-elevación en madera maciza estructural",
+      "Dimensión arquitectónico-tipológica",
+      "Dimensión regulatoria",
+      "Dimensión de negocio"
+    ]
+  },
+  "methodology_block": {
+    "tipo_investigacion": "Estudio aplicado, de base cualitativa y comparada, con alcance descriptivo-analítico y propositivo.",
+    "diseno_investigacion": "Diseño secuencial sustentado en revisión sistemática y crítica de literatura, análisis tipológico-comparado de precedentes y construcción de un marco multicriterio preliminar para el caso de Toronto.",
+    "ambito_estudio": "Edificios comerciales tipo B y C ubicados en Toronto, y precedentes comparados de reutilización adaptativa y ampliación vertical provenientes de contextos nacionales e internacionales.",
+    "poblacion": "Edificios comerciales tipo B y C ubicados en Toronto que presenten obsolescencia funcional, vacancia o subutilización.",
+    "muestra": "Muestra intencional y teórico-comparada, constituida por un conjunto acotado de casos o tipologías.",
+    "tecnicas_recoleccion": [
+      "Revisión sistemática y crítica de literatura",
+      "Análisis comparado de precedentes de reconversión y ampliación vertical",
+      "Construcción de una matriz de criterios de evaluación",
+      "Validación experta, solo si se obtiene acceso verificable"
+    ],
+    "instrumentos": [
+      "Matriz de revisión bibliográfica y documental",
+      "Ficha comparativa de precedentes y casos",
+      "Matriz preliminar de criterios multicriterio"
+    ],
+    "plan_analisis": "Revisión crítica y comparada de literatura y precedentes; codificación temática; organización de categorías preliminares; traducción a una matriz multicriterio para análisis preliminar y comparativo; lectura interpretativa de resultados con carácter no concluyente."
+  },
+  "validation": {
+    "row_alignment_ok": true,
+    "required_inputs_present": true,
+    "blocked_reasons": [],
+    "warnings": [
+      "No se detectaron variables independiente/dependiente explicitas.",
+      "Gaps declarados por LLM: No se dispone de una formulación completa de la hipótesis general en el texto base, aunque el sentido central sí es recuperable. | No se explicita una validación experta efectiva; el propio material la condiciona a acceso verificable. | No se cuenta con delimitación cerrada del número de casos o tipologías de la muestra. | La evidencia local de Toronto se mantiene como contraste prudente y no como validación definitiva.",
+      "Notas de confianza: La matriz mantiene alta correspondencia conceptual con el contenido de Step 9 y preserva el carácter preliminar, aplicado y comparativo del proyecto. | Se ajustaron las hipótesis específicas para asegurar congruencia con interrogantes y objetivos, evitando afirmaciones causales no justificadas. | Se evitó inventar datos, resultados o validaciones locales; donde el insumo no fue suficiente, se consignó null o se registró el vacío como gap."
+    ],
+    "source_section_keys": [
+      "problem_statement",
+      "research_questions",
+      "general_research_question",
+      "specific_research_questions",
+      "general_objective",
+      "specific_objectives",
+      "hypotheses",
+      "general_hypothesis",
+      "specific_hypotheses",
+      "variables_or_categories",
+      "variables_indicators",
+      "methodology",
+      "methodological_approach",
+      "research_design",
+      "population_and_sample",
+      "data_collection_techniques",
+      "research_instruments",
+      "analysis_plan"
+    ],
+    "weak_source_section_keys": [],
+    "fallback_source_section_keys": [],
+    "derived_field_count": 4,
+    "missing_field_count": 0,
+    "row_alignment_scores": [
+      {
+        "row_id": "OE1",
+        "score": 0.391,
+        "status": "complete",
+        "warnings": []
+      },
+      {
+        "row_id": "OE2",
+        "score": 0.106,
+        "status": "complete",
+        "warnings": []
+      },
+      {
+        "row_id": "OE3",
+        "score": 0.223,
+        "status": "complete",
+        "warnings": []
+      },
+      {
+        "row_id": "OE4",
+        "score": 0.102,
+        "status": "complete",
+        "warnings": []
+      }
+    ],
+    "llm_validation_warnings": [
+      "Gaps declarados por LLM: No se dispone de una formulación completa de la hipótesis general en el texto base, aunque el sentido central sí es recuperable. | No se explicita una validación experta efectiva; el propio material la condiciona a acceso verificable. | No se cuenta con delimitación cerrada del número de casos o tipologías de la muestra. | La evidencia local de Toronto se mantiene como contraste prudente y no como validación definitiva.",
+      "Notas de confianza: La matriz mantiene alta correspondencia conceptual con el contenido de Step 9 y preserva el carácter preliminar, aplicado y comparativo del proyecto. | Se ajustaron las hipótesis específicas para asegurar congruencia con interrogantes y objetivos, evitando afirmaciones causales no justificadas. | Se evitó inventar datos, resultados o validaciones locales; donde el insumo no fue suficiente, se consignó null o se registró el vacío como gap."
+    ]
+  },
+  "table_model": {
+    "orientation": "landscape",
+    "caption": "Matriz de consistencia",
+    "columns": [
+      {
+        "key": "codigo",
+        "label": "Codigo",
+        "width_pct": 6,
+        "align": "center"
+      },
+      {
+        "key": "interrogante",
+        "label": "Interrogante especifica",
+        "width_pct": 22,
+        "align": "left"
+      },
+      {
+        "key": "objetivo",
+        "label": "Objetivo especifico",
+        "width_pct": 22,
+        "align": "left"
+      },
+      {
+        "key": "hipotesis",
+        "label": "Hipotesis especifica",
+        "width_pct": 18,
+        "align": "left"
+      },
+      {
+        "key": "variable",
+        "label": "Variable/categoria",
+        "width_pct": 13,
+        "align": "left"
+      },
+      {
+        "key": "metodo",
+        "label": "Metodo",
+        "width_pct": 10,
+        "align": "left"
+      },
+      {
+        "key": "tecnica",
+        "label": "Tecnica/instrumento",
+        "width_pct": 9,
+        "align": "left"
+      }
+    ],
+    "header_rows": [
+      [
+        "Codigo",
+        "Interrogante especifica",
+        "Objetivo especifico",
+        "Hipotesis especifica",
+        "Variable/categoria",
+        "Metodo",
+        "Tecnica/instrumento"
+      ]
+    ],
+    "body_rows": [
+      {
+        "row_id": "OE1",
+        "cells": [
+          "OE1",
+          "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+          "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+          "Un marco de factibilidad multicriterio que incorpore explícitamente la vacancia y la subutilización como criterios de evaluación permitirá valorar con mayor pertinencia el potencial de reutilización adaptativa de edificios comerciales tipo B y C.",
+          "Condición de vacancia, subutilización y obsolescencia",
+          "Enfoque aplicado, cualitativo y comparado",
+          "Revisión sistemática y crítica de literatura; análisis comparado de precedentes / Matriz de revisión bibliográfica y documental; ficha comparativa de precedentes y casos"
+        ],
+        "warnings": []
+      },
+      {
+        "row_id": "OE2",
+        "cells": [
+          "OE2",
+          "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+          "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+          "La integración entre reutilización adaptativa y sostenibilidad puede traducirse en criterios arquitectónicos, regulatorios y de negocio útiles para comparar casos y ordenar decisiones de intervención.",
+          "Criterios de evaluación para reconversión habitacional",
+          "Estudio aplicado de base cualitativa-comparada",
+          "Revisión crítica de literatura; análisis tipológico-comparado / Matriz de revisión bibliográfica y documental; matriz preliminar de criterios multicriterio"
+        ],
+        "warnings": []
+      },
+      {
+        "row_id": "OE3",
+        "cells": [
+          "OE3",
+          "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+          "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+          "La organización de criterios en una estructura multicriterio permitirá valorar preliminarmente condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención, sin afirmar viabilidad definitiva.",
+          "Factibilidad regulatoria y de negocio",
+          "Diseño comparativo-aplicado",
+          "Síntesis cualitativa; construcción de matriz de criterios / Matriz preliminar de criterios multicriterio"
+        ],
+        "warnings": []
+      },
+      {
+        "row_id": "OE4",
+        "cells": [
+          "OE4",
+          "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?",
+          "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva.",
+          "La sobre-elevación en madera maciza estructural podría considerarse, de manera preliminar, como una estrategia complementaria de densificación en edificios existentes seleccionados, siempre que las condiciones tipológicas, estructurales, normativas y operativas del caso permitan su contraste con el marco propuesto y no se superen las restricciones identificadas en el estudio.",
+          "Sobre-elevación en madera maciza estructural",
+          "Estudio aplicado, cualitativo-comparado y proyectivo",
+          "Análisis comparado de precedentes; contraste preliminar del marco propuesto / Ficha comparativa de precedentes y casos; matriz preliminar de criterios multicriterio"
+        ],
+        "warnings": []
+      }
+    ],
+    "render_hints": {
+      "repeat_header": true,
+      "font_size_pt": 8,
+      "table_width_pct": 100,
+      "autofit": false,
+      "allow_page_break_inside_rows": false,
+      "cell_padding_twips": 90
+    }
+  },
+  "legacy_rows": [
+    {
+      "objective": "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+      "question": "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+      "method": "Enfoque aplicado, cualitativo y comparado",
+      "technique": "Revisión sistemática y crítica de literatura; análisis comparado de precedentes"
+    },
+    {
+      "objective": "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+      "question": "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+      "method": "Estudio aplicado de base cualitativa-comparada",
+      "technique": "Revisión crítica de literatura; análisis tipológico-comparado"
+    },
+    {
+      "objective": "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+      "question": "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+      "method": "Diseño comparativo-aplicado",
+      "technique": "Síntesis cualitativa; construcción de matriz de criterios"
+    },
+    {
+      "objective": "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva.",
+      "question": "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?",
+      "method": "Estudio aplicado, cualitativo-comparado y proyectivo",
+      "technique": "Análisis comparado de precedentes; contraste preliminar del marco propuesto"
+    }
+  ]
+}

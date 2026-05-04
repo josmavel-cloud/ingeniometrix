@@ -13,6 +13,9 @@ type LoadedTemplateAsset = {
   kind: string;
   sourceStrategy: string;
   storedFilePath: string | null;
+  fileName: string | null;
+  fileHash: string | null;
+  fileBase64: string | null;
   mimeType: string | null;
   widthPx: number | null;
   heightPx: number | null;
@@ -24,6 +27,10 @@ type LoadedTemplateSource = {
   sourceType: string;
   documentKind: string;
   storedFilePath: string | null;
+  fileName: string | null;
+  fileHash: string | null;
+  fileBase64: string | null;
+  mimeType: string | null;
 };
 
 function repairPotentialMojibake(value: string) {
@@ -51,6 +58,14 @@ function deepRepairJsonValue<T>(value: T): T {
   }
 
   return value;
+}
+
+function bytesToBase64(value: Uint8Array | Buffer | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return Buffer.from(value).toString("base64");
 }
 
 export type LoadedTemplateVersionRuntime = {
@@ -153,6 +168,9 @@ export async function loadTemplateVersionRuntime(input: {
       kind: asset.kind,
       sourceStrategy: asset.sourceStrategy,
       storedFilePath: asset.storedFilePath ?? null,
+      fileName: asset.fileName ?? null,
+      fileHash: asset.fileHash ?? null,
+      fileBase64: bytesToBase64(asset.fileData),
       mimeType: asset.mimeType ?? null,
       widthPx: asset.widthPx ?? null,
       heightPx: asset.heightPx ?? null,
@@ -163,6 +181,10 @@ export async function loadTemplateVersionRuntime(input: {
       sourceType: source.sourceType,
       documentKind: source.documentKind,
       storedFilePath: source.storedFilePath ?? null,
+      fileName: source.fileName ?? null,
+      fileHash: source.fileHash ?? null,
+      fileBase64: bytesToBase64(source.fileData),
+      mimeType: source.mimeType ?? null,
     })),
     runtimeWarnings: editorialResolution.warnings,
   } satisfies LoadedTemplateVersionRuntime;

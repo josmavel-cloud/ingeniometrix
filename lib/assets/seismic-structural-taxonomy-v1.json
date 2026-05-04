@@ -1,0 +1,229 @@
+{
+  "scheme": {
+    "code": "PLMX-SEISMIC-STRUCTURAL-V1",
+    "name": "Planimetrix Structural and Seismic Engineering Taxonomy",
+    "version": "1.0",
+    "uri": "https://planimetrix.local/taxonomy/seismic-structural/v1",
+    "description": "Local curated taxonomy for structural engineering, earthquake engineering, seismic protection systems, seismic isolation, and energy dissipation systems. Built from authoritative terminology used in FEMA, NIST, and ASCE seismic engineering references."
+  },
+  "provenance": [
+    {
+      "label": "FEMA P-749 Earthquake-Resistant Design Concepts",
+      "url": "https://www.fema.gov/sites/default/files/documents/fema_p-749-earthquake-resistant-design-concepts_112022.pdf",
+      "note": "Uses seismic isolation, base isolation, elastomeric bearings, and sliding or friction pendulum terminology."
+    },
+    {
+      "label": "NIST SP 832v1 Earthquake protection in buildings through base isolation",
+      "url": "https://www.nist.gov/publications/earthquake-protection-buildings-through-base-isolation",
+      "note": "Provides baseline terminology for earthquake protection through base isolation."
+    },
+    {
+      "label": "ASCE/SEI 41-23",
+      "url": "https://www.asce.org/publications-and-news/codes-and-standards/asce-sei-41",
+      "note": "Explicitly includes seismic isolation and energy dissipation systems in the retrofit and evaluation standard."
+    }
+  ],
+  "concepts": [
+    {
+      "conceptCode": "1",
+      "prefLabel": "Structural engineering",
+      "altLabels": [
+        "ingenieria estructural",
+        "ingenieria estructural y proteccion sismica"
+      ],
+      "children": [
+        {
+          "conceptCode": "1.1",
+          "prefLabel": "Structural analysis",
+          "altLabels": [
+            "analisis estructural"
+          ]
+        },
+        {
+          "conceptCode": "1.2",
+          "prefLabel": "Structural dynamics",
+          "altLabels": [
+            "dinamica estructural"
+          ]
+        },
+        {
+          "conceptCode": "1.3",
+          "prefLabel": "Performance-based seismic design",
+          "altLabels": [
+            "diseno sismico basado en desempeno",
+            "diseno sismorresistente basado en desempeno"
+          ]
+        },
+        {
+          "conceptCode": "1.4",
+          "prefLabel": "Seismic retrofit",
+          "altLabels": [
+            "reforzamiento sismico",
+            "rehabilitacion sismica",
+            "retrofit sismico"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "2",
+      "prefLabel": "Earthquake engineering",
+      "altLabels": [
+        "ingenieria sismica",
+        "ingenieria antisismica",
+        "ingenieria de terremotos"
+      ],
+      "children": [
+        {
+          "conceptCode": "2.1",
+          "prefLabel": "Seismic hazard",
+          "altLabels": [
+            "peligro sismico",
+            "amenaza sismica"
+          ]
+        },
+        {
+          "conceptCode": "2.2",
+          "prefLabel": "Seismic demand",
+          "altLabels": [
+            "demanda sismica"
+          ]
+        },
+        {
+          "conceptCode": "2.3",
+          "prefLabel": "Seismic response",
+          "altLabels": [
+            "respuesta sismica"
+          ]
+        },
+        {
+          "conceptCode": "2.4",
+          "prefLabel": "Seismic resilience",
+          "altLabels": [
+            "resiliencia sismica"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "3",
+      "prefLabel": "Seismic protection systems",
+      "altLabels": [
+        "sistemas de proteccion sismica",
+        "proteccion sismica"
+      ],
+      "children": [
+        {
+          "conceptCode": "3.1",
+          "prefLabel": "Seismic isolation",
+          "altLabels": [
+            "aislamiento sismico",
+            "aislacion sismica"
+          ],
+          "children": [
+            {
+              "conceptCode": "3.1.1",
+              "prefLabel": "Base isolation",
+              "altLabels": [
+                "aislamiento de base",
+                "aislamiento basal"
+              ]
+            },
+            {
+              "conceptCode": "3.1.2",
+              "prefLabel": "Seismic isolators",
+              "altLabels": [
+                "aisladores sismicos",
+                "aisladores sísmicos"
+              ],
+              "children": [
+                {
+                  "conceptCode": "3.1.2.1",
+                  "prefLabel": "Elastomeric bearings",
+                  "altLabels": [
+                    "apoyos elastomericos",
+                    "aisladores elastomericos"
+                  ],
+                  "children": [
+                    {
+                      "conceptCode": "3.1.2.1.1",
+                      "prefLabel": "Lead-rubber bearings",
+                      "altLabels": [
+                        "aisladores elastomericos con nucleo de plomo",
+                        "lead rubber bearing",
+                        "lrb"
+                      ]
+                    },
+                    {
+                      "conceptCode": "3.1.2.1.2",
+                      "prefLabel": "High-damping rubber bearings",
+                      "altLabels": [
+                        "aisladores de caucho de alto amortiguamiento",
+                        "high damping rubber bearing",
+                        "hdrb"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "conceptCode": "3.1.2.2",
+                  "prefLabel": "Sliding bearings",
+                  "altLabels": [
+                    "apoyos deslizantes",
+                    "aisladores deslizantes"
+                  ],
+                  "children": [
+                    {
+                      "conceptCode": "3.1.2.2.1",
+                      "prefLabel": "Friction pendulum bearings",
+                      "altLabels": [
+                        "pendulo de friccion",
+                        "friction pendulum system",
+                        "fps"
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "conceptCode": "3.2",
+          "prefLabel": "Energy dissipation systems",
+          "altLabels": [
+            "sistemas de disipacion de energia",
+            "disipadores sismicos"
+          ],
+          "children": [
+            {
+              "conceptCode": "3.2.1",
+              "prefLabel": "Fluid viscous dampers",
+              "altLabels": [
+                "amortiguadores viscosos",
+                "disipadores viscosos"
+              ]
+            },
+            {
+              "conceptCode": "3.2.2",
+              "prefLabel": "Hysteretic dampers",
+              "altLabels": [
+                "amortiguadores histereticos",
+                "disipadores histereticos"
+              ]
+            },
+            {
+              "conceptCode": "3.2.3",
+              "prefLabel": "Buckling-restrained braces",
+              "altLabels": [
+                "riostras restringidas al pandeo",
+                "buckling restrained brace",
+                "brb"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

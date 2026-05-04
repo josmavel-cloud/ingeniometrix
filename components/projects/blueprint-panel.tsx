@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { FileStack, Sparkles } from "lucide-react";
+import { Download, FileStack, Sparkles } from "lucide-react";
 
 import { getProjectStatusMeta } from "@/lib/project-status";
 import {
@@ -128,6 +128,9 @@ export function BlueprintPanel({
   const [isPending, startTransition] = useTransition();
 
   const latestVersion = versions[0] ?? null;
+  const latestBlueprintDocxUrl = latestVersion
+    ? `/api/projects/${projectId}/blueprints/${latestVersion.id}/docx`
+    : null;
   const blueprint = latestVersion?.blueprintJson as
     | {
         general_objective?: string;
@@ -316,6 +319,18 @@ export function BlueprintPanel({
           {isPending ? "Generando..." : "Generar blueprint"}
         </button>
       </div>
+
+      {latestBlueprintDocxUrl ? (
+        <div className="mt-4 flex justify-start">
+          <a
+            className="brand-button-secondary px-5 py-3 text-sm font-semibold"
+            href={latestBlueprintDocxUrl}
+          >
+            <Download className="mr-2 size-4" />
+            Descargar Word completo (Master Template)
+          </a>
+        </div>
+      ) : null}
 
       <div
         className={`mt-6 rounded-[24px] border px-4 py-4 text-sm leading-6 ${

@@ -1,0 +1,7 @@
+{
+  "caseName": "default",
+  "fixtureDir": "C:\\projects\\ingeniometrix\\fixtures\\labs\\master-blueprint\\default",
+  "llmMode": "disabled",
+  "masterTemplateKey": "MASTER_TEMPLATE_LATAM",
+  "rebuiltLedgerMatchesFixture": true
+}

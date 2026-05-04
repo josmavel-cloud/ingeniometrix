@@ -57,6 +57,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       schemaName: params.schemaName,
       schema: params.schema,
       model: params.model,
+      trackingLabel: `structured:${params.schemaName}`,
     });
   } catch (structuredError) {
     const structuredReason = describeError(structuredError);
@@ -65,6 +66,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       const textResponse = await params.provider.generateText({
         prompt: buildJsonOnlyPrompt(params.prompt),
         model: params.model,
+        trackingLabel: `text_fallback:${params.schemaName}`,
       });
 
       return JSON.parse(extractJsonObject(textResponse)) as T;

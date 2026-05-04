@@ -20,11 +20,13 @@ import {
   resolveCrossrefTitle,
   searchCrossrefWorks,
 } from "./crossref-client";
+import { extractAccessSignals, verifyPdfAccess } from "./reference-access";
 import {
   ensureReferenceTranslationsForLanguage,
   getCachedTranslation,
   resolveReferenceSourceLanguage,
 } from "./reference-translation-service";
+import { getLatestProjectReferenceSearchSnapshot } from "./reference-search-v2";
 import { buildReferenceSearchPlan } from "./search-query-planner";
 import { searchOpenAlexWorks } from "./openalex-client";
 
@@ -73,50 +75,6 @@ type RankedReferenceCandidate = {
   crossrefMetadata: CrossrefMessage | null;
   score: number;
 };
-
-function extractAccessSignals(input: {
-  rawOpenAlexJson: unknown | null;
-  landingPageUrl: string | null;
-  doi: string | null;
-}) {
-  const record =
-    typeof input.rawOpenAlexJson === "object" &&
-    input.rawOpenAlexJson !== null &&
-    !Array.isArray(input.rawOpenAlexJson)
-      ? (input.rawOpenAlexJson as Record<string, unknown>)
-      : null;
-  const bestOaLocation =
-    record &&
-    typeof record.best_oa_location === "object" &&
-    record.best_oa_location !== null
-      ? (record.best_oa_location as Record<string, unknown>)
-      : null;
-  const primaryLocation =
-    record &&
-    typeof record.primary_location === "object" &&
-    record.primary_location !== null
-      ? (record.primary_location as Record<string, unknown>)
-      : null;
-  const openAccess =
-    record &&
-    typeof record.open_access === "object" &&
-    record.open_access !== null
-      ? (record.open_access as Record<string, unknown>)
-      : null;
-  const pdfUrl =
-    (typeof bestOaLocation?.pdf_url === "string" && bestOaLocation.pdf_url) ||
-    (typeof primaryLocation?.pdf_url === "string" && primaryLocation.pdf_url) ||
-    null;
-
-  return {
-    hasPdfUrl: Boolean(pdfUrl),
-    isOpenAccess:
-      openAccess?.is_oa === true ||
-      Boolean(pdfUrl) ||
-      Boolean(input.landingPageUrl) ||
-      Boolean(input.doi),
-  };
-}
 
 function buildRelevanceScore(input: {
   title: string;
@@ -568,7 +526,7 @@ export async function searchProjectReferences(
 }
 
 export async function listProjectReferences(userId: string, projectId: string) {
-  const [project, user, references] = await Promise.all([
+  const [project, user, references, searchSnapshot] = await Promise.all([
     prisma.project.findFirst({
       where: {
         id: projectId,
@@ -587,18 +545,38 @@ export async function listProjectReferences(userId: string, projectId: string) {
         reference: true,
       },
     }),
+    getLatestProjectReferenceSearchSnapshot(projectId),
   ]);
 
   if (!project) {
     throw new Error("Proyecto no encontrado.");
   }
 
+  const persistedSelectedReferenceIds = references
+    .filter((item) => item.selected)
+    .sort((left, right) => (left.selectedOrder ?? 999) - (right.selectedOrder ?? 999))
+    .map((item) => item.referenceId);
+  const applySuggestedSelection =
+    Boolean(searchSnapshot) &&
+    JSON.stringify(persistedSelectedReferenceIds) ===
+      JSON.stringify(searchSnapshot?.baseSelectedReferenceIds ?? []);
+  const scoreBreakdownByReferenceId = new Map(
+    (searchSnapshot?.references ?? []).map((item) => [item.referenceId, item] as const),
+  );
+  const referencesById = new Map(references.map((item) => [item.referenceId, item] as const));
+  const orderedReferences =
+    searchSnapshot && searchSnapshot.references.length > 0
+      ? searchSnapshot.references
+          .map((item) => referencesById.get(item.referenceId))
+          .filter((item): item is (typeof references)[number] => Boolean(item))
+      : references;
+
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,
     projectLanguage: project.language,
   });
   const translationResult = await ensureReferenceTranslationsForLanguage({
-    references: references.map((item) => ({
+    references: orderedReferences.map((item) => ({
       id: item.reference.id,
       title: item.reference.title,
       abstract: item.reference.abstract,
@@ -607,7 +585,13 @@ export async function listProjectReferences(userId: string, projectId: string) {
     targetLanguage: languageContext.activeLanguage,
   });
 
-  return references.map((item) => {
+  return Promise.all(orderedReferences.map(async (item) => {
+    const accessSignals = extractAccessSignals({
+      rawOpenAlexJson: item.reference.rawOpenAlexJson,
+      landingPageUrl: item.reference.landingPageUrl,
+      doi: item.reference.doi,
+    });
+    const pdfAccessible = await verifyPdfAccess(accessSignals.pdfUrl);
     const sourceLanguage =
       translationResult.sourceLanguages.get(item.reference.id) ??
       resolveReferenceSourceLanguage({
@@ -619,9 +603,19 @@ export async function listProjectReferences(userId: string, projectId: string) {
     const cachedTranslation =
       translationResult.translations.get(item.reference.id) ??
       getCachedTranslation(item.reference.rawOpenAlexJson, languageContext.activeLanguage);
+    const snapshotEntry = scoreBreakdownByReferenceId.get(item.reference.id);
+    const suggestedSelectedOrder = applySuggestedSelection
+      ? snapshotEntry?.suggestedSelectedOrder ?? null
+      : null;
+    const effectiveSelected = item.selected || suggestedSelectedOrder !== null;
+    const effectiveSelectedOrder = item.selected ? item.selectedOrder : suggestedSelectedOrder;
 
     return {
       ...item,
+      selected: effectiveSelected,
+      selectedOrder: effectiveSelectedOrder,
+      relevanceScore: snapshotEntry?.relevanceScore ?? item.relevanceScore,
+      scoreBreakdown: snapshotEntry?.scoreBreakdown ?? null,
       reference: {
         ...item.reference,
         sourceLanguage,
@@ -631,9 +625,11 @@ export async function listProjectReferences(userId: string, projectId: string) {
         hasAutoTranslation: Boolean(
           cachedTranslation?.translatedTitle || cachedTranslation?.translatedAbstract,
         ),
+        pdfUrl: accessSignals.hasPdfUrl ? accessSignals.pdfUrl : null,
+        pdfAccessible,
       },
     };
-  });
+  }));
 }
 
 export async function updateSelectedProjectReferences(
@@ -695,6 +691,38 @@ export async function updateSelectedProjectReferences(
     payloadJson: {
       selectedReferenceIds,
       selectedCount: selectedReferenceIds.length,
+      selectedReferences: (
+        await prisma.projectReference.findMany({
+          where: {
+            projectId,
+            selected: true,
+          },
+          orderBy: { selectedOrder: "asc" },
+          include: {
+            reference: true,
+          },
+        })
+      ).map((item) => {
+        const accessSignals = extractAccessSignals({
+          rawOpenAlexJson: item.reference.rawOpenAlexJson,
+          landingPageUrl: item.reference.landingPageUrl,
+          doi: item.reference.doi,
+        });
+
+        return {
+          referenceId: item.referenceId,
+          selectedOrder: item.selectedOrder,
+          relevanceScore: item.relevanceScore,
+          title: item.reference.title,
+          doi: item.reference.doi,
+          year: item.reference.year,
+          venue: item.reference.venue,
+          abstract: item.reference.abstract,
+          landingPageUrl: item.reference.landingPageUrl,
+          pdfUrl: accessSignals.pdfUrl,
+          pdfAccessible: accessSignals.hasPdfUrl,
+        };
+      }),
     },
   });
 }

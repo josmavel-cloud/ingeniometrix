@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
-import { searchProjectReferences } from "@/server/retrieval/reference-service";
+import { searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -14,7 +14,7 @@ export async function POST(_request: Request, context: RouteContext) {
     const body = (await _request.json().catch(() => ({}))) as {
       desiredTotal?: number;
     };
-    const result = await searchProjectReferences(user.id, id, {
+    const result = await searchProjectReferencesV2(user.id, id, {
       desiredTotal: body.desiredTotal,
     });
 

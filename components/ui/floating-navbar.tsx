@@ -11,7 +11,7 @@ type FloatingNavbarProps = {
 
 export function FloatingNavbar({
   action,
-  brandContext = "product",
+  brandContext = "company",
   compact = false,
 }: FloatingNavbarProps) {
   return (

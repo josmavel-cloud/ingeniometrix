@@ -77,7 +77,7 @@ export async function persistTemplateExtraction(input: PersistTemplateExtraction
   });
 
   const versionNumber = (existingTemplate?.versions[0]?.versionNumber ?? 0) + 1;
-  const storedSourcePath = await storeImportedTemplateSourceFile({
+  const storedSource = await storeImportedTemplateSourceFile({
     templateKey,
     versionNumber,
     sourceFilePath: input.source.source.document_path ?? null,
@@ -154,7 +154,11 @@ export async function persistTemplateExtraction(input: PersistTemplateExtraction
           sourceType: mapSourceType(input.source.sourceType),
           documentKind: mapDocumentKind(extraction.normalizedDocument.document_kind),
           originalFilePath: input.source.source.document_path ?? null,
-          storedFilePath: storedSourcePath,
+          storedFilePath: storedSource?.storedFilePath ?? null,
+          fileName: storedSource?.fileName ?? null,
+          mimeType: storedSource?.mimeType ?? null,
+          fileHash: storedSource?.fileHash ?? null,
+          fileData: storedSource?.fileData ?? null,
           metadataJson: {
             warnings: extraction.normalizedDocument.warnings,
           } as Prisma.InputJsonValue,

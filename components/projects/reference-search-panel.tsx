@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, Search, Sparkles } from "lucide-react";
+import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
 
 import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
 import {
@@ -16,6 +16,16 @@ type ReferenceListItem = {
   selected: boolean;
   selectedOrder: number | null;
   relevanceScore: number | null;
+  scoreBreakdown: {
+    label: "ALTO" | "MEDIO" | "BAJO" | "MINIMO";
+    necessaryMatches: string[];
+    complementaryMatches: string[];
+    optionalMatches: string[];
+    recencyBand: string;
+    recencyBonus: number;
+    matchedQuery: string;
+    matchedQueryStage: "necessary_only" | "complementary_boosted" | "optional_backup";
+  } | null;
   reference: {
     id: string;
     title: string;
@@ -30,7 +40,45 @@ type ReferenceListItem = {
     sourceLanguage: string | null;
     displayLanguage: string;
     hasAutoTranslation: boolean;
+    pdfUrl: string | null;
+    pdfAccessible: boolean;
   };
+};
+
+type ReferenceSearchSnapshot = {
+  referenceSearchVersion: "v2";
+  savedAt: string;
+  searchQuery: string;
+  attemptedQueries: string[];
+  totalResults: number;
+  providerBreakdown: {
+    openAlex: number;
+    crossref: number;
+  };
+  baseSelectedReferenceIds: string[];
+  metadata: {
+    planSource: "llm" | "fallback";
+    normalizedTopic: string;
+    intentSummary: string;
+    keywordGroups: {
+      necessary: Array<{ label: string; variants: string[] }>;
+      complementary: Array<{ label: string; variants: string[] }>;
+      optional: Array<{ label: string; variants: string[] }>;
+    };
+    queryPack: {
+      necessaryOnly: string[];
+      complementaryBoosted: string[];
+      optionalBackups: string[];
+    };
+    focusTerms: string[];
+    scoringRules: string[];
+  };
+  references: Array<{
+    referenceId: string;
+    relevanceScore: number;
+    scoreBreakdown: ReferenceListItem["scoreBreakdown"];
+    suggestedSelectedOrder: number | null;
+  }>;
 };
 
 type ReferenceSearchPanelProps = {
@@ -42,6 +90,7 @@ type ReferenceSearchPanelProps = {
     problemContext: string;
     targetPopulation: string;
   };
+  initialSearchSnapshot: ReferenceSearchSnapshot | null;
   initialReferences: ReferenceListItem[];
 };
 
@@ -99,10 +148,14 @@ export function ReferenceSearchPanel({
   status,
   hasIntakeMinimum,
   intakeSnapshot,
+  initialSearchSnapshot,
   initialReferences,
 }: ReferenceSearchPanelProps) {
   const router = useRouter();
   const [references, setReferences] = useState(initialReferences);
+  const [searchSnapshot, setSearchSnapshot] = useState<ReferenceSearchSnapshot | null>(
+    initialSearchSnapshot,
+  );
   const [visibleCount, setVisibleCount] = useState(
     Math.min(initialReferences.length, REFERENCE_BATCH_SIZE),
   );
@@ -203,6 +256,7 @@ export function ReferenceSearchPanel({
       const refreshPayload = (await refreshResponse.json()) as {
         error?: string;
         references?: ReferenceListItem[];
+        searchSnapshot?: ReferenceSearchSnapshot | null;
       };
 
       if (!refreshResponse.ok || !refreshPayload.references) {
@@ -219,6 +273,7 @@ export function ReferenceSearchPanel({
         newUniqueCount = Math.max(0, merged.length - current.length);
         return merged;
       });
+      setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
       setVisibleCount((current) =>
         Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
       );
@@ -389,6 +444,114 @@ export function ReferenceSearchPanel({
             </article>
           ))}
         </div>
+        {searchSnapshot ? (
+          <div className="mt-4 grid gap-4">
+            <div className="grid gap-3 lg:grid-cols-3">
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Query derivada
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                  {searchSnapshot.searchQuery}
+                </p>
+              </article>
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Planner
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                  {searchSnapshot.metadata.planSource === "llm" ? "LLM" : "Fallback heuristico"}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                  {searchSnapshot.metadata.intentSummary}
+                </p>
+              </article>
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Providers
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
+                  OpenAlex: {searchSnapshot.providerBreakdown.openAlex}
+                </p>
+                <p className="text-sm leading-6 text-[var(--color-muted)]">
+                  Crossref: {searchSnapshot.providerBreakdown.crossref}
+                </p>
+              </article>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-3">
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Necesarias
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {searchSnapshot.metadata.keywordGroups.necessary.map((group) => (
+                    <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
+                      <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                    </p>
+                  ))}
+                </div>
+              </article>
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Complementarias
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {searchSnapshot.metadata.keywordGroups.complementary.map((group) => (
+                    <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
+                      <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                    </p>
+                  ))}
+                </div>
+              </article>
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  No obligatorias
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {searchSnapshot.metadata.keywordGroups.optional.length > 0 ? (
+                    searchSnapshot.metadata.keywordGroups.optional.map((group) => (
+                      <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
+                        <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="text-sm leading-6 text-[var(--color-muted)]">
+                      Sin grupo opcional para esta corrida.
+                    </p>
+                  )}
+                </div>
+              </article>
+            </div>
+
+            <div className="grid gap-3 lg:grid-cols-2">
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Queries intentadas
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {searchSnapshot.attemptedQueries.map((query) => (
+                    <p className="text-sm leading-6 text-[var(--color-muted)]" key={query}>
+                      {query}
+                    </p>
+                  ))}
+                </div>
+              </article>
+              <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
+                  Reglas de score
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {searchSnapshot.metadata.scoringRules.map((rule) => (
+                    <p className="text-sm leading-6 text-[var(--color-muted)]" key={rule}>
+                      {rule}
+                    </p>
+                  ))}
+                </div>
+              </article>
+            </div>
+          </div>
+        ) : null}
       </details>
 
       {references.length === 0 ? (
@@ -420,7 +583,7 @@ export function ReferenceSearchPanel({
                   </span>
                 </label>
                 <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                  Score {item.relevanceScore?.toFixed(2) ?? "0.00"}
+                  {item.scoreBreakdown?.label ?? "BAJO"} · {item.relevanceScore?.toFixed(2) ?? "0.00"}
                 </div>
               </div>
 
@@ -457,6 +620,18 @@ export function ReferenceSearchPanel({
                   </p>
                 ) : null}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {item.reference.pdfUrl && item.reference.pdfAccessible ? (
+                    <a
+                      className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:border-rose-300 hover:text-rose-800"
+                      href={item.reference.pdfUrl}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      PDF
+                      <FileText className="ml-2 size-4" />
+                    </a>
+                  ) : null}
+
                   {item.reference.landingPageUrl ? (
                     <a
                       className="inline-flex items-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-slate-950"
@@ -475,6 +650,34 @@ export function ReferenceSearchPanel({
                     </summary>
                     <div className="mt-3 grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
                       <p>DOI: {item.reference.doi ?? "No disponible"}</p>
+                      <p>Score label: {item.scoreBreakdown?.label ?? "No disponible"}</p>
+                      <p>Query: {item.scoreBreakdown?.matchedQuery ?? "No disponible"}</p>
+                      <p>
+                        Etapa:{" "}
+                        {item.scoreBreakdown?.matchedQueryStage === "necessary_only"
+                          ? "Necesarias"
+                          : item.scoreBreakdown?.matchedQueryStage === "complementary_boosted"
+                            ? "Necesarias + complementaria"
+                            : "Backup opcional"}
+                      </p>
+                      <p>
+                        Match necesarias:{" "}
+                        {item.scoreBreakdown?.necessaryMatches.join(", ") || "Sin match fuerte"}
+                      </p>
+                      <p>
+                        Match complementarias:{" "}
+                        {item.scoreBreakdown?.complementaryMatches.join(", ") ||
+                          "Sin refuerzo"}
+                      </p>
+                      <p>
+                        Match opcionales:{" "}
+                        {item.scoreBreakdown?.optionalMatches.join(", ") || "Sin match"}
+                      </p>
+                      <p>Recencia: {item.scoreBreakdown?.recencyBand ?? "No disponible"}</p>
+                      <p>
+                        PDF accesible:{" "}
+                        {item.reference.pdfUrl && item.reference.pdfAccessible ? "Si" : "No verificado"}
+                      </p>
                       {item.reference.hasAutoTranslation &&
                       item.reference.translatedTitle &&
                       item.reference.translatedTitle !== item.reference.title ? (

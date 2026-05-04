@@ -134,6 +134,8 @@ export function buildCanonicalReportFromSynthetic(input: {
           ? "cover_logo"
           : "generic",
       stored_path: asset.storedFilePath ?? null,
+      content_base64: asset.fileBase64 ?? null,
+      file_name: asset.fileName ?? null,
       mime_type: asset.mimeType ?? null,
       width_px: asset.widthPx ?? null,
       height_px: asset.heightPx ?? null,

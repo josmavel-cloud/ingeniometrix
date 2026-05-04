@@ -1,9 +1,12 @@
 import OpenAI from "openai";
 import { setTimeout as delay } from "node:timers/promises";
 
+import { recordLlmUsage } from "@/server/llm-usage-registry";
+
 import type {
   LlmProvider,
   StructuredObjectInput,
+  TextGenerationResult,
   TextGenerationInput,
 } from "../provider";
 
@@ -58,13 +61,15 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   const client = new OpenAI({
     apiKey: config.apiKey,
   });
+  const defaultModel = config.defaultModel;
 
   return {
     name: "openai",
     async generateStructuredObject<T>(input: StructuredObjectInput) {
+      const model = input.model ?? defaultModel;
       const response = await runWithTimeoutAndRetry(() =>
         client.responses.create({
-          model: input.model ?? config.defaultModel,
+          model,
           store: false,
           input: input.prompt,
           text: {
@@ -78,6 +83,15 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         }),
       );
 
+      await recordLlmUsage({
+        provider: "openai",
+        model,
+        operation: input.trackingLabel ?? `structured:${input.schemaName}`,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+      });
+
       if (!response.output_text) {
         throw new Error("OpenAI no devolvio contenido estructurado.");
       }
@@ -85,19 +99,47 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       return JSON.parse(response.output_text) as T;
     },
     async generateText(input: TextGenerationInput) {
+      const detailed = await this.generateTextDetailed(input);
+      return detailed.text;
+    },
+    async generateTextDetailed(input: TextGenerationInput): Promise<TextGenerationResult> {
+      const model = input.model ?? defaultModel;
+      const startedAt = Date.now();
       const response = await runWithTimeoutAndRetry(() =>
         client.responses.create({
-          model: input.model ?? config.defaultModel,
+          model,
           store: false,
           input: input.prompt,
         }),
       );
 
+      const usageResult = await recordLlmUsage({
+        provider: "openai",
+        model,
+        operation: input.trackingLabel ?? "text_generation",
+        inputTokens: response.usage?.input_tokens ?? 0,
+        cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+      });
+
       if (!response.output_text) {
         throw new Error("OpenAI no devolvio texto.");
       }
 
-      return response.output_text;
+      return {
+        text: response.output_text,
+        usage: {
+          provider: usageResult.callRecord.provider,
+          model: usageResult.callRecord.model,
+          inputTokens: usageResult.callRecord.inputTokens,
+          cachedInputTokens: usageResult.callRecord.cachedInputTokens,
+          outputTokens: usageResult.callRecord.outputTokens,
+          totalTokens: usageResult.callRecord.totalTokens,
+          costUsd: usageResult.callRecord.costUsd,
+          costCad: usageResult.callRecord.costCad,
+          durationMs: Date.now() - startedAt,
+        },
+      };
     },
   };
 }

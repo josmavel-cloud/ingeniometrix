@@ -261,13 +261,25 @@ function imageTypeFromAsset(asset: CanonicalAssetRef) {
   return "jpg" as const;
 }
 
+function resolveAssetBuffer(asset: CanonicalAssetRef) {
+  if (asset.content_base64) {
+    return Buffer.from(asset.content_base64, "base64");
+  }
+
+  if (asset.stored_path && fs.existsSync(asset.stored_path)) {
+    return fs.readFileSync(asset.stored_path);
+  }
+
+  return null;
+}
+
 function renderCover(document: CanonicalReportDocument) {
   const children: FileChild[] = [];
   const logoField = document.cover.fields.find((field) => field.value_type === "asset") ?? null;
   const logoAsset = resolveAssetByKey(document, logoField?.value ?? null);
+  const logoBuffer = logoAsset ? resolveAssetBuffer(logoAsset) : null;
 
-  if (logoAsset?.stored_path && fs.existsSync(logoAsset.stored_path)) {
-    const imageBuffer = fs.readFileSync(logoAsset.stored_path);
+  if (logoAsset && logoBuffer) {
     const originalWidth = logoAsset.width_px ?? 240;
     const originalHeight = logoAsset.height_px ?? 120;
     const maxWidth = 150;
@@ -283,7 +295,7 @@ function renderCover(document: CanonicalReportDocument) {
         children: [
           new ImageRun({
             type: imageTypeFromAsset(logoAsset),
-            data: imageBuffer,
+            data: logoBuffer,
             transformation: {
               width: scaledWidth,
               height: scaledHeight,
@@ -523,11 +535,10 @@ function buildFigureImage(document: CanonicalReportDocument, block: CanonicalCon
   }
 
   const asset = resolveAssetByKey(document, block.figure.image_asset_key);
-  if (!asset?.stored_path || !fs.existsSync(asset.stored_path)) {
+  const imageBuffer = asset ? resolveAssetBuffer(asset) : null;
+  if (!asset || !imageBuffer) {
     return null;
   }
-
-  const imageBuffer = fs.readFileSync(asset.stored_path);
   const originalWidth = block.figure.image_width_px ?? asset.width_px ?? 960;
   const originalHeight = block.figure.image_height_px ?? asset.height_px ?? 540;
   const safeWidth = globalThis.Math.max(1, originalWidth);

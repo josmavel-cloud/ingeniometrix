@@ -1,0 +1,548 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum ProjectStatus {
+  DRAFT
+  INTAKE_READY
+  SEARCHING
+  SOURCES_REVIEW
+  SOURCES_SELECTED
+  BLUEPRINT_GENERATING
+  BLUEPRINT_READY
+  EXPORT_READY
+  ARCHIVED
+}
+
+enum DegreeLevel {
+  PREGRADO
+  POSGRADO
+  ESPECIALIZACION
+  MAESTRIA
+  DOCTORADO
+}
+
+enum University {
+  PUCP
+  UPT
+  UNMSM
+  UNI
+  UP
+  UPC
+  UPCH
+  ULIMA
+  UDEP
+  USMP
+  UCV
+  OTHER
+}
+
+enum TemplateKey {
+  UPC_POSGRADO
+  UCV_POSGRADO
+  USMP_POSGRADO
+  GENERIC_POSGRADO_PE
+}
+
+enum TopicOriginType {
+  CATALOG
+  CUSTOM
+  HYBRID
+}
+
+enum TopicSelectionStatus {
+  PENDING
+  SELECTED
+}
+
+enum TopicSuggestionSourceType {
+  CATALOG
+  AI_GENERATED
+  USER_SEED
+}
+
+enum Provider {
+  OPENALEX
+  CROSSREF
+  OPENAI
+  ANTHROPIC
+  SYSTEM
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  PROVIDER
+}
+
+enum ExportStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+enum PeerReviewStatus {
+  PEER_REVIEWED
+  NOT_PEER_REVIEWED
+  UNKNOWN
+}
+
+enum PublicationStage {
+  PREPRINT
+  ACCEPTED_MANUSCRIPT
+  VERSION_OF_RECORD
+  CORRECTED_VERSION
+  RETRACTED
+  UNKNOWN
+}
+
+enum ClassificationSource {
+  PROVIDER
+  RULE
+  USER
+  MODEL
+  SYSTEM
+}
+
+enum IndexName {
+  OPENALEX
+  CROSSREF
+  DOAJ
+  SCOPUS
+  WEB_OF_SCIENCE
+  LATINDEX
+  SCIELO
+  REDALYC
+  DIALNET
+  OTHER
+}
+
+enum KeywordSource {
+  AUTHOR
+  PROVIDER
+  USER
+  MODEL
+  SYSTEM
+}
+
+enum TemplateOwnerType {
+  SYSTEM
+  USER
+}
+
+enum TemplateStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum TemplateReviewStatus {
+  DRAFT
+  NEEDS_REVIEW
+  REVIEWED
+}
+
+enum TemplateSourceType {
+  PDF_NATIVE_TEXT
+  PDF_IMAGE
+  DOCX
+  TEXT
+  MANUAL
+}
+
+enum TemplateDocumentKind {
+  THESIS_PLAN_INSTANCE
+  TEMPLATE_GUIDE
+  THESIS_FINAL_INSTANCE
+  UNKNOWN
+}
+
+enum TemplateAssetKind {
+  LOGO
+  SEAL
+  COVER_IMAGE
+  UNKNOWN
+}
+
+enum TemplateAssetSourceStrategy {
+  PROVIDED_FILE
+  EXTRACTED_FROM_DOCUMENT
+  PLACEHOLDER
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  name      String?
+  locale    String     @default("es-PE")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  projects  Project[]
+  auditLogs AuditLog[]
+  templates Template[]
+}
+
+model Project {
+  id                String             @id @default(uuid())
+  userId            String
+  catalogTopicId    String?
+  title             String
+  status            ProjectStatus      @default(DRAFT)
+  country           String             @default("PE")
+  language          String             @default("es")
+  degreeLevel       DegreeLevel
+  university        University
+  program           String
+  templateKey       TemplateKey        @default(GENERIC_POSGRADO_PE)
+  topicOriginType   TopicOriginType    @default(CATALOG)
+  topicSelectionStatus TopicSelectionStatus @default(PENDING)
+  topicSeedText     String?            @db.Text
+  topicAreaId       String?
+  topicAreaLabel    String?            @db.Text
+  selectedTopicSuggestionId String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  intake            Intake?
+  projectReferences ProjectReference[]
+  blueprintVersions BlueprintVersion[]
+  auditLogs         AuditLog[]
+  knowledgeFields   ProjectKnowledgeField[]
+  topicSuggestions  ProjectTopicSuggestion[] @relation("ProjectTopicSuggestions")
+  selectedTopicSuggestion ProjectTopicSuggestion? @relation("ProjectSelectedTopicSuggestion", fields: [selectedTopicSuggestionId], references: [id], onDelete: SetNull)
+}
+
+model TopicAreaCatalogEntry {
+  id                 String   @id @default(uuid())
+  normalizedLabel    String   @unique @db.Text
+  displayLabel       String   @db.Text
+  canonicalAreaId    String?
+  canonicalAreaLabel String?  @db.Text
+  usageCount         Int      @default(1)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([canonicalAreaId])
+}
+
+model Intake {
+  id                   String   @id @default(uuid())
+  projectId            String   @unique
+  topic                String   @db.Text
+  problemContext       String?  @db.Text
+  researchLine         String?  @db.Text
+  academicConstraints  String?  @db.Text
+  targetPopulation     String?  @db.Text
+  availableData        String?  @db.Text
+  preferredMethodology String?  @db.Text
+  advisorNotes         String?  @db.Text
+  searchQuery          String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Reference {
+  id              String              @id @default(uuid())
+  doi             String?
+  openAlexId      String?             @unique
+  crossrefId      String?
+  title           String              @db.Text
+  normalizedTitle String              @db.Text
+  authorsJson     Json
+  abstract        String?             @db.Text
+  venue           String?
+  year            Int?
+  workType        String?
+  landingPageUrl  String?             @db.Text
+  citationCount   Int?
+  rawOpenAlexJson Json?
+  rawCrossrefJson Json?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  projectLinks    ProjectReference[]
+  classification  ReferenceClassification?
+  indexMemberships ReferenceIndexMembership[]
+  keywords        ReferenceKeyword[]
+
+  @@index([doi])
+  @@index([normalizedTitle, year])
+}
+
+model ProjectReference {
+  id              String    @id @default(uuid())
+  projectId       String
+  referenceId     String
+  sourceProvider  Provider
+  relevanceScore  Float?
+  selected        Boolean   @default(false)
+  selectedOrder   Int?
+  selectionReason String?   @db.Text
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reference       Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, referenceId])
+}
+
+model BlueprintVersion {
+  id                            String       @id @default(uuid())
+  projectId                     String
+  versionNumber                 Int
+  model                         String
+  promptVersion                 String
+  intakeSnapshotJson            Json
+  selectedReferencesSnapshotJson Json
+  blueprintJson                 Json
+  coherenceReportJson           Json
+  exportStatus                  ExportStatus @default(PENDING)
+  createdAt                     DateTime     @default(now())
+  project                       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, versionNumber])
+}
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  projectId  String?
+  userId     String?
+  eventType  String
+  actorType  ActorType
+  provider   Provider?
+  payloadJson Json
+  createdAt  DateTime  @default(now())
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model TaxonomyScheme {
+  id          String            @id @default(uuid())
+  code        String            @unique
+  name        String
+  version     String?
+  uri         String?
+  description String?           @db.Text
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  concepts    TaxonomyConcept[]
+}
+
+model TaxonomyConcept {
+  id                          String                     @id @default(uuid())
+  schemeId                    String
+  parentId                    String?
+  conceptCode                 String
+  conceptUri                  String?
+  prefLabel                   String
+  altLabelsJson               Json?
+  definition                  String?                    @db.Text
+  lang                        String                     @default("es")
+  createdAt                   DateTime                   @default(now())
+  updatedAt                   DateTime                   @updatedAt
+  scheme                      TaxonomyScheme             @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  parent                      TaxonomyConcept?           @relation("TaxonomyConceptTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children                    TaxonomyConcept[]          @relation("TaxonomyConceptTree")
+  projectKnowledgeFields      ProjectKnowledgeField[]
+  resourceTypeClassifications ReferenceClassification[]
+  referenceKeywords           ReferenceKeyword[]
+  primaryTopicSuggestions     ProjectTopicSuggestion[]     @relation("TopicSuggestionPrimaryConcept")
+
+  @@unique([schemeId, conceptCode])
+}
+
+model ProjectKnowledgeField {
+  id           String               @id @default(uuid())
+  projectId    String
+  conceptId    String
+  isPrimary    Boolean              @default(false)
+  source       ClassificationSource
+  confidence   Float?
+  evidenceJson Json?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  concept      TaxonomyConcept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, isPrimary])
+  @@unique([projectId, conceptId])
+}
+
+model ProjectTopicSuggestion {
+  id               String                   @id @default(uuid())
+  projectId        String
+  sourceType       TopicSuggestionSourceType
+  catalogTopicId   String?
+  seedText         String?                  @db.Text
+  title            String                   @db.Text
+  researchLine     String?                  @db.Text
+  rationale        String?                  @db.Text
+  metadataJson     Json?
+  primaryConceptId String?
+  selected         Boolean                  @default(false)
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  project          Project                  @relation("ProjectTopicSuggestions", fields: [projectId], references: [id], onDelete: Cascade)
+  primaryConcept   TaxonomyConcept?         @relation("TopicSuggestionPrimaryConcept", fields: [primaryConceptId], references: [id], onDelete: SetNull)
+  selectedByProjects Project[]              @relation("ProjectSelectedTopicSuggestion")
+
+  @@index([projectId, selected])
+  @@index([primaryConceptId])
+  @@unique([projectId, sourceType, title])
+}
+
+model ReferenceClassification {
+  id                    String               @id @default(uuid())
+  referenceId           String               @unique
+  resourceTypeGeneral   String?
+  resourceTypeSpecific  String?
+  resourceTypeConceptId String?
+  peerReviewStatus      PeerReviewStatus     @default(UNKNOWN)
+  publicationStage      PublicationStage     @default(UNKNOWN)
+  doiInteropType        String?
+  source                ClassificationSource
+  confidence            Float?
+  evidenceJson          Json?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  reference             Reference            @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  resourceTypeConcept   TaxonomyConcept?     @relation(fields: [resourceTypeConceptId], references: [id], onDelete: SetNull)
+}
+
+model ReferenceIndexMembership {
+  id           String               @id @default(uuid())
+  referenceId  String
+  indexName    IndexName
+  indexLabel   String?
+  source       ClassificationSource
+  status       String
+  evidenceJson Json?
+  checkedAt    DateTime             @default(now())
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  reference    Reference            @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@unique([referenceId, indexName])
+}
+
+model ReferenceKeyword {
+  id                String           @id @default(uuid())
+  referenceId       String
+  keywordText       String
+  normalizedKeyword String
+  conceptId         String?
+  source            KeywordSource
+  score             Float?
+  isValidated       Boolean          @default(false)
+  evidenceJson      Json?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  reference         Reference        @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  concept           TaxonomyConcept? @relation(fields: [conceptId], references: [id], onDelete: SetNull)
+
+  @@index([referenceId, normalizedKeyword])
+}
+
+model Template {
+  id             String           @id @default(uuid())
+  key            String           @unique
+  name           String
+  ownerType      TemplateOwnerType
+  ownerUserId    String?
+  status         TemplateStatus   @default(DRAFT)
+  universityName String?
+  schoolName     String?
+  programName    String?
+  mention        String?
+  degreeLevel    String?
+  disciplineArea String?
+  templateFamily String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  ownerUser      User?            @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  versions       TemplateVersion[]
+
+  @@index([ownerType, status])
+  @@index([universityName, degreeLevel, status])
+}
+
+model TemplateVersion {
+  id                     String               @id @default(uuid())
+  templateId             String
+  versionNumber          Int
+  schemaVersion          String
+  language               String
+  methodologyMode        String?
+  citationStyle          String?
+  documentKind           TemplateDocumentKind @default(UNKNOWN)
+  reviewStatus           TemplateReviewStatus @default(NEEDS_REVIEW)
+  templateFamily         String?
+  templateKeyGuess       String?
+  universityName         String?
+  schoolName             String?
+  programName            String?
+  mention                String?
+  degreeLevel            String?
+  disciplineArea         String?
+  normalizedDocumentJson Json
+  semanticAnalysisJson   Json?
+  templateCandidateJson  Json
+  createdAt              DateTime             @default(now())
+  template               Template             @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sources                TemplateSource[]
+  assets                 TemplateAsset[]
+
+  @@unique([templateId, versionNumber])
+  @@index([documentKind, reviewStatus, methodologyMode])
+  @@index([universityName, degreeLevel, citationStyle])
+}
+
+model TemplateSource {
+  id               String               @id @default(uuid())
+  templateVersionId String
+  sourceId         String
+  sourceType       TemplateSourceType
+  documentKind     TemplateDocumentKind
+  originalFilePath String?              @db.Text
+  storedFilePath   String?              @db.Text
+  fileName         String?
+  mimeType         String?
+  fileHash         String?
+  fileData         Bytes?
+  metadataJson     Json?
+  createdAt        DateTime             @default(now())
+  templateVersion  TemplateVersion      @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
+
+  @@index([templateVersionId, sourceType])
+}
+
+model TemplateAsset {
+  id               String                      @id @default(uuid())
+  templateVersionId String
+  assetKey         String
+  kind             TemplateAssetKind
+  sourceStrategy   TemplateAssetSourceStrategy
+  originalFilePath String?                     @db.Text
+  storedFilePath   String?                     @db.Text
+  fileName         String?
+  mimeType         String?
+  fileHash         String?
+  fileData         Bytes?
+  widthPx          Int?
+  heightPx         Int?
+  hasTransparency  Boolean?
+  metadataJson     Json?
+  createdAt        DateTime                    @default(now())
+  templateVersion  TemplateVersion             @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([templateVersionId, assetKey])
+}

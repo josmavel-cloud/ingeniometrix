@@ -420,7 +420,7 @@ Use these defaults when metadata is incomplete:
 
 This preserves traceability and avoids fabricated metadata.
 
-## Why This Fits Planimetrix
+## Why This Fits Ingeniometrix
 
 This model improves:
 

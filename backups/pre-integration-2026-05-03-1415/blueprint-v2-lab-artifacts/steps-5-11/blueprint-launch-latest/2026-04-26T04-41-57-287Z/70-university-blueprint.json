@@ -1,0 +1,305 @@
+{
+  "template_key": "UPC_POSGRADO",
+  "template_name": "Lab - UPC Posgrado",
+  "template_version_id": "lab-upc-posgrado-v1",
+  "sections": [
+    {
+      "section_key": "abstract",
+      "title": "Resumen",
+      "content": "Esta seccion queda en version preliminar a partir del intake disponible sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.. Requiere revision academica adicional para mayor precision.",
+      "derived_from_master_keys": [
+        "abstract"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "keywords",
+      "title": "Palabras clave",
+      "content": "- diseno\n- sistemas\n- control\n- para\n- mesas",
+      "derived_from_master_keys": [
+        "keywords"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "introduction",
+      "title": "Introduccion",
+      "content": "Esta seccion queda en version preliminar a partir del intake disponible sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.. Requiere revision academica adicional para mayor precision.",
+      "derived_from_master_keys": [
+        "introduction"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "problem_statement",
+      "title": "Planteamiento del problema",
+      "content": "En el contexto de Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica., el problema de investigacion se centra en En los laboratorios de estructuras de la region sudamericana existe necesidad de plataformas experimentales avanzadas capaces de reproducir de manera controlada registros sismicos intensos y trayectorias multiaxiales representativas del comportamiento de terremotos severos. Sin embargo, el desarrollo de mesas vibratorias multigrado con capacidad para ensayar especimenes de hasta 2 pisos a escala natural enfrenta restricciones de acoplamiento dinamico, precision de seguimiento, saturacion de actuadores, interaccion mesa-especimen y robustez del control frente a no linealidades estructurales y variaciones de masa, rigidez y amortiguamiento durante el ensayo.. La delimitacion inicial considera como poblacion o contexto de interes a Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Esta situacion se inscribe en la linea de investigacion Dinamica estructural experimental, control avanzado y simulacion sismica para infraestructura resiliente.. Los antecedentes recuperados sugieren, de forma convergente, brechas o desafios asociados a Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances. Particle damping, an effective passive vibration control technology, is developing dramatically at the present stage, especially in the aerospace and machinery fields. En consecuencia, el problema se formula desde el caso y el alcance declarados en el intake, usando la evidencia solo como antecedente comparativo y no como sustituto del contexto propio del proyecto.",
+      "derived_from_master_keys": [
+        "problem_statement"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "research_questions",
+      "title": "Formulacion del problema",
+      "content": "",
+      "derived_from_master_keys": [
+        "research_questions"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "general_research_question",
+      "title": "Problema general",
+      "content": "Como se manifiesta abordar el problema de investigacion delimitado?",
+      "derived_from_master_keys": [
+        "general_research_question"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "specific_research_questions",
+      "title": "Problemas especificos",
+      "content": "",
+      "derived_from_master_keys": [
+        "specific_research_questions"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "objectives",
+      "title": "Objetivos",
+      "content": "",
+      "derived_from_master_keys": [
+        "objectives"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "general_objective",
+      "title": "Objetivo general",
+      "content": "Analizar los factores que condicionan diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en sudamerica. en Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Como soporte comparativo, se consideran antecedentes que describen Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances.",
+      "derived_from_master_keys": [
+        "general_objective"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "specific_objectives",
+      "title": "Objetivos especificos",
+      "content": "- Identificar los factores operativos y de gestion vinculados con en los laboratorios de estructuras de la region sudamericana existe necesidad de plataformas experimentales avanzadas capaces de reproducir ....\n- Describir la forma en que se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mes... permite examinar el problema en el contexto del estudio.\n- Analizar la coherencia entre el problema delimitado, enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estra... y los antecedentes mas cercanos al tema.\n- Proponer lineamientos preliminares sustentados en los antecedentes recuperados sobre control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for ....",
+      "derived_from_master_keys": [
+        "specific_objectives"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "justification",
+      "title": "Justificacion",
+      "content": "Esta seccion presenta una version preliminar basada en la evidencia recuperada para Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica..\n- Dynamically balanced broad frequency earthquake simulation\n- Model-based motion control for multi-axis servohydraulic shaking tables\n- Adaptive integral sliding mode control for attitude tracking of 6-DOF electro-hydraulic shaking tables",
+      "derived_from_master_keys": [
+        "justification"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "theoretical_justification",
+      "title": "Justificacion teorica",
+      "content": "Desde el plano teorico, el estudio busca aclarar vacios y relaciones conceptuales sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica., articulando antecedentes recientes y un marco interpretativo coherente con el problema planteado.",
+      "derived_from_master_keys": [
+        "theoretical_justification"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "practical_justification",
+      "title": "Justificacion practica",
+      "content": "En el plano practico, la investigacion aspira a ofrecer criterios utiles para la toma de decisiones y para la mejora del contexto analizado, especialmente dentro del ambito descrito en el intake del proyecto.",
+      "derived_from_master_keys": [
+        "practical_justification"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "methodological_justification",
+      "title": "Justificacion metodologica",
+      "content": "Desde el enfoque metodologico, el plan justifica la seleccion de un diseno prudente y trazable, alineado con la disponibilidad real de datos y con la necesidad de producir evidencia defendible.",
+      "derived_from_master_keys": [
+        "methodological_justification"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "theoretical_framework",
+      "title": "Marco teorico",
+      "content": "Esta seccion queda en version preliminar a partir del intake disponible sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.. Requiere revision academica adicional para mayor precision.",
+      "derived_from_master_keys": [
+        "theoretical_framework"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "research_antecedents",
+      "title": "Antecedentes",
+      "content": "- Dynamically balanced broad frequency earthquake simulation (2022) aporta antecedentes utiles sobre el tema y el contexto del estudio.\n- Model-based motion control for multi-axis servohydraulic shaking tables (2016) aporta antecedentes utiles sobre el tema y el contexto del estudio.\n- Adaptive integral sliding mode control for attitude tracking of 6-DOF electro-hydraulic shaking tables (2026) aporta antecedentes utiles sobre el tema y el contexto del estudio.\n- Particle impact dampers: Past, present, and future (2017) aporta antecedentes utiles sobre el tema y el contexto del estudio.",
+      "derived_from_master_keys": [
+        "research_antecedents"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "state_of_the_art",
+      "title": "Estado del arte",
+      "content": "La evidencia recuperada sugiere un estado del arte centrado en enfoques de adopcion, gestion y analisis aplicado, con predominio de estudios recientes y con espacios todavia abiertos para una delimitacion contextual mas precisa en Peru.",
+      "derived_from_master_keys": [
+        "state_of_the_art"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "theoretical_bases",
+      "title": "Bases teoricas",
+      "content": "Las bases teoricas se organizan alrededor de conceptos sobre diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en sudamerica., gestion basada en evidencia y adopcion de practicas o capacidades organizacionales relacionadas con el problema de investigacion.",
+      "derived_from_master_keys": [
+        "theoretical_bases"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "terms_definition",
+      "title": "Terminos",
+      "content": "- Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.: concepto central del estudio delimitado en el plan.\n- Adopcion: grado en que una practica o capacidad es incorporada de manera sistematica.\n- Evidencia: informacion recuperable y trazable que sustenta decisiones o inferencias del estudio.",
+      "derived_from_master_keys": [
+        "terms_definition"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "consistency_matrix",
+      "title": "Matriz de consistencia",
+      "content": "1. Objetivo: Identificar los factores operativos y de gestion vinculados con en los laboratorios de estructuras de la region sudamericana existe necesidad de plataformas experimentales avanzadas capaces de reproducir .... | Pregunta: Que elementos permiten identificar los factores operativos y de gestion vinculados con en los laboratorios de estructuras de la region sudamericana existe necesidad de plataformas experimentales avanzadas capaces de reproducir? | Metodo: La metodologia propuesta para el estudio es Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion., manteniendo coherencia con el problema planteado y con la disponibilidad real de datos declarada por el usuario. La unidad de analisis y la poblacion de interes se delimitan preliminarmente a Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Las tecnicas e instrumentos deberan adaptarse a las fuentes de informacion disponibles, entre ellas Se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mesa y del especimen, registros sismicos historicos o artificiales escalados, limites de carrera, velocidad, fuerza y aceleracion de actuadores, y acceso a herramientas de simulacion para control en espacio de estados, control robusto, feedforward-feedback e identificacion dinamica.. Como apoyo, los antecedentes metodologicamente mas cercanos sugieren rutas de levantamiento y analisis vinculadas con Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances. Particle damping, an effective passive vibration control technology, is developing dramatically at the present stage, especially in the aerospace and machinery fields. La version actual prioriza una formulacion prudente: el diseno final, los instrumentos y el plan analitico deben cerrarse con validacion academica, sin prometer resultados causales que la evidencia disponible todavia no permite sostener. | Tecnica: Revision documental.\n2. Objetivo: Describir la forma en que se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mes... permite examinar el problema en el contexto del estudio. | Pregunta: Como se caracteriza la forma en que se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mes... permite examinar el problema en el contexto del estudio? | Metodo: La metodologia propuesta para el estudio es Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion., manteniendo coherencia con el problema planteado y con la disponibilidad real de datos declarada por el usuario. La unidad de analisis y la poblacion de interes se delimitan preliminarmente a Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Las tecnicas e instrumentos deberan adaptarse a las fuentes de informacion disponibles, entre ellas Se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mesa y del especimen, registros sismicos historicos o artificiales escalados, limites de carrera, velocidad, fuerza y aceleracion de actuadores, y acceso a herramientas de simulacion para control en espacio de estados, control robusto, feedforward-feedback e identificacion dinamica.. Como apoyo, los antecedentes metodologicamente mas cercanos sugieren rutas de levantamiento y analisis vinculadas con Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances. Particle damping, an effective passive vibration control technology, is developing dramatically at the present stage, especially in the aerospace and machinery fields. La version actual prioriza una formulacion prudente: el diseno final, los instrumentos y el plan analitico deben cerrarse con validacion academica, sin prometer resultados causales que la evidencia disponible todavia no permite sostener. | Tecnica: Revision documental.\n3. Objetivo: Analizar la coherencia entre el problema delimitado, enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estra... y los antecedentes mas cercanos al tema. | Pregunta: Como se relaciona la coherencia entre el problema delimitado, enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estra... y los antecedentes mas cercanos al tema con el problema de investigacion? | Metodo: La metodologia propuesta para el estudio es Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion., manteniendo coherencia con el problema planteado y con la disponibilidad real de datos declarada por el usuario. La unidad de analisis y la poblacion de interes se delimitan preliminarmente a Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Las tecnicas e instrumentos deberan adaptarse a las fuentes de informacion disponibles, entre ellas Se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mesa y del especimen, registros sismicos historicos o artificiales escalados, limites de carrera, velocidad, fuerza y aceleracion de actuadores, y acceso a herramientas de simulacion para control en espacio de estados, control robusto, feedforward-feedback e identificacion dinamica.. Como apoyo, los antecedentes metodologicamente mas cercanos sugieren rutas de levantamiento y analisis vinculadas con Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances. Particle damping, an effective passive vibration control technology, is developing dramatically at the present stage, especially in the aerospace and machinery fields. La version actual prioriza una formulacion prudente: el diseno final, los instrumentos y el plan analitico deben cerrarse con validacion academica, sin prometer resultados causales que la evidencia disponible todavia no permite sostener. | Tecnica: Revision documental.\n4. Objetivo: Proponer lineamientos preliminares sustentados en los antecedentes recuperados sobre control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for .... | Pregunta: Que lineamientos resultan pertinentes para lineamientos preliminares sustentados en los antecedentes recuperados sobre control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for? | Metodo: La metodologia propuesta para el estudio es Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion., manteniendo coherencia con el problema planteado y con la disponibilidad real de datos declarada por el usuario. La unidad de analisis y la poblacion de interes se delimitan preliminarmente a Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Las tecnicas e instrumentos deberan adaptarse a las fuentes de informacion disponibles, entre ellas Se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mesa y del especimen, registros sismicos historicos o artificiales escalados, limites de carrera, velocidad, fuerza y aceleracion de actuadores, y acceso a herramientas de simulacion para control en espacio de estados, control robusto, feedforward-feedback e identificacion dinamica.. Como apoyo, los antecedentes metodologicamente mas cercanos sugieren rutas de levantamiento y analisis vinculadas con Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances. Particle damping, an effective passive vibration control technology, is developing dramatically at the present stage, especially in the aerospace and machinery fields. La version actual prioriza una formulacion prudente: el diseno final, los instrumentos y el plan analitico deben cerrarse con validacion academica, sin prometer resultados causales que la evidencia disponible todavia no permite sostener. | Tecnica: Revision documental.",
+      "derived_from_master_keys": [
+        "consistency_matrix"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "methodology",
+      "title": "Metodologia",
+      "content": "La metodologia propuesta para el estudio es Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion., manteniendo coherencia con el problema planteado y con la disponibilidad real de datos declarada por el usuario. La unidad de analisis y la poblacion de interes se delimitan preliminarmente a Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.. Las tecnicas e instrumentos deberan adaptarse a las fuentes de informacion disponibles, entre ellas Se asume disponibilidad de parametros mecanicos de actuadores y servovalvulas, modelos dinamicos simplificados de la mesa y del especimen, registros sismicos historicos o artificiales escalados, limites de carrera, velocidad, fuerza y aceleracion de actuadores, y acceso a herramientas de simulacion para control en espacio de estados, control robusto, feedforward-feedback e identificacion dinamica.. Como apoyo, los antecedentes metodologicamente mas cercanos sugieren rutas de levantamiento y analisis vinculadas con Control algorithms developed originally for force controlled normal mode testing on large aircraft structures, then for six degrees of freedom earthquake simulators, are appropriate to the challenging application of cent... Accurate attitude tracking of six degree of freedom electrohydraulic shaking tables (EHSTs) is restricted by parameter uncertainty, nonlinearity, strong coupling, and external disturbances. Particle damping, an effective passive vibration control technology, is developing dramatically at the present stage, especially in the aerospace and machinery fields. La version actual prioriza una formulacion prudente: el diseno final, los instrumentos y el plan analitico deben cerrarse con validacion academica, sin prometer resultados causales que la evidencia disponible todavia no permite sostener.",
+      "derived_from_master_keys": [
+        "methodology"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "methodological_approach",
+      "title": "Enfoque",
+      "content": "Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion.",
+      "derived_from_master_keys": [
+        "methodological_approach"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "research_design",
+      "title": "Diseno",
+      "content": "Se propone un diseno enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos intensos con metricas de error de tracking, estabilidad, robustez y fidelidad de reproduccion., cuidando que la estrategia de levantamiento y analisis permita responder las preguntas de investigacion sin exceder el alcance del plan.",
+      "derived_from_master_keys": [
+        "research_design"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "population_and_sample",
+      "title": "Poblacion y muestra",
+      "content": "Mesas vibratorias servo-hidraulicas o electrohidraulicas de varios grados de libertad destinadas a laboratorios de estructuras que ensayan especimenes de edificios de hasta 2 pisos a escala natural o cuasi natural en contextos de alta demanda sismica en Sudamerica.",
+      "derived_from_master_keys": [
+        "population_and_sample"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "data_collection_techniques",
+      "title": "Tecnicas e instrumentos",
+      "content": "- Revision documental.\n- Registro de evidencia secundaria.",
+      "derived_from_master_keys": [
+        "data_collection_techniques"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "research_instruments",
+      "title": "Instrumentos",
+      "content": "- Cuestionario o ficha de levantamiento de informacion.\n- Guia de entrevista o protocolo de registro documental.",
+      "derived_from_master_keys": [
+        "research_instruments"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "research_procedure",
+      "title": "Procedimiento",
+      "content": "- Delimitar la unidad de analisis y confirmar criterios de inclusion.\n- Recuperar y organizar evidencia bibliografica y datos disponibles.\n- Aplicar las tecnicas definidas y consolidar la base para el analisis.",
+      "derived_from_master_keys": [
+        "research_procedure"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "analysis_plan",
+      "title": "Plan de analisis",
+      "content": "El analisis se desarrollara en coherencia con la metodologia propuesta: La metodologia propuesta para el estudio es Enfoque cuantitativo aplicado con formulacion del modelo dinamico acoplado mesa-especimen, diseno y comparacion de estrategias de control multivariable, evaluacion mediante simulacion en dominio del tiempo y frecuencia, y validacion del seguimiento de aceleraciones, desplazamientos y fuerzas bajo registros sismicos...",
+      "derived_from_master_keys": [
+        "analysis_plan"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "ethics",
+      "title": "Aspectos eticos",
+      "content": "Esta seccion queda en version preliminar a partir del intake disponible sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.. Requiere revision academica adicional para mayor precision.",
+      "derived_from_master_keys": [
+        "ethics"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "scope_and_limitations",
+      "title": "Alcances y limitaciones",
+      "content": "Esta seccion queda en version preliminar a partir del intake disponible sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.. Requiere revision academica adicional para mayor precision.",
+      "derived_from_master_keys": [
+        "scope_and_limitations"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "schedule",
+      "title": "Cronograma",
+      "content": "Esta seccion queda en version preliminar a partir del intake disponible sobre Diseno de sistemas de control para mesas vibratorias de varios grados de libertad aplicadas a laboratorios de estructuras que permitan simular sismos sobre especimenes de edificios a escala natural de hasta 2 pisos en zonas de alta intensidad sismica en Sudamerica.. Requiere revision academica adicional para mayor precision.",
+      "derived_from_master_keys": [
+        "schedule"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "references",
+      "title": "Referencias",
+      "content": "- C. Hutin, J. Perdriat, D. Rames (2022). Dynamically balanced broad frequency earthquake simulation. Fuente por precisar. DOI: 10.1201/9780203743362-31\n- Andrew Plummer (2016). Model-based motion control for multi-axis servohydraulic shaking tables. Control Engineering Practice. DOI: 10.1016/j.conengprac.2016.05.004\n- Yuan Liu, L N Zhang, Ruichen Wang, Litong Lyu, Jie Feng, Guangtao Ma (2026). Adaptive integral sliding mode control for attitude tracking of 6-DOF electro-hydraulic shaking tables. Journal of Measurements in Engineering. DOI: 10.21595/jme.2026.25718\n- Zheng Lu, Zixin Wang, Sami F. Masri, Xilin Lü (2017). Particle impact dampers: Past, present, and future. Structural Control and Health Monitoring. DOI: 10.1002/stc.2058",
+      "derived_from_master_keys": [
+        "references"
+      ],
+      "generated_for_template": false
+    },
+    {
+      "section_key": "annexes",
+      "title": "Anexos",
+      "content": "- Matriz de trazabilidad del blueprint.\n- Registro de procedencia y evidencia usada por el engine.\n- Instrumentos preliminares o tablas de apoyo si el asesor lo solicita.",
+      "derived_from_master_keys": [
+        "annexes"
+      ],
+      "generated_for_template": false
+    }
+  ],
+  "warnings": []
+}

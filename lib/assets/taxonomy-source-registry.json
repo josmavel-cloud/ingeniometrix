@@ -1,0 +1,262 @@
+{
+  "assetVersion": "2026-04-20",
+  "product": "Ingeniometrix",
+  "purpose": "Authoritative source registry for knowledge taxonomies, reference typing, review status, and keyword enrichment.",
+  "downloadPolicy": {
+    "commitRegistry": true,
+    "commitThirdPartyDumps": false,
+    "localDownloadDirectory": "artifacts-local/taxonomies"
+  },
+  "sources": [
+    {
+      "id": "oecd-ford-2015",
+      "name": "OECD Frascati Manual 2015 (FORD)",
+      "maintainer": "OECD",
+      "role": "canonical_field_taxonomy",
+      "recommendedUse": "Seed the canonical research-field hierarchy for projects and references.",
+      "recommendedScope": "Seed a normalized FORD concept tree in local taxonomy tables.",
+      "authorityLevel": "primary",
+      "version": "2015",
+      "machineReadable": false,
+      "sourcePageUrl": "https://www.oecd.org/finance/frascati-manual-2015-9789264239012-en.htm",
+      "downloadTargets": [
+        {
+          "id": "manual-pdf",
+          "label": "Official PDF",
+          "downloadMode": "direct",
+          "url": "https://www.oecd.org/content/dam/oecd/en/publications/reports/2015/10/frascati-manual-2015_g1g57dcb/9789264239012-en.pdf",
+          "filename": "frascati-manual-2015.pdf",
+          "format": "pdf"
+        }
+      ],
+      "licenseOrRights": "OECD copyright",
+      "notes": [
+        "Treat FORD as canonical for research fields.",
+        "No separate official CSV or RDF table was verified; seed from the official manual."
+      ]
+    },
+    {
+      "id": "unesco-isced-f-2013",
+      "name": "UNESCO ISCED-F 2013",
+      "maintainer": "UNESCO UIS",
+      "role": "canonical_study_field_taxonomy",
+      "recommendedUse": "Use only when program or study-field classification is needed alongside FORD.",
+      "recommendedScope": "Seed as an optional parallel taxonomy for academic programs and templates.",
+      "authorityLevel": "primary",
+      "version": "2013",
+      "machineReadable": false,
+      "sourcePageUrl": "https://uis.unesco.org/topic/international-standard-classification-education-isced/",
+      "downloadTargets": [],
+      "licenseOrRights": "UNESCO UIS publication",
+      "notes": [
+        "The official site exposes document pages and downloads, but the PDF URL was not verified as stable enough for automated direct download.",
+        "Register the page as the durable reference and extract the table manually when seeding."
+      ]
+    },
+    {
+      "id": "unesco-thesaurus",
+      "name": "UNESCO Thesaurus",
+      "maintainer": "UNESCO",
+      "role": "controlled_keyword_vocabulary",
+      "recommendedUse": "Use for controlled keywords and multilingual subject normalization.",
+      "recommendedScope": "Import selectively; do not dump every concept into product UX before needed.",
+      "authorityLevel": "primary",
+      "version": "latest",
+      "machineReadable": true,
+      "sourcePageUrl": "https://vocabularies.unesco.org/browser/thesaurus/en/",
+      "downloadTargets": [
+        {
+          "id": "rdf-xml",
+          "label": "RDF/XML export",
+          "downloadMode": "direct",
+          "url": "https://vocabularies.unesco.org/exports/thesaurus/latest/unesco-thesaurus.rdf",
+          "filename": "unesco-thesaurus.rdf",
+          "format": "rdf+xml"
+        },
+        {
+          "id": "turtle",
+          "label": "Turtle export",
+          "downloadMode": "direct",
+          "url": "https://vocabularies.unesco.org/exports/thesaurus/latest/unesco-thesaurus.ttl",
+          "filename": "unesco-thesaurus.ttl",
+          "format": "text/turtle"
+        }
+      ],
+      "licenseOrRights": "CC-BY-SA 3.0 IGO",
+      "notes": [
+        "This vocabulary conforms to ISO 25964.",
+        "Prefer this for controlled keywords, not as the only field-of-science hierarchy."
+      ]
+    },
+    {
+      "id": "coar-resource-types",
+      "name": "COAR Resource Types",
+      "maintainer": "COAR",
+      "role": "canonical_resource_type_vocabulary",
+      "recommendedUse": "Seed specific scholarly resource types such as journal article, review article, master thesis, and doctoral thesis.",
+      "recommendedScope": "Use as the canonical specific resource type layer.",
+      "authorityLevel": "primary",
+      "version": "3.2",
+      "machineReadable": true,
+      "sourcePageUrl": "https://vocabularies.coar-repositories.org/resource_types/",
+      "downloadTargets": [
+        {
+          "id": "nt",
+          "label": "RDF N-Triples",
+          "downloadMode": "direct",
+          "url": "https://vocabularies.coar-repositories.org/resource_types/resource_types.nt",
+          "filename": "coar-resource-types.nt",
+          "format": "application/n-triples"
+        }
+      ],
+      "licenseOrRights": "CC0 1.0",
+      "notes": [
+        "Best source for specific scholarly document genres.",
+        "Use with DCMI Type for the broad type and DataCite for interoperability hints."
+      ]
+    },
+    {
+      "id": "coar-version-types",
+      "name": "COAR Version Types",
+      "maintainer": "COAR",
+      "role": "canonical_publication_stage_vocabulary",
+      "recommendedUse": "Map preprint, accepted manuscript, version of record, corrected version, and related publication stages.",
+      "recommendedScope": "Seed the publication-stage layer for references when explicit evidence exists.",
+      "authorityLevel": "primary",
+      "version": "1.1",
+      "machineReadable": true,
+      "sourcePageUrl": "https://vocabularies.coar-repositories.org/version_types/",
+      "downloadTargets": [
+        {
+          "id": "nt",
+          "label": "RDF N-Triples",
+          "downloadMode": "direct",
+          "url": "https://vocabularies.coar-repositories.org/version_types/version_types.nt",
+          "filename": "coar-version-types.nt",
+          "format": "application/n-triples"
+        }
+      ],
+      "licenseOrRights": "CC0 1.0",
+      "notes": [
+        "Use this for publication stage, not for peer review status.",
+        "The vocabulary is derived from NISO JAV recommendations."
+      ]
+    },
+    {
+      "id": "datacite-metadata-schema",
+      "name": "DataCite Metadata Schema",
+      "maintainer": "DataCite",
+      "role": "interop_reference_schema",
+      "recommendedUse": "Use as an interoperability reference for DOI-facing resource typing and export compatibility.",
+      "recommendedScope": "Reference-only in Release 0; do not treat it as the canonical scholarly-type hierarchy.",
+      "authorityLevel": "primary",
+      "version": "4.7",
+      "machineReadable": true,
+      "sourcePageUrl": "https://schema.datacite.org/",
+      "downloadTargets": [],
+      "licenseOrRights": "DataCite schema documentation",
+      "notes": [
+        "Use DataCite to align resource-type naming at DOI boundaries.",
+        "Keep COAR as the main specific scholarly type vocabulary."
+      ]
+    },
+    {
+      "id": "ndltd-etd-ms",
+      "name": "NDLTD ETD-MS",
+      "maintainer": "NDLTD",
+      "role": "thesis_metadata_profile",
+      "recommendedUse": "Reference metadata profile for theses and dissertations.",
+      "recommendedScope": "Reference-only for thesis-oriented exports and mappings.",
+      "authorityLevel": "primary",
+      "version": "current page",
+      "machineReadable": true,
+      "sourcePageUrl": "https://www.ndltd.org/standards/metadata/current.html",
+      "downloadTargets": [],
+      "licenseOrRights": "NDLTD standard page",
+      "notes": [
+        "Use to shape thesis metadata semantics such as degree details and thesis-specific fields.",
+        "The source was verified by web lookup, but direct download was not confirmed from the local shell."
+      ]
+    },
+    {
+      "id": "niso-peer-review-terminology",
+      "name": "ANSI/NISO Peer Review Terminology",
+      "maintainer": "NISO and STM",
+      "role": "peer_review_reference_standard",
+      "recommendedUse": "Reference vocabulary for peer review terminology and review-model dimensions.",
+      "recommendedScope": "Seed a small controlled local enum set and preserve evidence; do not infer peer review from type alone.",
+      "authorityLevel": "primary",
+      "version": "Z39.106-2023",
+      "machineReadable": false,
+      "sourcePageUrl": "https://peerreviewterminology.niso.org/",
+      "downloadTargets": [],
+      "licenseOrRights": "NISO standard terminology site",
+      "notes": [
+        "Use for peer-review semantics only.",
+        "This should remain distinct from publication stage and indexing."
+      ]
+    },
+    {
+      "id": "openalex-topic-stack",
+      "name": "OpenAlex Topics, Fields, Subfields, Keywords, and Work Types",
+      "maintainer": "OpenAlex",
+      "role": "enrichment_and_candidate_generation",
+      "recommendedUse": "Use for enrichment, candidate field assignment, keyword suggestions, and retrieval features.",
+      "recommendedScope": "Do not use as the sole canonical taxonomy; map to local canonical axes.",
+      "authorityLevel": "primary",
+      "version": "live API",
+      "machineReadable": true,
+      "sourcePageUrl": "https://developers.openalex.org/api-reference/introduction",
+      "downloadTargets": [],
+      "apiEndpoints": [
+        "https://api.openalex.org/topics",
+        "https://api.openalex.org/fields",
+        "https://api.openalex.org/subfields",
+        "https://api.openalex.org/work-types",
+        "https://api.openalex.org/keywords"
+      ],
+      "snapshotDocsUrl": "https://developers.openalex.org/download/snapshot-format",
+      "licenseOrRights": "OpenAlex open catalog and API terms",
+      "notes": [
+        "Use OpenAlex as enrichment, not as the final canonical classification authority.",
+        "Avoid the experimental or deprecated text-aboutness endpoints for core production workflows."
+      ]
+    },
+    {
+      "id": "planimetrix-seismic-structural-taxonomy-v1",
+      "name": "Planimetrix Structural and Seismic Engineering Taxonomy",
+      "maintainer": "Planimetrix",
+      "role": "domain_specific_extension",
+      "recommendedUse": "Use for structural engineering, earthquake engineering, seismic protection systems, seismic isolation, and seismic isolator terminology not covered at sufficient granularity by FORD.",
+      "recommendedScope": "Seed as a small local extension taxonomy for structural and seismic research assistance.",
+      "authorityLevel": "derived-local",
+      "version": "1.0",
+      "machineReadable": true,
+      "sourcePageUrl": "https://planimetrix.local/taxonomy/seismic-structural/v1",
+      "downloadTargets": [],
+      "licenseOrRights": "Local curated asset with external source provenance",
+      "notes": [
+        "Curated from authoritative terminology used by FEMA, NIST, and ASCE.",
+        "Use this as a local extension, not as a replacement for FORD or COAR."
+      ]
+    },
+    {
+      "id": "planimetrix-applied-domains-taxonomy-v1",
+      "name": "Planimetrix Applied Research Domains Taxonomy",
+      "maintainer": "Planimetrix",
+      "role": "domain_specific_extension",
+      "recommendedUse": "Use for the dominant applied research branches already present in local projects and references, including business, information systems, health, education, human talent, urban studies, and public management.",
+      "recommendedScope": "Seed as a local extension taxonomy for project routing, keyword mapping, and domain-aware retrieval.",
+      "authorityLevel": "derived-local",
+      "version": "1.0",
+      "machineReadable": true,
+      "sourcePageUrl": "https://planimetrix.local/taxonomy/applied-domains/v1",
+      "downloadTargets": [],
+      "licenseOrRights": "Local curated asset derived from current product data and domain normalization work",
+      "notes": [
+        "Curated from dominant local project programs and current keyword distribution in the reference catalog.",
+        "Use this as a local applied-domain layer over FORD and COAR."
+      ]
+    }
+  ]
+}

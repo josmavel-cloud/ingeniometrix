@@ -1,0 +1,328 @@
+{
+  "from_sources_pct": 39.2,
+  "from_pdfs_pct": 0,
+  "from_websearch_pct": 8.36,
+  "from_assumption_backed_pct": 52.44,
+  "section_breakdown": [
+    {
+      "section_key": "theoretical_framework",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "research_antecedents",
+      "word_count": 86,
+      "from_sources_pct": 71.43,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 14.29,
+      "from_assumption_backed_pct": 14.29
+    },
+    {
+      "section_key": "state_of_the_art",
+      "word_count": 35,
+      "from_sources_pct": 83.33,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 16.67,
+      "from_assumption_backed_pct": 0
+    },
+    {
+      "section_key": "theoretical_bases",
+      "word_count": 67,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "terms_definition",
+      "word_count": 77,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "variables_or_categories",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "methodology",
+      "word_count": 316,
+      "from_sources_pct": 66.67,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 16.67,
+      "from_assumption_backed_pct": 16.67
+    },
+    {
+      "section_key": "methodological_approach",
+      "word_count": 52,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "research_design",
+      "word_count": 76,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "population_and_sample",
+      "word_count": 38,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "data_collection_techniques",
+      "word_count": 8,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "research_instruments",
+      "word_count": 17,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "research_procedure",
+      "word_count": 32,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "analysis_plan",
+      "word_count": 56,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "ethics",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "scope_and_limitations",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "schedule",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "budget",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "problem_statement",
+      "word_count": 325,
+      "from_sources_pct": 66.67,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 16.67,
+      "from_assumption_backed_pct": 16.67
+    },
+    {
+      "section_key": "research_questions",
+      "word_count": 1,
+      "from_sources_pct": 80,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 20,
+      "from_assumption_backed_pct": 0
+    },
+    {
+      "section_key": "general_research_question",
+      "word_count": 9,
+      "from_sources_pct": 80,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 20,
+      "from_assumption_backed_pct": 0
+    },
+    {
+      "section_key": "specific_research_questions",
+      "word_count": 1,
+      "from_sources_pct": 80,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 20,
+      "from_assumption_backed_pct": 0
+    },
+    {
+      "section_key": "justification",
+      "word_count": 83,
+      "from_sources_pct": 83.33,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 16.67,
+      "from_assumption_backed_pct": 0
+    },
+    {
+      "section_key": "theoretical_justification",
+      "word_count": 66,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "practical_justification",
+      "word_count": 33,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "methodological_justification",
+      "word_count": 30,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "objectives",
+      "word_count": 1,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "general_objective",
+      "word_count": 146,
+      "from_sources_pct": 71.43,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 14.29,
+      "from_assumption_backed_pct": 14.29
+    },
+    {
+      "section_key": "specific_objectives",
+      "word_count": 117,
+      "from_sources_pct": 71.43,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 14.29,
+      "from_assumption_backed_pct": 14.29
+    },
+    {
+      "section_key": "hypotheses",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "general_hypothesis",
+      "word_count": 61,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "specific_hypotheses",
+      "word_count": 117,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "abstract",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "keywords",
+      "word_count": 10,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "introduction",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "variables_indicators",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "categories_subcategories",
+      "word_count": 60,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "annexes",
+      "word_count": 28,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "references",
+      "word_count": 96,
+      "from_sources_pct": 0,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 0,
+      "from_assumption_backed_pct": 100
+    },
+    {
+      "section_key": "consistency_matrix",
+      "word_count": 1544,
+      "from_sources_pct": 55.56,
+      "from_pdfs_pct": 0,
+      "from_websearch_pct": 11.11,
+      "from_assumption_backed_pct": 33.33
+    }
+  ]
+}

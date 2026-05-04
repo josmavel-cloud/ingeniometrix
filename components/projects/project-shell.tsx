@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { LogoutButton } from "@/components/auth/logout-button";
-import { BrandBadge } from "@/components/brand/brand-badge";
 import { FloatingNavbar } from "@/components/ui/floating-navbar";
 
 type ProjectShellProps = {
@@ -48,12 +47,6 @@ export function ProjectShell({ title, description, children }: ProjectShellProps
             </div>
 
             <div className="brand-card-primary rounded-[30px] px-5 py-5">
-              <div className="mb-4 rounded-[20px] bg-white px-4 py-3">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-[rgba(100,94,115,0.62)]">
-                  Marca
-                </p>
-                <BrandBadge context="company" />
-              </div>
               <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
                 Flujo guiado
               </p>

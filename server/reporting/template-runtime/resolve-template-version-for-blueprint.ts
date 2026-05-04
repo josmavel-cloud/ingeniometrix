@@ -205,6 +205,12 @@ export async function resolveTemplateVersionForBlueprint(
   input: BlueprintTemplateResolutionInput,
 ) {
   const candidates = await prisma.templateVersion.findMany({
+    where: {
+      reviewStatus: "REVIEWED",
+      template: {
+        status: "ACTIVE",
+      },
+    },
     include: {
       template: true,
     },

@@ -4,6 +4,7 @@ import {
 } from "@/lib/peru-universities";
 import type { LoadedTemplateVersionRuntime } from "@/server/reporting/template-runtime/load-template-version";
 import { loadTemplateVersionRuntime } from "@/server/reporting/template-runtime/load-template-version";
+import { MASTER_TEMPLATE_LATAM_KEY } from "@/server/reporting/template-runtime/master-template";
 import { resolveTemplateVersionForBlueprint } from "@/server/reporting/template-runtime/resolve-template-version-for-blueprint";
 
 type BlueprintTemplateRuntimeInput = {
@@ -23,7 +24,7 @@ type BlueprintTemplateRuntimeResolution = {
 };
 
 const MIN_ACCEPTABLE_TEMPLATE_SCORE = 24;
-const GENERIC_FALLBACK_TEMPLATE_KEYS = ["UNIVERSIDAD_NO_IDENTIFICADA_UNKNOWN"];
+const GENERIC_FALLBACK_TEMPLATE_KEYS = [MASTER_TEMPLATE_LATAM_KEY];
 
 const PROJECT_TEMPLATE_RUNTIME_HINTS: Record<string, string[]> = {
   UPC_POSGRADO: [],
@@ -37,10 +38,7 @@ const PROJECT_TEMPLATE_RUNTIME_HINTS: Record<string, string[]> = {
 
 const UNIVERSITY_RUNTIME_HINTS: Record<string, string[]> = {
   PUCP: ["PONTIFICIA_UNIVERSIDAD_CATOLICA_DEL_PERU_MAESTRIA_INGENIERIA_CIVIL"],
-  UPT: [
-    "UNIVERSIDAD_PRIVADA_DE_TACNA_MAESTRIA_INGENIERIA_CIVIL",
-    "UNIVERSIDAD_PRIVADA_DE_TACNA_UNKNOWN",
-  ],
+  UPT: [],
   UNI: [
     "UNIVERSIDAD_NACIONAL_DE_INGENIERIA_UNKNOWN",
     "UNIVERSIDAD_NACIONAL_DE_INGENIER_A_UNKNOWN",

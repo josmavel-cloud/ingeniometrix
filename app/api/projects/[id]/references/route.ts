@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import {
   listProjectReferences,
   updateSelectedProjectReferences,
@@ -14,9 +15,12 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const references = await listProjectReferences(user.id, id);
+    const [references, searchSnapshot] = await Promise.all([
+      listProjectReferences(user.id, id),
+      getLatestProjectReferenceSearchSnapshot(id),
+    ]);
 
-    return NextResponse.json({ references });
+    return NextResponse.json({ references, searchSnapshot });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "No se pudieron listar las fuentes.";

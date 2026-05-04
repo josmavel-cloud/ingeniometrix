@@ -48,17 +48,17 @@ export function resolveHtmlLanguage(input?: { userLocale?: string | null }) {
 export function getLanguageLabel(value: string | null | undefined) {
   switch (normalizeLanguageCode(value)) {
     case "es":
-      return "Espanol";
+      return "Español";
     case "en":
-      return "Ingles";
+      return "Inglés";
     case "pt":
-      return "Portugues";
+      return "Portugués";
     case "fr":
-      return "Frances";
+      return "Francés";
     case "it":
       return "Italiano";
     case "de":
-      return "Aleman";
+      return "Alemán";
     default:
       return "Otro idioma";
   }

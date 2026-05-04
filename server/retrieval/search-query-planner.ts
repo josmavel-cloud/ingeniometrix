@@ -28,6 +28,15 @@ type BuildReferenceSearchPlanInput = {
   researchLine?: string | null;
 };
 
+function pickOptionalSearchContext(value: string | null | undefined, maxTerms: number) {
+  const terms = extractSearchTerms(value, {
+    maxTerms,
+    minLength: 4,
+  });
+
+  return terms.length > 0 ? terms.join(" ") : null;
+}
+
 function uniqueNormalized(values: string[]) {
   const seen = new Set<string>();
 
@@ -44,78 +53,104 @@ function uniqueNormalized(values: string[]) {
 }
 
 function buildFallbackPlan(input: BuildReferenceSearchPlanInput): ReferenceSearchPlan {
+  const problemFrame = pickOptionalSearchContext(input.problemContext, 6);
+  const populationScope = pickOptionalSearchContext(input.targetPopulation, 5);
+  const methodScope = pickOptionalSearchContext(input.preferredMethodology, 5);
+  const researchScope = pickOptionalSearchContext(input.researchLine, 5);
   const normalizedTopic = buildSearchQuery([
     input.topic,
-    input.targetPopulation,
     input.preferredMethodology,
   ]);
   const fallbackQueries = buildSearchQueryAttempts({
     topic: input.topic,
-    problemContext: [input.problemContext, input.targetPopulation].filter(Boolean).join(" "),
-    program: input.program,
+    problemContext: [problemFrame, populationScope, methodScope].filter(Boolean).join(" "),
   });
+  const technicalTerms = uniqueNormalized([
+    ...extractSearchTerms(input.topic, { maxTerms: 8, minLength: 4 }),
+    ...extractSearchTerms(input.preferredMethodology, { maxTerms: 4, minLength: 4 }),
+    ...extractSearchTerms(input.researchLine, { maxTerms: 4, minLength: 4 }),
+  ]);
 
   return {
     normalized_topic: normalizedTopic || input.topic,
     intent_summary:
-      buildSearchQuery([input.topic, input.problemContext, input.targetPopulation]) ||
+      buildSearchQuery([input.topic, problemFrame, populationScope]) ||
       input.topic,
-    search_queries: fallbackQueries.slice(0, 4),
-    cross_language_queries: [],
-    focus_terms: extractSearchTerms(
-      [
-        input.topic,
-        input.problemContext,
-        input.targetPopulation,
-        input.preferredMethodology,
-        input.researchLine,
-      ]
-        .filter(Boolean)
-        .join(" "),
-      {
-        maxTerms: 8,
-        minLength: 4,
-      },
-    ),
+    search_queries: uniqueNormalized([
+      ...fallbackQueries,
+      buildSearchQuery([technicalTerms.slice(0, 6).join(" ")]),
+      buildSearchQuery([technicalTerms.slice(0, 4).join(" "), methodScope]),
+      buildSearchQuery([technicalTerms.slice(0, 4).join(" "), researchScope]),
+    ]).slice(0, 4),
+    cross_language_queries: uniqueNormalized([
+      buildSearchQuery([input.topic]),
+      buildSearchQuery([input.topic, input.targetPopulation]),
+    ]).slice(0, 2),
+    focus_terms: uniqueNormalized([
+      ...extractSearchTerms(input.topic, { maxTerms: 6, minLength: 4 }),
+      ...extractSearchTerms(input.preferredMethodology, { maxTerms: 3, minLength: 4 }),
+      ...extractSearchTerms(input.researchLine, { maxTerms: 3, minLength: 4 }),
+      ...extractSearchTerms(input.problemContext, { maxTerms: 3, minLength: 4 }),
+      ...extractSearchTerms(input.targetPopulation, { maxTerms: 3, minLength: 4 }),
+    ]).slice(0, 10),
   };
 }
 
 function buildPrompt(input: BuildReferenceSearchPlanInput) {
+  const problemFrame = pickOptionalSearchContext(input.problemContext, 10) ?? "UNSPECIFIED";
+  const populationScope =
+    pickOptionalSearchContext(input.targetPopulation, 8) ?? "UNSPECIFIED";
+  const methodScope =
+    pickOptionalSearchContext(input.preferredMethodology, 8) ?? "UNSPECIFIED";
+  const researchScope =
+    pickOptionalSearchContext(input.researchLine, 8) ?? "UNSPECIFIED";
+
   return `
-Eres Ingeniometrix y tu tarea es mejorar una busqueda academica para OpenAlex.
+You are a senior academic literature retrieval specialist for master's thesis planning.
+Your task is to convert a student's structured intake into high-quality OpenAlex search queries.
 
-Objetivo:
-- reformular el tema del usuario como una intencion academica breve y clara
-- proponer consultas mas utiles para OpenAlex
-- incluir variantes en ingles cuando eso aumente la probabilidad de encontrar literatura relevante
-- priorizar antecedentes recientes y tecnicamente utiles para construir un blueprint trazable
+Search environment:
+- OpenAlex retrieval works better with English-first academic terminology
+- the student's original intake may be written in Spanish
+- preserve the technical meaning, but produce retrieval outputs optimized for English-language titles and abstracts
+- current project language is ${input.activeLanguage || APP_DEFAULT_LANGUAGE}, but search outputs should be English-first unless the topic is inherently local-language specific
 
-Reglas:
-- no inventes datos ni resultados
-- no conviertas la consulta en una tesis completa
-- prioriza palabras que ayuden a encontrar articulos relevantes
-- busca antecedentes sobre el tema elegido que aborden problemas actuales del area
-- intenta favorecer consultas que traigan al menos 5 antecedentes con abstract, soluciones tecnicas o enfoques metodologicos aprovechables
-- prioriza literatura de los ultimos 5 anos cuando eso no distorsione el foco del tema
-- evita nombres institucionales salvo que realmente sean parte del objeto de estudio
-- usa terminologia academica breve, no frases demasiado largas
-- si el usuario ya escribio algo tecnico, preserva ese foco
-- el idioma objetivo actual del proyecto es ${input.activeLanguage || APP_DEFAULT_LANGUAGE}
+Primary goal:
+- maximize retrieval of recent, technically useful academic sources for a traceable blueprint
 
-Entrada:
-- topic: ${input.topic}
-- problem_context: ${input.problemContext ?? "NO_ESPECIFICADO"}
-- target_population: ${input.targetPopulation ?? "NO_ESPECIFICADA"}
-- preferred_methodology: ${input.preferredMethodology ?? "NO_ESPECIFICADA"}
-- research_line: ${input.researchLine ?? "NO_ESPECIFICADA"}
-- program: ${input.program ?? "NO_ESPECIFICADO"}
+Important rules:
+- do not invent facts, methods, populations, or results
+- do not turn the intake into a thesis proposal
+- do not use marketing wording or educational coaching language
+- use terminology commonly found in journal articles, review papers, and engineering research
+- prioritize short, high-signal query strings likely to match titles and abstracts
+- keep the core topic dominant
+- use problem context only if it improves precision
+- use target population only if it materially improves precision
+- avoid unnecessary institutional or program wording
+- preserve domain-specific technical terms if the user already provided them
+- prefer queries that can retrieve at least several papers with abstracts, methods, or technical findings
+- prefer recent literature when that does not distort the topic
 
-Devuelve:
-- normalized_topic: reformulacion academica breve en el idioma del proyecto
-- intent_summary: resumen de intencion de busqueda en el idioma del proyecto
-- search_queries: 2 a 4 consultas breves y utiles en el idioma del proyecto
-- cross_language_queries: hasta 3 consultas utiles en ingles si eso ayuda a OpenAlex
-- focus_terms: 5 a 10 terminos clave utiles para reranking local
+Input intake:
+- topic_es: ${input.topic}
+- problem_context_es: ${input.problemContext ?? "UNSPECIFIED"}
+- target_population_es: ${input.targetPopulation ?? "UNSPECIFIED"}
+- preferred_methodology_es: ${input.preferredMethodology ?? "UNSPECIFIED"}
+- research_line_es: ${input.researchLine ?? "UNSPECIFIED"}
+
+Compressed retrieval hints:
+- problem_frame_hint: ${problemFrame}
+- population_scope_hint: ${populationScope}
+- method_scope_hint: ${methodScope}
+- research_scope_hint: ${researchScope}
+
+Return a JSON object with:
+- normalized_topic: concise academic retrieval topic in English
+- intent_summary: one-sentence English summary of what literature should be retrieved
+- search_queries: 2 to 4 short English-first OpenAlex queries with different retrieval angles
+- cross_language_queries: up to 3 optional backup queries in Spanish or mixed language only if they may improve recall
+- focus_terms: 5 to 10 high-value English technical terms for local reranking
 `.trim();
 }
 

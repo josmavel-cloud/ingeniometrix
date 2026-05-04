@@ -206,6 +206,8 @@ export type CanonicalAssetRef = {
   kind: string;
   role: "cover_logo" | "cover_image" | "annex_asset" | "generic";
   stored_path?: string | null;
+  content_base64?: string | null;
+  file_name?: string | null;
   mime_type?: string | null;
   width_px?: number | null;
   height_px?: number | null;

@@ -1,0 +1,609 @@
+{
+  "source_registry": [
+    {
+      "source_id": "lab-selected-source-001",
+      "reference_id": "lab-selected-source-001",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "normalized_title": "sintetica practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil A"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio que describe secuenciacion de frentes de concreto, estandarizacion de tareas criticas y control operativo para reducir desperdicio y mantener seguridad en obra.",
+      "landing_page_url": "https://lab.local/civil/source-001",
+      "pdf_url": "https://lab.local/pdf/civil-source-001.pdf",
+      "query": null,
+      "snippet": null,
+      "selected_order": 1,
+      "citation_count": 9,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-selected-source-002",
+      "reference_id": "lab-selected-source-002",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "normalized_title": "sintetica disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil B"
+      ],
+      "year": 2023,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio con enfasis en observacion estructurada, checklists de seguridad, tiempos improductivos y delimitacion prudente de unidades de analisis en obra.",
+      "landing_page_url": "https://lab.local/civil/source-002",
+      "pdf_url": null,
+      "query": null,
+      "snippet": null,
+      "selected_order": 2,
+      "citation_count": 6,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-selected-source-003",
+      "reference_id": "lab-selected-source-003",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Lineamientos de consistencia entre seguridad, productividad y evidencia en proyectos de edificacion",
+      "normalized_title": "sintetica lineamientos de consistencia entre seguridad productividad y evidencia en proyectos de edificacion",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil C"
+      ],
+      "year": 2022,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio orientado a consistencia vertical, construccion tardia de la matriz y uso responsable de assumptions cuando faltan detalles operativos del caso.",
+      "landing_page_url": "https://lab.local/civil/source-003",
+      "pdf_url": "https://lab.local/pdf/civil-source-003.pdf",
+      "query": null,
+      "snippet": null,
+      "selected_order": 3,
+      "citation_count": 5,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-provider-source-004",
+      "reference_id": null,
+      "origin": "provider_expansion",
+      "label": "Fuente complementada por providers",
+      "title": "[SINTETICA] Adopcion gradual de Lean Construction y rutinas de control en obra",
+      "normalized_title": "sintetica adopcion gradual de lean construction y rutinas de control en obra",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil D"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio sobre adopcion gradual de Lean Construction, reuniones cortas de coordinacion y uso prudente de indicadores operativos en frentes de edificacion.",
+      "landing_page_url": "https://lab.local/civil/source-004",
+      "pdf_url": null,
+      "query": "lean construction seguridad productividad edificacion multifamiliar",
+      "snippet": null,
+      "selected_order": null,
+      "citation_count": 3,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-web-source-005",
+      "reference_id": null,
+      "origin": "websearch_source",
+      "label": "Fuente complementada por web search",
+      "title": "[SINTETICA] Nota contextual sobre seguridad en obra y productividad de cuadrillas en Lima Metropolitana",
+      "normalized_title": "sintetica nota contextual sobre seguridad en obra y productividad de cuadrillas en lima metropolitana",
+      "doi": null,
+      "authors": [],
+      "year": null,
+      "venue": "Sitio contextual de laboratorio civil",
+      "abstract": null,
+      "landing_page_url": "https://lab.local/web/civil-source-005",
+      "pdf_url": null,
+      "query": "seguridad en obra productividad cuadrillas lima metropolitana",
+      "snippet": "La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.",
+      "selected_order": null,
+      "citation_count": null,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": false
+    }
+  ],
+  "evidence_packs": [
+    {
+      "source_id": "lab-selected-source-001",
+      "problem_signal": "La productividad y la seguridad en obras de concreto multifamiliar se deterioran cuando los frentes no comparten secuencias estables, criterios de liberacion y control operativo diario.",
+      "method_signal": "Se describe una estrategia basada en observacion de campo, revision de partes diarios y entrevistas para identificar practicas de produccion confiable.",
+      "context_signal": "El antecedente se ubica en obras de edificacion multifamiliar con frentes simultaneos, restricciones de espacio y dependencia de cuadrillas especializadas.",
+      "finding_signal": "La estandarizacion de tareas criticas, la especializacion por frentes y la coordinacion corta diaria mejoran confiabilidad operativa sin desligarse de la seguridad.",
+      "limitation_signal": "La evidencia disponible no permite inferir causalidad generalizable fuera de obras con caracteristicas operativas comparables.",
+      "future_line_signal": "Se recomienda profundizar en medicion de tiempos improductivos, confiabilidad de cuadrillas y secuenciacion de vaciados de concreto.",
+      "abstract_summary": "Fuente sintetica centrada en produccion confiable, control operativo y seguridad en construccion de concreto multifamiliar.",
+      "pdf_summary": "El PDF sintetico enfatiza especializacion de frentes, reduccion de variabilidad y control diario para sostener productividad y seguridad.",
+      "pdf_sections": {
+        "abstract": "El documento sintetico plantea que la confiabilidad de la produccion se degrada cuando las cuadrillas no comparten secuencias, criterios de liberacion y uso previsible de recursos criticos.",
+        "methodology": "La propuesta metodologica combina observacion de campo, entrevistas semiestructuradas y revision de partes diarios para mapear practicas de produccion y seguridad.",
+        "results": "Se observa que la especializacion por frentes, la reduccion de variabilidad y la coordinacion corta diaria ayudan a mejorar productividad y control de riesgos.",
+        "conclusions": "La confiabilidad operativa mejora cuando la seguridad se integra con la secuencia de trabajo y no solo con inspecciones aisladas.",
+        "limitations": "El documento no prueba impacto causal universal ni extrapolacion a toda obra civil.",
+        "future_work": "Se propone evaluar relacion entre confiabilidad de cuadrillas, tiempos improductivos y secuencias de concreto en proyectos comparables."
+      },
+      "snippets": [
+        {
+          "snippet_id": "snippet-source-001-a",
+          "source_id": "lab-selected-source-001",
+          "origin": "source",
+          "label": "Brecha principal del antecedente",
+          "text": "La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.",
+          "section_hint_keys": [
+            "problem_statement",
+            "justification",
+            "research_antecedents"
+          ],
+          "confidence": 0.9
+        },
+        {
+          "snippet_id": "snippet-source-001-b",
+          "source_id": "lab-selected-source-001",
+          "origin": "pdf",
+          "label": "Metodo extraido del PDF",
+          "text": "La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.",
+          "section_hint_keys": [
+            "methodology",
+            "methodological_approach",
+            "research_design",
+            "analysis_plan"
+          ],
+          "confidence": 0.87
+        },
+        {
+          "snippet_id": "snippet-source-001-c",
+          "source_id": "lab-selected-source-001",
+          "origin": "pdf",
+          "label": "Hallazgo del antecedente",
+          "text": "La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.",
+          "section_hint_keys": [
+            "research_antecedents",
+            "state_of_the_art",
+            "justification"
+          ],
+          "confidence": 0.83
+        }
+      ],
+      "assets": [
+        {
+          "source_id": "lab-selected-source-001",
+          "asset_key": "lab-selected-source-001:table:1",
+          "title": "Secuencia sintetica de control por frente de concreto",
+          "kind": "table",
+          "caption": "Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.",
+          "page_number": 4,
+          "file_path": null,
+          "mime_type": null,
+          "width_px": null,
+          "height_px": null,
+          "text_content": "Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.",
+          "extraction_origin": "llm_reconstructed",
+          "extracted": false
+        }
+      ]
+    },
+    {
+      "source_id": "lab-selected-source-002",
+      "problem_signal": "Los disenos de seguridad en obra fallan cuando checklists, observaciones y registros de productividad no dialogan con el tipo de evidencia realmente disponible.",
+      "method_signal": "Se prioriza un enfoque descriptivo con observacion estructurada, entrevistas y criterios de inclusion para unidades de analisis en obra.",
+      "context_signal": "El material se refiere a obras de edificacion donde conviven partes diarios, observaciones de seguridad y evidencia parcial de productividad.",
+      "finding_signal": "Los instrumentos simples y comparables facilitan mantener consistencia entre objetivos, preguntas y analisis en el caso civil.",
+      "limitation_signal": "La ausencia de PDF en esta fuente limita la riqueza del soporte y obliga a trabajar con metadata y abstract sintetico.",
+      "future_line_signal": "Se sugiere profundizar en validacion de instrumentos, confiabilidad de observaciones y criterios de muestreo por frente.",
+      "abstract_summary": "Fuente sintetica enfocada en decisiones metodologicas prudentes para seguridad y productividad de cuadrillas en obra.",
+      "pdf_summary": null,
+      "pdf_sections": {
+        "abstract": null,
+        "methodology": null,
+        "results": null,
+        "conclusions": null,
+        "limitations": null,
+        "future_work": null
+      },
+      "snippets": [
+        {
+          "snippet_id": "snippet-source-002-a",
+          "source_id": "lab-selected-source-002",
+          "origin": "source",
+          "label": "Criterio metodologico",
+          "text": "La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.",
+          "section_hint_keys": [
+            "methodology",
+            "methodological_approach",
+            "research_design",
+            "analysis_plan"
+          ],
+          "confidence": 0.85
+        },
+        {
+          "snippet_id": "snippet-source-002-b",
+          "source_id": "lab-selected-source-002",
+          "origin": "source",
+          "label": "Poblacion y unidad de analisis",
+          "text": "La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.",
+          "section_hint_keys": [
+            "population_and_sample",
+            "problem_statement",
+            "methodology"
+          ],
+          "confidence": 0.8
+        }
+      ],
+      "assets": []
+    },
+    {
+      "source_id": "lab-selected-source-003",
+      "problem_signal": "La consistencia vertical del plan se debilita cuando seguridad, productividad y evidencia no conservan una relacion explicita y verificable.",
+      "method_signal": "Se propone verificar alineacion entre problema, objetivos, preguntas y tecnicas antes de fijar la matriz final del caso civil.",
+      "context_signal": "El antecedente sintetico se ubica en proyectos de edificacion donde la trazabilidad formal importa tanto como la redaccion tecnica prudente.",
+      "finding_signal": "La matriz de consistencia funciona mejor cuando se construye al final, despues de consolidar seguridad, productividad y metodologia.",
+      "limitation_signal": "El material insiste en prudencia academica y en declarar assumptions cuando faltan detalles operativos de obra.",
+      "future_line_signal": "Se recomienda probar variantes institucionales de la matriz sin perder trazabilidad del Master en ingenieria civil.",
+      "abstract_summary": "Fuente sintetica orientada a coherencia, secuencia de secciones y uso prudente de assumptions en el caso civil.",
+      "pdf_summary": "El PDF sintetico prioriza la construccion tardia de la matriz y la verificacion final de coherencia para seguridad y productividad.",
+      "pdf_sections": {
+        "abstract": "La version sintetica afirma que la coherencia del plan mejora cuando la matriz se deriva de secciones previamente consolidadas sobre seguridad y productividad.",
+        "methodology": "Se recomienda revisar objetivos, preguntas, tecnicas e instrumentos antes de cerrar la matriz de consistencia.",
+        "results": "La alineacion uno a uno reduce contradicciones entre redaccion narrativa, seguridad observada y estructura metodologica.",
+        "conclusions": "La trazabilidad mejora cuando assumptions y soportes quedan explicitados por seccion.",
+        "limitations": "No se deben inventar precisiones operativas que el caso todavia no sostiene.",
+        "future_work": "Pueden probarse overlays universitarios siempre que se preserve el anclaje al blueprint maestro."
+      },
+      "snippets": [
+        {
+          "snippet_id": "snippet-source-003-a",
+          "source_id": "lab-selected-source-003",
+          "origin": "source",
+          "label": "Regla de coherencia",
+          "text": "La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.",
+          "section_hint_keys": [
+            "consistency_matrix",
+            "specific_objectives",
+            "specific_research_questions",
+            "methodology"
+          ],
+          "confidence": 0.92
+        },
+        {
+          "snippet_id": "snippet-source-003-b",
+          "source_id": "lab-selected-source-003",
+          "origin": "pdf",
+          "label": "Prudencia academica",
+          "text": "Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.",
+          "section_hint_keys": [
+            "justification",
+            "scope_and_limitations",
+            "consistency_matrix"
+          ],
+          "confidence": 0.86
+        },
+        {
+          "snippet_id": "snippet-source-003-c",
+          "source_id": "lab-selected-source-003",
+          "origin": "pdf",
+          "label": "Alineacion vertical",
+          "text": "La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.",
+          "section_hint_keys": [
+            "general_objective",
+            "specific_objectives",
+            "specific_research_questions",
+            "analysis_plan"
+          ],
+          "confidence": 0.88
+        }
+      ],
+      "assets": [
+        {
+          "source_id": "lab-selected-source-003",
+          "asset_key": "lab-selected-source-003:table:1",
+          "title": "Esquema sintetico de alineacion seguridad-productividad",
+          "kind": "table",
+          "caption": "Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.",
+          "page_number": 6,
+          "file_path": null,
+          "mime_type": null,
+          "width_px": null,
+          "height_px": null,
+          "text_content": "Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.",
+          "extraction_origin": "llm_reconstructed",
+          "extracted": false
+        }
+      ]
+    },
+    {
+      "source_id": "lab-provider-source-004",
+      "problem_signal": "La adopcion gradual de Lean Construction exige secuencias realistas y no cambios abruptos en la coordinacion diaria de obra.",
+      "method_signal": "Los lineamientos recomiendan combinar evidencia documental, observaciones y reuniones cortas para describir practicas de coordinacion en obra.",
+      "context_signal": "El contexto sintetico considera obras de edificacion con madurez desigual en control operativo y disciplina de seguridad.",
+      "finding_signal": "La adopcion progresiva mejora cuando los equipos reconocen rutinas minimas de coordinacion, seguridad y control de restricciones.",
+      "limitation_signal": "El antecedente es complementario y no reemplaza el caso propio del proyecto.",
+      "future_line_signal": "Conviene profundizar en confiabilidad de planeamiento semanal y remocion de restricciones por frente.",
+      "abstract_summary": "Fuente provider sintetica para complementar estado del arte y metodologia prudente en Lean Construction.",
+      "pdf_summary": null,
+      "pdf_sections": {
+        "abstract": null,
+        "methodology": null,
+        "results": null,
+        "conclusions": null,
+        "limitations": null,
+        "future_work": null
+      },
+      "snippets": [
+        {
+          "snippet_id": "snippet-source-004-a",
+          "source_id": "lab-provider-source-004",
+          "origin": "source",
+          "label": "Adopcion progresiva",
+          "text": "La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.",
+          "section_hint_keys": [
+            "state_of_the_art",
+            "justification",
+            "methodology"
+          ],
+          "confidence": 0.74
+        }
+      ],
+      "assets": []
+    },
+    {
+      "source_id": "lab-web-source-005",
+      "problem_signal": null,
+      "method_signal": null,
+      "context_signal": "La nota contextual sintetica sugiere heterogeneidad de controles de seguridad, disciplina operativa y productividad entre obras multifamiliares.",
+      "finding_signal": null,
+      "limitation_signal": "La fuente web solo aporta contexto general y no debe tratarse como sustento academico fuerte.",
+      "future_line_signal": null,
+      "abstract_summary": null,
+      "pdf_summary": null,
+      "pdf_sections": {
+        "abstract": null,
+        "methodology": null,
+        "results": null,
+        "conclusions": null,
+        "limitations": null,
+        "future_work": null
+      },
+      "snippets": [
+        {
+          "snippet_id": "snippet-source-005-a",
+          "source_id": "lab-web-source-005",
+          "origin": "websearch",
+          "label": "Contexto web complementario",
+          "text": "La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.",
+          "section_hint_keys": [
+            "introduction",
+            "problem_statement",
+            "justification"
+          ],
+          "confidence": 0.42
+        }
+      ],
+      "assets": []
+    }
+  ],
+  "assets": [
+    {
+      "source_id": "lab-selected-source-001",
+      "asset_key": "lab-selected-source-001:table:1",
+      "title": "Secuencia sintetica de control por frente de concreto",
+      "kind": "table",
+      "caption": "Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.",
+      "page_number": 4,
+      "file_path": null,
+      "mime_type": null,
+      "width_px": null,
+      "height_px": null,
+      "text_content": "Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.",
+      "extraction_origin": "llm_reconstructed",
+      "extracted": false
+    },
+    {
+      "source_id": "lab-selected-source-003",
+      "asset_key": "lab-selected-source-003:table:1",
+      "title": "Esquema sintetico de alineacion seguridad-productividad",
+      "kind": "table",
+      "caption": "Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.",
+      "page_number": 6,
+      "file_path": null,
+      "mime_type": null,
+      "width_px": null,
+      "height_px": null,
+      "text_content": "Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.",
+      "extraction_origin": "llm_reconstructed",
+      "extracted": false
+    }
+  ],
+  "assumptions": [
+    {
+      "assumption_id": "assumption:research_line",
+      "statement": "La linea de investigacion se aproxima a gestion de obra, seguridad ocupacional y productividad a partir del tema, el programa y la evidencia sintetica disponible.",
+      "reason": "El intake sintetico no fija una linea de investigacion definitiva.",
+      "section_keys": [
+        "introduction",
+        "problem_statement",
+        "general_objective"
+      ]
+    },
+    {
+      "assumption_id": "assumption:methodology",
+      "statement": "La metodologia se formula de manera prudente segun los datos declarados y los antecedentes metodologicos mas cercanos de observacion y revision documental en obra.",
+      "reason": "El intake sintetico no fija un diseno metodologico cerrado.",
+      "section_keys": [
+        "methodology",
+        "analysis_plan",
+        "consistency_matrix"
+      ]
+    },
+    {
+      "assumption_id": "assumption:websearch_support",
+      "statement": "La fuente web sintetica solo se usa como apoyo contextual sobre seguridad y productividad en obra y no sustituye soporte academico formal.",
+      "reason": "El escenario de laboratorio incluye una fuente contextual para probar trazabilidad diferenciada.",
+      "section_keys": [
+        "introduction",
+        "problem_statement",
+        "justification"
+      ]
+    }
+  ],
+  "snippets": [
+    {
+      "snippet_id": "snippet-source-001-a",
+      "source_id": "lab-selected-source-001",
+      "origin": "source",
+      "label": "Brecha principal del antecedente",
+      "text": "La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.",
+      "section_hint_keys": [
+        "problem_statement",
+        "justification",
+        "research_antecedents"
+      ],
+      "confidence": 0.9
+    },
+    {
+      "snippet_id": "snippet-source-001-b",
+      "source_id": "lab-selected-source-001",
+      "origin": "pdf",
+      "label": "Metodo extraido del PDF",
+      "text": "La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.",
+      "section_hint_keys": [
+        "methodology",
+        "methodological_approach",
+        "research_design",
+        "analysis_plan"
+      ],
+      "confidence": 0.87
+    },
+    {
+      "snippet_id": "snippet-source-001-c",
+      "source_id": "lab-selected-source-001",
+      "origin": "pdf",
+      "label": "Hallazgo del antecedente",
+      "text": "La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.",
+      "section_hint_keys": [
+        "research_antecedents",
+        "state_of_the_art",
+        "justification"
+      ],
+      "confidence": 0.83
+    },
+    {
+      "snippet_id": "snippet-source-002-a",
+      "source_id": "lab-selected-source-002",
+      "origin": "source",
+      "label": "Criterio metodologico",
+      "text": "La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.",
+      "section_hint_keys": [
+        "methodology",
+        "methodological_approach",
+        "research_design",
+        "analysis_plan"
+      ],
+      "confidence": 0.85
+    },
+    {
+      "snippet_id": "snippet-source-002-b",
+      "source_id": "lab-selected-source-002",
+      "origin": "source",
+      "label": "Poblacion y unidad de analisis",
+      "text": "La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.",
+      "section_hint_keys": [
+        "population_and_sample",
+        "problem_statement",
+        "methodology"
+      ],
+      "confidence": 0.8
+    },
+    {
+      "snippet_id": "snippet-source-003-a",
+      "source_id": "lab-selected-source-003",
+      "origin": "source",
+      "label": "Regla de coherencia",
+      "text": "La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.",
+      "section_hint_keys": [
+        "consistency_matrix",
+        "specific_objectives",
+        "specific_research_questions",
+        "methodology"
+      ],
+      "confidence": 0.92
+    },
+    {
+      "snippet_id": "snippet-source-003-b",
+      "source_id": "lab-selected-source-003",
+      "origin": "pdf",
+      "label": "Prudencia academica",
+      "text": "Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.",
+      "section_hint_keys": [
+        "justification",
+        "scope_and_limitations",
+        "consistency_matrix"
+      ],
+      "confidence": 0.86
+    },
+    {
+      "snippet_id": "snippet-source-003-c",
+      "source_id": "lab-selected-source-003",
+      "origin": "pdf",
+      "label": "Alineacion vertical",
+      "text": "La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.",
+      "section_hint_keys": [
+        "general_objective",
+        "specific_objectives",
+        "specific_research_questions",
+        "analysis_plan"
+      ],
+      "confidence": 0.88
+    },
+    {
+      "snippet_id": "snippet-source-004-a",
+      "source_id": "lab-provider-source-004",
+      "origin": "source",
+      "label": "Adopcion progresiva",
+      "text": "La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.",
+      "section_hint_keys": [
+        "state_of_the_art",
+        "justification",
+        "methodology"
+      ],
+      "confidence": 0.74
+    },
+    {
+      "snippet_id": "snippet-source-005-a",
+      "source_id": "lab-web-source-005",
+      "origin": "websearch",
+      "label": "Contexto web complementario",
+      "text": "La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.",
+      "section_hint_keys": [
+        "introduction",
+        "problem_statement",
+        "justification"
+      ],
+      "confidence": 0.42
+    }
+  ],
+  "warnings": [
+    "El set sintetico mantiene una fuente web solo como apoyo contextual.",
+    "Las assumptions del laboratorio deben mostrarse de forma explicita en salidas de depuracion."
+  ]
+}

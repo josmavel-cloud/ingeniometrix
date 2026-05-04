@@ -1,0 +1,1157 @@
+{
+  "generation_plan": [
+    {
+      "section_key": "abstract",
+      "title": "Resumen",
+      "phase": "framing",
+      "order": 300,
+      "depends_on_keys": [
+        "problem_statement",
+        "general_objective",
+        "methodology"
+      ],
+      "instructions": [
+        "Incluye problema, objetivo general, metodologia y aporte esperado."
+      ],
+      "purpose": "Sintetizar problema, objetivo, metodologia y aporte esperado.",
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": 180,
+      "max_words": 350
+    },
+    {
+      "section_key": "keywords",
+      "title": "Palabras clave",
+      "phase": "framing",
+      "order": 301,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "bullet_list",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "introduction",
+      "title": "Introduccion",
+      "phase": "framing",
+      "order": 302,
+      "depends_on_keys": [
+        "problem_statement",
+        "general_objective",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": 200,
+      "max_words": 600
+    },
+    {
+      "section_key": "problem_statement",
+      "title": "Planteamiento del problema",
+      "phase": "logic",
+      "order": 203,
+      "depends_on_keys": [
+        "theoretical_framework",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": 300,
+      "max_words": 900
+    },
+    {
+      "section_key": "research_questions",
+      "title": "Formulacion del problema",
+      "phase": "logic",
+      "order": 204,
+      "depends_on_keys": [
+        "theoretical_framework",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "general_research_question",
+      "title": "Problema general",
+      "phase": "logic",
+      "order": 205,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "specific_research_questions",
+      "title": "Problemas especificos",
+      "phase": "logic",
+      "order": 206,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "bullet_list",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "justification",
+      "title": "Justificacion",
+      "phase": "logic",
+      "order": 207,
+      "depends_on_keys": [
+        "theoretical_framework",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": 220,
+      "max_words": 700
+    },
+    {
+      "section_key": "theoretical_justification",
+      "title": "Justificacion teorica",
+      "phase": "logic",
+      "order": 208,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "practical_justification",
+      "title": "Justificacion practica",
+      "phase": "logic",
+      "order": 209,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "methodological_justification",
+      "title": "Justificacion metodologica",
+      "phase": "logic",
+      "order": 210,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "objectives",
+      "title": "Objetivos",
+      "phase": "logic",
+      "order": 211,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "general_objective",
+      "title": "Objetivo general",
+      "phase": "logic",
+      "order": 212,
+      "depends_on_keys": [
+        "theoretical_framework",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "specific_objectives",
+      "title": "Objetivos especificos",
+      "phase": "logic",
+      "order": 213,
+      "depends_on_keys": [
+        "theoretical_framework",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "numbered_list",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "hypotheses",
+      "title": "Hipotesis",
+      "phase": "logic",
+      "order": 214,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": false,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "general_hypothesis",
+      "title": "Hipotesis general",
+      "phase": "logic",
+      "order": 215,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": false,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "specific_hypotheses",
+      "title": "Hipotesis especificas",
+      "phase": "logic",
+      "order": 216,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "bullet_list",
+      "required": false,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "theoretical_framework",
+      "title": "Marco teorico",
+      "phase": "body",
+      "order": 117,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": 500,
+      "max_words": 1800
+    },
+    {
+      "section_key": "research_antecedents",
+      "title": "Antecedentes de la investigacion",
+      "phase": "body",
+      "order": 118,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "state_of_the_art",
+      "title": "Estado del arte",
+      "phase": "body",
+      "order": 119,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "theoretical_bases",
+      "title": "Bases teoricas",
+      "phase": "body",
+      "order": 120,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "terms_definition",
+      "title": "Definicion de terminos",
+      "phase": "body",
+      "order": 121,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "bullet_list",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "consistency_matrix",
+      "title": "Matriz de consistencia",
+      "phase": "matrix",
+      "order": 422,
+      "depends_on_keys": [
+        "problem_statement",
+        "research_questions",
+        "general_objective",
+        "specific_objectives",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "table",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "variables_or_categories",
+      "title": "Variables o categorias",
+      "phase": "body",
+      "order": 123,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "methodology",
+      "title": "Metodologia",
+      "phase": "body",
+      "order": 124,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": 450,
+      "max_words": 1600
+    },
+    {
+      "section_key": "methodological_approach",
+      "title": "Enfoque, tipo y nivel",
+      "phase": "body",
+      "order": 125,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "research_design",
+      "title": "Diseno de investigacion",
+      "phase": "body",
+      "order": 126,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "population_and_sample",
+      "title": "Poblacion y muestra",
+      "phase": "body",
+      "order": 127,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "data_collection_techniques",
+      "title": "Tecnicas e instrumentos",
+      "phase": "body",
+      "order": 128,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "research_instruments",
+      "title": "Instrumentos",
+      "phase": "body",
+      "order": 129,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "bullet_list",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "research_procedure",
+      "title": "Procedimiento",
+      "phase": "body",
+      "order": 130,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "numbered_list",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "analysis_plan",
+      "title": "Plan de analisis",
+      "phase": "body",
+      "order": 131,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "ethics",
+      "title": "Aspectos eticos",
+      "phase": "body",
+      "order": 132,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "scope_and_limitations",
+      "title": "Alcances y limitaciones",
+      "phase": "body",
+      "order": 133,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "rich_text",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "schedule",
+      "title": "Cronograma",
+      "phase": "body",
+      "order": 134,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "table",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "budget",
+      "title": "Presupuesto",
+      "phase": "body",
+      "order": 135,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "table",
+      "required": false,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "references",
+      "title": "Referencias bibliograficas",
+      "phase": "references",
+      "order": 386,
+      "depends_on_keys": [
+        "problem_statement",
+        "general_objective",
+        "methodology"
+      ],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "references",
+      "required": true,
+      "min_words": null,
+      "max_words": null
+    },
+    {
+      "section_key": "annexes",
+      "title": "Anexos",
+      "phase": "framing",
+      "order": 337,
+      "depends_on_keys": [],
+      "instructions": [],
+      "purpose": null,
+      "content_kind": "mixed",
+      "required": false,
+      "min_words": null,
+      "max_words": null
+    }
+  ],
+  "prompt_manifest": [
+    {
+      "section_key": "theoretical_framework",
+      "title": "Marco teorico",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: theoretical_framework\n- title: Marco teorico\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: 500\n- max_words: 1800\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Marco teorico\"."
+    },
+    {
+      "section_key": "research_antecedents",
+      "title": "Antecedentes de la investigacion",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-001-a",
+        "snippet-source-001-c"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: research_antecedents\n- title: Antecedentes de la investigacion\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Brecha principal del antecedente\ntexto: La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.\n\nEvidencia 2:\norigen: pdf\nlabel: Hallazgo del antecedente\ntexto: La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Antecedentes de la investigacion\"."
+    },
+    {
+      "section_key": "state_of_the_art",
+      "title": "Estado del arte",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-001-c",
+        "snippet-source-004-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-provider-source-004"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: state_of_the_art\n- title: Estado del arte\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: pdf\nlabel: Hallazgo del antecedente\ntexto: La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.\n\nEvidencia 2:\norigen: source\nlabel: Adopcion progresiva\ntexto: La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Estado del arte\"."
+    },
+    {
+      "section_key": "theoretical_bases",
+      "title": "Bases teoricas",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: theoretical_bases\n- title: Bases teoricas\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Bases teoricas\"."
+    },
+    {
+      "section_key": "terms_definition",
+      "title": "Definicion de terminos",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: terms_definition\n- title: Definicion de terminos\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: bullet_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Definicion de terminos\"."
+    },
+    {
+      "section_key": "variables_or_categories",
+      "title": "Variables o categorias",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: variables_or_categories\n- title: Variables o categorias\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Variables o categorias\"."
+    },
+    {
+      "section_key": "methodology",
+      "title": "Metodologia",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-003-a",
+        "snippet-source-003-c",
+        "snippet-source-001-b",
+        "snippet-source-002-a",
+        "snippet-source-002-b",
+        "snippet-source-004-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001",
+        "lab-selected-source-002",
+        "lab-provider-source-004"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [
+        "assumption:methodology"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: methodology\n- title: Metodologia\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: 450\n- max_words: 1600\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Regla de coherencia\ntexto: La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.\n\nEvidencia 2:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 3:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 4:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nEvidencia 5:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nEvidencia 6:\norigen: source\nlabel: Adopcion progresiva\ntexto: La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Metodologia\"."
+    },
+    {
+      "section_key": "methodological_approach",
+      "title": "Enfoque, tipo y nivel",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-001-b",
+        "snippet-source-002-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-002"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: methodological_approach\n- title: Enfoque, tipo y nivel\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 2:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Enfoque, tipo y nivel\"."
+    },
+    {
+      "section_key": "research_design",
+      "title": "Diseno de investigacion",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-001-b",
+        "snippet-source-002-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-002"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: research_design\n- title: Diseno de investigacion\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 2:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Diseno de investigacion\"."
+    },
+    {
+      "section_key": "population_and_sample",
+      "title": "Poblacion y muestra",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-002-b"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-002"
+      ],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: population_and_sample\n- title: Poblacion y muestra\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Poblacion y muestra\"."
+    },
+    {
+      "section_key": "data_collection_techniques",
+      "title": "Tecnicas e instrumentos",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: data_collection_techniques\n- title: Tecnicas e instrumentos\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Tecnicas e instrumentos\"."
+    },
+    {
+      "section_key": "research_instruments",
+      "title": "Instrumentos",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: research_instruments\n- title: Instrumentos\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: bullet_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Instrumentos\"."
+    },
+    {
+      "section_key": "research_procedure",
+      "title": "Procedimiento",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: research_procedure\n- title: Procedimiento\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: numbered_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Procedimiento\"."
+    },
+    {
+      "section_key": "analysis_plan",
+      "title": "Plan de analisis",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-003-c",
+        "snippet-source-001-b",
+        "snippet-source-002-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001",
+        "lab-selected-source-002"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [
+        "assumption:methodology"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: analysis_plan\n- title: Plan de analisis\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 2:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 3:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Plan de analisis\"."
+    },
+    {
+      "section_key": "ethics",
+      "title": "Aspectos eticos",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: ethics\n- title: Aspectos eticos\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Aspectos eticos\"."
+    },
+    {
+      "section_key": "scope_and_limitations",
+      "title": "Alcances y limitaciones",
+      "phase": "body",
+      "evidence_snippet_ids": [
+        "snippet-source-003-b"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: scope_and_limitations\n- title: Alcances y limitaciones\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: pdf\nlabel: Prudencia academica\ntexto: Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Alcances y limitaciones\"."
+    },
+    {
+      "section_key": "schedule",
+      "title": "Cronograma",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: schedule\n- title: Cronograma\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: table\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Cronograma\"."
+    },
+    {
+      "section_key": "budget",
+      "title": "Presupuesto",
+      "phase": "body",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: budget\n- title: Presupuesto\n- phase: body\n- purpose: NO_ESPECIFICADO\n- content_kind: table\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Presupuesto\"."
+    },
+    {
+      "section_key": "problem_statement",
+      "title": "Planteamiento del problema",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-001-a",
+        "snippet-source-002-b",
+        "snippet-source-005-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-002",
+        "lab-web-source-005"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [
+        "lab-web-source-005"
+      ],
+      "supporting_assumption_ids": [
+        "assumption:research_line",
+        "assumption:websearch_support"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: problem_statement\n- title: Planteamiento del problema\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: 300\n- max_words: 900\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Brecha principal del antecedente\ntexto: La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.\n\nEvidencia 2:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nEvidencia 3:\norigen: websearch\nlabel: Contexto web complementario\ntexto: La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Planteamiento del problema\"."
+    },
+    {
+      "section_key": "research_questions",
+      "title": "Formulacion del problema",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-003-a",
+        "snippet-source-003-c",
+        "snippet-source-001-b",
+        "snippet-source-002-a",
+        "snippet-source-002-b",
+        "snippet-source-004-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001",
+        "lab-selected-source-002",
+        "lab-provider-source-004"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: research_questions\n- title: Formulacion del problema\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Regla de coherencia\ntexto: La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.\n\nEvidencia 2:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 3:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 4:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nEvidencia 5:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nEvidencia 6:\norigen: source\nlabel: Adopcion progresiva\ntexto: La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Formulacion del problema\"."
+    },
+    {
+      "section_key": "general_research_question",
+      "title": "Problema general",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-001-a",
+        "snippet-source-003-c",
+        "snippet-source-002-b",
+        "snippet-source-005-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-003",
+        "lab-selected-source-002",
+        "lab-web-source-005"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-003"
+      ],
+      "supporting_web_source_ids": [
+        "lab-web-source-005"
+      ],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: general_research_question\n- title: Problema general\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Brecha principal del antecedente\ntexto: La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.\n\nEvidencia 2:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 3:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nEvidencia 4:\norigen: websearch\nlabel: Contexto web complementario\ntexto: La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Problema general\"."
+    },
+    {
+      "section_key": "specific_research_questions",
+      "title": "Problemas especificos",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-003-a",
+        "snippet-source-003-c",
+        "snippet-source-001-b",
+        "snippet-source-002-a",
+        "snippet-source-002-b",
+        "snippet-source-004-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001",
+        "lab-selected-source-002",
+        "lab-provider-source-004"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: specific_research_questions\n- title: Problemas especificos\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: bullet_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Regla de coherencia\ntexto: La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.\n\nEvidencia 2:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 3:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 4:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nEvidencia 5:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nEvidencia 6:\norigen: source\nlabel: Adopcion progresiva\ntexto: La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Problemas especificos\"."
+    },
+    {
+      "section_key": "justification",
+      "title": "Justificacion",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-001-a",
+        "snippet-source-003-b",
+        "snippet-source-001-c",
+        "snippet-source-004-a",
+        "snippet-source-005-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-003",
+        "lab-provider-source-004",
+        "lab-web-source-005"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-003"
+      ],
+      "supporting_web_source_ids": [
+        "lab-web-source-005"
+      ],
+      "supporting_assumption_ids": [
+        "assumption:websearch_support"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: justification\n- title: Justificacion\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: 220\n- max_words: 700\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Brecha principal del antecedente\ntexto: La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.\n\nEvidencia 2:\norigen: pdf\nlabel: Prudencia academica\ntexto: Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.\n\nEvidencia 3:\norigen: pdf\nlabel: Hallazgo del antecedente\ntexto: La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.\n\nEvidencia 4:\norigen: source\nlabel: Adopcion progresiva\ntexto: La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.\n\nEvidencia 5:\norigen: websearch\nlabel: Contexto web complementario\ntexto: La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Justificacion\"."
+    },
+    {
+      "section_key": "theoretical_justification",
+      "title": "Justificacion teorica",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: theoretical_justification\n- title: Justificacion teorica\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Justificacion teorica\"."
+    },
+    {
+      "section_key": "practical_justification",
+      "title": "Justificacion practica",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: practical_justification\n- title: Justificacion practica\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Justificacion practica\"."
+    },
+    {
+      "section_key": "methodological_justification",
+      "title": "Justificacion metodologica",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: methodological_justification\n- title: Justificacion metodologica\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Justificacion metodologica\"."
+    },
+    {
+      "section_key": "objectives",
+      "title": "Objetivos",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: objectives\n- title: Objetivos\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Objetivos\"."
+    },
+    {
+      "section_key": "general_objective",
+      "title": "Objetivo general",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-001-a",
+        "snippet-source-003-c",
+        "snippet-source-003-b",
+        "snippet-source-001-c",
+        "snippet-source-002-b",
+        "snippet-source-004-a",
+        "snippet-source-005-a"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-003",
+        "lab-selected-source-002",
+        "lab-provider-source-004",
+        "lab-web-source-005"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-001",
+        "lab-selected-source-003"
+      ],
+      "supporting_web_source_ids": [
+        "lab-web-source-005"
+      ],
+      "supporting_assumption_ids": [
+        "assumption:research_line"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: general_objective\n- title: Objetivo general\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Brecha principal del antecedente\ntexto: La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.\n\nEvidencia 2:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 3:\norigen: pdf\nlabel: Prudencia academica\ntexto: Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.\n\nEvidencia 4:\norigen: pdf\nlabel: Hallazgo del antecedente\ntexto: La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.\n\nEvidencia 5:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nEvidencia 6:\norigen: source\nlabel: Adopcion progresiva\ntexto: La adopcion gradual de Lean Construction depende de rutinas minimas de coordinacion diaria, control de restricciones y disciplina operativa por frente.\n\nEvidencia 7:\norigen: websearch\nlabel: Contexto web complementario\ntexto: La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Objetivo general\"."
+    },
+    {
+      "section_key": "specific_objectives",
+      "title": "Objetivos especificos",
+      "phase": "logic",
+      "evidence_snippet_ids": [
+        "snippet-source-003-a",
+        "snippet-source-001-a",
+        "snippet-source-003-c",
+        "snippet-source-001-b",
+        "snippet-source-003-b",
+        "snippet-source-002-a",
+        "snippet-source-001-c",
+        "snippet-source-002-b"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001",
+        "lab-selected-source-002"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003",
+        "lab-selected-source-001"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: specific_objectives\n- title: Objetivos especificos\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: numbered_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Regla de coherencia\ntexto: La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.\n\nEvidencia 2:\norigen: source\nlabel: Brecha principal del antecedente\ntexto: La productividad de cuadrillas se vuelve inestable cuando los frentes de concreto no comparten secuencias, liberaciones y criterios diarios de control operativo.\n\nEvidencia 3:\norigen: pdf\nlabel: Alineacion vertical\ntexto: La alineacion uno a uno entre objetivos, preguntas y tecnica reduce contradicciones y mejora la trazabilidad del plan en seguridad y productividad.\n\nEvidencia 4:\norigen: pdf\nlabel: Metodo extraido del PDF\ntexto: La ruta metodologica sintetica combina observacion de obra, entrevistas y revision de partes diarios para describir practicas de produccion confiable y seguridad.\n\nEvidencia 5:\norigen: pdf\nlabel: Prudencia academica\ntexto: Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.\n\nEvidencia 6:\norigen: source\nlabel: Criterio metodologico\ntexto: La seleccion de observaciones de seguridad, checklists e instrumentos de productividad debe responder a la evidencia realmente disponible en obra y no a un esquema idealizado.\n\nEvidencia 7:\norigen: pdf\nlabel: Hallazgo del antecedente\ntexto: La confiabilidad mejora cuando la secuencia de vaciado, la asignacion de cuadrillas y el uso de recursos criticos se estandarizan por frente de trabajo.\n\nEvidencia 8:\norigen: source\nlabel: Poblacion y unidad de analisis\ntexto: La unidad de analisis debe delimitarse a cuadrillas, capataces y frentes de edificacion donde puedan observarse seguridad operativa y productividad verificable.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nElemento PDF 2:\nkind: table\ntitle: Secuencia sintetica de control por frente de concreto\ncaption: Campos minimos para coordinar seguridad, recursos criticos y productividad por frente de trabajo.\ntext_content: Campos: frente de trabajo, vaciado programado, cuadrilla asignada, restriccion de seguridad, recurso critico, liberacion diaria.\npage_number: 4\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Objetivos especificos\"."
+    },
+    {
+      "section_key": "hypotheses",
+      "title": "Hipotesis",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: hypotheses\n- title: Hipotesis\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Hipotesis\"."
+    },
+    {
+      "section_key": "general_hypothesis",
+      "title": "Hipotesis general",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: general_hypothesis\n- title: Hipotesis general\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Hipotesis general\"."
+    },
+    {
+      "section_key": "specific_hypotheses",
+      "title": "Hipotesis especificas",
+      "phase": "logic",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: specific_hypotheses\n- title: Hipotesis especificas\n- phase: logic\n- purpose: NO_ESPECIFICADO\n- content_kind: bullet_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Hipotesis especificas\"."
+    },
+    {
+      "section_key": "abstract",
+      "title": "Resumen",
+      "phase": "framing",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: abstract\n- title: Resumen\n- phase: framing\n- purpose: Sintetizar problema, objetivo, metodologia y aporte esperado.\n- content_kind: rich_text\n- min_words: 180\n- max_words: 350\n- instrucciones:\n  - Incluye problema, objetivo general, metodologia y aporte esperado.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Resumen\"."
+    },
+    {
+      "section_key": "keywords",
+      "title": "Palabras clave",
+      "phase": "framing",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: keywords\n- title: Palabras clave\n- phase: framing\n- purpose: NO_ESPECIFICADO\n- content_kind: bullet_list\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Palabras clave\"."
+    },
+    {
+      "section_key": "introduction",
+      "title": "Introduccion",
+      "phase": "framing",
+      "evidence_snippet_ids": [
+        "snippet-source-005-a"
+      ],
+      "supporting_source_ids": [
+        "lab-web-source-005"
+      ],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [
+        "lab-web-source-005"
+      ],
+      "supporting_assumption_ids": [
+        "assumption:research_line",
+        "assumption:websearch_support"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: introduction\n- title: Introduccion\n- phase: framing\n- purpose: NO_ESPECIFICADO\n- content_kind: rich_text\n- min_words: 200\n- max_words: 600\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: websearch\nlabel: Contexto web complementario\ntexto: La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Introduccion\"."
+    },
+    {
+      "section_key": "annexes",
+      "title": "Anexos",
+      "phase": "framing",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: annexes\n- title: Anexos\n- phase: framing\n- purpose: NO_ESPECIFICADO\n- content_kind: mixed\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Anexos\"."
+    },
+    {
+      "section_key": "references",
+      "title": "Referencias bibliograficas",
+      "phase": "references",
+      "evidence_snippet_ids": [],
+      "supporting_source_ids": [],
+      "supporting_pdf_source_ids": [],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: references\n- title: Referencias bibliograficas\n- phase: references\n- purpose: NO_ESPECIFICADO\n- content_kind: references\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nNO_DISPONIBLE\n\nElementos estructurados del PDF:\nNO_DISPONIBLE\n\nDevuelve unicamente el contenido final de la seccion \"Referencias bibliograficas\"."
+    },
+    {
+      "section_key": "consistency_matrix",
+      "title": "Matriz de consistencia",
+      "phase": "matrix",
+      "evidence_snippet_ids": [
+        "snippet-source-003-a",
+        "snippet-source-003-b"
+      ],
+      "supporting_source_ids": [
+        "lab-selected-source-003"
+      ],
+      "supporting_pdf_source_ids": [
+        "lab-selected-source-003"
+      ],
+      "supporting_web_source_ids": [],
+      "supporting_assumption_ids": [
+        "assumption:methodology"
+      ],
+      "prompt": "Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.\n\nReglas:\n- no inventes citas\n- no inventes datos\n- no inventes resultados\n- si la evidencia no alcanza, escribe una version prudente y explicita la incertidumbre dentro del contenido\n- usa texto academico claro y util para un plan de tesis\n- no menciones porcentajes de procedencia ni metadatos del engine\n- si hay evidencia desde PDF, priorizala frente a metadata superficial\n- si hay material solo de websearch, usalo como apoyo contextual prudente, no como afirmacion academica fuerte\n- puedes usar intake y assumptions operativas solo cuando sea necesario\n- no trasplantes frases literales de abstracts ajenos al contexto del proyecto\n- si una fuente pertenece a otro pais, sector o poblacion, usala solo como antecedente comparativo y no como descripcion del problema propio del proyecto\n- para problem_statement y methodology, sintetiza primero el caso del intake y solo despues integra antecedentes compatibles\n- para preguntas de investigacion, formula preguntas investigables y no instrucciones del tipo \"como se puede...\"\n\nProyecto:\n- titulo: Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil\n- universidad seleccionada por el usuario: UPC\n- programa: Maestria en Ingenieria Civil\n- grado: MAESTRIA\n- template_key del proyecto: UPC_POSGRADO\n\nIntake:\n- topic: Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.\n- problem_context: En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.\n- research_line: NO_ESPECIFICADA\n- academic_constraints: Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.\n- target_population: Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.\n- available_data: Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.\n- preferred_methodology: Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.\n- advisor_notes: Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.\n\nSeccion objetivo:\n- section_key: consistency_matrix\n- title: Matriz de consistencia\n- phase: matrix\n- purpose: NO_ESPECIFICADO\n- content_kind: table\n- min_words: NO_ESPECIFICADO\n- max_words: NO_ESPECIFICADO\n- instrucciones:\n  - Redacta una version academica coherente con el plan.\n\nDependencias previas utiles:\nNO_DISPONIBLE\n\nEvidencia disponible para esta seccion:\nEvidencia 1:\norigen: source\nlabel: Regla de coherencia\ntexto: La matriz de consistencia debe construirse al final, cuando seguridad, productividad y metodologia ya estan consolidadas.\n\nEvidencia 2:\norigen: pdf\nlabel: Prudencia academica\ntexto: Cuando faltan detalles operativos de obra, las assumptions deben declararse con claridad en lugar de ocultarse como afirmaciones fuertes.\n\nElementos estructurados del PDF:\nElemento PDF 1:\nkind: table\ntitle: Esquema sintetico de alineacion seguridad-productividad\ncaption: Relacion sugerida entre objetivo, pregunta, tecnica e indicador operativo esperado.\ntext_content: Columnas: objetivo especifico, pregunta especifica, tecnica, instrumento, indicador operativo esperado.\npage_number: 6\norigin: llm_reconstructed\n\nDevuelve unicamente el contenido final de la seccion \"Matriz de consistencia\"."
+    }
+  ]
+}

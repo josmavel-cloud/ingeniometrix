@@ -1,0 +1,591 @@
+{
+  "project_title": "Ideas de negocio para contribuir a superar la crisis de vivienda en Canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo B y C en Toronto.",
+  "template_key": "UPC_POSGRADO",
+  "degree_level": "MAESTRIA",
+  "university": "UPC",
+  "program": "Maestria de laboratorio",
+  "research_line": "Arquitectura sostenible, adaptive reuse, regeneración urbana y factibilidad de reconversión habitacional.",
+  "problem_statement": "La crisis de vivienda en Canadá plantea la necesidad de identificar estrategias de densificación y aumento de oferta habitacional que puedan implementarse con relativa rapidez y, al mismo tiempo, con menor impacto ambiental. En arquitectura y urbanismo, esta exigencia no solo remite a construir nuevo, sino también a reconsiderar el parque edificado existente como soporte de transformación. La literatura sobre ciudad y sostenibilidad recuerda que las ciudades se han consolidado históricamente sobre los beneficios de la densidad, la proximidad y la conectividad, de modo que reutilizar estructuras ya insertas en tejidos urbanos bien servidos constituye, al menos en principio, una línea de acción pertinente para enfrentar presiones contemporáneas sobre vivienda, suelo e infraestructura. Dentro de ese marco, la reutilización adaptativa ha sido reconocida como una alternativa con beneficios históricos, ambientales, sociales y económicos, especialmente cuando el uso original de un edificio se vuelve obsoleto y ello puede derivar en vacancia, deterioro o subutilización. Sin embargo, la evidencia revisada muestra que el campo todavía presenta vacíos importantes. Una revisión académica reciente sobre adaptive reuse señala que buena parte de la investigación se ha concentrado en edificios completamente vacíos y que tanto la vacancia como la propia reutilización adaptativa han sido tratadas de manera insuficientemente desagregada. Asimismo, se advierte que muchos estudios asumen la vacancia total del inmueble o no explican con claridad los procesos mediante los cuales una propiedad llega a esa condición, pese a que la obsolescencia suele producirse gradualmente y puede coexistir con niveles parciales de ocupación o uso residual. Este punto es relevante porque, en la práctica, numerosos inmuebles urbanos no se encuentran plenamente abandonados, sino más bien en situaciones intermedias de baja rentabilidad, obsolescencia funcional o subuso. A partir de ese problema general, esta investigación se delimita al caso de edificios comerciales tipo B y C en Toronto que presenten obsolescencia, vacancia o subutilización y que, por sus características, puedan ser considerados como base para procesos de reconversión habitacional y eventual sobre-elevación liviana en madera maciza estructural. La elección del caso responde a una oportunidad de investigación aplicada: estos inmuebles, al no pertenecer al segmento inmobiliario más competitivo ni al de mayor actualización técnica, podrían concentrar condiciones de rezago funcional que los hagan susceptibles de transformación. No obstante, y conviene explicitarlo, el corpus disponible para esta sección no permite afirmar de manera concluyente cuántos edificios cumplen estas condiciones en Toronto, ni demostrar que su reconversión y sobre-elevación en mass timber sea ya viable bajo el marco normativo local. Por ello, Toronto y los edificios comerciales tipo B y C se asumen aquí como delimitación razonada del estudio y no como un universo empíricamente agotado en esta fase. El problema central radica, entonces, en la ausencia de un marco de evaluación arquitectónica aplicable que permita comparar, de forma sistemática, cuándo y bajo qué condiciones un edificio comercial subutilizado puede convertirse en soporte factible para vivienda y, eventualmente, para una ampliación vertical en madera maciza estructural. En el estado actual, existen antecedentes útiles sobre adaptive reuse y sostenibilidad, pero no alcanza la evidencia revisada para trasladar automáticamente esas conclusiones al contexto específico de Toronto ni al cruce entre reconversión habitacional, edificios comerciales tipo B y C y sobre-elevación en madera. También persisten incertidumbres sobre variables decisivas del caso local, como zoning, building code, requerimientos de seguridad contra incendio, evacuación, permisos y condiciones de negocio, que deberán ser tratadas en la investigación como dimensiones de evaluación y no como supuestos ya resueltos. En consecuencia, el problema de investigación no consiste en probar de antemano que la reconversión y la sobre-elevación sean soluciones plenamente viables en todos los casos, sino en formular un marco de factibilidad multicriterio que permita ordenar y valorar, de manera comparativa, los criterios arquitectónicos, regulatorios y de negocio más relevantes para ese tipo de decisiones. La pertinencia del estudio radica precisamente en ese vacío: frente a la presión por ampliar la oferta habitacional y reducir huellas de carbono mediante reutilización adaptativa, todavía falta una herramienta de evaluación preliminar, transferible y trazable que ayude a identificar casos con mayor potencial y a descartar aquellos cuya complejidad exceda un umbral razonable. Así, la investigación se justifica como un aporte aplicado de alcance acotado: no demostrará cumplimiento normativo integral ni viabilidad estructural o económica final, pero sí buscará construir un marco analítico útil para orientar decisiones tempranas sobre reconversión habitacional y sobre-elevación en madera maciza estructural en edificios comerciales tipo B y C de Toronto.",
+  "problem_delimitation": "## Alcances y limitaciones Este estudio se circunscribe a la formulación de un **marco preliminar de factibilidad multicriterio** para evaluar la reconversión habitacional y la eventual sobre-elevación en madera maciza estructural de edificios comerciales tipo B y C en Toronto, a partir de una estrategia **cualitativa-comparada** sustentada en revisión crítica de literatura, análisis tipológico y contraste de precedentes. Su alcance, por tanto, consiste en **identificar criterios transferibles** para la toma de decisiones arquitectónicas, regulatorias y de negocio, no en demostrar la viabilidad definitiva de casos concretos. Entre sus limitaciones, la propia literatura advierte que las revisiones dependen de restricciones de búsqueda que pueden sesgar los hallazgos y que este campo tiende a trabajar con metodologías predominantemente cualitativas, aunque replicables. Asimismo, parte importante de los antecedentes sobre reutilización adaptativa se concentra en edificios ya vacantes o en fase final de vida útil, con menor desarrollo sobre decisiones de gestión previas al deterioro o subuso. En consecuencia, la extrapolación al caso de Toronto debe entenderse como **orientativa y condicionada**. De manera específica, el corpus disponible **no permite afirmar** cumplimiento de *zoning*, *building code*, *fire code*, permisos, ni viabilidad estructural o económica de sobre-elevaciones en madera maciza en Toronto. Por ello, los resultados deben leerse como una **base de evaluación y priorización**, sujeta a validación local posterior.",
+  "justification": "## Justificación La presente investigación se justifica, en primer lugar, por su relevancia arquitectónica y ambiental. La literatura revisada sostiene que la reutilización adaptativa y la sostenibilidad no solo son estrategias valiosas por separado, sino que su integración ofrece un potencial mayor como solución arquitectónica, al combinar beneficios ambientales, funcionales y de permanencia del stock construido (“Dirty laundry: The adaptive reuse of an existing building”). En esa línea, estudiar la reconversión habitacional de edificios comerciales tipo B y C en Toronto permite abordar un problema contemporáneo desde una lógica de aprovechamiento del entorno construido existente, en lugar de depender exclusivamente de nueva obra. Este enfoque resulta especialmente pertinente cuando el caso se vincula con inmuebles que presentan vacancia, subutilización u obsolescencia funcional. En segundo lugar, el estudio se justifica por su aporte al campo de decisión proyectual y estratégica. Un antecedente central sobre adaptive reuse sostenible señala que, en la investigación sobre toma de decisiones, la vacancia y el subuso han sido insuficientemente incorporados como factores tempranos de evaluación, y no deberían entenderse solo como situaciones de “fin de vida” del activo, sino como insumos para valorar oportunamente la factibilidad de nuevas intervenciones (“A framework for sustainable adaptive reuse: understanding vacancy and underuse in existing urban buildings”). Esta observación respalda directamente la necesidad de formular un marco de factibilidad multicriterio: antes que asumir que todo edificio vacante puede reconvertirse, el estudio propone ordenar criterios comparables para distinguir condiciones favorables, restricciones y riesgos de intervención. En tercer lugar, la investigación tiene relevancia metodológica. La combinación entre análisis tipológico, revisión crítica y comparada de literatura y precedentes, y estructuración de criterios mediante una lógica multicriterio resulta adecuada para un problema donde confluyen variables arquitectónicas, regulatorias y de negocio. La literatura sobre evaluación multicriterio para definir usos compatibles en edificios existentes refuerza la pertinencia de este tipo de aproximaciones cuando las decisiones no dependen de una sola variable, sino de compatibilidades entre soporte físico, nueva función y condicionantes de intervención (“Multi-Criteria Assessment for Defining Compatible New Use: Old Administrative Hospital, Kyrenia, Cyprus”). En una tesis de maestría, este aporte es valioso porque no pretende demostrar de forma concluyente la viabilidad integral de todos los casos, sino construir una herramienta analítica replicable y defendible para una preselección razonada. También existe una justificación práctica y profesional. En términos aplicados, un marco de factibilidad multicriterio puede ser útil para arquitectos, consultores, desarrolladores, gestores de patrimonio edificado y actores públicos que necesiten evaluar, con mayor claridad, cuándo la reutilización adaptativa y una eventual sobre-elevación liviana podrían constituir una alternativa razonable frente a la demolición, la inacción o la rehabilitación parcial. La literatura revisada sugiere además que la rehabilitación y la reutilización adaptativa concentran beneficios históricos, ambientales, sociales y económicos, lo que refuerza su valor como componente de un desarrollo urbano más sostenible (“Dirty laundry: The adaptive reuse of an existing building”). En el caso de Toronto, esta utilidad práctica es especialmente significativa por la convergencia entre crisis habitacional y existencia de activos comerciales potencialmente reciclables; sin embargo, ese traslado al contexto local debe asumirse con prudencia y requerirá contraste específico con normativa, mercado y precedentes verificables. Finalmente, la investigación se justifica por su relevancia social. Aunque la evidencia disponible en este corpus no permite afirmar de manera concluyente que la sobre-elevación en madera maciza estructural ya sea viable en Toronto para edificios comerciales tipo B y C, sí permite formular con fundamento una oportunidad de investigación aplicada: explorar si la reutilización adaptativa, complementada eventualmente con estrategias de densificación vertical, puede contribuir a ampliar el repertorio de respuestas frente a la crisis de vivienda con una orientación potencialmente más eficiente en tiempo y más sensible al carbono incorporado que la sustitución total. Por ello, el aporte esperado no es una validación normativa cerrada ni una garantía de rentabilidad, sino un marco preliminar, comparativo y transferible que ayude a identificar condiciones de factibilidad y a orientar futuras decisiones de proyecto e investigación contextualizada.",
+  "general_objective": "Formular un marco de factibilidad multicriterio, de alcance arquitectónico, regulatorio y de negocio, que, a partir de antecedentes comparados, oriente preliminarmente la reconversión habitacional y eventual sobre-elevación en madera maciza estructural de edificios comerciales tipo B y C subutilizados en Toronto.",
+  "specific_objectives": [
+    "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+    "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+    "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+    "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva."
+  ],
+  "research_questions": [
+    "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+    "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+    "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+    "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?"
+  ],
+  "hypotheses_or_guiding_questions": [
+    "Un marco de factibilidad multicriterio que incorpore explícitamente la vacancia y la subutilización como criterios de evaluación permitirá valorar con mayor pertinencia el potencial de reutilización adaptativa de edificios comerciales tipo B y C.",
+    "La integración entre reutilización adaptativa y sostenibilidad puede traducirse en criterios arquitectónicos, regulatorios y de negocio útiles para comparar casos y ordenar decisiones de intervención.",
+    "La organización de criterios en una estructura multicriterio permitirá valorar preliminarmente condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención, sin afirmar viabilidad definitiva.",
+    "La sobre-elevación en madera maciza estructural podría considerarse, de manera preliminar, como una estrategia complementaria de densificación en edificios existentes seleccionados, siempre que las condiciones tipológicas, estructurales, normativas y operativas del caso permitan su contraste con el marco propuesto y no se superen las restricciones identificadas en el estudio."
+  ],
+  "key_constructs_or_variables": [
+    "Condición de vacancia, subutilización y obsolescencia",
+    "Criterios de evaluación para reconversión habitacional",
+    "Factibilidad regulatoria y de negocio",
+    "Sobre-elevación en madera maciza estructural",
+    "Dimensión arquitectónico-tipológica",
+    "Dimensión regulatoria",
+    "Dimensión de negocio"
+  ],
+  "proposed_methodology": "Estudio aplicado, de base cualitativa y comparada, con alcance descriptivo-analítico y propositivo.\nDiseño secuencial sustentado en revisión sistemática y crítica de literatura, análisis tipológico-comparado de precedentes y construcción de un marco multicriterio preliminar para el caso de Toronto.\nAmbito: Edificios comerciales tipo B y C ubicados en Toronto, y precedentes comparados de reutilización adaptativa y ampliación vertical provenientes de contextos nacionales e internacionales.\nPoblacion: Edificios comerciales tipo B y C ubicados en Toronto que presenten obsolescencia funcional, vacancia o subutilización.\nMuestra: Muestra intencional y teórico-comparada, constituida por un conjunto acotado de casos o tipologías.\nTecnicas: Revisión sistemática y crítica de literatura; Análisis comparado de precedentes de reconversión y ampliación vertical; Construcción de una matriz de criterios de evaluación; Validación experta, solo si se obtiene acceso verificable\nInstrumentos: Matriz de revisión bibliográfica y documental; Ficha comparativa de precedentes y casos; Matriz preliminar de criterios multicriterio\nPlan de analisis: Revisión crítica y comparada de literatura y precedentes; codificación temática; organización de categorías preliminares; traducción a una matriz multicriterio para análisis preliminar y comparativo; lectura interpretativa de resultados con carácter no concluyente.",
+  "population_and_sample": "Edificios comerciales tipo B y C ubicados en Toronto que presenten obsolescencia funcional, vacancia o subutilización. Muestra intencional y teórico-comparada, constituida por un conjunto acotado de casos o tipologías.",
+  "data_collection_techniques": [
+    "Revisión sistemática y crítica de literatura",
+    "Análisis comparado de precedentes de reconversión y ampliación vertical",
+    "Construcción de una matriz de criterios de evaluación",
+    "Validación experta, solo si se obtiene acceso verificable"
+  ],
+  "analysis_plan": "Revisión crítica y comparada de literatura y precedentes; codificación temática; organización de categorías preliminares; traducción a una matriz multicriterio para análisis preliminar y comparativo; lectura interpretativa de resultados con carácter no concluyente.",
+  "consistency_matrix": [
+    {
+      "objective": "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+      "question": "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+      "method": "Enfoque aplicado, cualitativo y comparado",
+      "technique": "Revisión sistemática y crítica de literatura; análisis comparado de precedentes"
+    },
+    {
+      "objective": "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+      "question": "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+      "method": "Estudio aplicado de base cualitativa-comparada",
+      "technique": "Revisión crítica de literatura; análisis tipológico-comparado"
+    },
+    {
+      "objective": "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+      "question": "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+      "method": "Diseño comparativo-aplicado",
+      "technique": "Síntesis cualitativa; construcción de matriz de criterios"
+    },
+    {
+      "objective": "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva.",
+      "question": "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?",
+      "method": "Estudio aplicado, cualitativo-comparado y proyectivo",
+      "technique": "Análisis comparado de precedentes; contraste preliminar del marco propuesto"
+    }
+  ],
+  "work_plan": [
+    {
+      "phase": "Mes 1: delimitacion final del problema, ajuste de preguntas y revision inicial del corpus.",
+      "duration": "Bloque 1 del cronograma institucional."
+    },
+    {
+      "phase": "Mes 2: organizacion de antecedentes, estado del arte y bases teoricas del proyecto.",
+      "duration": "Bloque 2 del cronograma institucional."
+    },
+    {
+      "phase": "Mes 3: cierre de la estrategia metodologica, categorias o criterios de analisis y plan de trabajo.",
+      "duration": "Bloque 3 del cronograma institucional."
+    },
+    {
+      "phase": "Mes 4: consolidacion del borrador principal y revision de coherencia entre objetivos, preguntas y metodo.",
+      "duration": "Bloque 4 del cronograma institucional."
+    },
+    {
+      "phase": "Mes 5: ajustes con observaciones academicas, normalizacion de referencias y preparacion de anexos.",
+      "duration": "Bloque 5 del cronograma institucional."
+    }
+  ],
+  "assumptions": [
+    "La configuracion institucional del caso se deriva localmente para el laboratorio y puede diferir del siguiente entorno productivo.",
+    "La ausencia de PDFs accesibles en las fuentes seleccionadas obliga a priorizar metadata, abstracts y assumptions explicitas para sostener el caso.",
+    "El lab conserva como foco principal ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto.."
+  ],
+  "limitations": [
+    "## Alcances y limitaciones",
+    "Este estudio se circunscribe a la formulación de un **marco preliminar de factibilidad multicriterio** para evaluar la reconversión habitacional y la eventual sobre-elevación en madera maciza estructural de edificios comerciales tipo B y C en Toronto, a partir de una estrategia **cualitativa-comparada** sustentada en revisión crítica de literatura, análisis tipológico y contraste de precedentes. Su alcance, por tanto, consiste en **identificar criterios transferibles** para la toma de decisiones arquitectónicas, regulatorias y de negocio, no en demostrar la viabilidad definitiva de casos concretos.",
+    "Entre sus limitaciones, la propia literatura advierte que las revisiones dependen de restricciones de búsqueda que pueden sesgar los hallazgos y que este campo tiende a trabajar con metodologías predominantemente cualitativas, aunque replicables. Asimismo, parte importante de los antecedentes sobre reutilización adaptativa se concentra en edificios ya vacantes o en fase final de vida útil, con menor desarrollo sobre decisiones de gestión previas al deterioro o subuso. En consecuencia, la extrapolación al caso de Toronto debe entenderse como **orientativa y condicionada**.",
+    "De manera específica, el corpus disponible **no permite afirmar** cumplimiento de *zoning*, *building code*, *fire code*, permisos, ni viabilidad estructural o económica de sobre-elevaciones en madera maciza en Toronto. Por ello, los resultados deben leerse como una **base de evaluación y priorización**, sujeta a validación local posterior."
+  ],
+  "references_used": [
+    {
+      "reference_id": "launch-selected-source-001",
+      "title": "A framework for sustainable adaptive reuse: understanding vacancy and underuse in existing urban buildings",
+      "doi": "10.3389/frsc.2023.985656"
+    },
+    {
+      "reference_id": "launch-selected-source-002",
+      "title": "How Can Existing Buildings with Historic Values Contribute to Achieving Emission Reduction Ambitions?",
+      "doi": "10.3390/app11135978"
+    },
+    {
+      "reference_id": "launch-selected-source-003",
+      "title": "Multi-Criteria Assessment for Defining Compatible New Use: Old Administrative Hospital, Kyrenia, Cyprus",
+      "doi": "10.3390/su13041922"
+    }
+  ],
+  "reference_insights": [
+    {
+      "reference_id": "launch-selected-source-001",
+      "title": "A framework for sustainable adaptive reuse: understanding vacancy and underuse in existing urban buildings",
+      "doi": "10.3389/frsc.2023.985656",
+      "year": 2023,
+      "venue": "Frontiers in Sustainable Cities",
+      "abstract_available": true,
+      "is_recent": true,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "framework",
+        "sustainable",
+        "adaptive",
+        "reuse",
+        "understanding",
+        "vacancy"
+      ],
+      "problem_signal": "Cities have been built on the benefits of density, proximity, and connectivity.",
+      "method_signal": "Cities have been built on the benefits of density, proximity, and connectivity. However, the recent COVID-19 pandemic, along with continuously evolving communication technologies, has seen an increase in vacancies and underuse of urban buildings, challenging...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": null,
+      "future_line_signal": null
+    },
+    {
+      "reference_id": "launch-selected-source-002",
+      "title": "How Can Existing Buildings with Historic Values Contribute to Achieving Emission Reduction Ambitions?",
+      "doi": "10.3390/app11135978",
+      "year": 2021,
+      "venue": "Applied Sciences",
+      "abstract_available": true,
+      "is_recent": true,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "existing",
+        "buildings",
+        "with",
+        "historic",
+        "values",
+        "contribute"
+      ],
+      "problem_signal": "In line with the Paris Agreement, Norway aims for an up to 55% reduction in greenhouse gas (GHG) emissions by 2030 compared to 1990 levels and to be a low-emission society by 2050.",
+      "method_signal": "In line with the Paris Agreement, Norway aims for an up to 55% reduction in greenhouse gas (GHG) emissions by 2030 compared to 1990 levels and to be a low-emission society by 2050. Given that 85–90% of today’s buildings are expected to still be in use in 2050...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": "La referencia no aporta PDF accesible en el ultimo estado de blueprint-launch.",
+      "future_line_signal": null
+    },
+    {
+      "reference_id": "launch-selected-source-003",
+      "title": "Multi-Criteria Assessment for Defining Compatible New Use: Old Administrative Hospital, Kyrenia, Cyprus",
+      "doi": "10.3390/su13041922",
+      "year": 2021,
+      "venue": "Sustainability",
+      "abstract_available": true,
+      "is_recent": true,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "multi",
+        "criteria",
+        "assessment",
+        "defining",
+        "compatible",
+        "administrative"
+      ],
+      "problem_signal": "It is common for the original use of heritage buildings to become obsolete which in some cases can result in them becoming vacant and subject to deterioration.",
+      "method_signal": "It is common for the original use of heritage buildings to become obsolete which in some cases can result in them becoming vacant and subject to deterioration. Adaptive reuse is an essential policy for achieving sustainability as it keeps a continuous buildin...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": "La referencia no aporta PDF accesible en el ultimo estado de blueprint-launch.",
+      "future_line_signal": null
+    },
+    {
+      "reference_id": "launch-selected-source-004",
+      "title": "The adaptation and demolition of existing buildings on masterplan sites",
+      "doi": "10.17863/cam.50098",
+      "year": 2019,
+      "venue": "Apollo (University of Cambridge)",
+      "abstract_available": true,
+      "is_recent": false,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "adaptation",
+        "demolition",
+        "existing",
+        "buildings",
+        "masterplan",
+        "sites"
+      ],
+      "problem_signal": "This thesis extends current adaptation theory by considering the practical realities of adaptation and demolition decisions at the masterplan scale.",
+      "method_signal": "This thesis extends current adaptation theory by considering the practical realities of adaptation and demolition decisions at the masterplan scale. As existing adaptation theory mainly focuses on individual buildings or the city level, it is not sufficient f...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": "La referencia no aporta PDF accesible en el ultimo estado de blueprint-launch.",
+      "future_line_signal": null
+    },
+    {
+      "reference_id": "launch-selected-source-005",
+      "title": "Ecosystem Services Analysis for the Design of Regenerative Urban Built Environments",
+      "doi": "10.26686/wgtn.17000722",
+      "year": 2012,
+      "venue": null,
+      "abstract_available": true,
+      "is_recent": false,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "ecosystem",
+        "services",
+        "analysis",
+        "design",
+        "regenerative",
+        "urban"
+      ],
+      "problem_signal": "&lt;p&gt;Humans will need to mitigate the causes of, and adapt to climate change and the loss of biodiversity, as the now inevitable impacts of these changes become more apparent and demand urgent responses.",
+      "method_signal": "&lt;p&gt;Humans will need to mitigate the causes of, and adapt to climate change and the loss of biodiversity, as the now inevitable impacts of these changes become more apparent and demand urgent responses. The built environment cannot solve these issues alo...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": "La referencia no aporta PDF accesible en el ultimo estado de blueprint-launch.",
+      "future_line_signal": null
+    },
+    {
+      "reference_id": "launch-selected-source-006",
+      "title": "Dirty laundry: The adaptive reuse of an existing building",
+      "doi": null,
+      "year": 2010,
+      "venue": "Unitec Research Bank (Unitec Institute of Technology)",
+      "abstract_available": true,
+      "is_recent": false,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "dirty",
+        "laundry",
+        "adaptive",
+        "reuse",
+        "existing",
+        "building"
+      ],
+      "problem_signal": "Whilst both adaptive reuse and sustainability are important architectural strategies in their own right, greater potential lies in their combined application, facilitating an architectural solution with the benefits of both.",
+      "method_signal": "Whilst both adaptive reuse and sustainability are important architectural strategies in their own right, greater potential lies in their combined application, facilitating an architectural solution with the benefits of both. This research project is founded i...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": "La referencia no aporta PDF accesible en el ultimo estado de blueprint-launch.",
+      "future_line_signal": null
+    },
+    {
+      "reference_id": "launch-provider-source-004",
+      "title": "Integrated sustainability assessment of construction waste-based shading devices for the refurbishment of obsolete educational public building stock",
+      "doi": "10.1016/j.jobe.2024.109024",
+      "year": 2024,
+      "venue": "Journal of Building Engineering",
+      "abstract_available": true,
+      "is_recent": true,
+      "evidence_strength": "medium",
+      "topic_focus": [
+        "integrated",
+        "sustainability",
+        "assessment",
+        "construction",
+        "waste",
+        "based"
+      ],
+      "problem_signal": "Buildings and the construction sector are responsible for a considerable share of human environmental impacts, and have high economic and social costs.",
+      "method_signal": "Buildings and the construction sector are responsible for a considerable share of human environmental impacts, and have high economic and social costs. This project aims to contribute to advancing towards circular economy-based construction techniques, to imp...",
+      "population_or_context_signal": "La referencia se vincula con ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "technical_solution_signal": null,
+      "main_finding_signal": null,
+      "limitation_signal": "La referencia no aporta PDF accesible en el ultimo estado de blueprint-launch.",
+      "future_line_signal": null
+    }
+  ],
+  "citation_plan": [
+    {
+      "section_key": "problem_statement",
+      "section_title": "Problema de investigacion",
+      "support_level": "intake_only",
+      "evidence_source": "intake",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion depende principalmente del intake estructurado del usuario."
+      ],
+      "template_semantic_keys": [
+        "research_problem",
+        "problem_statement"
+      ]
+    },
+    {
+      "section_key": "problem_delimitation",
+      "section_title": "Delimitacion del problema",
+      "support_level": "assumption",
+      "evidence_source": "assumptions",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion requiere assumptions explicitas o revision manual por falta de soporte suficiente."
+      ],
+      "template_semantic_keys": [
+        "research_problem",
+        "problem_statement"
+      ]
+    },
+    {
+      "section_key": "justification",
+      "section_title": "Justificacion",
+      "support_level": "assumption",
+      "evidence_source": "assumptions",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion requiere assumptions explicitas o revision manual por falta de soporte suficiente."
+      ],
+      "template_semantic_keys": [
+        "justification"
+      ]
+    },
+    {
+      "section_key": "general_objective",
+      "section_title": "Objetivo general",
+      "support_level": "intake_only",
+      "evidence_source": "intake",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion depende principalmente del intake estructurado del usuario."
+      ],
+      "template_semantic_keys": [
+        "general_objective",
+        "objectives"
+      ]
+    },
+    {
+      "section_key": "specific_objectives",
+      "section_title": "Objetivos especificos",
+      "support_level": "assumption",
+      "evidence_source": "assumptions",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion requiere assumptions explicitas o revision manual por falta de soporte suficiente."
+      ],
+      "template_semantic_keys": [
+        "specific_objectives",
+        "objectives"
+      ]
+    },
+    {
+      "section_key": "research_questions",
+      "section_title": "Preguntas de investigacion",
+      "support_level": "intake_only",
+      "evidence_source": "intake",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion depende principalmente del intake estructurado del usuario."
+      ],
+      "template_semantic_keys": [
+        "research_questions",
+        "main_research_question",
+        "specific_research_questions"
+      ]
+    },
+    {
+      "section_key": "proposed_methodology",
+      "section_title": "Metodologia propuesta",
+      "support_level": "intake_only",
+      "evidence_source": "intake",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion depende principalmente del intake estructurado del usuario."
+      ],
+      "template_semantic_keys": [
+        "methodology"
+      ]
+    },
+    {
+      "section_key": "population_and_sample",
+      "section_title": "Poblacion y muestra",
+      "support_level": "intake_only",
+      "evidence_source": "intake",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion depende principalmente del intake estructurado del usuario."
+      ],
+      "template_semantic_keys": [
+        "methodology"
+      ]
+    },
+    {
+      "section_key": "data_collection_techniques",
+      "section_title": "Tecnicas de recoleccion",
+      "support_level": "assumption",
+      "evidence_source": "assumptions",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion requiere assumptions explicitas o revision manual por falta de soporte suficiente."
+      ],
+      "template_semantic_keys": [
+        "methodology"
+      ]
+    },
+    {
+      "section_key": "analysis_plan",
+      "section_title": "Plan de analisis",
+      "support_level": "assumption",
+      "evidence_source": "assumptions",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion requiere assumptions explicitas o revision manual por falta de soporte suficiente."
+      ],
+      "template_semantic_keys": [
+        "methodology"
+      ]
+    },
+    {
+      "section_key": "consistency_matrix",
+      "section_title": "Matriz de consistencia",
+      "support_level": "assumption",
+      "evidence_source": "assumptions",
+      "supported_reference_ids": [],
+      "notes": [
+        "La seccion requiere assumptions explicitas o revision manual por falta de soporte suficiente."
+      ],
+      "template_semantic_keys": [
+        "consistency_matrix"
+      ]
+    }
+  ],
+  "template_context": {
+    "template_key": "UPC_POSGRADO",
+    "template_name": "Lab - UPC Posgrado",
+    "selected_by_user": true,
+    "source": "template_runtime",
+    "template_family": "Lab fixture institucional para depurar derivacion universitaria.",
+    "university": "UPC",
+    "program": "Maestria de laboratorio",
+    "degree_level": "MAESTRIA",
+    "required_section_keys": [
+      "abstract",
+      "keywords",
+      "introduction",
+      "problem_statement",
+      "research_questions",
+      "general_research_question",
+      "specific_research_questions",
+      "objectives",
+      "general_objective",
+      "specific_objectives",
+      "justification",
+      "theoretical_justification",
+      "practical_justification",
+      "methodological_justification",
+      "theoretical_framework",
+      "research_antecedents",
+      "state_of_the_art",
+      "theoretical_bases",
+      "terms_definition",
+      "consistency_matrix",
+      "methodology",
+      "methodological_approach",
+      "research_design",
+      "population_and_sample",
+      "data_collection_techniques",
+      "research_instruments",
+      "research_procedure",
+      "analysis_plan",
+      "ethics",
+      "scope_and_limitations",
+      "schedule",
+      "references",
+      "annexes"
+    ],
+    "available_semantic_keys": [
+      "abstract",
+      "keywords",
+      "introduction",
+      "problem_statement",
+      "research_questions",
+      "general_research_question",
+      "specific_research_questions",
+      "objectives",
+      "general_objective",
+      "specific_objectives",
+      "justification",
+      "theoretical_justification",
+      "practical_justification",
+      "methodological_justification",
+      "theoretical_framework",
+      "research_antecedents",
+      "state_of_the_art",
+      "theoretical_bases",
+      "terms_definition",
+      "consistency_matrix",
+      "methodology",
+      "methodological_approach",
+      "research_design",
+      "population_and_sample",
+      "data_collection_techniques",
+      "research_instruments",
+      "research_procedure",
+      "analysis_plan",
+      "ethics",
+      "scope_and_limitations",
+      "schedule",
+      "references",
+      "annexes"
+    ],
+    "guidance_notes": [
+      "Lab fixture: runtime universitario sintetico usado para derivar el blueprint sin depender de Prisma."
+    ]
+  },
+  "assumptions_detailed": [
+    {
+      "assumption_id": "assumption_1",
+      "statement": "La configuracion institucional del caso se deriva localmente para el laboratorio y puede diferir del siguiente entorno productivo.",
+      "reason": "Se declaro de forma explicita para no inventar contenido no respaldado.",
+      "affected_sections": [
+        "problem_statement",
+        "problem_delimitation",
+        "justification",
+        "general_objective"
+      ]
+    },
+    {
+      "assumption_id": "assumption_2",
+      "statement": "La ausencia de PDFs accesibles en las fuentes seleccionadas obliga a priorizar metadata, abstracts y assumptions explicitas para sostener el caso.",
+      "reason": "Se declaro de forma explicita para no inventar contenido no respaldado.",
+      "affected_sections": [
+        "problem_statement",
+        "problem_delimitation",
+        "justification",
+        "general_objective"
+      ]
+    },
+    {
+      "assumption_id": "assumption_3",
+      "statement": "El lab conserva como foco principal ideas de negocio para contribuir a superar la crisis de vivienda en canadá mediante la sobre-elevación en mass timber como estrategia de adaptive reuse en edificios comerciales tipo b y c en toronto..",
+      "reason": "Se declaro de forma explicita para no inventar contenido no respaldado.",
+      "affected_sections": [
+        "problem_statement",
+        "problem_delimitation",
+        "justification",
+        "general_objective"
+      ]
+    }
+  ],
+  "engine_warnings": [
+    "Lab fixture: runtime universitario sintetico usado para derivar el blueprint sin depender de Prisma.",
+    "11 seccion(es) del blueprint quedaron con soporte debil y requieren revision manual o mejores fuentes.",
+    "No se detectaron variables independiente/dependiente explicitas.",
+    "Gaps declarados por LLM: No se dispone de una formulación completa de la hipótesis general en el texto base, aunque el sentido central sí es recuperable. | No se explicita una validación experta efectiva; el propio material la condiciona a acceso verificable. | No se cuenta con delimitación cerrada del número de casos o tipologías de la muestra. | La evidencia local de Toronto se mantiene como contraste prudente y no como validación definitiva.",
+    "Notas de confianza: La matriz mantiene alta correspondencia conceptual con el contenido de Step 9 y preserva el carácter preliminar, aplicado y comparativo del proyecto. | Se ajustaron las hipótesis específicas para asegurar congruencia con interrogantes y objetivos, evitando afirmaciones causales no justificadas. | Se evitó inventar datos, resultados o validaciones locales; donde el insumo no fue suficiente, se consignó null o se registró el vacío como gap."
+  ],
+  "readiness_snapshot": {
+    "readiness_status": "ready",
+    "missing_intake_fields": [],
+    "warnings": [
+      "El lab usa el ultimo estado materializado de blueprint-launch y no depende del flujo en vivo."
+    ],
+    "evidence_summary": {
+      "selected_reference_count": 6,
+      "abstracts_available_count": 7,
+      "problem_signal_count": 8,
+      "method_signal_count": 7,
+      "population_signal_count": 8
+    }
+  }
+}

@@ -1,18 +1,10 @@
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { Prisma } from "@prisma/client";
 
-import { getArtifactsRoot } from "@/server/reporting/template-ingestion/local-artifacts";
 import type { NormalizedAssetCandidate } from "@/server/reporting/template-ingestion-types";
-
-function sanitizeSegment(value: string) {
-  return value
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
-}
 
 function guessExtensionFromPath(filePath: string | null | undefined) {
   if (!filePath) {
@@ -27,6 +19,31 @@ async function computeFileHash(filePath: string) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
+function guessMimeTypeFromPath(filePath: string | null | undefined) {
+  const ext = guessExtensionFromPath(filePath);
+  switch (ext) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".bmp":
+      return "image/bmp";
+    case ".pdf":
+      return "application/pdf";
+    case ".docx":
+      return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    default:
+      return null;
+  }
+}
+
+function asPrismaBytes(value: Uint8Array | null) {
+  return value ? (value as unknown as Uint8Array<ArrayBuffer>) : null;
+}
+
 export async function storeImportedTemplateSourceFile(input: {
   templateKey: string;
   versionNumber: number;
@@ -36,19 +53,16 @@ export async function storeImportedTemplateSourceFile(input: {
     return null;
   }
 
-  const fileHash = await computeFileHash(input.sourceFilePath);
-  const ext = guessExtensionFromPath(input.sourceFilePath);
-  const rootDir = path.join(
-    getArtifactsRoot(),
-    "template-imports",
-    sanitizeSegment(input.templateKey),
-    `v${input.versionNumber}`,
-    "sources",
-  );
-  await mkdir(rootDir, { recursive: true });
-  const storedPath = path.join(rootDir, `${fileHash}${ext}`);
-  await copyFile(input.sourceFilePath, storedPath);
-  return storedPath;
+  const fileData = await readFile(input.sourceFilePath);
+  const fileHash = createHash("sha256").update(fileData).digest("hex");
+
+  return {
+    storedFilePath: null,
+    fileName: path.basename(input.sourceFilePath),
+    mimeType: guessMimeTypeFromPath(input.sourceFilePath),
+    fileHash,
+    fileData: asPrismaBytes(new Uint8Array(fileData)),
+  };
 }
 
 function mapAssetKind(kind: NormalizedAssetCandidate["kind"]) {
@@ -80,25 +94,18 @@ export async function storeImportedTemplateAssets(input: {
   versionNumber: number;
   assets: NormalizedAssetCandidate[];
 }) {
-  const rootDir = path.join(
-    getArtifactsRoot(),
-    "template-imports",
-    sanitizeSegment(input.templateKey),
-    `v${input.versionNumber}`,
-    "assets",
-  );
-  await mkdir(rootDir, { recursive: true });
-
   const records: Prisma.TemplateAssetCreateManyTemplateVersionInput[] = [];
 
   for (const asset of input.assets) {
     let storedFilePath: string | null = null;
+    let fileName: string | null = null;
+    let fileHash: string | null = null;
+    let fileData: Uint8Array | null = null;
 
     if (asset.source_path) {
-      const fileHash = await computeFileHash(asset.source_path);
-      const ext = guessExtensionFromPath(asset.source_path);
-      storedFilePath = path.join(rootDir, `${sanitizeSegment(asset.asset_key)}-${fileHash}${ext}`);
-      await copyFile(asset.source_path, storedFilePath);
+      fileName = path.basename(asset.source_path);
+      fileHash = await computeFileHash(asset.source_path);
+      fileData = new Uint8Array(await readFile(asset.source_path));
     }
 
     records.push({
@@ -107,7 +114,10 @@ export async function storeImportedTemplateAssets(input: {
       sourceStrategy: mapAssetSourceStrategy(asset.source_strategy),
       originalFilePath: asset.source_path ?? null,
       storedFilePath,
+      fileName,
       mimeType: asset.mime_type ?? null,
+      fileHash,
+      fileData: asPrismaBytes(fileData),
       widthPx: asset.width_px ?? null,
       heightPx: asset.height_px ?? null,
       hasTransparency: asset.has_transparency ?? null,

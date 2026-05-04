@@ -446,6 +446,8 @@
         "kind": { "type": "string", "minLength": 1 },
         "role": { "type": "string", "enum": ["cover_logo", "cover_image", "annex_asset", "generic"] },
         "stored_path": { "type": ["string", "null"] },
+        "content_base64": { "type": ["string", "null"] },
+        "file_name": { "type": ["string", "null"] },
         "mime_type": { "type": ["string", "null"] },
         "width_px": { "type": ["integer", "null"], "minimum": 1 },
         "height_px": { "type": ["integer", "null"], "minimum": 1 }

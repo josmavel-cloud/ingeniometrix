@@ -1,0 +1,67 @@
+{
+  "case_id": "case-003-medicine-public-health",
+  "case_name": "Adherencia terapeutica en enfermedad renal cronica",
+  "project_id": "fixture-case-003",
+  "user_id": "fixture-user-backend",
+  "project_context": {
+    "title": "Factores asociados a la adherencia al tratamiento en pacientes adultos con enfermedad renal cronica en servicios de salud peruanos",
+    "degree_level": "maestria",
+    "university": "Universidad de San Martin de Porres",
+    "program": "Maestria en Salud Publica",
+    "knowledge_area_label": "Medicina / salud publica",
+    "template_key": "USMP",
+    "country": "PE",
+    "language": "es"
+  },
+  "intake": {
+    "topic": "Factores asociados a la adherencia al tratamiento en pacientes adultos con enfermedad renal cronica atendidos en servicios de salud peruanos.",
+    "problemContext": "La enfermedad renal cronica requiere seguimiento sostenido, adherencia farmacologica, cambios de estilo de vida y continuidad de controles. En el Peru, las barreras de acceso, alfabetizacion sanitaria, costos indirectos y coordinacion del cuidado pueden afectar la adherencia terapeutica.",
+    "researchLine": "Gestion de enfermedades cronicas, salud publica, adherencia terapeutica y calidad de atencion.",
+    "academicConstraints": "El estudio no utilizara historias clinicas reales ni datos personales en esta fase. Cualquier propuesta empirica futura requerira aprobacion etica y consentimiento cuando corresponda.",
+    "targetPopulation": "Pacientes adultos con enfermedad renal cronica en atencion ambulatoria o programas de seguimiento en servicios de salud peruanos.",
+    "availableData": "Literatura sobre adherencia terapeutica, enfermedad renal cronica, modelos de autocuidado, barreras de acceso a servicios y estudios epidemiologicos publicados en contextos latinoamericanos.",
+    "preferredMethodology": "Revision aplicada de literatura y propuesta de diseno observacional transversal para identificar factores asociados a adherencia terapeutica.",
+    "advisorNotes": "Evitar recomendaciones clinicas individualizadas y distinguir evidencia internacional de evidencia local peruana."
+  },
+  "source_policy": {
+    "mode": "auto_search",
+    "max_selected_sources": 6,
+    "min_selected_sources": 4,
+    "providers": ["openalex", "crossref"],
+    "allow_public_pdf_download": true,
+    "allow_web_fulltext_capture": true,
+    "require_complete_public_content": true
+  },
+  "selected_reference_ids": [],
+  "execution_options": {
+    "run_steps": [1, 2, 3, 4, 5, 6],
+    "force_rerun": false,
+    "use_llm": false,
+    "persist_debug_prompts": true,
+    "persist_full_text": true,
+    "persist_pdfs": true,
+    "cache_namespace": "fixture-case-003-renal-adherence",
+    "prompt_version": "evidence-engine-dry-run-v1"
+  },
+  "source_selection_checkpoint": {
+    "required": true,
+    "selection_mode": "manual_pending",
+    "future_options": ["frontend_basic", "codex_review", "fixture_selected_sources"],
+    "instructions_es": "Un revisor humano debe seleccionar fuentes clinicas y de salud publica pertinentes antes de continuar con pasos de acceso, materializacion y extraccion. Deben excluirse fuentes no academicas o sin trazabilidad.",
+    "selected_reference_ids": [],
+    "notes_es": "Priorizar revisiones sistematicas, guias clinicas publicas, estudios observacionales y evidencia latinoamericana o peruana cuando exista."
+  },
+  "expected_focus": [
+    "adherencia terapeutica y autocuidado",
+    "barreras de acceso y continuidad de atencion",
+    "factores sociodemograficos y sanitarios",
+    "diseno observacional transversal propuesto"
+  ],
+  "expected_risks": [
+    "emitir recomendaciones medicas individualizadas",
+    "usar datos sensibles o privados",
+    "asumir causalidad desde estudios transversales",
+    "generalizar evidencia internacional sin cautela local"
+  ]
+}
+

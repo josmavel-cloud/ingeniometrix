@@ -15,6 +15,7 @@ import { getTemplateDisplayLabel } from "@/lib/system-master-template";
 import { requireCurrentUser } from "@/server/auth/session";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
 import { getProjectForUser } from "@/server/projects/project-service";
+import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import { listProjectReferences } from "@/server/retrieval/reference-service";
 
 type ProjectDetailPageProps = {
@@ -32,7 +33,10 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const references = await listProjectReferences(user.id, id);
+  const [references, initialReferenceSearchSnapshot] = await Promise.all([
+    listProjectReferences(user.id, id),
+    getLatestProjectReferenceSearchSnapshot(id),
+  ]);
   const blueprintVersions = await listBlueprintVersionsForUser(user.id, id);
   const statusMeta = getProjectStatusMeta(project.status);
   const selectedReferenceCount = references.filter((reference) => reference.selected).length;
@@ -241,6 +245,7 @@ export default async function ProjectDetailPage({
                 problemContext: project.intake?.problemContext ?? "",
                 targetPopulation: project.intake?.targetPopulation ?? "",
               }}
+              initialSearchSnapshot={initialReferenceSearchSnapshot}
               initialReferences={references}
               projectId={project.id}
               status={project.status}

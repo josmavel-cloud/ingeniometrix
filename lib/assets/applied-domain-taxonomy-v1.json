@@ -1,0 +1,508 @@
+{
+  "scheme": {
+    "code": "PLMX-APPLIED-DOMAINS-V1",
+    "name": "Planimetrix Applied Research Domains Taxonomy",
+    "version": "1.0",
+    "uri": "https://planimetrix.local/taxonomy/applied-domains/v1",
+    "description": "Local curated taxonomy derived from the dominant project programs, intake patterns, and reference keywords currently present in the Planimetrix database."
+  },
+  "provenance": [
+    {
+      "label": "Planimetrix local project programs and current project titles",
+      "note": "Used to define the dominant applied domains that already exist in the workspace."
+    },
+    {
+      "label": "Planimetrix local reference keyword distribution",
+      "note": "Used to align the local taxonomy with the recurring scholarly labels already present in references."
+    }
+  ],
+  "concepts": [
+    {
+      "conceptCode": "1",
+      "prefLabel": "Business, marketing and consumer research",
+      "altLabels": [
+        "negocios marketing y comportamiento del consumidor"
+      ],
+      "children": [
+        {
+          "conceptCode": "1.1",
+          "prefLabel": "Marketing strategy and communication",
+          "altLabels": [
+            "marketing",
+            "marketing management",
+            "marketing communication",
+            "marketing strategy",
+            "administracion y direccion de marketing"
+          ]
+        },
+        {
+          "conceptCode": "1.2",
+          "prefLabel": "Digital marketing and social media",
+          "altLabels": [
+            "marketing digital",
+            "digital marketing",
+            "digital marketing and social media",
+            "social media",
+            "influencer marketing"
+          ]
+        },
+        {
+          "conceptCode": "1.3",
+          "prefLabel": "Consumer behavior and customer experience",
+          "altLabels": [
+            "comportamiento del consumidor",
+            "consumer behavior",
+            "consumer retail behavior studies",
+            "customer service quality and loyalty",
+            "customer experience"
+          ]
+        },
+        {
+          "conceptCode": "1.4",
+          "prefLabel": "E-commerce and digital commerce",
+          "altLabels": [
+            "e-commerce",
+            "comercio electronico",
+            "digital commerce",
+            "online shopping"
+          ]
+        },
+        {
+          "conceptCode": "1.5",
+          "prefLabel": "Business innovation and entrepreneurship",
+          "altLabels": [
+            "business innovation and economy",
+            "innovation and knowledge management",
+            "business strategies and innovation",
+            "entrepreneurship",
+            "innovacion empresarial"
+          ]
+        },
+        {
+          "conceptCode": "1.6",
+          "prefLabel": "Business intelligence and analytics",
+          "altLabels": [
+            "business intelligence",
+            "big data and business intelligence",
+            "analytics",
+            "analitica de negocios",
+            "analitica digital"
+          ]
+        },
+        {
+          "conceptCode": "1.7",
+          "prefLabel": "Fintech and digital finance",
+          "altLabels": [
+            "fintech",
+            "fintech crowdfunding digital finance",
+            "digital finance",
+            "banca digital",
+            "financial technology"
+          ]
+        },
+        {
+          "conceptCode": "1.8",
+          "prefLabel": "Tourism and hospitality management",
+          "altLabels": [
+            "tourism",
+            "tourism research",
+            "destinations",
+            "hotelero",
+            "turistico",
+            "hospitality"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "2",
+      "prefLabel": "Information systems and digital transformation",
+      "altLabels": [
+        "sistemas de informacion y transformacion digital"
+      ],
+      "children": [
+        {
+          "conceptCode": "2.1",
+          "prefLabel": "Information systems and IT management",
+          "altLabels": [
+            "information system",
+            "sistemas de informacion",
+            "tecnologias de la informacion",
+            "direccion de sistemas",
+            "information technology"
+          ]
+        },
+        {
+          "conceptCode": "2.2",
+          "prefLabel": "Digital transformation",
+          "altLabels": [
+            "transformacion digital",
+            "digital transformation",
+            "digital transformation in industry",
+            "technology adoption and user behaviour"
+          ]
+        },
+        {
+          "conceptCode": "2.3",
+          "prefLabel": "Artificial intelligence adoption",
+          "altLabels": [
+            "inteligencia artificial",
+            "artificial intelligence",
+            "ethics and social impacts of ai",
+            "impact of ai and big data on business and society"
+          ]
+        },
+        {
+          "conceptCode": "2.4",
+          "prefLabel": "Cybersecurity and information security",
+          "altLabels": [
+            "ciberseguridad",
+            "information and cyber security",
+            "network security and intrusion detection",
+            "data privacy and cybersecurity"
+          ]
+        },
+        {
+          "conceptCode": "2.5",
+          "prefLabel": "Data science and big data",
+          "altLabels": [
+            "data science",
+            "big data",
+            "data mining",
+            "data stream mining techniques"
+          ]
+        },
+        {
+          "conceptCode": "2.6",
+          "prefLabel": "Cloud computing and infrastructure",
+          "altLabels": [
+            "cloud computing",
+            "operating system",
+            "mobile and web applications",
+            "internet of things"
+          ]
+        },
+        {
+          "conceptCode": "2.7",
+          "prefLabel": "Software and systems engineering",
+          "altLabels": [
+            "software engineering",
+            "systems engineering",
+            "software development",
+            "process automation system"
+          ]
+        },
+        {
+          "conceptCode": "2.8",
+          "prefLabel": "IT governance and digital strategy",
+          "altLabels": [
+            "information technology governance and strategy",
+            "digital strategy",
+            "cobit",
+            "governance of information technology"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "3",
+      "prefLabel": "Health services, public health and digital health",
+      "altLabels": [
+        "salud publica servicios de salud y salud digital"
+      ],
+      "children": [
+        {
+          "conceptCode": "3.1",
+          "prefLabel": "Health services management",
+          "altLabels": [
+            "health services",
+            "gestion de servicios de salud",
+            "health sector",
+            "healthcare cost quality practices"
+          ]
+        },
+        {
+          "conceptCode": "3.2",
+          "prefLabel": "Public health",
+          "altLabels": [
+            "public health",
+            "public health and environmental issues",
+            "health and lifestyle studies",
+            "health promotion"
+          ]
+        },
+        {
+          "conceptCode": "3.3",
+          "prefLabel": "Digital health and mHealth",
+          "altLabels": [
+            "mobile health and mhealth applications",
+            "telemedicine and telehealth implementation",
+            "healthcare technology and patient monitoring",
+            "mhealth",
+            "telesalud",
+            "salud digital"
+          ]
+        },
+        {
+          "conceptCode": "3.4",
+          "prefLabel": "Chronic disease and treatment adherence",
+          "altLabels": [
+            "chronic disease",
+            "medication adherence and compliance",
+            "diabetes mellitus",
+            "primary health care",
+            "adherencia terapeutica"
+          ]
+        },
+        {
+          "conceptCode": "3.5",
+          "prefLabel": "Occupational health and safety",
+          "altLabels": [
+            "occupational health and safety in workplaces",
+            "occupational health and safety research",
+            "seguridad y salud en el trabajo"
+          ]
+        },
+        {
+          "conceptCode": "3.6",
+          "prefLabel": "Epidemiology and surveillance",
+          "altLabels": [
+            "epidemiological surveillance",
+            "global public health policies and epidemiology",
+            "dengue fever",
+            "mosquito-borne diseases and control",
+            "vigilancia epidemiologica"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "4",
+      "prefLabel": "Education and learning innovation",
+      "altLabels": [
+        "educacion e innovacion del aprendizaje"
+      ],
+      "children": [
+        {
+          "conceptCode": "4.1",
+          "prefLabel": "Higher education and university teaching",
+          "altLabels": [
+            "higher education teaching and evaluation",
+            "higher education and sustainability",
+            "docencia universitaria",
+            "educacion superior"
+          ]
+        },
+        {
+          "conceptCode": "4.2",
+          "prefLabel": "Educational innovations and technology",
+          "altLabels": [
+            "educational innovations and technology",
+            "educational and organizational development",
+            "educational methods and psychological studies",
+            "innovacion educativa"
+          ]
+        },
+        {
+          "conceptCode": "4.3",
+          "prefLabel": "E-learning and knowledge management",
+          "altLabels": [
+            "e-learning and knowledge management",
+            "virtual learning",
+            "aprendizaje virtual",
+            "entornos virtuales de aprendizaje"
+          ]
+        },
+        {
+          "conceptCode": "4.4",
+          "prefLabel": "Digital literacy and competencies",
+          "altLabels": [
+            "digital literacy in education",
+            "competencias digitales",
+            "alfabetizacion digital",
+            "competencia digital docente"
+          ]
+        },
+        {
+          "conceptCode": "4.5",
+          "prefLabel": "Curriculum, assessment and pedagogy",
+          "altLabels": [
+            "curriculum",
+            "pedagogy",
+            "physical education and pedagogy",
+            "evaluacion educativa"
+          ]
+        },
+        {
+          "conceptCode": "4.6",
+          "prefLabel": "Gamification and active learning",
+          "altLabels": [
+            "educational games and gamification",
+            "gamificacion",
+            "active learning",
+            "aprendizaje activo"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "5",
+      "prefLabel": "Human talent, organizations and work",
+      "altLabels": [
+        "talento humano organizaciones y trabajo"
+      ],
+      "children": [
+        {
+          "conceptCode": "5.1",
+          "prefLabel": "Human resource and talent management",
+          "altLabels": [
+            "human resource and talent management",
+            "human resources",
+            "gestion del talento humano",
+            "gestion de recursos humanos"
+          ]
+        },
+        {
+          "conceptCode": "5.2",
+          "prefLabel": "Organizational behavior and commitment",
+          "altLabels": [
+            "organizational behavior",
+            "job satisfaction and organizational behavior",
+            "organizational commitment",
+            "work engagement"
+          ]
+        },
+        {
+          "conceptCode": "5.3",
+          "prefLabel": "Organizational psychology and well-being",
+          "altLabels": [
+            "psicologia organizacional",
+            "psychology",
+            "stress and burnout research",
+            "workaholism burnout and well-being",
+            "bienestar organizacional"
+          ]
+        },
+        {
+          "conceptCode": "5.4",
+          "prefLabel": "Telework and hybrid work",
+          "altLabels": [
+            "teletrabajo",
+            "work-family balance challenges",
+            "hybrid work",
+            "remote work"
+          ]
+        },
+        {
+          "conceptCode": "5.5",
+          "prefLabel": "Training and professional development",
+          "altLabels": [
+            "training",
+            "capacitacion",
+            "professionalization",
+            "coaching",
+            "development plan"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "6",
+      "prefLabel": "Urban, built environment and territorial resilience",
+      "altLabels": [
+        "urbano entorno construido y resiliencia territorial"
+      ],
+      "children": [
+        {
+          "conceptCode": "6.1",
+          "prefLabel": "Urban planning and governance",
+          "altLabels": [
+            "urban planning",
+            "urban planning and governance",
+            "urbanization and city planning",
+            "right to the city"
+          ]
+        },
+        {
+          "conceptCode": "6.2",
+          "prefLabel": "Architecture and built environment",
+          "altLabels": [
+            "architecture",
+            "built environment",
+            "historical art and architecture studies",
+            "entorno urbano"
+          ]
+        },
+        {
+          "conceptCode": "6.3",
+          "prefLabel": "Public space and urban mobility",
+          "altLabels": [
+            "public space",
+            "urban transport and accessibility",
+            "urbanism landscape and tourism studies",
+            "espacio publico"
+          ]
+        },
+        {
+          "conceptCode": "6.4",
+          "prefLabel": "Climate resilience and disaster risk",
+          "altLabels": [
+            "regional resilience and development",
+            "disaster management and resilience",
+            "flood risk assessment and management",
+            "climate change adaptation migration",
+            "resiliencia climatica"
+          ]
+        },
+        {
+          "conceptCode": "6.5",
+          "prefLabel": "Construction and BIM management",
+          "altLabels": [
+            "bim and construction integration",
+            "construction management",
+            "gerencia de la construccion",
+            "lean manufacturing"
+          ]
+        }
+      ]
+    },
+    {
+      "conceptCode": "7",
+      "prefLabel": "Public management, policy and regulation",
+      "altLabels": [
+        "gestion publica politica y regulacion"
+      ],
+      "children": [
+        {
+          "conceptCode": "7.1",
+          "prefLabel": "Public administration and governance",
+          "altLabels": [
+            "public administration ict and policy development",
+            "public policy and governance",
+            "public administration",
+            "gobernanza publica"
+          ]
+        },
+        {
+          "conceptCode": "7.2",
+          "prefLabel": "Public management",
+          "altLabels": [
+            "gestion publica",
+            "public management"
+          ]
+        },
+        {
+          "conceptCode": "7.3",
+          "prefLabel": "Law, regulation and digital governance",
+          "altLabels": [
+            "legal processes and jurisprudence",
+            "law ai and intellectual property",
+            "law ethics and ai impact",
+            "impacto normativo",
+            "regulacion digital"
+          ]
+        }
+      ]
+    }
+  ]
+}
