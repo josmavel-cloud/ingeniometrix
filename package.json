@@ -19,6 +19,7 @@
     "lab:master-blueprint:step-10": "tsx scripts/run-master-blueprint-step-10.ts",
     "lab:master-blueprint:steps-11-13": "tsx scripts/run-master-blueprint-steps-11-13.ts",
     "test:blueprint-contract": "tsx scripts/test-blueprint-contract-boundary.ts",
+    "inspect:blueprint-input-lab-b": "tsx scripts/inspect-blueprint-input-for-current-lab-b.ts",
     "debug:workflow": "node scripts/debug-workflow-runner.mjs",
     "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
     "lab:benchmark": "tsx scripts/run-blueprint-launch-benchmarks.ts",
