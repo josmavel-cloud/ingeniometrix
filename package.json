@@ -18,6 +18,7 @@
     "lab:master-blueprint:steps-5-11": "tsx scripts/run-master-blueprint-lab-steps-5-11.ts",
     "lab:master-blueprint:step-10": "tsx scripts/run-master-blueprint-step-10.ts",
     "lab:master-blueprint:steps-11-13": "tsx scripts/run-master-blueprint-steps-11-13.ts",
+    "test:blueprint-contract": "tsx scripts/test-blueprint-contract-boundary.ts",
     "debug:workflow": "node scripts/debug-workflow-runner.mjs",
     "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
     "lab:benchmark": "tsx scripts/run-blueprint-launch-benchmarks.ts",
@@ -47,7 +48,8 @@
     "openai": "^6.34.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
-    "tailwindcss": "^4.2.2"
+    "tailwindcss": "^4.2.2",
+    "zod": "^4.4.2"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
