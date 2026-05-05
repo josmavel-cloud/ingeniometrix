@@ -1,4 +1,14 @@
 import type { ConsistencyMatrixArtifact } from "@/server/blueprint-v2/sections/consistency-matrix-engine";
+import type {
+  PublicAppendixItem,
+  ResearchBudgetPlan,
+  ResearchBudgetRow,
+  ScheduleGanttRow,
+} from "@/server/blueprint-v2/editorial/project-management-policy";
+import type {
+  SectionEvidenceBinding,
+  SectionEvidenceSupportSummary,
+} from "@/server/blueprint-v2/types";
 
 export type AcademicDocumentVariant = "master" | "university";
 export type AcademicCitationStyle = "APA7";
@@ -6,6 +16,8 @@ export type AcademicReportArchetype = "indexed_paper_like" | "institutional_thes
 
 export type AcademicDocumentMetadata = {
   title: string;
+  short_header_title?: string | null;
+  keywords_line?: string | null;
   subtitle: string;
   university: string | null;
   program: string | null;
@@ -59,6 +71,8 @@ export type CitationAnchor = {
   section_key: string;
   paragraph_index: number;
   source_ids: string[];
+  evidence_ids?: string[];
+  original_excerpt_ids?: string[];
   rendered_citation: string;
   reason: string;
 };
@@ -83,6 +97,13 @@ export type AcademicSection = {
   title: string;
   level: number;
   source_ids: string[];
+  evidence_ids?: string[];
+  original_excerpt_ids?: string[];
+  asset_keys?: string[];
+  evidence_support_summary?: SectionEvidenceSupportSummary;
+  support_tier?: SectionEvidenceBinding["support_tier"];
+  section_evidence_binding_score?: number;
+  unsupported_or_cautious_claim_warnings?: string[];
   citation_anchors: CitationAnchor[];
   blocks: AcademicSectionBlock[];
   warnings: string[];
@@ -211,7 +232,19 @@ export type ScheduleVisualTask = {
   task: string;
   start_month: number;
   end_month: number;
-  phase: "planificacion" | "revision" | "metodologia" | "redaccion" | "cierre";
+  phase:
+    | "planificacion"
+    | "revision"
+    | "metodologia"
+    | "ejecucion"
+    | "analisis"
+    | "redaccion"
+    | "revision_asesor"
+    | "cierre";
+  dependency?: string | null;
+  deliverable?: string | null;
+  duration?: string | null;
+  assumption?: string | null;
 };
 
 export type ScheduleVisualPlan = {
@@ -222,11 +255,18 @@ export type ScheduleVisualPlan = {
 };
 
 export type CoverVisualPlan = {
+  hero_visual_type?: "methodological_infographic_cover" | "conceptual_cover";
+  source_handoff_id?: string | null;
+  source_evidence_run_id?: string | null;
+  source_snapshot_hash?: string | null;
+  deterministic_template_asset?: boolean;
   title: string;
   subtitle: string;
   concept: string;
   method_summary: string;
   prompt: string;
+  hero_prompt_summary?: string | null;
+  hero_visual_caption?: string | null;
   negative_prompt: string;
   image_path: string | null;
   image_model: string | null;
@@ -253,6 +293,11 @@ export type AcademicDocxLayoutPlan = {
   figures: FigureLayoutPlan[];
   equations: EquationLayoutPlan[];
   schedule_visual: ScheduleVisualPlan | null;
+  schedule_gantt_rows?: ScheduleGanttRow[];
+  budget_rows?: ResearchBudgetRow[];
+  budget_total_range?: ResearchBudgetPlan["total_estimated_range"] | null;
+  appendix_public_items?: PublicAppendixItem[];
+  appendix_internal_items?: string[];
   cover_visual: CoverVisualPlan;
   suppressed_asset_keys: string[];
   public_annex_policy: {

@@ -6,10 +6,15 @@ import OpenAI from "openai";
 
 import type { AcademicDocument } from "@/server/blueprint-v2/lab/academic-document-model";
 
-const DEFAULT_IMAGE_MODEL = "gpt-image-2";
+export const DEFAULT_ACADEMIC_HERO_IMAGE_MODEL = "gpt-image-2";
+export const DEFAULT_ACADEMIC_HERO_IMAGE_QUALITY = "high";
 
-function resolveImageModel() {
-  return process.env.OPENAI_IMAGE_MODEL?.trim() || DEFAULT_IMAGE_MODEL;
+export function resolveAcademicHeroImageModel() {
+  return process.env.OPENAI_IMAGE_MODEL?.trim() || DEFAULT_ACADEMIC_HERO_IMAGE_MODEL;
+}
+
+export function resolveAcademicHeroImageQuality() {
+  return process.env.OPENAI_IMAGE_QUALITY?.trim() || DEFAULT_ACADEMIC_HERO_IMAGE_QUALITY;
 }
 
 function hasOpenAiKey() {
@@ -59,7 +64,7 @@ export async function applyAcademicHeroImageGeneration(input: {
           cover_visual: {
             ...input.document.layout_plan.cover_visual,
             image_path: outputPath,
-            image_model: input.document.layout_plan.cover_visual.image_model ?? resolveImageModel(),
+            image_model: input.document.layout_plan.cover_visual.image_model ?? resolveAcademicHeroImageModel(),
             image_generation_status: "generated",
           },
         },
@@ -76,7 +81,8 @@ export async function applyAcademicHeroImageGeneration(input: {
     );
   }
 
-  const model = resolveImageModel();
+  const model = resolveAcademicHeroImageModel();
+  const quality = resolveAcademicHeroImageQuality();
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   try {
@@ -84,7 +90,7 @@ export async function applyAcademicHeroImageGeneration(input: {
       model,
       prompt: `${input.document.layout_plan.cover_visual.prompt}\n\nRestricciones negativas: ${input.document.layout_plan.cover_visual.negative_prompt}`,
       size: "1024x1536",
-      quality: "medium",
+      quality,
       background: "opaque",
       output_format: "png",
       n: 1,

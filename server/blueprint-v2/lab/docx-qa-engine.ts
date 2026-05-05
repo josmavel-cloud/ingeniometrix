@@ -25,12 +25,14 @@ export type DocxQaReport = {
     has_asset_source_notes: boolean;
     has_schedule_gantt: boolean;
     has_table_of_contents: boolean;
+    no_duplicate_table_of_contents: boolean;
     has_numbered_headings: boolean;
     no_source_title_leaks: boolean;
     no_latex_literals: boolean;
     no_forced_caps_headings: boolean;
     has_professional_equations: boolean;
     no_internal_provider_markers: boolean;
+    no_public_appendix_debug_leak: boolean;
     markdown_removed: boolean;
     min_table_count_pass: boolean;
     min_section_count_pass: boolean;
@@ -52,6 +54,10 @@ export type DocxQaReport = {
     forced_caps_count: number;
     numbered_heading_count: number;
     toc_field_count: number;
+    visible_toc_heading_count: number;
+    duplicate_toc_block_count: number;
+    schedule_gantt_marker_count: number;
+    public_appendix_debug_marker_count: number;
     math_object_count: number;
     control_heading_count: number;
   };
@@ -133,6 +139,40 @@ function decodeXmlText(value: string) {
     .trim();
 }
 
+export function countVisibleTableOfContentsHeadings(documentText: string) {
+  return countMatches(documentText, /\bTabla de contenido\b/gi);
+}
+
+export function detectDuplicateTableOfContents(documentText: string) {
+  const visibleHeadingCount = countVisibleTableOfContentsHeadings(documentText);
+  return {
+    visible_heading_count: visibleHeadingCount,
+    duplicate_block_count: Math.max(0, visibleHeadingCount - 1),
+    has_duplicate_table_of_contents: visibleHeadingCount > 1,
+  };
+}
+
+export function hasRecognizedScheduleGanttText(documentText: string) {
+  if (!/Cronograma/i.test(documentText)) {
+    return true;
+  }
+
+  return (
+    /Cronograma referencial/i.test(documentText) ||
+    /tipo Gantt/i.test(documentText) ||
+    (/Fase/i.test(documentText) && /Dependencia/i.test(documentText) && /Entregable/i.test(documentText))
+  );
+}
+
+export function countPublicAppendixDebugMarkers(documentText: string) {
+  const appendixIndex = documentText.search(/Anexo\s+[A-Z]\./i);
+  const appendixText = appendixIndex >= 0 ? documentText.slice(appendixIndex) : documentText;
+  return countMatches(
+    appendixText,
+    /artifacts-local|backend|debug|prompt trace|source_id|asset_key|file_path|run hash|immutable_snapshot_hash|OpenAlex URL/gi,
+  );
+}
+
 function scoreChecks(checks: Record<string, boolean>) {
   const values = Object.values(checks);
   const passed = values.filter(Boolean).length;
@@ -206,6 +246,9 @@ export async function validateDocxPackage(input: {
     /\b\d+(?:\.\d+)*\.\s+[A-ZÁÉÍÓÚÑA-Za-z]/g,
   );
   const tocFieldCount = countMatches(documentXml, /TOC \\o|Tabla de contenido/g);
+  const tocAnalysis = detectDuplicateTableOfContents(documentText);
+  const scheduleGanttMarkerCount = hasRecognizedScheduleGanttText(documentText) ? 1 : 0;
+  const publicAppendixDebugMarkerCount = countPublicAppendixDebugMarkers(documentText);
   const mathObjectCount = countMatches(documentXml, /<m:oMath\b/g);
 
   const checks = {
@@ -228,14 +271,16 @@ export async function validateDocxPackage(input: {
     has_table_header_repeat: repeatedTableHeaderCount > 0,
     has_academic_header_footer: headerCount > 0 && footerCount > 0,
     has_asset_source_notes: figureCaptionCount === 0 || sourceNoteCount > 0,
-    has_schedule_gantt: !documentXml.includes("Cronograma") || documentXml.includes("Cronograma referencial"),
+    has_schedule_gantt: hasRecognizedScheduleGanttText(documentText),
     has_table_of_contents: tocFieldCount > 0,
+    no_duplicate_table_of_contents: !tocAnalysis.has_duplicate_table_of_contents,
     has_numbered_headings: numberedHeadingCount > 0,
     no_source_title_leaks: sourceTitleLeakCount === 0,
     no_latex_literals: latexLiteralCount === 0,
     no_forced_caps_headings: forcedCapsCount === 0,
     has_professional_equations: equationCaptionCount === 0 || mathObjectCount > 0,
     no_internal_provider_markers: internalProviderMarkerCount === 0,
+    no_public_appendix_debug_leak: publicAppendixDebugMarkerCount === 0,
     markdown_removed: markdownMarkerCount === 0,
     min_table_count_pass: tableCount >= input.minTableCount,
     min_section_count_pass: sectionCount >= input.minSectionCount,
@@ -275,6 +320,10 @@ export async function validateDocxPackage(input: {
       forced_caps_count: forcedCapsCount,
       numbered_heading_count: numberedHeadingCount,
       toc_field_count: tocFieldCount,
+      visible_toc_heading_count: tocAnalysis.visible_heading_count,
+      duplicate_toc_block_count: tocAnalysis.duplicate_block_count,
+      schedule_gantt_marker_count: scheduleGanttMarkerCount,
+      public_appendix_debug_marker_count: publicAppendixDebugMarkerCount,
       math_object_count: mathObjectCount,
       markdown_marker_count: markdownMarkerCount,
       media_count: mediaCount,

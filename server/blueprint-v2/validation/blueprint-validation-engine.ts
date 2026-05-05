@@ -552,6 +552,15 @@ export async function validateMasterBlueprintPackage(input: {
   );
   const warnings = [
     ...input.evidenceLedger.warnings,
+    ...Array.from(
+      new Set(
+        input.drafts.flatMap((draft) =>
+          (draft.unsupported_or_cautious_claim_warnings ?? []).map(
+            (warning) => `${draft.section_key}: ${warning}`,
+          ),
+        ),
+      ),
+    ).slice(0, 40),
     ...(missingRequiredSectionKeys.length > 0
       ? [
           `Faltan secciones obligatorias del MasterTemplate: ${missingRequiredSectionKeys.join(", ")}.`,

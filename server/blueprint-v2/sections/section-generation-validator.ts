@@ -2,6 +2,7 @@ import type {
   ExtendedPlanItem,
   SectionExecutionProfile,
 } from "@/server/blueprint-v2/sections/section-generation-shared";
+import { inspectAcademicEditorialPolicy } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 import { inspectSectionOutput } from "@/server/blueprint-v2/sections/section-output-normalizer";
 
 function countWords(value: string) {
@@ -108,9 +109,17 @@ export function validateDraftAgainstPlan(input: {
     ) &&
     !/\b(la|el|los|las|para|como|una|un)\b/i.test(input.content) &&
     input.planItem.section_key !== "references";
+  const editorialInspection = inspectAcademicEditorialPolicy({
+    section_key: input.planItem.section_key,
+    section_title: input.planItem.title,
+    content: input.content,
+    word_budget:
+      input.planItem.target_word_budget ?? input.planItem.max_words ?? null,
+  });
   const keywordsFailed =
     input.planItem.section_key === "keywords" &&
-    !(/^[-*]\s/m.test(input.content) || /,\s*/.test(input.content));
+    (editorialInspection.keywords_not_one_line ||
+      editorialInspection.keywords_item_count_invalid);
   const referencesFailed =
     input.planItem.section_key === "references" &&
     (!/^[-*]\s/m.test(input.content) ||
@@ -213,7 +222,37 @@ export function validateDraftAgainstPlan(input: {
 
   if (keywordsFailed) {
     failures.push(
-      "Debes devolver palabras clave limpias en formato compacto o lista visible.",
+      "Debes devolver 4 a 7 palabras clave en una sola linea separada por punto y coma.",
+    );
+  }
+
+  if (
+    editorialInspection.opening_repeats_heading ||
+    editorialInspection.generic_opening_phrase
+  ) {
+    failures.push(
+      "Debes abrir con una afirmacion sustantiva, sin repetir el titulo ni usar aperturas genericas.",
+    );
+  }
+
+  if (editorialInspection.duplicated_objective_list) {
+    failures.push(
+      "Debes evitar duplicar listas de objetivos, preguntas o hipotesis dentro de la misma seccion.",
+    );
+  }
+
+  if (
+    editorialInspection.exceeds_word_budget &&
+    input.planItem.content_kind !== "table"
+  ) {
+    failures.push(
+      `Debes respetar el presupuesto editorial de ${input.planItem.target_word_budget ?? input.planItem.max_words} palabras.`,
+    );
+  }
+
+  if (editorialInspection.repeated_opening_phrase_count >= 3) {
+    failures.push(
+      "Debes variar aperturas de parrafo y reducir frases repetidas al inicio.",
     );
   }
 
@@ -270,6 +309,16 @@ export function validateDraftAgainstPlan(input: {
     citation_deferred_pass: !citationDeferredFailed,
     punctuation_pass: !outputInspection.has_double_period,
     research_logic_shape_pass: !researchLogicShape.failed,
+    section_opening_pass:
+      !editorialInspection.opening_repeats_heading &&
+      !editorialInspection.generic_opening_phrase,
+    objective_repetition_pass:
+      !editorialInspection.duplicated_objective_list,
+    keywords_one_line_pass:
+      input.planItem.section_key !== "keywords" || !keywordsFailed,
+    editorial_word_budget_pass: !editorialInspection.exceeds_word_budget,
+    opening_phrase_diversity_pass:
+      editorialInspection.repeated_opening_phrase_count < 3,
   };
 
   return {

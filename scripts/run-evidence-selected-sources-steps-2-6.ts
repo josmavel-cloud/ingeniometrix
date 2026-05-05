@@ -29,9 +29,24 @@ import {
 import type { BlueprintLaunchProjectData } from "@/blueprint_launch/fixtures/synthetic-intake";
 import {
   adaptCurrentLabAArtifactToEvidenceHandoffV1,
+  buildBlueprintEngineInputFromEvidenceHandoffV1,
   type CurrentLabAConsolidatedEvidenceArtifact,
 } from "@/server/blueprint-engine/adapters/current-lab-a-handoff-adapter";
 import { evidenceEngineHandoffV1Schema } from "@/server/blueprint-engine/contracts";
+import {
+  buildReducedEvidencePackFromHandoff,
+  type ReducedEvidencePackV1,
+} from "@/server/blueprint-engine/quality/evidence-budget";
+import { evaluateBlueprintProductionSafety } from "@/server/blueprint-engine/quality/production-safety";
+import {
+  buildCoarseStepTelemetry,
+  buildRunTelemetryArtifact,
+  normalizeUsageDelta,
+} from "@/server/blueprint-engine/quality/run-telemetry";
+import {
+  buildQualityDashboard,
+  renderProductionReadinessReport,
+} from "@/server/blueprint-engine/quality/production-readiness-dashboard";
 import { readLlmUsageRegistry, type LlmUsageRegistry } from "@/server/llm-usage-registry";
 import type { IntakeInput } from "@/server/projects/project-validation";
 import { resolveProjectStatusFromIntake } from "@/server/projects/project-validation";
@@ -706,6 +721,97 @@ async function updateUsageSummary(summary: RunSummary, usageBefore: LlmUsageRegi
   summary.estimated_or_logged_token_usage = usageDelta;
 }
 
+async function writeEvidenceRunAnalytics(input: {
+  summary: RunSummary;
+  startedAt: string;
+  handoff?: ReturnType<typeof adaptCurrentLabAArtifactToEvidenceHandoffV1> | null;
+  reducedEvidencePack?: ReducedEvidencePackV1 | null;
+}) {
+  const completedAt = new Date().toISOString();
+  const usageDelta = normalizeUsageDelta(input.summary.estimated_or_logged_token_usage);
+  const productionSafety = input.handoff
+    ? evaluateBlueprintProductionSafety(
+        buildBlueprintEngineInputFromEvidenceHandoffV1(input.handoff, {
+          executionMode: "dry_run",
+          generationOptions: {
+            allow_llm: false,
+            require_llm_for_sections: false,
+            model_policy: "default",
+            use_prompt_cache: true,
+            reuse_cached_artifacts: false,
+          },
+        }),
+        {
+          signals: {
+            diagnostic_only: input.summary.allow_blocked,
+            production_valid: input.summary.production_valid,
+            degraded_handoff: input.summary.allow_blocked || input.summary.blocked_by_gate,
+            allow_blocked_upstream: input.summary.allow_blocked,
+            upstream_step_3_decision:
+              input.summary.blocked_at_step === "step_3_evidence_planning" ||
+              input.summary.allow_blocked
+                ? "BLOCK"
+                : null,
+            materialized_source_count: input.summary.materialized_source_count,
+            min_materialized_source_count: 4,
+          },
+        },
+      )
+    : null;
+  const runTelemetry = buildRunTelemetryArtifact({
+    run_id: input.summary.run_id,
+    case_id: input.summary.case_id,
+    handoff: input.handoff ?? null,
+    pipeline_stage: "evidence_engine",
+    started_at: input.startedAt,
+    completed_at: completedAt,
+    usage_delta: usageDelta,
+    reduced_evidence_pack: input.reducedEvidencePack ?? null,
+    section_count: input.summary.section_dossier_count,
+    production_eligible: productionSafety?.production_eligible ?? false,
+    diagnostic_compatible: productionSafety?.diagnostic_compatible ?? input.summary.status !== "failed",
+    warning_count: input.summary.warnings.length,
+    blocker_count: input.summary.blockers.length,
+  });
+  const stepTelemetry = buildCoarseStepTelemetry({
+    run_id: input.summary.run_id,
+    completed_steps: input.summary.completed_steps,
+    pipeline_stage: "evidence_engine",
+    started_at: input.startedAt,
+    completed_at: completedAt,
+    usage_delta: usageDelta,
+    source_count: input.summary.selected_source_count,
+    usable_full_text_source_count: productionSafety?.counts.usable_full_text_sources ?? null,
+    evidence_unit_count: input.summary.evidence_unit_count,
+    reduced_evidence_unit_count: input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
+    direct_quote_count: productionSafety?.counts.true_source_backed_direct_quote_count ?? input.summary.direct_quote_count,
+    section_count: input.summary.section_dossier_count,
+    production_eligible: productionSafety?.production_eligible ?? false,
+    diagnostic_compatible: productionSafety?.diagnostic_compatible ?? input.summary.status !== "failed",
+    warning_count: input.summary.warnings.length,
+    blocker_count: input.summary.blockers.length,
+  });
+  const dashboard = buildQualityDashboard({
+    run_id: input.summary.run_id,
+    case_id: input.summary.case_id,
+    handoff: input.handoff ?? null,
+    production_safety: productionSafety,
+    reduced_evidence_pack: input.reducedEvidencePack ?? null,
+    run_telemetry: runTelemetry,
+    warnings: input.summary.warnings,
+    blockers: input.summary.blockers,
+  });
+
+  await writeJson(path.join(input.summary.output_folder, "run-telemetry.json"), runTelemetry);
+  await writeJson(path.join(input.summary.output_folder, "step-telemetry.json"), stepTelemetry);
+  await writeJson(path.join(input.summary.output_folder, "quality-dashboard.json"), dashboard);
+  await writeFile(
+    path.join(input.summary.output_folder, "production-readiness-report.md"),
+    renderProductionReadinessReport(dashboard),
+    "utf8",
+  );
+}
+
 export async function writeBlockedGateArtifacts(input: {
   summary: RunSummary;
   blockedAtStep: BlockedRunStep;
@@ -716,6 +822,7 @@ export async function writeBlockedGateArtifacts(input: {
   candidateSources?: CandidateSourcesArtifact | null;
   sourceSelection?: SourceSelection | null;
   usageBefore?: LlmUsageRegistry | null;
+  startedAt?: string | null;
 }) {
   const summary = input.summary;
   const report = buildSourceReplacementReport({
@@ -760,6 +867,14 @@ export async function writeBlockedGateArtifacts(input: {
     "utf8",
   );
   await writeJson(path.join(summary.output_folder, "run-summary.json"), summary);
+  if (input.startedAt) {
+    await writeEvidenceRunAnalytics({
+      summary,
+      startedAt: input.startedAt,
+      handoff: null,
+      reducedEvidencePack: null,
+    });
+  }
 
   return report;
 }
@@ -775,6 +890,7 @@ function markAllowBlockedDiagnostic(summary: RunSummary) {
 async function main() {
   loadLocalEnv();
 
+  const runStartedAt = new Date().toISOString();
   const { caseId, runFolder, allowBlocked } = parseArgs();
   const sourceCandidateRunFolder = path.resolve(
     runFolder ?? (await findLatestRunFolderWithSelection(caseId)),
@@ -956,6 +1072,7 @@ async function main() {
         candidateSources,
         sourceSelection,
         usageBefore,
+        startedAt: runStartedAt,
       });
 
       console.log(
@@ -1034,6 +1151,7 @@ async function main() {
         candidateSources,
         sourceSelection,
         usageBefore,
+        startedAt: runStartedAt,
       });
 
       console.log(
@@ -1133,6 +1251,8 @@ async function main() {
     }
 
     await writeJson(path.join(outputFolder, "evidence-handoff-v1.json"), handoff);
+    const reducedEvidencePack = buildReducedEvidencePackFromHandoff(handoff);
+    await writeJson(path.join(outputFolder, "reduced-evidence-pack.json"), reducedEvidencePack);
 
     const evidenceUnits = consolidatedEvidenceArtifact.evidence_units ?? [];
     summary.evidence_unit_count = evidenceUnits.length;
@@ -1168,6 +1288,12 @@ async function main() {
     ]);
     summary.status = "completed";
 
+    await writeEvidenceRunAnalytics({
+      summary,
+      startedAt: runStartedAt,
+      handoff,
+      reducedEvidencePack,
+    });
     await writeJson(path.join(outputFolder, "run-summary.json"), summary);
 
     console.log(

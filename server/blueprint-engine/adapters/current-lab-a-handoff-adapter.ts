@@ -22,6 +22,17 @@ import type {
   SectionPacketHandoffRecord,
   SourceHandoffRecord,
 } from "@/server/blueprint-engine/contracts";
+import {
+  citationCategoryToContractEligibility,
+  classifyEvidenceCitation,
+  summarizeCitationSemantics,
+  type CitationSemanticsInput,
+} from "@/server/blueprint-engine/quality/citation-semantics";
+import {
+  classifySourceHealth,
+  summarizeSourceHealth,
+  type SourceHealthClassification,
+} from "@/server/blueprint-engine/quality/source-health";
 
 const DEFAULT_LAB_A_ARTIFACT_PATH = path.join(
   process.cwd(),
@@ -85,6 +96,16 @@ function asNullableString(value: unknown): string | null {
 
 function asStringArray(value: unknown): string[] {
   return asArray(value).filter((item): item is string => typeof item === "string");
+}
+
+function uniqueStrings(values: Array<string | null | undefined>): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value?.trim())
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
 }
 
 function asNullableInteger(value: unknown): number | null {
@@ -192,6 +213,7 @@ function normalizeUnitType(value: unknown): EvidenceUnitType {
   }
 
   if (candidate === "asset_reference") return "image";
+  if (candidate === "metadata_context" || candidate === "intake_context") return "context_only";
   return "context_only";
 }
 
@@ -315,13 +337,163 @@ function sourceTitleById(artifact: CurrentLabAConsolidatedEvidenceArtifact): Map
   return titles;
 }
 
+function sourceWarningsFor(
+  sourceId: string,
+  title: string,
+  artifact: CurrentLabAConsolidatedEvidenceArtifact,
+) {
+  const qualityGate = asRecord(artifact.quality_gate);
+  const allWarnings = [
+    ...asStringArray(artifact.warnings),
+    ...asStringArray(qualityGate.traceability_warnings),
+    ...asStringArray(qualityGate.unsupported_claims),
+  ];
+  const titleTokens = title
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((token) => token.length > 7)
+    .slice(0, 6);
+
+  return allWarnings.filter((warning) => {
+    const lower = warning.toLowerCase();
+    return lower.includes(sourceId.toLowerCase()) || titleTokens.some((token) => lower.includes(token));
+  });
+}
+
+function parseSourcePriorityReason(reason: string, key: string) {
+  const match = new RegExp(`${key}=([^;]+)`, "i").exec(reason);
+  return match?.[1]?.trim() ?? null;
+}
+
+function sourceHealthClassificationsForArtifact(
+  artifact: CurrentLabAConsolidatedEvidenceArtifact,
+) {
+  const titleById = sourceTitleById(artifact);
+  const classifications = new Map<string, SourceHealthClassification>();
+  const units = asArray(artifact.evidence_units).map(asRecord);
+
+  for (const entry of asArray(artifact.source_priorities).map(asRecord)) {
+    const sourceId = asString(entry.source_id, stableId("source", entry));
+    const title = asString(entry.title, titleById.get(sourceId) ?? sourceId);
+    const reason = asString(entry.reason);
+    const sourceUnits = units.filter((unit) => asString(unit.source_id) === sourceId);
+    const chunkCount = sourceUnits.filter((unit) => {
+      const evidenceId = asString(unit.evidence_id);
+      return (
+        evidenceId.includes("chunk") ||
+        (unit.char_start !== null && unit.char_start !== undefined) ||
+        (unit.quote_hash !== null && unit.quote_hash !== undefined)
+      );
+    }).length;
+    const directEvidenceUnitCount = sourceUnits.filter(
+      (unit) =>
+        unit.citation_eligibility === "direct_quote" ||
+        normalizeUnitType(unit.unit_type) === "original_excerpt",
+    ).length;
+
+    classifications.set(
+      sourceId,
+      classifySourceHealth({
+        source_id: sourceId,
+        title,
+        source_priority_reason: reason,
+        source_input_mode: asNullableString(entry.input_mode ?? entry.inputMode) ??
+          parseSourcePriorityReason(reason, "input"),
+        topic_relevance: asNullableString(entry.topic_relevance ?? entry.topicRelevance) ??
+          parseSourcePriorityReason(reason, "relevancia"),
+        proposal_usefulness:
+          asNullableString(entry.proposal_usefulness ?? entry.proposalUsefulness) ??
+          parseSourcePriorityReason(reason, "utilidad"),
+        chunk_count: chunkCount,
+        text_char_count: chunkCount > 0 ? 1 : null,
+        direct_evidence_unit_count: directEvidenceUnitCount,
+        asset_count: sourceUnits.filter((unit) => asString(unit.asset_key)).length,
+        warnings: sourceWarningsFor(sourceId, title, artifact),
+        risk_flags: asStringArray(entry.risk_flags ?? entry.riskFlags),
+        quality_flags: asStringArray(entry.quality_flags ?? entry.qualityFlags),
+      }),
+    );
+  }
+
+  return classifications;
+}
+
+function sourceHealthSummaryForArtifact(artifact: CurrentLabAConsolidatedEvidenceArtifact) {
+  const classifications = Array.from(sourceHealthClassificationsForArtifact(artifact).values());
+  const evidenceUnits = asArray(artifact.evidence_units).map((entry) => {
+    const unit = asRecord(entry);
+
+    return {
+      source_id: asString(unit.source_id),
+      citation_eligibility: asString(unit.citation_eligibility),
+      claim_scope:
+        normalizeUnitType(unit.unit_type) === "original_excerpt" ? "source_fact" : "do_not_claim",
+    };
+  });
+
+  return summarizeSourceHealth(classifications, evidenceUnits);
+}
+
+function citationSourceInputModeById(artifact: CurrentLabAConsolidatedEvidenceArtifact): Map<string, string> {
+  const modes = new Map<string, string>();
+
+  for (const entry of asArray(artifact.source_priorities).map(asRecord)) {
+    const sourceId = asString(entry.source_id);
+    const reason = asString(entry.reason).toLowerCase();
+    const explicitMode = asString(entry.input_mode ?? entry.inputMode);
+    const mode = explicitMode || /input=([a-z_]+)/.exec(reason)?.[1] || "";
+    if (sourceId && mode) {
+      modes.set(sourceId, mode);
+    }
+  }
+
+  return modes;
+}
+
+function citationInputFromArtifactUnit(
+  unit: Record<string, unknown>,
+  sourceInputModes: Map<string, string>,
+): CitationSemanticsInput {
+  const sourceId = asString(unit.source_id, "unknown-source");
+
+  return {
+    evidence_id: asNullableString(unit.evidence_id),
+    snippet_id: asNullableString(unit.snippet_id),
+    source_id: sourceId,
+    unit_type: asString(unit.unit_type ?? unit.type, "context_only"),
+    extraction_kind: asNullableString(unit.extraction_kind),
+    label: asNullableString(unit.label),
+    original_text: asNullableString(unit.original_text ?? unit.text),
+    source_chunk_id: asNullableString(unit.source_chunk_id),
+    source_input_mode:
+      sourceInputModes.get(sourceId) ??
+      asNullableString(unit.source_input_mode ?? unit.input_mode ?? unit.inputMode),
+    source_access_status: asNullableString(unit.source_access_status ?? unit.access_status),
+    citation_eligibility: asNullableString(unit.citation_eligibility),
+    page_start: asNullableInteger(unit.page_start ?? unit.page),
+    char_start: asNullableInteger(unit.char_start),
+    quote_hash: asNullableString(unit.quote_hash),
+  };
+}
+
+function citationSemanticsSummaryForArtifact(artifact: CurrentLabAConsolidatedEvidenceArtifact) {
+  const sourceInputModes = citationSourceInputModeById(artifact);
+  const units = asArray(artifact.evidence_units).map((entry) =>
+    citationInputFromArtifactUnit(asRecord(entry), sourceInputModes),
+  );
+
+  return summarizeCitationSemantics(units);
+}
+
 function adaptSources(artifact: CurrentLabAConsolidatedEvidenceArtifact): SourceHandoffRecord[] {
   const titleById = sourceTitleById(artifact);
+  const sourceHealthById = sourceHealthClassificationsForArtifact(artifact);
 
   return asArray(artifact.source_priorities).map((entry, index) => {
     const source = asRecord(entry);
     const sourceId = asString(source.source_id, stableId("source", source));
     const title = asString(source.title, titleById.get(sourceId) ?? sourceId);
+    const sourceHealth = sourceHealthById.get(sourceId);
 
     return {
       source_id: sourceId,
@@ -345,7 +517,10 @@ function adaptSources(artifact: CurrentLabAConsolidatedEvidenceArtifact): Source
         apa7: asNullableString(source.apa7),
         bibtex: asNullableString(source.bibtex),
         ris: asNullableString(source.ris),
-        raw: toJsonValue(source),
+        raw: toJsonValue({
+          ...source,
+          source_health_classification: sourceHealth,
+        }),
       },
       materialization_refs: {
         extracted_text_refs: [],
@@ -360,9 +535,17 @@ function adaptSources(artifact: CurrentLabAConsolidatedEvidenceArtifact): Source
 function adaptEvidenceUnits(
   artifact: CurrentLabAConsolidatedEvidenceArtifact,
 ): EvidenceUnitHandoffRecord[] {
+  const sourceInputModes = citationSourceInputModeById(artifact);
+
   return asArray(artifact.evidence_units).map((entry, index) => {
     const unit = asRecord(entry);
-    const unitType = normalizeUnitType(unit.unit_type ?? unit.type);
+    const citationInput = citationInputFromArtifactUnit(unit, sourceInputModes);
+    const citationCategory = classifyEvidenceCitation(citationInput);
+    const unitType = normalizeUnitType(
+      citationCategory === "metadata_context" || citationCategory === "intake_context"
+        ? "context_only"
+        : unit.unit_type ?? unit.type,
+    );
     const assetPath = asNullableString(unit.asset_path);
 
     return {
@@ -387,7 +570,9 @@ function adaptEvidenceUnits(
         : null,
       caption: asNullableString(unit.caption),
       original_language: asNullableString(unit.original_language),
-      citation_eligibility: normalizeCitationEligibility(unit.citation_eligibility),
+      citation_eligibility: normalizeCitationEligibility(
+        citationCategoryToContractEligibility(citationCategory),
+      ),
       confidence: asNumber(unit.confidence, 0),
       relevance_score: asNumber(unit.relevance_score, 0),
       claim_scope: claimScopeFor(unitType),
@@ -571,7 +756,13 @@ export function adaptCurrentLabAArtifactToEvidenceHandoffV1(
   const artifactPath = options.sourceArtifactPath ?? options.artifactPath ?? DEFAULT_LAB_A_ARTIFACT_PATH;
   const projectContext = adaptProjectContext(artifact);
   const qualityGate = asRecord(artifact.quality_gate);
-  const warnings = collectWarnings(artifact);
+  const sourceHealthSummary = sourceHealthSummaryForArtifact(artifact);
+  const citationSemanticsSummary = citationSemanticsSummaryForArtifact(artifact);
+  const warnings = uniqueStrings([
+    ...collectWarnings(artifact),
+    ...citationSemanticsSummary.citation_semantics_warnings,
+    ...sourceHealthSummary.source_health_warnings,
+  ]);
   const sourceArtifacts = sourceArtifactRefs({
     artifactPath,
     rawJson: options.rawJson,
@@ -612,7 +803,16 @@ export function adaptCurrentLabAArtifactToEvidenceHandoffV1(
       asArray(artifact.weak_section_completion_packets),
       artifact,
     ),
-    source_priorities: asArray(artifact.source_priorities).map(toJsonValue),
+    source_priorities: asArray(artifact.source_priorities).map((entry) => {
+      const record = asRecord(entry);
+      const sourceId = asString(record.source_id, stableId("source", record));
+      return toJsonValue({
+        ...record,
+        source_health_classification: sourceHealthSummary.sources.find(
+          (source) => source.source_id === sourceId,
+        ),
+      });
+    }),
     asset_registry: adaptAssets(artifact),
     asset_usage_plan: asArray(artifact.asset_usage_plan).map(toJsonValue),
     materialized_content_refs: asStringArray(manifest.read_only_input_paths).map((uri, index) =>
@@ -631,7 +831,21 @@ export function adaptCurrentLabAArtifactToEvidenceHandoffV1(
       evidence_gaps: asStringArray(artifact.evidence_gaps),
       followup_requirements: toJsonValue(artifact.followup_requirements),
       gap_resolution_plan: toJsonValue(artifact.gap_resolution_plan),
-      context_preservation_contract: toJsonValue(artifact.context_preservation_contract),
+      context_preservation_contract: toJsonValue({
+        ...asRecord(artifact.context_preservation_contract),
+        reported_direct_quote_count: citationSemanticsSummary.reported_direct_quote_count,
+        true_source_backed_direct_quote_count:
+          citationSemanticsSummary.true_source_backed_direct_quote_count,
+        metadata_context_count: citationSemanticsSummary.metadata_context_count,
+        intake_context_count: citationSemanticsSummary.intake_context_count,
+        citation_semantics_warnings: citationSemanticsSummary.citation_semantics_warnings,
+        source_health_summary: sourceHealthSummary,
+        usable_full_text_source_count: sourceHealthSummary.usable_full_text_source_count,
+        metadata_only_source_count: sourceHealthSummary.metadata_only_source_count,
+        unresolved_source_count: sourceHealthSummary.unresolved_source_count,
+        adjacent_source_count: sourceHealthSummary.adjacent_source_count,
+        source_health_warnings: sourceHealthSummary.source_health_warnings,
+      }),
     },
     assumptions: asStringArray(qualityGate.handoff_notes).map((statement, index) => ({
       assumption_id: `current-lab-a-handoff-note-${index + 1}`,

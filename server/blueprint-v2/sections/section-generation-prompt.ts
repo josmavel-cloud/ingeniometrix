@@ -552,6 +552,8 @@ function buildCompactRuntimeBasePrompt(input: {
     "- no escribas titulos de papers, reference_id, source_id, evidence_id ni snippet_id dentro del contenido",
     "- no insertes citas visibles; el sistema guardara citation_intents para el DOCX",
     "- no uses Markdown visible: sin encabezados ##, sin **negritas**, sin cursivas con asteriscos",
+    "- evita repetir el titulo de la seccion en la primera frase",
+    "- evita aperturas genericas como 'La presente seccion', 'Este apartado' o 'El planteamiento del problema es'",
     "",
     "Caso actual:",
     `- linea de investigacion: ${sanitizeRecoveredText(input.project.intake.researchLine ?? "NO_DISPONIBLE")}`,
@@ -566,6 +568,7 @@ function buildCompactRuntimeBasePrompt(input: {
     `- content_kind: ${input.planItem.content_kind}`,
     `- min_words: ${input.planItem.min_words ?? "NO_ESPECIFICADO"}`,
     `- max_words: ${input.planItem.max_words ?? "NO_ESPECIFICADO"}`,
+    `- target_word_budget: ${input.planItem.target_word_budget ?? "NO_ESPECIFICADO"}`,
     input.planItem.instructions.length > 0
       ? `- instrucciones: ${input.planItem.instructions
           .slice(0, 4)
@@ -575,6 +578,36 @@ function buildCompactRuntimeBasePrompt(input: {
   ]
     .filter((line): line is string => Boolean(line))
     .join("\n");
+}
+
+function buildEditorialPolicyLines(input: {
+  planItem: ExtendedPlanItem;
+  promptPlan: EnrichedPromptPlan;
+}) {
+  const finalGuidance = input.promptPlan.final_sections_guidance;
+  const lines = [
+    finalGuidance?.section_opening_rule
+      ? `- apertura: ${sanitizeRecoveredText(finalGuidance.section_opening_rule)}`
+      : null,
+    finalGuidance?.objective_repetition_rule
+      ? `- objetivos: ${sanitizeRecoveredText(finalGuidance.objective_repetition_rule)}`
+      : null,
+    input.planItem.target_word_budget
+      ? `- presupuesto objetivo: ${input.planItem.target_word_budget} palabras`
+      : finalGuidance?.length_budget_rule
+        ? `- presupuesto general: ${sanitizeRecoveredText(finalGuidance.length_budget_rule)}`
+        : null,
+    input.planItem.bullet_policy
+      ? `- vinetas: ${sanitizeRecoveredText(input.planItem.bullet_policy)}`
+      : finalGuidance?.bullet_policy
+        ? `- vinetas: ${sanitizeRecoveredText(finalGuidance.bullet_policy)}`
+        : null,
+    ...(input.planItem.editorial_constraints ?? []).slice(0, 5).map(
+      (constraint) => `- ${sanitizeRecoveredText(constraint)}`,
+    ),
+  ];
+
+  return Array.from(new Set(lines.filter((line): line is string => Boolean(line)))).join("\n");
 }
 
 function buildResearchLogicContractLines(input: {
@@ -735,10 +768,17 @@ export function buildGenerationPrompt(input: {
             ? finalGuidance.abstract_rule
             : null,
           input.planItem.section_key === "keywords"
-            ? finalGuidance.keywords_rule
+            ? finalGuidance.keywords_instruction ?? finalGuidance.keywords_rule
             : null,
           input.planItem.section_key === "references"
             ? finalGuidance.references_rule
+            : null,
+          input.planItem.section_key === "title_refined"
+            ? finalGuidance.final_title_instruction ??
+              finalGuidance.title_refinement_rule
+            : null,
+          input.planItem.section_key === "title_refined"
+            ? finalGuidance.short_header_title_instruction
             : null,
         ]
           .filter((line): line is string => Boolean(line))
@@ -747,6 +787,10 @@ export function buildGenerationPrompt(input: {
       : "";
   const researchLogicContractLines = buildResearchLogicContractLines({
     sectionKey: input.planItem.section_key,
+    promptPlan: input.promptPlan,
+  });
+  const editorialPolicyLines = buildEditorialPolicyLines({
+    planItem: input.planItem,
     promptPlan: input.promptPlan,
   });
 
@@ -822,6 +866,9 @@ export function buildGenerationPrompt(input: {
           theoreticalSection ? "" : null,
           "Reglas de cierre si aplica:",
           finalSectionLines || "NO_APLICA",
+          "",
+          "Politica editorial Batch 2A:",
+          editorialPolicyLines || "NO_DISPONIBLE",
           workingReferenceLines ? "" : null,
           workingReferenceLines
             ? "Referencias ya usadas en el documento hasta ahora:"
@@ -836,6 +883,7 @@ export function buildGenerationPrompt(input: {
           "- no uses Markdown visible: sin ##, sin **, sin cursivas con asteriscos",
           "- no conviertas el proyecto en validacion definitiva, cumplimiento normativo cerrado o factibilidad total demostrada",
           "- si la evidencia no alcanza, declara el limite o deja la formulacion como propuesta preliminar",
+          "- no repitas objetivos, preguntas ni encabezados; usa vinetas solo donde mejoren la lectura",
           "- devuelve solo el contenido final de la seccion",
         ]
           .filter((line): line is string => Boolean(line))

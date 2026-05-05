@@ -2,6 +2,20 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ResearchBlueprintRecord } from "@/server/blueprint/blueprint-types";
+import {
+  buildEnforcedAcademicMetadata,
+} from "@/server/blueprint-v2/editorial/academic-editorial-policy";
+import {
+  capitalizeKeywordLine,
+  sentenceStyleCapitalizePublicText,
+} from "@/server/blueprint-v2/editorial/capitalization-hygiene";
+import { buildHeroInfographicPlan } from "@/server/blueprint-v2/editorial/hero-infographic-policy";
+import {
+  buildPublicAppendixPlan,
+  buildResearchBudgetPlan,
+  buildResearchScheduleGanttRows,
+  type ScheduleGanttRow,
+} from "@/server/blueprint-v2/editorial/project-management-policy";
 import type {
   AcademicBrandingAsset,
   AcademicDocument,
@@ -39,6 +53,12 @@ type RenderSectionInput = {
   level: number;
   content: string;
   source_ids: string[];
+  evidence_ids: string[];
+  original_excerpt_ids: string[];
+  asset_keys: string[];
+  evidence_support_summary?: MasterSectionDraft["evidence_support_summary"];
+  section_evidence_binding?: MasterSectionDraft["section_evidence_binding"];
+  unsupported_or_cautious_claim_warnings: string[];
   warnings: string[];
 };
 
@@ -640,76 +660,185 @@ function phaseFromScheduleText(value: string): ScheduleVisualTask["phase"] {
   return "planificacion";
 }
 
-function buildScheduleVisualPlan(sections: AcademicSection[]): ScheduleVisualPlan | null {
+function dependencyForScheduleTask(index: number) {
+  if (index <= 0) {
+    return "Aprobacion del plan de trabajo";
+  }
+
+  return `Actividad ${index}`;
+}
+
+function deliverableForScheduleTask(value: string) {
+  const normalized = normalizeForSimilarity(value);
+  if (/problema|pregunta|objetivo|delimitacion/.test(normalized)) {
+    return "Problema, preguntas y objetivos ajustados";
+  }
+  if (/revision|antecedente|teor/.test(normalized)) {
+    return "Matriz de antecedentes y marco teorico";
+  }
+  if (/metodolog|instrument|muestra|variable|categoria/.test(normalized)) {
+    return "Diseno metodologico e instrumentos preliminares";
+  }
+  if (/matriz|consistencia|analisis/.test(normalized)) {
+    return "Matriz de consistencia revisada";
+  }
+  if (/presupuesto|cronograma|gestion/.test(normalized)) {
+    return "Plan de gestion del proyecto";
+  }
+  if (/cierre|final|exportacion|referencia/.test(normalized)) {
+    return "Documento final revisado";
+  }
+
+  return "Avance verificable del proyecto";
+}
+
+const FALLBACK_SCHEDULE_TASKS: ScheduleVisualTask[] = [
+  {
+    task: "Delimitacion del problema, preguntas y objetivos",
+    start_month: 1,
+    end_month: 1,
+    phase: "planificacion",
+    dependency: "Aprobacion del plan de trabajo",
+    deliverable: "Problema, preguntas y objetivos ajustados",
+  },
+  {
+    task: "Revision teorica y organizacion de antecedentes",
+    start_month: 2,
+    end_month: 2,
+    phase: "redaccion",
+    dependency: "Actividad 1",
+    deliverable: "Matriz de antecedentes y marco teorico",
+  },
+  {
+    task: "Ajuste metodologico e instrumentos de analisis",
+    start_month: 3,
+    end_month: 3,
+    phase: "metodologia",
+    dependency: "Actividad 2",
+    deliverable: "Diseno metodologico e instrumentos preliminares",
+  },
+  {
+    task: "Integracion del borrador y matriz de consistencia",
+    start_month: 4,
+    end_month: 4,
+    phase: "redaccion",
+    dependency: "Actividad 3",
+    deliverable: "Matriz de consistencia revisada",
+  },
+  {
+    task: "Revision academica y normalizacion de referencias",
+    start_month: 5,
+    end_month: 5,
+    phase: "revision",
+    dependency: "Actividad 4",
+    deliverable: "Borrador academico revisado",
+  },
+  {
+    task: "Cierre, control de trazabilidad y exportacion final",
+    start_month: 6,
+    end_month: 6,
+    phase: "cierre",
+    dependency: "Actividad 5",
+    deliverable: "Documento final y anexos academicos",
+  },
+];
+
+function scheduleTaskFromText(value: string, index: number): ScheduleVisualTask | null {
+  const month = monthFromScheduleText(value);
+  if (!month) {
+    return null;
+  }
+
+  const task = cleanAcademicText(value.replace(/^\s*Mes\s+\d+\s*:\s*/i, ""));
+
+  return {
+    task,
+    start_month: month,
+    end_month: month,
+    phase: phaseFromScheduleText(value),
+    dependency: dependencyForScheduleTask(index),
+    deliverable: deliverableForScheduleTask(task),
+  };
+}
+
+function scheduleTaskFromGanttRow(row: ScheduleGanttRow): ScheduleVisualTask {
+  return {
+    task: row.task,
+    start_month: row.start_month,
+    end_month: row.end_month,
+    phase: row.phase,
+    dependency: row.dependencies,
+    deliverable: row.deliverable,
+    duration: row.duration,
+    assumption: row.assumption,
+  };
+}
+
+function scheduleTasksFromTableRows(rows: string[][]): ScheduleVisualTask[] {
+  const header = rows[0]?.map((cell) => normalizeForSimilarity(cell)) ?? [];
+  const monthColumns = header
+    .map((label, index) => ({ index, month: Number(label.match(/\bm(?:es)?\s*(\d+)\b/)?.[1] ?? NaN) }))
+    .filter((item) => Number.isFinite(item.month) && item.month >= 1);
+
+  return rows.slice(1).flatMap((row, rowIndex) => {
+    const task = cleanAcademicText(row[0] ?? "");
+    if (!task) {
+      return [];
+    }
+
+    const activeMonths = monthColumns
+      .filter(({ index }) => /x|si|yes|1|●|✓|✔/i.test(row[index] ?? ""))
+      .map(({ month }) => month);
+    const fallbackMonth = rowIndex + 1;
+    const startMonth = activeMonths.length > 0 ? Math.min(...activeMonths) : fallbackMonth;
+    const endMonth = activeMonths.length > 0 ? Math.max(...activeMonths) : fallbackMonth;
+
+    return [
+      {
+        task,
+        start_month: Math.max(1, Math.min(12, startMonth)),
+        end_month: Math.max(1, Math.min(12, endMonth)),
+        phase: phaseFromScheduleText(task),
+        dependency: dependencyForScheduleTask(rowIndex),
+        deliverable: deliverableForScheduleTask(task),
+      },
+    ];
+  });
+}
+
+function buildScheduleVisualPlan(input: {
+  project: MasterBlueprintEngineProject;
+  sections: AcademicSection[];
+  scheduleGanttRows: ScheduleGanttRow[];
+}): ScheduleVisualPlan | null {
+  const sections = input.sections;
   const schedule = sections.find((section) => section.section_key === "schedule");
 
   const tasks = schedule
     ? schedule.blocks
-        .filter((block): block is Extract<AcademicSectionBlock, { block_type: "bullet" | "paragraph" }> =>
-          block.block_type === "bullet" || block.block_type === "paragraph",
-        )
-        .map((block) => {
-          const month = monthFromScheduleText(block.text);
-          if (!month) {
-            return null;
+        .flatMap((block, index) => {
+          if (block.block_type === "table") {
+            return scheduleTasksFromTableRows(block.rows);
           }
 
-          return {
-            task: cleanAcademicText(block.text.replace(/^\s*Mes\s+\d+\s*:\s*/i, "")),
-            start_month: month,
-            end_month: month,
-            phase: phaseFromScheduleText(block.text),
-          } satisfies ScheduleVisualTask;
+          if (block.block_type === "bullet" || block.block_type === "paragraph") {
+            return scheduleTaskFromText(block.text, index);
+          }
+
+          return null;
         })
         .filter((task): task is ScheduleVisualTask => Boolean(task))
-    : ([
-        {
-          task: "Delimitacion del problema, preguntas y objetivos",
-          start_month: 1,
-          end_month: 1,
-          phase: "planificacion",
-        },
-        {
-          task: "Revision teorica y organizacion de antecedentes",
-          start_month: 2,
-          end_month: 2,
-          phase: "redaccion",
-        },
-        {
-          task: "Ajuste metodologico e instrumentos de analisis",
-          start_month: 3,
-          end_month: 3,
-          phase: "metodologia",
-        },
-        {
-          task: "Integracion del borrador y matriz de consistencia",
-          start_month: 4,
-          end_month: 4,
-          phase: "redaccion",
-        },
-        {
-          task: "Revision academica y normalizacion de referencias",
-          start_month: 5,
-          end_month: 5,
-          phase: "revision",
-        },
-        {
-          task: "Cierre, control de trazabilidad y exportacion final",
-          start_month: 6,
-          end_month: 6,
-          phase: "cierre",
-        },
-      ] satisfies ScheduleVisualTask[]);
+    : [];
 
-  if (tasks.length === 0) {
-    return null;
-  }
+  const policyTasks = input.scheduleGanttRows.map(scheduleTaskFromGanttRow);
+  const resolvedTasks = tasks.length > 0 ? tasks : policyTasks.length > 0 ? policyTasks : FALLBACK_SCHEDULE_TASKS;
 
   return {
     label: "Cronograma visual de investigacion",
-    caption: "Cronograma referencial de ejecucion del proyecto de investigacion.",
-    source_note: "Fuente: elaboracion propia a partir del plan de trabajo generado para el proyecto.",
-    tasks,
+    caption: "Cronograma referencial tipo Gantt para la ejecucion del proyecto de investigacion.",
+    source_note:
+      "Fuente: elaboracion propia a partir del plan de trabajo generado para el proyecto. Los meses son referenciales y deben ajustarse al calendario academico real.",
+    tasks: resolvedTasks,
   };
 }
 
@@ -721,62 +850,67 @@ function sectionTextForKey(sections: AcademicSection[], patterns: RegExp[]) {
   return section ? clipText(sectionText(section), 520) : "";
 }
 
-function buildHeroPrompt(input: {
-  title: string;
-  topic: string;
-  methodSummary: string;
-  variant: "master" | "university";
-}) {
-  const documentType =
-    input.variant === "master"
-      ? "documento master academico tipo paper/proyecto"
-      : "plan de tesis institucional";
-  const method = input.methodSummary || "metodologia academica propuesta pendiente de precision";
-
-  return [
-    "Crear una infografia academica vertical para portada de un proyecto de investigacion de maestria.",
-    `Tipo de documento: ${documentType}.`,
-    `Titulo o tema: ${input.title}.`,
-    `Contexto principal: ${input.topic || input.title}.`,
-    `Metodo propuesto a representar visualmente: ${method}.`,
-    "Composicion: hero image sobria, editorial, arquitectonica o conceptual segun el dominio del intake.",
-    "Representar problema, evidencia, metodo y propuesta como capas visuales conectadas.",
-    "Estilo: paper indexado, limpio, alto contraste, sin apariencia publicitaria.",
-    "No incluir texto, letras, numeros, logos, citas, nombres de fuentes, marcas de agua ni personas reconocibles.",
-    "No prometer resultados ejecutados; representar solo un plan/proyecto de investigacion.",
-  ].join(" ");
-}
-
 function buildCoverVisualPlan(input: {
   project: MasterBlueprintEngineProject;
   variant: "master" | "university";
   title: string;
+  shortHeaderTitle?: string | null;
+  keywordsLine?: string | null;
   sections: AcademicSection[];
 }): CoverVisualPlan {
-  const topic = cleanAcademicText(input.project.topicAreaLabel ?? input.title);
+  const runScope = input.project as {
+    evidence_handoff_id?: string | null;
+    evidence_run_id?: string | null;
+    immutable_snapshot_hash?: string | null;
+  };
+  const topic =
+    cleanAcademicText(input.project.intake?.topic) ||
+    cleanAcademicText(input.project.topicAreaLabel ?? input.title);
   const methodSummary =
-    sectionTextForKey(input.sections, [/method/i, /metodolog/i, /design/i, /diseno/i]) ||
-    cleanAcademicText(input.project.intake?.preferredMethodology) ||
-    "Metodo propuesto por precisar en la matriz de consistencia.";
-  const prompt = buildHeroPrompt({
-    title: input.title,
-    topic,
-    methodSummary,
+    "Flujo de investigacion, revision de evidencia, diseno metodologico, analisis comparativo/evaluacion basada en evidencia y criterios preliminares. No mostrar nombres de tecnicas especificas, matrices o modelos si la metodologia todavia requiere confirmacion.";
+  const countryContext =
+    (input.project as { country?: string | null }).country ??
+    (input.project.intake as { country?: string | null } | null)?.country ??
+    "PE";
+  const workflowSummary = "problema, revision de evidencia, diseno metodologico, analisis/evaluacion y entrega academica";
+  const sectionPlanSummary = input.sections
+    .slice(0, 8)
+    .map((section) => section.title)
+    .filter(Boolean)
+    .join("; ");
+  const sourceHealthSummary =
+    "usar tono prudente por limitaciones de evidencia sin mostrar conteos, quality gates ni diagnosticos internos";
+  const plan = buildHeroInfographicPlan({
+    finalTitle: input.title,
+    shortMethodTitle: input.shortHeaderTitle,
+    keywordsLine: input.keywordsLine,
+    knowledgeArea: input.project.topicAreaLabel,
+    countryContext,
+    topicOrObject: topic,
+    methodology: methodSummary,
+    workflowSummary,
+    sectionPlanSummary,
+    sourceHealthSummary,
+    handoffId: runScope.evidence_handoff_id,
+    evidenceRunId: runScope.evidence_run_id,
+    snapshotHash: runScope.immutable_snapshot_hash,
     variant: input.variant,
   });
 
   return {
-    title:
-      input.variant === "master"
-        ? "Mapa conceptual del proyecto"
-        : "Sintesis visual del proyecto institucional",
-    subtitle: topic || "Proyecto de investigacion aplicada",
-    concept:
-      "Infografia sobria con capas de problema, evidencia, metodologia y transferencia academica, evitando representar resultados no ejecutados.",
-    method_summary: methodSummary,
-    prompt,
-    negative_prompt:
-      "Sin texto embebido, sin logos, sin citas, sin nombres de fuentes, sin resultados fabricados, sin datos numericos no provistos.",
+    hero_visual_type: plan.hero_visual_type,
+    source_handoff_id: plan.source_handoff_id,
+    source_evidence_run_id: plan.source_evidence_run_id,
+    source_snapshot_hash: plan.source_snapshot_hash,
+    deterministic_template_asset: plan.deterministic_template_asset,
+    title: sentenceStyleCapitalizePublicText(plan.title, "title"),
+    subtitle: sentenceStyleCapitalizePublicText(plan.subtitle, "title"),
+    concept: sentenceStyleCapitalizePublicText(plan.concept, "sentence"),
+    method_summary: sentenceStyleCapitalizePublicText(plan.method_summary, "sentence"),
+    prompt: plan.prompt,
+    hero_prompt_summary: sentenceStyleCapitalizePublicText(plan.hero_prompt_summary, "sentence"),
+    hero_visual_caption: sentenceStyleCapitalizePublicText(plan.hero_visual_caption, "caption"),
+    negative_prompt: plan.negative_prompt,
     image_path: null,
     image_model: null,
     image_generation_status: "not_requested",
@@ -799,10 +933,68 @@ function buildAcademicDocxLayoutPlan(input: {
   variant: "master" | "university";
   project: MasterBlueprintEngineProject;
   title: string;
+  shortHeaderTitle?: string | null;
+  keywordsLine?: string | null;
   sections: AcademicSection[];
   assetPlacements: AssetPlacement[];
   sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
 }): AcademicDocxLayoutPlan {
+  const countryContext =
+    (input.project as { country?: string | null }).country ??
+    (input.project.intake as { country?: string | null } | null)?.country ??
+    "PE";
+  const methodology = cleanAcademicText(input.project.intake?.preferredMethodology);
+  const knowledgeArea = cleanAcademicText(input.project.topicAreaLabel);
+  const scheduleGanttRows = buildResearchScheduleGanttRows({
+    methodology,
+    knowledgeArea,
+    countryContext,
+  }).map((row) => ({
+    ...row,
+    task: sentenceStyleCapitalizePublicText(row.task, "label"),
+    dependencies: sentenceStyleCapitalizePublicText(row.dependencies, "label"),
+    deliverable: sentenceStyleCapitalizePublicText(row.deliverable, "label"),
+    assumption: row.assumption
+      ? sentenceStyleCapitalizePublicText(row.assumption, "sentence")
+      : row.assumption,
+  }));
+  const rawBudgetPlan = buildResearchBudgetPlan({
+    methodology,
+    knowledgeArea,
+    countryContext,
+  });
+  const budgetPlan = {
+    ...rawBudgetPlan,
+    rows: rawBudgetPlan.rows.map((row) => ({
+      ...row,
+      category: sentenceStyleCapitalizePublicText(row.category.replace(/_/g, " "), "label"),
+      item: sentenceStyleCapitalizePublicText(row.item, "label"),
+      unit: sentenceStyleCapitalizePublicText(row.unit, "label"),
+      assumption: sentenceStyleCapitalizePublicText(row.assumption, "sentence"),
+    })),
+    assumptions: rawBudgetPlan.assumptions.map((assumption) =>
+      sentenceStyleCapitalizePublicText(assumption, "sentence"),
+    ),
+  };
+  const rawAppendixPlan = buildPublicAppendixPlan({
+    hasMatrix: true,
+    hasScheduleBudget: true,
+    hasVariables: input.sections.some((section) =>
+      /variable|categoria|dimension/i.test(`${section.section_key} ${section.title}`),
+    ),
+    hasSourceSelection: true,
+    hasInstruments: input.sections.some((section) =>
+      /instrument|protocolo|tecnica/i.test(`${section.section_key} ${section.title}`),
+    ),
+  });
+  const appendixPlan = {
+    ...rawAppendixPlan,
+    public_items: rawAppendixPlan.public_items.map((item) => ({
+      ...item,
+      title: sentenceStyleCapitalizePublicText(item.title, "heading"),
+      purpose: sentenceStyleCapitalizePublicText(item.purpose, "sentence"),
+    })),
+  };
   const figures = buildFigureLayoutPlan({
     assetPlacements: input.assetPlacements,
     sections: input.sections,
@@ -831,11 +1023,22 @@ function buildAcademicDocxLayoutPlan(input: {
     source: "deterministic_preflight",
     figures,
     equations,
-    schedule_visual: buildScheduleVisualPlan(input.sections),
+    schedule_visual: buildScheduleVisualPlan({
+      project: input.project,
+      sections: input.sections,
+      scheduleGanttRows,
+    }),
+    schedule_gantt_rows: scheduleGanttRows,
+    budget_rows: budgetPlan.rows,
+    budget_total_range: budgetPlan.total_estimated_range,
+    appendix_public_items: appendixPlan.public_items,
+    appendix_internal_items: appendixPlan.internal_items_excluded,
     cover_visual: buildCoverVisualPlan({
       project: input.project,
       variant: input.variant,
       title: input.title,
+      shortHeaderTitle: input.shortHeaderTitle,
+      keywordsLine: input.keywordsLine,
       sections: input.sections,
     }),
     suppressed_asset_keys: uniqueItems(suppressedAssetKeys),
@@ -925,6 +1128,8 @@ function buildCitationAnchors(input: {
     section_key: input.section.section_key,
     paragraph_index: index,
     source_ids: [source.source_id],
+    evidence_ids: input.section.evidence_ids.slice(index, index + 1),
+    original_excerpt_ids: input.section.original_excerpt_ids.slice(index, index + 1),
     rendered_citation: formatCitationLabel(source),
     reason: "Cita conservadora compilada desde fuentes soportadas por la seccion.",
   }));
@@ -991,9 +1196,18 @@ function compileSection(input: {
 
   return {
     section_key: input.section.section_key,
-    title: input.section.title,
+    title: sentenceStyleCapitalizePublicText(input.section.title, "heading"),
     level: input.section.level,
     source_ids: uniqueItems(input.section.source_ids),
+    evidence_ids: uniqueItems(input.section.evidence_ids),
+    original_excerpt_ids: uniqueItems(input.section.original_excerpt_ids),
+    asset_keys: uniqueItems(input.section.asset_keys),
+    evidence_support_summary: input.section.evidence_support_summary,
+    support_tier: input.section.section_evidence_binding?.support_tier,
+    section_evidence_binding_score:
+      input.section.section_evidence_binding?.section_evidence_binding_score,
+    unsupported_or_cautious_claim_warnings:
+      input.section.unsupported_or_cautious_claim_warnings,
     citation_anchors: citationAnchors,
     blocks: buildSectionBlocks({
       content: input.section.content,
@@ -1025,6 +1239,18 @@ function mergeDraftsForSection(input: {
         ...draft.supported_pdf_source_ids,
         ...draft.supported_web_source_ids,
       ]),
+    ),
+    evidence_ids: uniqueItems(drafts.flatMap((draft) => draft.used_evidence_ids ?? [])),
+    original_excerpt_ids: uniqueItems(
+      drafts.flatMap((draft) => draft.used_original_excerpt_ids ?? []),
+    ),
+    asset_keys: uniqueItems(drafts.flatMap((draft) => draft.used_asset_keys ?? [])),
+    evidence_support_summary:
+      drafts.find((draft) => draft.evidence_support_summary)?.evidence_support_summary,
+    section_evidence_binding:
+      drafts.find((draft) => draft.section_evidence_binding)?.section_evidence_binding,
+    unsupported_or_cautious_claim_warnings: uniqueItems(
+      drafts.flatMap((draft) => draft.unsupported_or_cautious_claim_warnings ?? []),
     ),
     warnings: uniqueItems(drafts.flatMap((draft) => draft.warnings ?? [])),
   };
@@ -1069,6 +1295,18 @@ function buildMasterSectionInputs(input: {
           ...(draft?.supported_pdf_source_ids ?? []),
           ...(draft?.supported_web_source_ids ?? []),
         ],
+      evidence_ids: merged?.evidence_ids ?? draft?.used_evidence_ids ?? [],
+      original_excerpt_ids:
+        merged?.original_excerpt_ids ?? draft?.used_original_excerpt_ids ?? [],
+      asset_keys: merged?.asset_keys ?? draft?.used_asset_keys ?? [],
+      evidence_support_summary:
+        merged?.evidence_support_summary ?? draft?.evidence_support_summary,
+      section_evidence_binding:
+        merged?.section_evidence_binding ?? draft?.section_evidence_binding,
+      unsupported_or_cautious_claim_warnings:
+        merged?.unsupported_or_cautious_claim_warnings ??
+        draft?.unsupported_or_cautious_claim_warnings ??
+        [],
       warnings: merged?.warnings ?? draft?.warnings ?? [],
     });
   }
@@ -1085,6 +1323,12 @@ function buildUniversitySectionInputs(
     content: section.content,
     level: section.level ?? (section.section_key.includes("_") ? 2 : 1),
     source_ids: section.source_ids ?? [],
+    evidence_ids: section.evidence_snippet_ids ?? [],
+    original_excerpt_ids: [],
+    asset_keys: section.used_asset_keys ?? [],
+    evidence_support_summary: undefined,
+    section_evidence_binding: undefined,
+    unsupported_or_cautious_claim_warnings: section.warnings ?? [],
     warnings: section.warnings ?? [],
   }));
 }
@@ -1192,10 +1436,42 @@ function buildAcademicDocument(input: {
     variant: input.variant,
     universityBlueprint: input.universityBlueprint ?? null,
   });
+  const methodSummary =
+    cleanAcademicText(input.project.intake?.preferredMethodology) ||
+    sectionTextForKey(sections, [/method/i, /metodolog/i, /design/i, /diseno/i]) ||
+    null;
+  const scopeSummary =
+    cleanAcademicText(input.project.intake?.targetPopulation) ||
+    sectionTextForKey(sections, [/population/i, /poblacion/i, /sample/i, /muestra/i]) ||
+    null;
+  const enforcedMetadata = buildEnforcedAcademicMetadata({
+    current_title: input.legacyBlueprint.project_title,
+    method_or_technique: methodSummary,
+    object_of_study:
+      cleanAcademicText(input.project.intake?.topic) ||
+      input.legacyBlueprint.project_title,
+    scope_or_sample: scopeSummary,
+    problem_or_purpose: cleanAcademicText(input.project.intake?.problemContext),
+    country_context:
+      (input.project as { country?: string | null; countryContext?: string | null })
+        .country ??
+      (input.project as { country?: string | null; countryContext?: string | null })
+        .countryContext ??
+      "PE",
+    knowledge_area_label: input.project.topicAreaLabel,
+  });
+  const metadataTitle = sentenceStyleCapitalizePublicText(enforcedMetadata.final_title, "title");
+  const shortHeaderTitle = sentenceStyleCapitalizePublicText(
+    enforcedMetadata.short_method_title,
+    "title",
+  );
+  const keywordsLine = capitalizeKeywordLine(enforcedMetadata.keywords_line);
   const layoutPlan = buildAcademicDocxLayoutPlan({
     variant: input.variant,
     project: input.project,
-    title: input.legacyBlueprint.project_title,
+    title: metadataTitle,
+    shortHeaderTitle,
+    keywordsLine,
     sections,
     assetPlacements,
     sourceLookup,
@@ -1210,8 +1486,10 @@ function buildAcademicDocument(input: {
     citation_style: "APA7",
     report_archetype: reportArchetype,
     metadata: {
-      title: input.legacyBlueprint.project_title,
-      subtitle: input.subtitle,
+      title: metadataTitle,
+      short_header_title: shortHeaderTitle,
+      keywords_line: keywordsLine,
+      subtitle: sentenceStyleCapitalizePublicText(input.subtitle, "sentence"),
       university: input.project.university,
       program: input.project.program,
       generated_at: new Date().toISOString(),
@@ -1239,6 +1517,7 @@ function buildAcademicDocument(input: {
       ...assetPlacements.flatMap((placement) => placement.warnings),
       ...branding.flatMap((asset) => asset.warnings),
       ...editorialPlan.quality_warnings,
+      ...enforcedMetadata.warnings.map((warning) => `Editorial metadata: ${warning}`),
       ...layoutPlan.warnings,
     ]),
   };

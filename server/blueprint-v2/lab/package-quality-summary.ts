@@ -123,6 +123,27 @@ export function buildPackageQualitySummary(input: {
   const withSources = drafts.filter(
     (draft) => (draft.supported_source_ids?.length ?? 0) > 0,
   );
+  const onlyContextualSupport = drafts.filter(
+    (draft) => draft.section_evidence_binding?.support_tier === "context_only",
+  );
+  const adjacentSourceWarnings = drafts.filter((draft) =>
+    (draft.unsupported_or_cautious_claim_warnings ?? []).some((warning) =>
+      /adjacent|adyacente|background/i.test(warning),
+    ),
+  );
+  const averageBindingScore =
+    drafts.length === 0
+      ? 0
+      : round2(
+          (drafts.reduce(
+            (sum, draft) =>
+              sum +
+              (draft.section_evidence_binding?.section_evidence_binding_score ?? 0),
+            0,
+          ) /
+            drafts.length) *
+            100,
+        );
   const withAssetIntents = drafts.filter(
     (draft) =>
       (draft.used_asset_keys?.length ?? 0) > 0 &&
@@ -247,6 +268,9 @@ export function buildPackageQualitySummary(input: {
       sections_with_references: withReferences.length,
       sections_with_assets: assetUsingDrafts.length,
       sections_with_asset_placement_intents: withAssetIntents.length,
+      sections_with_only_contextual_support: onlyContextualSupport.length,
+      sections_with_adjacent_source_warnings: adjacentSourceWarnings.length,
+      section_evidence_binding_score_100: averageBindingScore,
     },
     worst_sections: diagnostics
       .filter(

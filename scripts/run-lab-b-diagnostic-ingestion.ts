@@ -14,6 +14,10 @@ import {
   type BlueprintEngineInputV1,
   type EvidenceEngineHandoffV1,
 } from "@/server/blueprint-engine/contracts";
+import {
+  evaluateBlueprintProductionSafety,
+  validateFreshRunIsolation,
+} from "@/server/blueprint-engine/quality/production-safety";
 
 const DEFAULT_CASE_ID = "case-001-seismic-isolators-peruvian-buildings";
 const DEFAULT_HANDOFF_PATH = path.join(
@@ -379,12 +383,22 @@ Project: ${summary.project_id}
 
 ## Verdict
 
+- schema_compatible: ${summary.schema_compatible}
+- diagnostic_compatible: ${summary.diagnostic_compatible}
+- production_eligible: ${summary.production_eligible}
+- diagnostic_only: ${summary.diagnostic_only}
+- production_valid: ${summary.production_valid}
+- degraded_handoff: ${summary.degraded_handoff}
 - usable_for_lab_b_diagnostic: ${summary.usable_for_lab_b_diagnostic}
 - usable_for_production: ${summary.usable_for_production}
 - should_run_full_generation: ${summary.should_run_full_generation}
 - should_render_docx: ${summary.should_render_docx}
 
 This run is suitable only for backend diagnostic ingestion. It must not be treated as production-quality input.
+
+## Production Ineligibility
+
+${Array.isArray(summary.production_ineligibility_reasons) && summary.production_ineligibility_reasons.length > 0 ? summary.production_ineligibility_reasons.map((reason) => `- ${reason}`).join("\n") : "- None."}
 
 ## Counts
 
@@ -435,6 +449,15 @@ function main() {
       status: "blocked",
       case_id: args.caseId,
       handoff_path: args.handoffPath,
+      schema_compatible: false,
+      diagnostic_compatible: false,
+      production_eligible: false,
+      diagnostic_only: true,
+      production_valid: false,
+      degraded_handoff: true,
+      production_ineligibility_reasons: [
+        "EvidenceEngineHandoffV1 validation failed.",
+      ],
       usable_for_lab_b_diagnostic: false,
       usable_for_production: false,
       can_proceed_to_step_7_preview: false,
@@ -547,11 +570,47 @@ function main() {
     ...degradedWarnings.blockers,
     ...compatibility.blockers,
   ]);
+  const productionSafety = inputValidation.success
+    ? evaluateBlueprintProductionSafety(blueprintInput, {
+        structural_blockers: compatibility.blockers,
+        structural_warnings: compatibility.warnings,
+        signals: {
+          diagnostic_only: true,
+          production_valid: false,
+          degraded_handoff: true,
+          allow_blocked_upstream: degradedWarnings.signals.allow_blocked,
+          upstream_step_3_decision: degradedWarnings.signals.step_3_decision,
+          materialized_source_count: null,
+          metadata_or_abstract_only_source_count:
+            degradedWarnings.signals.metadata_or_abstract_only_source_count,
+          unresolved_source_count: degradedWarnings.signals.unresolved_source_count,
+        },
+      })
+    : null;
+  const freshRunIsolation = inputValidation.success
+    ? validateFreshRunIsolation({
+        handoff,
+        production_mode: false,
+        artifact_refs: handoff.traceability.source_artifacts,
+      })
+    : null;
   const summary = {
     status: blockers.length > 0 ? "blocked" : "completed",
     case_id: args.caseId,
     handoff_id: handoff.handoff_id,
     project_id: handoff.project_id,
+    schema_compatible: productionSafety?.schema_compatible ?? false,
+    diagnostic_compatible: productionSafety?.diagnostic_compatible ?? false,
+    production_eligible: productionSafety?.production_eligible ?? false,
+    diagnostic_only: true,
+    production_valid: false,
+    degraded_handoff: true,
+    production_ineligibility_reasons:
+      productionSafety?.production_ineligibility_reasons ?? [
+        "BlueprintEngineInputV1 validation failed.",
+      ],
+    fresh_run_isolation_passed: freshRunIsolation?.passed ?? false,
+    fresh_run_isolation_warnings: freshRunIsolation?.warnings ?? [],
     source_count: handoff.source_registry.length,
     evidence_unit_count: handoff.evidence_units.length,
     section_packet_count: handoff.section_packets.length,
@@ -586,6 +645,8 @@ function main() {
   writeJsonFile(path.join(outputFolder, "lab-b-compatibility-report.json"), compatibility);
   writeJsonFile(path.join(outputFolder, "lab-b-import-preview.json"), labBImportPreview);
   writeJsonFile(path.join(outputFolder, "degraded-input-warnings.json"), degradedWarnings);
+  writeJsonFile(path.join(outputFolder, "production-safety-report.json"), productionSafety);
+  writeJsonFile(path.join(outputFolder, "fresh-run-isolation-report.json"), freshRunIsolation);
   writeJsonFile(path.join(outputFolder, "diagnostic-ingestion-summary.json"), summary);
   writeTextFile(
     path.join(outputFolder, "LAB_B_DIAGNOSTIC_INGESTION_REPORT.md"),

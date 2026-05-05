@@ -1,5 +1,6 @@
 import type { LlmProvider, TextGenerationResult } from "@/llm/provider";
 import { cleanAcademicText } from "@/server/blueprint-v2/lab/academic-document-compiler";
+import { sentenceStyleCapitalizePublicText } from "@/server/blueprint-v2/editorial/capitalization-hygiene";
 import type {
   AcademicDocument,
   AcademicLlmLayoutPass,
@@ -98,7 +99,7 @@ Eres editor academico de Ingeniometrix especializado en armado de informes DOCX.
 
 Objetivo:
 - Refinar captions y referencias internas de assets para que el documento se parezca a un paper/proyecto academico serio.
-- Proponer un concepto visual sobrio para la portada, sin prometer resultados no ejecutados.
+- Proponer un concepto visual de portada como infografia metodologica academica, no como cover decorativo, sin prometer resultados no ejecutados.
 
 Devuelve exclusivamente JSON valido:
 {
@@ -119,9 +120,9 @@ Devuelve exclusivamente JSON valido:
     }
   ],
   "cover_visual": {
-    "title": "Titulo breve",
-    "subtitle": "Subtitulo breve",
-    "concept": "Concepto visual para infografia sobria"
+    "title": "Titulo breve de infografia metodologica",
+    "subtitle": "Subtitulo con metodo, objeto o contexto",
+    "concept": "Concepto visual con objeto de estudio, flujo metodologico, contexto y componentes analiticos"
   },
   "warnings": []
 }
@@ -294,9 +295,18 @@ export async function applyAcademicDocumentLayoutPass(input: {
       equations: input.document.layout_plan.equations,
       updates: response.equations ?? [],
     });
-    const coverTitle = cleanAcademicText(response.cover_visual?.title);
-    const coverSubtitle = cleanAcademicText(response.cover_visual?.subtitle);
-    const coverConcept = cleanAcademicText(response.cover_visual?.concept);
+    const coverTitle = sentenceStyleCapitalizePublicText(
+      cleanAcademicText(response.cover_visual?.title),
+      "title",
+    );
+    const coverSubtitle = sentenceStyleCapitalizePublicText(
+      cleanAcademicText(response.cover_visual?.subtitle),
+      "title",
+    );
+    const coverConcept = sentenceStyleCapitalizePublicText(
+      cleanAcademicText(response.cover_visual?.concept),
+      "sentence",
+    );
     const coverVisualUpdated = Boolean(coverTitle || coverSubtitle || coverConcept);
     const pass: AcademicLlmLayoutPass = {
       artifact_type: "academic_llm_layout_pass",

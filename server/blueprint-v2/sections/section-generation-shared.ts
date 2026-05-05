@@ -9,6 +9,7 @@ import type {
   MasterSectionDraft,
   SectionPromptPlan,
 } from "@/server/blueprint-v2/types";
+import type { AcademicEditorialPolicy } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 
 export type ExtendedPlanItem = SectionPromptPlan["generation_plan"][number] & {
   wave?: string;
@@ -34,6 +35,9 @@ export type ExtendedPlanItem = SectionPromptPlan["generation_plan"][number] & {
     retry_on?: string[];
   };
   needs_followup_before_strong_draft?: boolean;
+  target_word_budget?: number | null;
+  editorial_constraints?: string[];
+  bullet_policy?: string | null;
 };
 
 export type ExtendedManifestItem = SectionPromptPlan["prompt_manifest"][number] & {
@@ -59,6 +63,9 @@ export type ExtendedManifestItem = SectionPromptPlan["prompt_manifest"][number] 
   };
   support_strategy?: string | null;
   needs_followup_before_strong_draft?: boolean;
+  target_word_budget?: number | null;
+  editorial_constraints?: string[];
+  bullet_policy?: string | null;
 };
 
 export type SectionEvidenceHydrationPlanItem = {
@@ -102,6 +109,17 @@ export type FinalSectionsGuidance = {
   keywords_rule?: string;
   references_rule?: string;
   title_refinement_rule?: string;
+  final_title_instruction?: string;
+  short_header_title_instruction?: string;
+  keywords_instruction?: string;
+  redundancy_constraints?: string[];
+  bullet_policy?: string;
+  length_budget_rule?: string;
+  section_opening_rule?: string;
+  objective_repetition_rule?: string;
+  target_word_budget_by_section?: Record<string, number>;
+  master_target_pages?: number;
+  institutional_target_pages?: number;
 };
 
 export type SectionExecutionComplexity =
@@ -193,6 +211,15 @@ export type EnrichedPromptPlan = SectionPromptPlan & {
   claims_and_limits_guidance?: ClaimsAndLimitsGuidanceItem[];
   method_scope_guidance?: MethodScopeGuidanceItem[];
   final_sections_guidance?: FinalSectionsGuidance;
+  academic_editorial_policy?: AcademicEditorialPolicy;
+  final_title_instruction?: string;
+  short_header_title_instruction?: string;
+  keywords_instruction?: string;
+  redundancy_constraints?: string[];
+  bullet_policy?: string;
+  target_word_budget_by_section?: Record<string, number>;
+  master_target_pages?: number;
+  institutional_target_pages?: number;
 };
 
 export type RuntimePromptContext = {

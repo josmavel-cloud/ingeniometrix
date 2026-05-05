@@ -153,7 +153,7 @@ export type MasterTemplateImportContextArtifact = {
     blocked_sections: string[];
     missing_local_context: boolean;
     missing_regulatory_context: boolean;
-    missing_mass_timber_support: boolean;
+    missing_technique_specific_support: boolean;
     selected_sources_match: boolean;
     stale_snapshot_detected: boolean;
   };
@@ -886,7 +886,7 @@ export async function buildMasterTemplateImportContextArtifact(input: {
         blocked_sections: [],
         missing_local_context: true,
         missing_regulatory_context: true,
-        missing_mass_timber_support: true,
+        missing_technique_specific_support: true,
         selected_sources_match: false,
         stale_snapshot_detected: false,
       },
@@ -923,13 +923,13 @@ export async function buildMasterTemplateImportContextArtifact(input: {
   const blockingFollowups = activeConsolidatedEvidence.followup_requirements?.blocking ?? [];
   const caseContextEntry = weakMap.get("case_context");
   const missingLocalContext =
-    evidenceGaps.some((item) => /toronto|canada|contexto local/i.test(item)) ||
+    evidenceGaps.some((item) => /contexto local|contexto geografico|validacion local|caso local/i.test(item)) ||
     caseContextEntry?.draftability_status === "blocked_by_missing_evidence";
   const missingRegulatoryContext =
     blockingFollowups.some((item) => /zoning|building code|fire|egress|permisos|regulator/i.test(item));
-  const missingMassTimberSupport =
-    evidenceGaps.some((item) => /mass-?timber/i.test(item)) ||
-    blockingFollowups.some((item) => /mass-?timber/i.test(item));
+  const missingTechniqueSpecificSupport =
+    evidenceGaps.some((item) => /tecnica|metodo|method|validacion especifica|soporte tecnico/i.test(item)) ||
+    blockingFollowups.some((item) => /tecnica|metodo|method|validacion especifica|soporte tecnico/i.test(item));
   const weakSections = sectionAlignmentMap
     .filter((entry) => entry.readiness === "baja")
     .map((entry) => entry.section_key);
@@ -1074,7 +1074,7 @@ export async function buildMasterTemplateImportContextArtifact(input: {
       blocked_sections: blockedSections,
       missing_local_context: missingLocalContext,
       missing_regulatory_context: missingRegulatoryContext,
-      missing_mass_timber_support: missingMassTimberSupport,
+      missing_technique_specific_support: missingTechniqueSpecificSupport,
       selected_sources_match: selectedSourcesMatch,
       stale_snapshot_detected: staleSnapshotDetected,
     },
@@ -1092,13 +1092,13 @@ export async function buildMasterTemplateImportContextArtifact(input: {
           ]
         : []),
       ...(missingLocalContext
-        ? ["El contexto local de Toronto/Canada sigue debil o bloqueado en el estado importado del lab previo."]
+        ? ["El contexto local o geografico sigue debil o bloqueado en el estado importado del lab previo."]
         : []),
       ...(missingRegulatoryContext
         ? ["El soporte normativo local sigue incompleto para pasos 7-11."]
         : []),
-      ...(missingMassTimberSupport
-        ? ["La tecnica de mass-timber overbuild sigue necesitando validacion especifica externa al corpus importado."]
+      ...(missingTechniqueSpecificSupport
+        ? ["La tecnica o enfoque central sigue necesitando validacion especifica externa al corpus importado."]
         : []),
     ]),
   };

@@ -6,6 +6,10 @@ import {
   type EvidenceHandoffQualityStatus,
   type EvidenceHandoffReadiness,
 } from "@/server/blueprint-engine/contracts";
+import {
+  evaluateBlueprintProductionSafety,
+  type ProductionSafetyEvaluation,
+} from "@/server/blueprint-engine/quality/production-safety";
 
 export type CurrentLabBCompatibilityCounts = {
   sources: number;
@@ -18,6 +22,12 @@ export type CurrentLabBCompatibilityCounts = {
 
 export type CurrentLabBCompatibilityReport = {
   can_proceed: boolean;
+  schema_compatible: boolean;
+  diagnostic_compatible: boolean;
+  production_eligible: boolean;
+  production_ineligibility_reasons: string[];
+  production_warnings: string[];
+  production_safety: ProductionSafetyEvaluation | null;
   warnings: string[];
   blockers: string[];
   counts: CurrentLabBCompatibilityCounts;
@@ -192,6 +202,14 @@ export function validateBlueprintInputCompatibilityWithCurrentLabB(
   if (!schemaResult.success) {
     return {
       can_proceed: false,
+      schema_compatible: false,
+      diagnostic_compatible: false,
+      production_eligible: false,
+      production_ineligibility_reasons: [
+        "BlueprintEngineInputV1 schema validation failed.",
+      ],
+      production_warnings: [],
+      production_safety: null,
       warnings: [],
       blockers: [
         "BlueprintEngineInputV1 schema validation failed.",
@@ -211,9 +229,19 @@ export function validateBlueprintInputCompatibilityWithCurrentLabB(
   }
 
   const { warnings, blockers, counts } = validateMinimumCurrentLabBFields(input);
+  const productionSafety = evaluateBlueprintProductionSafety(input, {
+    structural_blockers: blockers,
+    structural_warnings: warnings,
+  });
 
   return {
     can_proceed: blockers.length === 0,
+    schema_compatible: productionSafety.schema_compatible,
+    diagnostic_compatible: productionSafety.diagnostic_compatible,
+    production_eligible: productionSafety.production_eligible,
+    production_ineligibility_reasons: productionSafety.production_ineligibility_reasons,
+    production_warnings: productionSafety.warnings,
+    production_safety: productionSafety,
     warnings,
     blockers,
     counts,
@@ -286,4 +314,3 @@ export function inspectBlueprintInputForCurrentLabB(
       : null,
   };
 }
-

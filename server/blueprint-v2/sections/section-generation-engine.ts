@@ -1,6 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import { getConfiguredLlmProvider } from "@/llm";
+import {
+  evaluateSectionEvidenceBinding,
+} from "@/server/blueprint-engine/quality/section-evidence-binding";
 import { resolveDomainGenerationProfile } from "@/server/blueprint-v2/lab/domain-generation-profile";
 import type { MasterTemplateImportContextArtifact } from "@/server/blueprint-v2/lab/template-import-context";
 import { deriveSectionWithoutLlm } from "@/server/blueprint-v2/sections/section-generation-fallback";
@@ -25,6 +28,7 @@ import {
   buildRetryPrompt,
   validateDraftAgainstPlan,
 } from "@/server/blueprint-v2/sections/section-generation-validator";
+import { enforceEditorialWordBudget } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 import { normalizeGeneratedSectionContent } from "@/server/blueprint-v2/sections/section-output-normalizer";
 import type {
   DomainGenerationProfile,
@@ -186,7 +190,10 @@ function buildContentBlocks(input: {
     supported_web_source_ids: string[];
     supported_assumption_ids: string[];
     evidence_snippet_ids: string[];
+    used_evidence_ids?: string[];
+    used_original_excerpt_ids?: string[];
     used_asset_keys: string[];
+    evidence_support_summary?: MasterSectionDraft["evidence_support_summary"];
   };
   evidenceLedger: EvidenceLedger;
 }) {
@@ -197,6 +204,10 @@ function buildContentBlocks(input: {
     web_source_ids: input.draft.supported_web_source_ids,
     assumption_ids: input.draft.supported_assumption_ids,
     snippet_ids: input.draft.evidence_snippet_ids,
+    evidence_ids: input.draft.used_evidence_ids ?? [],
+    original_excerpt_ids: input.draft.used_original_excerpt_ids ?? [],
+    asset_keys: input.draft.used_asset_keys ?? [],
+    evidence_support_summary: input.draft.evidence_support_summary,
   };
   const parseDelimitedTable = (value: string) => {
     const lines = value
@@ -581,6 +592,7 @@ async function generateDraftForPlanItem(input: {
   promptPlan: EnrichedPromptPlan;
   provider: ReturnType<typeof getConfiguredLlmProvider> | null;
   domainProfile: DomainGenerationProfile;
+  templateImportContext: MasterTemplateImportContextArtifact | null;
   planItem: ExtendedPlanItem;
   drafts: MasterSectionDraft[];
   waveContexts: WaveContextState;
@@ -685,6 +697,11 @@ async function generateDraftForPlanItem(input: {
     format_contamination_pass: true,
     citation_deferred_pass: true,
     punctuation_pass: true,
+    section_opening_pass: true,
+    objective_repetition_pass: true,
+    keywords_one_line_pass: true,
+    editorial_word_budget_pass: true,
+    opening_phrase_diversity_pass: true,
   };
   let cleanupWarnings: string[] = [];
 
@@ -731,8 +748,13 @@ async function generateDraftForPlanItem(input: {
         sectionKey: input.planItem.section_key,
         sourceTitles: sourceTitlesForGuards,
       });
-      const quality = validateDraftAgainstPlan({
+      const budgetCandidate = enforceEditorialWordBudget({
         content: normalizedCandidate.content,
+        max_words: input.planItem.max_words,
+        content_kind: input.planItem.content_kind,
+      });
+      const quality = validateDraftAgainstPlan({
+        content: budgetCandidate.content,
         planItem: input.planItem,
         usedAssetKeys,
         blockedClaims: runtimePromptContext.blocked_claims,
@@ -741,10 +763,11 @@ async function generateDraftForPlanItem(input: {
         sourceTitles: sourceTitlesForGuards,
       });
 
-      content = normalizedCandidate.content;
+      content = budgetCandidate.content;
       cleanupWarnings = [
         ...cleanupWarnings,
         ...normalizedCandidate.warnings,
+        ...budgetCandidate.warnings,
       ];
       finalPrompt = attemptPrompt;
       qualityChecks = {
@@ -797,8 +820,17 @@ async function generateDraftForPlanItem(input: {
       sectionKey: input.planItem.section_key,
       sourceTitles: sourceTitlesForGuards,
     });
-    content = normalizedFallback.content;
-    cleanupWarnings = [...cleanupWarnings, ...normalizedFallback.warnings];
+    const budgetFallback = enforceEditorialWordBudget({
+      content: normalizedFallback.content,
+      max_words: input.planItem.max_words,
+      content_kind: input.planItem.content_kind,
+    });
+    content = budgetFallback.content;
+    cleanupWarnings = [
+      ...cleanupWarnings,
+      ...normalizedFallback.warnings,
+      ...budgetFallback.warnings,
+    ];
     const fallbackQuality = validateDraftAgainstPlan({
       content,
       planItem: input.planItem,
@@ -882,6 +914,52 @@ async function generateDraftForPlanItem(input: {
     ],
     prompt: finalPrompt,
   };
+  const evidenceBinding = evaluateSectionEvidenceBinding({
+    section_key: draft.section_key,
+    title: draft.title,
+    content: draft.content,
+    used_evidence_ids: draft.used_evidence_ids ?? [],
+    used_source_ids: draft.supported_source_ids,
+    used_original_excerpt_ids: draft.used_original_excerpt_ids ?? [],
+    used_asset_keys: draft.used_asset_keys ?? [],
+    evidence_units: input.consolidatedEvidence?.evidence_units ?? [],
+    source_health: (input.templateImportContext?.source_priorities ?? []) as Array<
+      Record<string, unknown>
+    >,
+  });
+  draft.section_evidence_binding = evidenceBinding;
+  draft.evidence_support_summary = evidenceBinding.evidence_support_summary;
+  draft.unsupported_or_cautious_claim_warnings =
+    evidenceBinding.unsupported_or_cautious_claim_warnings;
+  draft.warnings = Array.from(
+    new Set([
+      ...draft.warnings,
+      ...evidenceBinding.unsupported_or_cautious_claim_warnings,
+    ]),
+  );
+  const existingQualityChecks = draft.quality_checks;
+  draft.quality_checks = {
+    min_words_pass: existingQualityChecks?.min_words_pass ?? true,
+    max_words_pass: existingQualityChecks?.max_words_pass ?? true,
+    required_structure_pass: existingQualityChecks?.required_structure_pass ?? true,
+    critical_assets_pass: existingQualityChecks?.critical_assets_pass ?? true,
+    claims_guard_pass:
+      (existingQualityChecks?.claims_guard_pass ?? true) &&
+      evidenceBinding.guard_failures.length === 0,
+    language_pass: existingQualityChecks?.language_pass ?? true,
+    format_contamination_pass:
+      existingQualityChecks?.format_contamination_pass ?? true,
+    citation_deferred_pass: existingQualityChecks?.citation_deferred_pass ?? true,
+    punctuation_pass: existingQualityChecks?.punctuation_pass ?? true,
+    research_logic_shape_pass: existingQualityChecks?.research_logic_shape_pass,
+    section_opening_pass: existingQualityChecks?.section_opening_pass,
+    objective_repetition_pass: existingQualityChecks?.objective_repetition_pass,
+    keywords_one_line_pass: existingQualityChecks?.keywords_one_line_pass,
+    editorial_word_budget_pass:
+      existingQualityChecks?.editorial_word_budget_pass,
+    opening_phrase_diversity_pass:
+      existingQualityChecks?.opening_phrase_diversity_pass,
+  };
 
   draft.content_blocks = buildContentBlocks({
     draft: {
@@ -894,7 +972,10 @@ async function generateDraftForPlanItem(input: {
       supported_web_source_ids: draft.supported_web_source_ids,
       supported_assumption_ids: draft.supported_assumption_ids,
       evidence_snippet_ids: draft.evidence_snippet_ids,
+      used_evidence_ids: draft.used_evidence_ids,
+      used_original_excerpt_ids: draft.used_original_excerpt_ids,
       used_asset_keys: draft.used_asset_keys ?? [],
+      evidence_support_summary: draft.evidence_support_summary,
     },
     evidenceLedger: input.evidenceLedger,
   });
@@ -950,6 +1031,7 @@ export async function generateSectionDraftsForKeys(input: {
   const promptPlan = input.promptPlan as EnrichedPromptPlan;
   const consolidatedEvidence = await loadReadonlyConsolidatedEvidence(
     templateImportContext?.source_snapshot.latest_consolidated_evidence_path ??
+      templateImportContext?.source_snapshot.downstream_handoff_manifest_path ??
       null,
   );
   const domainProfile = resolveDomainGenerationProfile({
@@ -996,6 +1078,7 @@ export async function generateSectionDraftsForKeys(input: {
         promptPlan,
         provider,
         domainProfile,
+        templateImportContext,
         planItem,
         drafts: workingDrafts,
         waveContexts,

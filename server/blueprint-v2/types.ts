@@ -401,6 +401,10 @@ export type SectionContentBlock = {
   web_source_ids?: string[];
   assumption_ids?: string[];
   snippet_ids?: string[];
+  evidence_ids?: string[];
+  original_excerpt_ids?: string[];
+  asset_keys?: string[];
+  evidence_support_summary?: SectionEvidenceSupportSummary;
   warnings?: string[];
   meta?: Record<string, unknown>;
 };
@@ -411,6 +415,31 @@ export type SectionSupportLevel =
   | "web_supported"
   | "intake_supported"
   | "assumption_backed";
+
+export type SectionEvidenceSupportSummary = {
+  direct_claim_support_count: number;
+  cautious_support_count: number;
+  context_only_count: number;
+  metadata_only_count: number;
+  adjacent_source_count: number;
+};
+
+export type SectionEvidenceBinding = {
+  section_key: string;
+  used_evidence_ids: string[];
+  used_source_ids: string[];
+  used_original_excerpt_ids: string[];
+  used_asset_keys: string[];
+  evidence_support_summary: SectionEvidenceSupportSummary;
+  unsupported_or_cautious_claim_warnings: string[];
+  guard_failures: string[];
+  support_tier:
+    | "direct_source_backed"
+    | "mixed_cautious"
+    | "context_only"
+    | "weak_or_unbound";
+  section_evidence_binding_score: number;
+};
 
 export type MasterSectionDraft = {
   section_key: string;
@@ -434,6 +463,9 @@ export type MasterSectionDraft = {
   used_original_excerpt_ids?: string[];
   used_asset_keys?: string[];
   used_reference_ids?: string[];
+  section_evidence_binding?: SectionEvidenceBinding;
+  evidence_support_summary?: SectionEvidenceSupportSummary;
+  unsupported_or_cautious_claim_warnings?: string[];
   citation_policy?: {
     expected_density: "none" | "low" | "medium" | "high";
     citation_mode:
@@ -499,6 +531,11 @@ export type MasterSectionDraft = {
     citation_deferred_pass: boolean;
     punctuation_pass: boolean;
     research_logic_shape_pass?: boolean;
+    section_opening_pass?: boolean;
+    objective_repetition_pass?: boolean;
+    keywords_one_line_pass?: boolean;
+    editorial_word_budget_pass?: boolean;
+    opening_phrase_diversity_pass?: boolean;
   };
   warnings: string[];
   prompt: string;
@@ -525,6 +562,11 @@ export type DocumentProvenanceReport = {
   from_pdfs_pct: number;
   from_websearch_pct: number;
   from_assumption_backed_pct: number;
+  sections_with_evidence_ids?: number;
+  sections_with_original_excerpts?: number;
+  sections_with_only_contextual_support?: number;
+  sections_with_adjacent_source_warnings?: number;
+  section_evidence_binding_score?: number;
   section_breakdown: SectionProvenanceBreakdown[];
 };
 

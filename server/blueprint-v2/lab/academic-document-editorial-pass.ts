@@ -6,6 +6,7 @@ import type {
   AcademicSectionBlock,
 } from "@/server/blueprint-v2/lab/academic-document-model";
 import { cleanAcademicText } from "@/server/blueprint-v2/lab/academic-document-compiler";
+import { buildAcademicEditorialPolicy } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 import { clipText } from "@/server/blueprint-v2/utils";
 
 type LlmEditorialSection = {
@@ -95,10 +96,16 @@ function buildPrompt(input: {
   document: AcademicDocument;
   sections: AcademicSection[];
 }) {
+  const editorialPolicy = buildAcademicEditorialPolicy({
+    country_context: "PE",
+    template_key: input.document.template_key,
+  });
   const payload = {
     variant: input.document.variant,
     report_archetype: input.document.report_archetype,
     title: input.document.metadata.title,
+    short_header_title: input.document.metadata.short_header_title ?? null,
+    keywords_line: input.document.metadata.keywords_line ?? null,
     template_name: input.document.template_name,
     rules: [
       "Editar solo estilo, fluidez, redundancia y consistencia interna.",
@@ -107,6 +114,10 @@ function buildPrompt(input: {
       "Mantener espanol academico de nivel maestria.",
       "Si una seccion no puede mejorar sin cambiar significado, devolverla practicamente igual.",
       "Conservar los matices de propuesta/proyecto: no presentar resultados empiricos como ya ejecutados.",
+      editorialPolicy.section_opening_rule,
+      editorialPolicy.objective_repetition_rule,
+      editorialPolicy.redundancy_rule,
+      editorialPolicy.bullet_usage_rule,
     ],
     sections: input.sections.map((section) => ({
       section_key: section.section_key,

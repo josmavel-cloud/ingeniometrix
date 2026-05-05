@@ -2,6 +2,13 @@ import { readFile } from "node:fs/promises";
 
 import { getConfiguredLlmProvider } from "@/llm";
 import type { ConsolidatedEvidenceArtifact, ConsolidatedEvidenceUnit } from "@/blueprint_launch/server/local-playground-store";
+import { buildSourceHealthLookup } from "@/server/blueprint-engine/quality/section-evidence-binding";
+import {
+  buildAcademicEditorialPolicy,
+  recommendedContentKindForSection,
+  sectionPrefersBullets,
+  type AcademicEditorialPolicy,
+} from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 import type {
   MasterTemplateImportContextArtifact,
   TemplateImportSectionAlignmentEntry,
@@ -187,6 +194,17 @@ type FinalSectionsGuidance = {
   keywords_rule: string;
   references_rule: string;
   title_refinement_rule: string;
+  final_title_instruction: string;
+  short_header_title_instruction: string;
+  keywords_instruction: string;
+  redundancy_constraints: string[];
+  bullet_policy: string;
+  length_budget_rule: string;
+  section_opening_rule: string;
+  objective_repetition_rule: string;
+  target_word_budget_by_section: Record<string, number>;
+  master_target_pages: number;
+  institutional_target_pages: number;
 };
 
 type SectionRetryPolicy = {
@@ -291,6 +309,9 @@ type ExtendedSectionGenerationPlanItem = SectionGenerationPlanItem & {
   support_strategy: string | null;
   retry_policy: SectionRetryPolicy;
   needs_followup_before_strong_draft: boolean;
+  target_word_budget: number | null;
+  editorial_constraints: string[];
+  bullet_policy: string | null;
   phase_locked: boolean;
 };
 
@@ -322,6 +343,9 @@ type ExtendedSectionPromptManifestItem = SectionPromptManifestItem & {
   };
   retry_policy: SectionRetryPolicy;
   needs_followup_before_strong_draft: boolean;
+  target_word_budget: number | null;
+  editorial_constraints: string[];
+  bullet_policy: string | null;
 };
 
 type SourceContext = {
@@ -354,6 +378,7 @@ type ExtendedBaselinePlan = {
   method_scope_guidance: MethodScopeGuidanceItem[];
   claims_and_limits_guidance: ClaimsAndLimitsGuidanceItem[];
   final_sections_guidance: FinalSectionsGuidance;
+  academic_editorial_policy: AcademicEditorialPolicy;
   asset_inclusion_plan: AssetInclusionPlanItem[];
   revision_pass_plan: RevisionPassItem[];
   title_refinement_plan: TitleRefinementPlan;
@@ -393,6 +418,15 @@ export type LabPromptPlan = SectionPromptPlan & {
   method_scope_guidance: MethodScopeGuidanceItem[];
   claims_and_limits_guidance: ClaimsAndLimitsGuidanceItem[];
   final_sections_guidance: FinalSectionsGuidance;
+  academic_editorial_policy: AcademicEditorialPolicy;
+  final_title_instruction: string;
+  short_header_title_instruction: string;
+  keywords_instruction: string;
+  redundancy_constraints: string[];
+  bullet_policy: string;
+  target_word_budget_by_section: Record<string, number>;
+  master_target_pages: number;
+  institutional_target_pages: number;
   asset_inclusion_plan: AssetInclusionPlanItem[];
   revision_pass_plan: RevisionPassItem[];
   title_refinement_plan: TitleRefinementPlan;
@@ -505,8 +539,8 @@ function buildResearchFrameLight(input: {
     input.templateImportContext?.checks.missing_regulatory_context
       ? "la validacion normativa local debe declararse como pendiente"
       : null,
-    input.templateImportContext?.checks.missing_mass_timber_support
-      ? "el soporte tecnico especifico sobre mass timber debe tratarse con prudencia"
+    input.templateImportContext?.checks.missing_technique_specific_support
+      ? "el soporte tecnico o metodologico especifico debe tratarse con prudencia"
       : null,
   ]).slice(0, 5);
 
@@ -715,8 +749,8 @@ function buildClaimsAndLimitsGuidance(input: {
       input.templateImportContext?.checks.missing_regulatory_context
         ? "validacion normativa o regulatoria local"
         : null,
-      input.templateImportContext?.checks.missing_mass_timber_support
-        ? "validacion tecnica adicional sobre mass timber"
+      input.templateImportContext?.checks.missing_technique_specific_support
+        ? "validacion tecnica o metodologica adicional sobre el enfoque central"
         : null,
     ]).slice(0, 4);
 
@@ -786,17 +820,30 @@ function buildMethodScopeGuidance(input: {
     });
 }
 
-function buildFinalSectionsGuidance(): FinalSectionsGuidance {
+function buildFinalSectionsGuidance(
+  academicEditorialPolicy: AcademicEditorialPolicy,
+): FinalSectionsGuidance {
   return {
     late_section_keys: ["abstract", "keywords", "references", "title_refined"],
     abstract_rule:
       "El abstract debe sintetizar problema, objetivo, enfoque metodologico y alcance, sin inventar resultados.",
-    keywords_rule:
-      "Las keywords deben derivarse de los conceptos efectivamente estabilizados en las secciones finales.",
+    keywords_rule: academicEditorialPolicy.keywords_rule,
     references_rule:
       "La bibliografia final debe construirse solo con referencias realmente usadas y trazables.",
-    title_refinement_rule:
-      "El titulo refinado debe mejorar precision sobre objeto, caso y enfoque, sin prometer validaciones no realizadas.",
+    title_refinement_rule: academicEditorialPolicy.title_reformulation_rule,
+    final_title_instruction: academicEditorialPolicy.final_title_instruction,
+    short_header_title_instruction:
+      academicEditorialPolicy.short_header_title_instruction,
+    keywords_instruction: academicEditorialPolicy.keywords_instruction,
+    redundancy_constraints: academicEditorialPolicy.redundancy_constraints,
+    bullet_policy: academicEditorialPolicy.bullet_policy,
+    length_budget_rule: academicEditorialPolicy.length_budget_rule,
+    section_opening_rule: academicEditorialPolicy.section_opening_rule,
+    objective_repetition_rule: academicEditorialPolicy.objective_repetition_rule,
+    target_word_budget_by_section:
+      academicEditorialPolicy.target_word_budget_by_section,
+    master_target_pages: academicEditorialPolicy.master_target_pages,
+    institutional_target_pages: academicEditorialPolicy.institutional_target_pages,
   };
 }
 
@@ -830,9 +877,31 @@ function buildSectionEvidenceHydrationPlan(input: {
   const evidenceUnits = input.consolidatedEvidence?.evidence_units ?? [];
   const sectionDossiers = input.consolidatedEvidence?.section_dossiers ?? [];
   const unitsById = new Map(evidenceUnits.map((unit) => [unit.evidence_id, unit]));
+  const sourceHealthLookup = buildSourceHealthLookup(
+    (input.templateImportContext?.source_priorities ?? []) as Array<Record<string, unknown>>,
+  );
   const claimsBySection = new Map(
     input.claimsAndLimitsGuidance.map((item) => [item.section_key, item]),
   );
+  const unitAllowedUse = (unit: ConsolidatedEvidenceUnit) =>
+    sourceHealthLookup.get(unit.source_id)?.allowed_evidence_use ?? "direct_claim_support";
+  const isContextOnlyUnit = (unit: ConsolidatedEvidenceUnit) =>
+    unit.unit_type === "metadata_context" ||
+    unit.unit_type === "intake_context" ||
+    unit.citation_eligibility === "context_only" ||
+    ["context_only", "gap_only", "do_not_use"].includes(unitAllowedUse(unit));
+  const isSourceTextUnit = (unit: ConsolidatedEvidenceUnit) =>
+    unit.unit_type === "original_excerpt" ||
+    unit.citation_eligibility === "direct_quote" ||
+    unit.citation_eligibility === "paraphrase_only";
+  const directClaimSupportUnits = (units: ConsolidatedEvidenceUnit[]) =>
+    units.filter(
+      (unit) => isSourceTextUnit(unit) && !isContextOnlyUnit(unit) && unitAllowedUse(unit) === "direct_claim_support",
+    );
+  const cautiousSupportUnits = (units: ConsolidatedEvidenceUnit[]) =>
+    units.filter(
+      (unit) => isSourceTextUnit(unit) && !isContextOnlyUnit(unit) && unitAllowedUse(unit) === "cautious_support",
+    );
 
   return input.generationPlan.map((section) => {
     const alignmentEntry = getAlignmentEntry(input.templateImportContext, section.section_key);
@@ -870,15 +939,21 @@ function buildSectionEvidenceHydrationPlan(input: {
       .map((evidenceId) => unitsById.get(evidenceId))
       .filter((unit): unit is ConsolidatedEvidenceUnit => Boolean(unit));
 
-    const priorityOriginalExcerpts = relevantUnits
-      .filter(
-        (unit) =>
-          unit.unit_type === "original_excerpt" ||
-          unit.citation_eligibility === "direct_quote" ||
-          unit.citation_eligibility === "paraphrase_only",
-      )
-      .slice(0, 4);
-    const priorityEvidence = relevantUnits.slice(0, 8);
+    const directUnits = directClaimSupportUnits(relevantUnits);
+    const cautiousUnits = cautiousSupportUnits(relevantUnits);
+    const contextUnits = relevantUnits.filter((unit) => isContextOnlyUnit(unit));
+    const priorityOriginalExcerpts = directUnits.slice(0, 4);
+    const priorityEvidence = uniqueStrings([
+      ...directUnits.map((unit) => unit.evidence_id),
+      ...cautiousUnits.map((unit) => unit.evidence_id),
+      ...relevantUnits
+        .filter((unit) => unit.citation_eligibility === "asset_reference")
+        .map((unit) => unit.evidence_id),
+      ...contextUnits.map((unit) => unit.evidence_id),
+    ])
+      .map((evidenceId) => unitsById.get(evidenceId))
+      .filter((unit): unit is ConsolidatedEvidenceUnit => Boolean(unit))
+      .slice(0, 8);
     const claimsGuidance = claimsBySection.get(section.section_key);
 
     return {
@@ -891,10 +966,21 @@ function buildSectionEvidenceHydrationPlan(input: {
       critical_asset_keys: section.critical_asset_keys,
       useful_asset_keys: section.useful_asset_keys,
       claims_allowed: claimsGuidance?.allowed_claims ?? [],
-      claims_to_avoid: claimsGuidance?.claims_to_avoid ?? [],
+      claims_to_avoid: uniqueStrings([
+        ...(claimsGuidance?.claims_to_avoid ?? []),
+        cautiousUnits.length > 0
+          ? "No usar fuentes adyacentes como soporte directo de claims centrales sobre aisladores sismicos."
+          : null,
+        contextUnits.length > 0
+          ? "No usar fuentes metadata/context-only como soporte de claims cuantitativos o normativos."
+          : null,
+      ]),
       key_gaps: uniqueStrings([
         ...(weakPacket?.missing_evidence ?? []).slice(0, 3),
         ...(dossier?.missing_evidence ?? []).slice(0, 3),
+        directUnits.length === 0
+          ? "La seccion no tiene evidencia directa source-text-backed; mantener redaccion cautelosa."
+          : null,
       ]).slice(0, 4),
       required_structure: buildRequiredStructure(section),
       min_words: section.min_words,
@@ -1857,20 +1943,14 @@ function buildDeterministicRefinedIntakeContext(input: {
 }): RefinedIntakeContext {
   const topic = input.project.intake.topic.trim();
   const acceptedTerms = uniqueStrings([
-    topic.includes("adaptive reuse") ? "adaptive reuse" : null,
-    topic.includes("mass-timber overbuild") ? "mass-timber overbuild" : null,
     input.project.intake.preferredMethodology?.includes("framework") ? "framework" : null,
   ]).map((term) => ({
     term,
     rationale: "Termino tecnico conservado por uso disciplinar frecuente en el corpus importado.",
     preferred_spanish_gloss:
-      term === "adaptive reuse"
-        ? "reutilizacion adaptativa"
-        : term === "mass-timber overbuild"
-          ? "sobreelevacion en madera masiva"
-          : term === "framework"
-            ? "marco de evaluacion"
-            : null,
+      term === "framework"
+        ? "marco de evaluacion"
+        : null,
   }));
 
   return {
@@ -2441,16 +2521,28 @@ function buildLabSectionPrompt(input: {
           ? `- regla abstract: ${input.finalSectionsGuidance.abstract_rule}`
           : null,
         input.section.section_key === "keywords"
-          ? `- regla keywords: ${input.finalSectionsGuidance.keywords_rule}`
+          ? `- regla keywords: ${input.finalSectionsGuidance.keywords_instruction}`
           : null,
         input.section.section_key === "references"
           ? `- regla referencias: ${input.finalSectionsGuidance.references_rule}`
           : null,
         input.section.section_key === "title_refined"
-          ? `- regla titulo: ${input.finalSectionsGuidance.title_refinement_rule}`
+          ? `- regla titulo: ${input.finalSectionsGuidance.final_title_instruction}`
+          : null,
+        input.section.section_key === "title_refined"
+          ? `- regla encabezado corto: ${input.finalSectionsGuidance.short_header_title_instruction}`
           : null,
       ]).join("\n")
     : "NO_APLICA";
+  const editorialPolicyLines = uniqueStrings([
+    input.finalSectionsGuidance.section_opening_rule,
+    input.finalSectionsGuidance.objective_repetition_rule,
+    input.section.target_word_budget
+      ? `Presupuesto objetivo de palabras: ${input.section.target_word_budget}.`
+      : input.finalSectionsGuidance.length_budget_rule,
+    input.section.bullet_policy,
+    ...input.section.editorial_constraints,
+  ]).join("\n");
 
   return [
     buildSectionRoleInstruction({
@@ -2469,6 +2561,8 @@ function buildLabSectionPrompt(input: {
     "- usa el intake como ancla del caso y la evidencia como soporte",
     "- si una fuente es comparativa o de otro contexto, usala solo como antecedente y no como descripcion directa del caso",
     "- no menciones metadatos del engine, ids ni porcentajes de procedencia dentro del contenido final",
+    "- no repitas el titulo de la seccion en la primera frase",
+    "- evita aperturas genericas como 'La presente seccion' o 'Este apartado'",
     "",
     "Caso actual:",
     buildPromptProjectContext({
@@ -2523,6 +2617,8 @@ function buildLabSectionPrompt(input: {
     "",
     buildPromptPriorityBlock("Reglas de cierre para secciones finales:", finalSectionsLines.split("\n")),
     "",
+    buildPromptPriorityBlock("Politica editorial Batch 2A:", editorialPolicyLines.split("\n")),
+    "",
     "Seccion objetivo:",
     `- section_key: ${input.section.section_key}`,
     `- title: ${input.section.title}`,
@@ -2535,6 +2631,7 @@ function buildLabSectionPrompt(input: {
     `- content_kind: ${input.section.content_kind}`,
     `- min_words: ${input.section.min_words ?? "NO_ESPECIFICADO"}`,
     `- max_words: ${input.section.max_words ?? "NO_ESPECIFICADO"}`,
+    `- target_word_budget: ${input.section.target_word_budget ?? "NO_ESPECIFICADO"}`,
     `- readiness: ${input.section.readiness}`,
     `- upstream_context_keys: ${input.section.upstream_context_keys.join(", ") || "NO_DISPONIBLE"}`,
     `- retry_policy: ${input.section.retry_policy.enabled ? `${input.section.retry_policy.max_attempts} intentos / ${input.section.retry_policy.retry_on.join(", ")}` : "disabled"}`,
@@ -2815,6 +2912,9 @@ function buildPromptManifestItem(input: {
     }),
     retry_policy: input.section.retry_policy,
     needs_followup_before_strong_draft: input.section.needs_followup_before_strong_draft,
+    target_word_budget: input.section.target_word_budget,
+    editorial_constraints: input.section.editorial_constraints,
+    bullet_policy: input.section.bullet_policy,
   };
 }
 
@@ -3033,6 +3133,19 @@ function buildExtendedBaselinePlan(input: {
 
   const contextBlueprints = buildContextBlueprints(input.masterTemplate);
   const sourcePriorityMap = buildSourcePriorityMap(input.templateImportContext);
+  const projectCountryContext =
+    (input.project as { country?: string | null; countryContext?: string | null })
+      .country ??
+    (input.project as { country?: string | null; countryContext?: string | null })
+      .countryContext ??
+    "PE";
+  const academicEditorialPolicy = buildAcademicEditorialPolicy({
+    country_context: projectCountryContext,
+    knowledge_area_label:
+      input.templateImportContext?.imported_project_context
+        .knowledge_area_label ?? null,
+    template_key: input.masterTemplate.template_key,
+  });
   const researchFrameLight = buildResearchFrameLight({
     project: input.project,
     templateImportContext: input.templateImportContext,
@@ -3099,6 +3212,13 @@ function buildExtendedBaselinePlan(input: {
       evidenceLedger: input.evidenceLedger,
       assetKeys,
     });
+    const targetWordBudget =
+      academicEditorialPolicy.target_word_budget_by_section[
+        section.semantic_key
+      ] ?? null;
+    const bulletPolicy = sectionPrefersBullets(section.semantic_key)
+      ? academicEditorialPolicy.bullet_usage_rule
+      : null;
     const strategy = resolveGenerationStrategy({
       sectionKey: section.semantic_key,
       contentKind: section.content_kind,
@@ -3166,10 +3286,33 @@ function buildExtendedBaselinePlan(input: {
         weakPacket,
       }),
       purpose: section.purpose,
-      content_kind: section.content_kind,
+      content_kind: recommendedContentKindForSection(
+        section.semantic_key,
+        section.content_kind,
+      ),
       required: section.required,
       min_words: section.min_words,
-      max_words: section.max_words,
+      max_words:
+        targetWordBudget && section.max_words
+          ? Math.min(section.max_words, targetWordBudget)
+          : (targetWordBudget ?? section.max_words),
+      target_word_budget: targetWordBudget,
+      editorial_constraints: uniqueStrings([
+        academicEditorialPolicy.section_opening_rule,
+        academicEditorialPolicy.objective_repetition_rule,
+        ...(section.semantic_key === "keywords"
+          ? [academicEditorialPolicy.keywords_instruction]
+          : []),
+        ...(section.semantic_key === "title_refined"
+          ? [
+              academicEditorialPolicy.final_title_instruction,
+              academicEditorialPolicy.short_header_title_instruction,
+            ]
+          : []),
+        ...(bulletPolicy ? [bulletPolicy] : []),
+        ...academicEditorialPolicy.redundancy_constraints.slice(0, 3),
+      ]),
+      bullet_policy: bulletPolicy,
       retry_policy: buildRetryPolicy({
         sectionKey: section.semantic_key,
         wave,
@@ -3198,7 +3341,9 @@ function buildExtendedBaselinePlan(input: {
     templateImportContext: input.templateImportContext,
     researchFrameLight,
   });
-  const finalSectionsGuidance = buildFinalSectionsGuidance();
+  const finalSectionsGuidance = buildFinalSectionsGuidance(
+    academicEditorialPolicy,
+  );
   const sectionEvidenceHydrationPlan = buildSectionEvidenceHydrationPlan({
     generationPlan,
     templateImportContext: input.templateImportContext,
@@ -3248,6 +3393,7 @@ function buildExtendedBaselinePlan(input: {
     method_scope_guidance: methodScopeGuidance,
     claims_and_limits_guidance: claimsAndLimitsGuidance,
     final_sections_guidance: finalSectionsGuidance,
+    academic_editorial_policy: academicEditorialPolicy,
     asset_inclusion_plan: buildAssetInclusionPlan(generationPlan),
     revision_pass_plan: buildRevisionPassPlan(generationPlan),
     title_refinement_plan: buildTitleRefinementPlan(),
@@ -3287,6 +3433,20 @@ function buildDeterministicResult(
     method_scope_guidance: baseline.method_scope_guidance,
     claims_and_limits_guidance: baseline.claims_and_limits_guidance,
     final_sections_guidance: baseline.final_sections_guidance,
+    academic_editorial_policy: baseline.academic_editorial_policy,
+    final_title_instruction:
+      baseline.academic_editorial_policy.final_title_instruction,
+    short_header_title_instruction:
+      baseline.academic_editorial_policy.short_header_title_instruction,
+    keywords_instruction: baseline.academic_editorial_policy.keywords_instruction,
+    redundancy_constraints:
+      baseline.academic_editorial_policy.redundancy_constraints,
+    bullet_policy: baseline.academic_editorial_policy.bullet_policy,
+    target_word_budget_by_section:
+      baseline.academic_editorial_policy.target_word_budget_by_section,
+    master_target_pages: baseline.academic_editorial_policy.master_target_pages,
+    institutional_target_pages:
+      baseline.academic_editorial_policy.institutional_target_pages,
     asset_inclusion_plan: baseline.asset_inclusion_plan,
     revision_pass_plan: baseline.revision_pass_plan,
     title_refinement_plan: baseline.title_refinement_plan,
@@ -3437,7 +3597,9 @@ export async function planMasterTemplateSectionPromptsForLab(input: {
   let providerName: string | null = null;
   let modelName: string | null = null;
   const consolidatedEvidence = await loadReadonlyConsolidatedEvidence(
-    templateImportContext?.source_snapshot.latest_consolidated_evidence_path ?? null,
+    templateImportContext?.source_snapshot.latest_consolidated_evidence_path ??
+      templateImportContext?.source_snapshot.downstream_handoff_manifest_path ??
+      null,
   );
 
   if (input.allowLlm) {
@@ -3553,7 +3715,9 @@ export async function planMasterTemplateSectionPromptsForLab(input: {
       templateImportContext,
       researchFrameLight: baseline.research_frame_light,
     });
-    const finalSectionsGuidance = buildFinalSectionsGuidance();
+    const finalSectionsGuidance = buildFinalSectionsGuidance(
+      baseline.academic_editorial_policy,
+    );
     const sectionEvidenceHydrationPlan = buildSectionEvidenceHydrationPlan({
       generationPlan,
       templateImportContext,
@@ -3614,6 +3778,22 @@ export async function planMasterTemplateSectionPromptsForLab(input: {
       method_scope_guidance: methodScopeGuidance,
       claims_and_limits_guidance: claimsAndLimitsGuidance,
       final_sections_guidance: finalSectionsGuidance,
+      academic_editorial_policy: baseline.academic_editorial_policy,
+      final_title_instruction:
+        baseline.academic_editorial_policy.final_title_instruction,
+      short_header_title_instruction:
+        baseline.academic_editorial_policy.short_header_title_instruction,
+      keywords_instruction:
+        baseline.academic_editorial_policy.keywords_instruction,
+      redundancy_constraints:
+        baseline.academic_editorial_policy.redundancy_constraints,
+      bullet_policy: baseline.academic_editorial_policy.bullet_policy,
+      target_word_budget_by_section:
+        baseline.academic_editorial_policy.target_word_budget_by_section,
+      master_target_pages:
+        baseline.academic_editorial_policy.master_target_pages,
+      institutional_target_pages:
+        baseline.academic_editorial_policy.institutional_target_pages,
       asset_inclusion_plan: buildAssetInclusionPlan(generationPlan),
       revision_pass_plan: buildRevisionPassPlan(generationPlan),
       title_refinement_plan: baseline.title_refinement_plan,

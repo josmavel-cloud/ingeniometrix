@@ -15,6 +15,31 @@ import {
   type BlueprintEngineInputV1,
   type EvidenceEngineHandoffV1,
 } from "@/server/blueprint-engine/contracts";
+import {
+  evaluateBlueprintProductionSafety,
+  type ProductionSafetyEvaluation,
+  validatePublicAppendixPolicyText,
+} from "@/server/blueprint-engine/quality/production-safety";
+import {
+  applyReducedEvidencePackToHandoff,
+  buildReducedEvidencePackFromHandoff,
+  type ReducedEvidencePackV1,
+} from "@/server/blueprint-engine/quality/evidence-budget";
+import {
+  buildFreshRunIsolationReport,
+  buildStaleContentScanReport,
+  collectStaleGuardSummary,
+  type FreshRunIsolationReport,
+  type StaleContentScanReport,
+} from "@/server/blueprint-engine/quality/fresh-run-isolation";
+import {
+  buildCoarseStepTelemetry,
+  buildRunTelemetryArtifact,
+} from "@/server/blueprint-engine/quality/run-telemetry";
+import {
+  buildQualityDashboard,
+  renderProductionReadinessReport,
+} from "@/server/blueprint-engine/quality/production-readiness-dashboard";
 import { buildLegacyBlueprintFromMaster } from "@/server/blueprint-v2/compose/blueprint-composition-engine";
 import { deriveUniversityBlueprint } from "@/server/blueprint-v2/derivation/university-blueprint-derivation-engine";
 import { buildEvidenceLedger } from "@/server/blueprint-v2/evidence/evidence-ledger-engine";
@@ -23,6 +48,7 @@ import {
   buildUniversityAcademicDocument,
 } from "@/server/blueprint-v2/lab/academic-document-compiler";
 import { applyAcademicDocumentEditorialPass } from "@/server/blueprint-v2/lab/academic-document-editorial-pass";
+import { applyAcademicHeroImageGeneration } from "@/server/blueprint-v2/lab/academic-document-hero-image";
 import { applyAcademicDocumentLayoutPass } from "@/server/blueprint-v2/lab/academic-document-layout-pass";
 import { applyAcademicDocumentPublicSanitizationPass } from "@/server/blueprint-v2/lab/academic-document-public-sanitizer";
 import { validateDocxPackage } from "@/server/blueprint-v2/lab/docx-qa-engine";
@@ -32,6 +58,7 @@ import {
 } from "@/server/blueprint-v2/lab/docx-renderer";
 import { buildPackageQualitySummary } from "@/server/blueprint-v2/lab/package-quality-summary";
 import { planMasterTemplateSectionPromptsForLab } from "@/server/blueprint-v2/lab/prompt-planning-hybrid";
+import type { AcademicDocument } from "@/server/blueprint-v2/lab/academic-document-model";
 import type {
   MasterTemplateImportContextArtifact,
   TemplateImportSectionAlignmentEntry,
@@ -98,6 +125,7 @@ type CliOptions = {
   caseId: string;
   outputRoot: string;
   allowDegradedHandoff: boolean;
+  allowStaleContent: boolean;
   skipHeroImage: boolean;
   renderDocx: boolean;
   maxSections: number | null;
@@ -180,10 +208,23 @@ type FullDiagnosticSummary = {
   case_id: string;
   handoff_id: string | null;
   project_id: string | null;
+  schema_compatible: boolean;
+  diagnostic_compatible: boolean;
+  production_eligible: boolean;
   diagnostic_only: true;
   production_valid: false;
   degraded_handoff: true;
   allow_degraded_handoff: boolean;
+  production_ineligibility_reasons: string[];
+  fresh_run_isolation_passed: boolean;
+  fresh_run_isolation_warnings: string[];
+  stale_content_detected: boolean;
+  stale_content_blockers: string[];
+  stale_content_warnings: string[];
+  stale_asset_ref_count: number;
+  stale_source_ref_count: number;
+  stale_topic_marker_count: number;
+  mutable_latest_path_count: number;
   completed_steps: string[];
   quality_gate_status: string | null;
   source_count: number;
@@ -203,6 +244,13 @@ type FullDiagnosticSummary = {
   output_folder: string;
 };
 
+function emptyStaleGuardSummary() {
+  return collectStaleGuardSummary({
+    freshRunIsolation: null,
+    staleContentScan: null,
+  });
+}
+
 function timestampForPath(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
 }
@@ -214,7 +262,8 @@ function parseArgs(): CliOptions {
     caseId: DEFAULT_CASE_ID,
     outputRoot: DEFAULT_OUTPUT_ROOT,
     allowDegradedHandoff: false,
-    skipHeroImage: true,
+    allowStaleContent: false,
+    skipHeroImage: false,
     renderDocx: true,
     maxSections: null,
   };
@@ -243,6 +292,11 @@ function parseArgs(): CliOptions {
 
     if (arg === "--allow-degraded-handoff") {
       options.allowDegradedHandoff = true;
+      continue;
+    }
+
+    if (arg === "--allow-stale-content") {
+      options.allowStaleContent = true;
       continue;
     }
 
@@ -737,6 +791,14 @@ function buildProject(input: {
       input.handoff.project_context.academic_program ??
       "Programa por confirmar",
     templateKey: templateKeyForProject(projectContext?.template_key ?? input.handoff.project_context.target_template_key),
+    evidence_handoff_id: input.handoff.handoff_id,
+    evidence_run_id: input.handoff.evidence_run_id,
+    immutable_snapshot_hash: input.handoff.traceability.immutable_snapshot_hash,
+    source_health_summary: [
+      `${input.handoff.source_registry.length} fuentes seleccionadas`,
+      `${input.handoff.source_registry.filter((source) => source.materialization_refs.extracted_text_refs.length > 0 || source.materialization_refs.chunk_refs.length > 0 || source.materialization_refs.pdf_refs.length > 0).length} fuentes materializadas`,
+      `${input.handoff.quality_gate.status} en quality gate`,
+    ].join("; "),
     createdAt: now,
     updatedAt: now,
     intake: {
@@ -1300,7 +1362,7 @@ function buildStep7ImportContext(input: {
         .map((entry) => entry.section_key),
       missing_local_context: true,
       missing_regulatory_context: true,
-      missing_mass_timber_support: false,
+      missing_technique_specific_support: false,
       selected_sources_match: true,
       stale_snapshot_detected: false,
     },
@@ -1376,6 +1438,95 @@ function diffUsage(after: LlmUsageTotals | null, before: LlmUsageTotals | null):
   };
 }
 
+function writeRunAnalyticsArtifacts(input: {
+  outputFolder: string;
+  runId: string;
+  caseId: string;
+  handoff: EvidenceEngineHandoffV1 | null;
+  reducedEvidencePack?: ReducedEvidencePackV1 | null;
+  productionSafety?: ProductionSafetyEvaluation | null;
+  completedSteps: string[];
+  startedAt: string;
+  completedAt: string;
+  usageDelta: LlmUsageTotals | null;
+  modelNames?: string[];
+  sectionCount?: number | null;
+  docxQaScore?: number | null;
+  masterQa?: Record<string, unknown> | null;
+  universityQa?: Record<string, unknown> | null;
+  provenanceReport?: unknown;
+  packageQualitySummary?: unknown;
+  freshRunIsolation?: FreshRunIsolationReport | null;
+  staleContentScan?: StaleContentScanReport | null;
+  warnings: string[];
+  blockers: string[];
+}) {
+  const runTelemetry = buildRunTelemetryArtifact({
+    run_id: input.runId,
+    case_id: input.caseId,
+    handoff: input.handoff,
+    pipeline_stage: "blueprint_engine",
+    started_at: input.startedAt,
+    completed_at: input.completedAt,
+    usage_delta: input.usageDelta,
+    model_names: input.modelNames,
+    reduced_evidence_pack: input.reducedEvidencePack,
+    section_count: input.sectionCount,
+    docx_qa_score: input.docxQaScore,
+    production_eligible: input.productionSafety?.production_eligible ?? false,
+    diagnostic_compatible: input.productionSafety?.diagnostic_compatible ?? false,
+    warning_count: input.warnings.length,
+    blocker_count: input.blockers.length,
+  });
+  const stepTelemetry = buildCoarseStepTelemetry({
+    run_id: input.runId,
+    completed_steps: input.completedSteps,
+    pipeline_stage: "blueprint_engine",
+    started_at: input.startedAt,
+    completed_at: input.completedAt,
+    usage_delta: input.usageDelta,
+    source_count: input.handoff?.source_registry.length ?? null,
+    usable_full_text_source_count:
+      input.productionSafety?.counts.usable_full_text_sources ?? null,
+    evidence_unit_count: input.handoff?.evidence_units.length ?? null,
+    reduced_evidence_unit_count:
+      input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
+    direct_quote_count:
+      input.productionSafety?.counts.true_source_backed_direct_quote_count ?? null,
+    section_count: input.sectionCount ?? null,
+    docx_qa_score: input.docxQaScore ?? null,
+    production_eligible: input.productionSafety?.production_eligible ?? null,
+    diagnostic_compatible: input.productionSafety?.diagnostic_compatible ?? null,
+    warning_count: input.warnings.length,
+    blocker_count: input.blockers.length,
+    model_names: input.modelNames,
+  });
+  const dashboard = buildQualityDashboard({
+    run_id: input.runId,
+    case_id: input.caseId,
+    handoff: input.handoff,
+    production_safety: input.productionSafety ?? null,
+    reduced_evidence_pack: input.reducedEvidencePack ?? null,
+    run_telemetry: runTelemetry,
+    provenance_report: input.provenanceReport,
+    package_quality_summary: input.packageQualitySummary,
+    master_docx_qa: input.masterQa,
+    institutional_docx_qa: input.universityQa,
+    fresh_run_isolation: input.freshRunIsolation ?? null,
+    stale_content_scan: input.staleContentScan ?? null,
+    warnings: input.warnings,
+    blockers: input.blockers,
+  });
+
+  writeJson(path.join(input.outputFolder, "run-telemetry.json"), runTelemetry);
+  writeJson(path.join(input.outputFolder, "step-telemetry.json"), stepTelemetry);
+  writeJson(path.join(input.outputFolder, "quality-dashboard.json"), dashboard);
+  writeText(
+    path.join(input.outputFolder, "production-readiness-report.md"),
+    renderProductionReadinessReport(dashboard),
+  );
+}
+
 function legacyRowsFromMatrix(matrixArtifact: ConsistencyMatrixArtifact): ConsistencyMatrixRow[] {
   return matrixArtifact.legacy_rows;
 }
@@ -1434,6 +1585,31 @@ function collectDraftWarnings(drafts: MasterSectionDraft[]) {
   return unique(
     drafts.flatMap((draft) => draft.warnings.map((warning) => `${draft.section_key}: ${warning}`)),
   );
+}
+
+function collectPublicAppendixText(document: AcademicDocument) {
+  const annexKeys = new Set(document.editorial_plan.annex_section_keys);
+  const sectionsText = document.sections
+    .filter((section) => annexKeys.has(section.section_key) || section.section_key === "annexes")
+    .flatMap((section) => [
+      section.title,
+      ...section.blocks.flatMap((block) =>
+        block.block_type === "table"
+          ? [
+              block.caption ?? "",
+              ...block.rows.flat(),
+            ]
+          : [block.text],
+      ),
+      ...section.warnings,
+    ]);
+
+  return unique([
+    document.layout_plan.public_annex_policy.include_internal_traceability
+      ? "include_internal_traceability=true"
+      : "",
+    ...sectionsText,
+  ]).join("\n");
 }
 
 function assessReportSignals(input: {
@@ -1500,6 +1676,9 @@ Project: ${input.summary.project_id}
 
 ## Input Handoff Quality
 
+- schema_compatible: ${input.summary.schema_compatible}
+- diagnostic_compatible: ${input.summary.diagnostic_compatible}
+- production_eligible: ${input.summary.production_eligible}
 - diagnostic_only: true
 - production_valid: false
 - degraded_handoff: true
@@ -1509,6 +1688,22 @@ Project: ${input.summary.project_id}
 - evidence units: ${input.summary.evidence_unit_count}
 - Step 3 decision: ${input.degradedWarnings.signals.step_3_decision ?? "unknown"}
 - materialized sources: ${input.degradedWarnings.signals.materialized_source_count ?? "unknown"}
+- fresh_run_isolation_passed: ${input.summary.fresh_run_isolation_passed}
+- stale_content_detected: ${input.summary.stale_content_detected}
+- mutable_latest_path_count: ${input.summary.mutable_latest_path_count}
+- stale_source_ref_count: ${input.summary.stale_source_ref_count}
+- stale_asset_ref_count: ${input.summary.stale_asset_ref_count}
+- stale_topic_marker_count: ${input.summary.stale_topic_marker_count}
+
+## Fresh-Run Isolation
+
+- severe blockers: ${input.summary.stale_content_blockers.length}
+- warnings: ${input.summary.stale_content_warnings.length}
+- severe stale content blocks DOCX unless --allow-stale-content is explicitly passed.
+
+## Production Ineligibility
+
+${input.summary.production_ineligibility_reasons.length > 0 ? input.summary.production_ineligibility_reasons.map((reason) => `- ${reason}`).join("\n") : "- None."}
 
 ## Warning Propagation Check
 
@@ -1556,6 +1751,7 @@ Recommended next action: review both DOCX files as degraded diagnostic outputs, 
 
 async function runDiagnostic(options: CliOptions) {
   const timestamp = timestampForPath();
+  const runStartedAt = new Date().toISOString();
   const outputFolder = path.join(options.outputRoot, options.caseId, timestamp);
   const warnings: string[] = [];
   const blockers: string[] = [];
@@ -1575,10 +1771,19 @@ async function runDiagnostic(options: CliOptions) {
       case_id: options.caseId,
       handoff_id: null,
       project_id: null,
+      schema_compatible: false,
+      diagnostic_compatible: false,
+      production_eligible: false,
       diagnostic_only: true,
       production_valid: false,
       degraded_handoff: true,
       allow_degraded_handoff: options.allowDegradedHandoff,
+      production_ineligibility_reasons: [
+        "EvidenceEngineHandoffV1 validation failed.",
+      ],
+      fresh_run_isolation_passed: false,
+      fresh_run_isolation_warnings: [],
+      ...emptyStaleGuardSummary(),
       completed_steps: [],
       quality_gate_status: null,
       source_count: 0,
@@ -1593,6 +1798,25 @@ async function runDiagnostic(options: CliOptions) {
       blockers,
       output_folder: outputFolder,
     };
+    writeRunAnalyticsArtifacts({
+      outputFolder,
+      runId: `lab-b-full-diagnostic-invalid-${timestamp}`,
+      caseId: options.caseId,
+      handoff: null,
+      reducedEvidencePack: null,
+      productionSafety: null,
+      completedSteps,
+      startedAt: runStartedAt,
+      completedAt: new Date().toISOString(),
+      usageDelta: zeroUsageDelta(),
+      modelNames: [],
+      sectionCount: 0,
+      docxQaScore: null,
+      freshRunIsolation: null,
+      staleContentScan: null,
+      warnings: unique(warnings),
+      blockers: unique(blockers),
+    });
     writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);
     writeText(
       path.join(outputFolder, "LAB_B_FULL_DIAGNOSTIC_DOCX_REPORT.md"),
@@ -1650,6 +1874,9 @@ async function runDiagnostic(options: CliOptions) {
   }
 
   const handoff = handoffValidation.data as EvidenceEngineHandoffV1;
+  const reducedEvidencePack = buildReducedEvidencePackFromHandoff(handoff);
+  const reducedHandoffForPrompting = applyReducedEvidencePackToHandoff(handoff, reducedEvidencePack);
+  writeJson(path.join(outputFolder, "reduced-evidence-pack.json"), reducedEvidencePack);
   const companion = loadCompanionArtifacts(options.handoffPath);
   const degradedWarnings = buildDegradedInputWarnings({ handoff, companion });
   warnings.push(...degradedWarnings.warnings);
@@ -1699,6 +1926,64 @@ async function runDiagnostic(options: CliOptions) {
       );
     }
   }
+  const productionSafety = blueprintValidation.success
+    ? evaluateBlueprintProductionSafety(blueprintInput, {
+        structural_blockers: compatibility?.blockers ?? [],
+        structural_warnings: compatibility?.warnings ?? [],
+        signals: {
+          diagnostic_only: true,
+          production_valid: false,
+          degraded_handoff: true,
+          allow_blocked_upstream: degradedWarnings.allow_blocked_upstream,
+          upstream_step_3_decision: degradedWarnings.signals.step_3_decision,
+          materialized_source_count: degradedWarnings.signals.materialized_source_count,
+          min_materialized_source_count:
+            asNumberOrNull(companion.intake_fixture?.source_policy?.min_selected_sources) ?? 4,
+          metadata_or_abstract_only_source_count:
+            degradedWarnings.signals.metadata_or_abstract_only_source_count,
+          unresolved_source_count: degradedWarnings.signals.unresolved_source_count,
+        },
+      })
+    : null;
+  let freshRunIsolation: FreshRunIsolationReport | null = blueprintValidation.success
+    ? buildFreshRunIsolationReport({
+        handoff,
+        mode: "diagnostic",
+        artifact_refs: [
+          ...handoff.traceability.source_artifacts,
+          ...handoff.source_snapshot,
+        ],
+        current_output_folder: outputFolder,
+      })
+    : null;
+  let staleContentScan: StaleContentScanReport | null = blueprintValidation.success
+    ? buildStaleContentScanReport({
+        handoff,
+        mode: "diagnostic",
+        artifact_refs: [
+          ...handoff.traceability.source_artifacts,
+          ...handoff.source_snapshot,
+        ],
+        current_output_folder: outputFolder,
+      })
+    : null;
+  if (productionSafety) {
+    warnings.push(...productionSafety.warnings);
+  }
+  if (freshRunIsolation) {
+    warnings.push(...freshRunIsolation.warnings);
+    if (freshRunIsolation.blockers.length > 0 && !options.allowStaleContent) {
+      blockers.push(...freshRunIsolation.blockers);
+    } else if (freshRunIsolation.blockers.length > 0) {
+      warnings.push(
+        `--allow-stale-content enabled; severe stale-content blockers were reported but not used to stop this diagnostic run.`,
+        ...freshRunIsolation.blockers,
+      );
+    }
+  }
+  writeJson(path.join(outputFolder, "production-safety-report.json"), productionSafety);
+  writeJson(path.join(outputFolder, "fresh-run-isolation-report.json"), freshRunIsolation);
+  writeJson(path.join(outputFolder, "stale-content-scan-report.json"), staleContentScan);
 
   if (blockers.length > 0) {
     const summary: FullDiagnosticSummary = {
@@ -1706,10 +1991,20 @@ async function runDiagnostic(options: CliOptions) {
       case_id: options.caseId,
       handoff_id: handoff.handoff_id,
       project_id: handoff.project_id,
+      schema_compatible: productionSafety?.schema_compatible ?? false,
+      diagnostic_compatible: productionSafety?.diagnostic_compatible ?? false,
+      production_eligible: productionSafety?.production_eligible ?? false,
       diagnostic_only: true,
       production_valid: false,
       degraded_handoff: true,
       allow_degraded_handoff: options.allowDegradedHandoff,
+      production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
+      fresh_run_isolation_passed: freshRunIsolation?.passed ?? false,
+      fresh_run_isolation_warnings: freshRunIsolation?.warnings ?? [],
+      ...collectStaleGuardSummary({
+        freshRunIsolation,
+        staleContentScan,
+      }),
       completed_steps: completedSteps,
       quality_gate_status: handoff.quality_gate.status,
       source_count: handoff.source_registry.length,
@@ -1757,7 +2052,7 @@ async function runDiagnostic(options: CliOptions) {
   const sourceRegistry = buildSourceRegistry(handoff, companion);
   const project = buildProject({ handoff, blueprintInput, companion });
   const ledgerBundle = buildEvidenceLedgerFromHandoff({
-    handoff,
+    handoff: reducedHandoffForPrompting,
     sourceRegistry,
     companion,
     degradedWarnings,
@@ -1793,8 +2088,11 @@ async function runDiagnostic(options: CliOptions) {
     source_count: sourceRegistry.length,
     evidence_pack_count: ledgerBundle.evidencePacks.length,
     evidence_snippet_count: ledgerBundle.ledger.snippets.length,
+    full_evidence_unit_count: handoff.evidence_units.length,
+    reduced_evidence_unit_count: reducedEvidencePack.reduced_counts.evidence_units,
     asset_count: ledgerBundle.ledger.assets.length,
     skip_hero_image: options.skipHeroImage,
+    allow_stale_content: options.allowStaleContent,
     render_docx: options.renderDocx,
     max_sections: options.maxSections,
   });
@@ -1965,7 +2263,7 @@ async function runDiagnostic(options: CliOptions) {
 
   if (options.renderDocx) {
     const editorialProvider = provider;
-    const masterAcademicDocument = await applyAcademicDocumentLayoutPass({
+    let masterAcademicDocument = await applyAcademicDocumentLayoutPass({
       document: applyAcademicDocumentPublicSanitizationPass(
         await applyAcademicDocumentEditorialPass({
           document: buildMasterAcademicDocument({
@@ -1982,7 +2280,7 @@ async function runDiagnostic(options: CliOptions) {
       ),
       provider: editorialProvider,
     });
-    const universityAcademicDocument = await applyAcademicDocumentLayoutPass({
+    let universityAcademicDocument = await applyAcademicDocumentLayoutPass({
       document: applyAcademicDocumentPublicSanitizationPass(
         await applyAcademicDocumentEditorialPass({
           document: buildUniversityAcademicDocument({
@@ -1999,7 +2297,183 @@ async function runDiagnostic(options: CliOptions) {
       provider: editorialProvider,
     });
 
+    if (!options.skipHeroImage) {
+      masterAcademicDocument = await applyAcademicHeroImageGeneration({
+        document: masterAcademicDocument,
+        runDir: outputFolder,
+      });
+      universityAcademicDocument = await applyAcademicHeroImageGeneration({
+        document: universityAcademicDocument,
+        runDir: outputFolder,
+      });
+    }
+
+    const masterAppendixPolicy = validatePublicAppendixPolicyText(
+      collectPublicAppendixText(masterAcademicDocument),
+    );
+    const universityAppendixPolicy = validatePublicAppendixPolicyText(
+      collectPublicAppendixText(universityAcademicDocument),
+    );
+    if (!masterAppendixPolicy.passed) {
+      warnings.push(
+        ...masterAppendixPolicy.violations.map((violation) => `Master DOCX public appendix policy: ${violation}`),
+      );
+    }
+    if (!universityAppendixPolicy.passed) {
+      warnings.push(
+        ...universityAppendixPolicy.violations.map((violation) => `University DOCX public appendix policy: ${violation}`),
+      );
+    }
+    writeJson(path.join(outputFolder, "116-master-public-appendix-policy-report.json"), masterAppendixPolicy);
+    writeJson(
+      path.join(outputFolder, "136-university-public-appendix-policy-report.json"),
+      universityAppendixPolicy,
+    );
+
+    freshRunIsolation = buildFreshRunIsolationReport({
+      handoff,
+      mode: "diagnostic",
+      artifact_refs: [
+        ...handoff.traceability.source_artifacts,
+        ...handoff.source_snapshot,
+      ],
+      academic_documents: [
+        { label: "master_academic_document", document: masterAcademicDocument },
+        { label: "university_academic_document", document: universityAcademicDocument },
+      ],
+      text_blobs: [
+        {
+          label: "step_7_template_import_context",
+          text: JSON.stringify(templateImportContext),
+          public_facing: false,
+        },
+      ],
+      current_output_folder: outputFolder,
+    });
+    staleContentScan = buildStaleContentScanReport({
+      handoff,
+      mode: "diagnostic",
+      artifact_refs: [
+        ...handoff.traceability.source_artifacts,
+        ...handoff.source_snapshot,
+      ],
+      academic_documents: [
+        { label: "master_academic_document", document: masterAcademicDocument },
+        { label: "university_academic_document", document: universityAcademicDocument },
+      ],
+      current_output_folder: outputFolder,
+    });
+    writeJson(path.join(outputFolder, "fresh-run-isolation-report.json"), freshRunIsolation);
+    writeJson(path.join(outputFolder, "stale-content-scan-report.json"), staleContentScan);
+    warnings.push(...freshRunIsolation.warnings, ...staleContentScan.warnings);
+    const staleBlockers = unique([
+      ...freshRunIsolation.blockers,
+      ...staleContentScan.blockers,
+    ]);
+
     writeJson(path.join(outputFolder, "115-master-academic-document-model.json"), masterAcademicDocument);
+    writeJson(path.join(outputFolder, "135-university-academic-document-model.json"), universityAcademicDocument);
+
+    if (staleBlockers.length > 0 && !options.allowStaleContent) {
+      blockers.push(...staleBlockers);
+      const usageAfterBlocked = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
+      const usageDeltaBlocked = diffUsage(usageAfterBlocked, usageBefore) ?? zeroUsageDelta();
+      const summary: FullDiagnosticSummary = {
+        status: "blocked",
+        case_id: options.caseId,
+        handoff_id: handoff.handoff_id,
+        project_id: handoff.project_id,
+        schema_compatible: productionSafety?.schema_compatible ?? false,
+        diagnostic_compatible: productionSafety?.diagnostic_compatible ?? false,
+        production_eligible: productionSafety?.production_eligible ?? false,
+        diagnostic_only: true,
+        production_valid: false,
+        degraded_handoff: true,
+        allow_degraded_handoff: options.allowDegradedHandoff,
+        production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
+        fresh_run_isolation_passed: freshRunIsolation.passed,
+        fresh_run_isolation_warnings: freshRunIsolation.warnings,
+        ...collectStaleGuardSummary({
+          freshRunIsolation,
+          staleContentScan,
+        }),
+        completed_steps: completedSteps,
+        quality_gate_status: handoff.quality_gate.status,
+        source_count: handoff.source_registry.length,
+        evidence_unit_count: handoff.evidence_units.length,
+        section_count: draftsWithMatrix.length,
+        generated_docx_count: 0,
+        master_docx_path: null,
+        institutional_docx_path: null,
+        openai_called: usageDeltaBlocked.calls > 0,
+        token_cost_usage: {
+          before: usageBefore,
+          after: usageAfterBlocked,
+          delta: usageDeltaBlocked,
+        },
+        warnings: unique(warnings),
+        blockers: unique(blockers),
+        output_folder: outputFolder,
+      };
+      writeRunAnalyticsArtifacts({
+        outputFolder,
+        runId: blueprintInput.run_request.blueprint_run_id ?? `lab-b-full-diagnostic-${handoff.handoff_id}-${timestamp}`,
+        caseId: options.caseId,
+        handoff,
+        reducedEvidencePack,
+        productionSafety,
+        completedSteps,
+        startedAt: runStartedAt,
+        completedAt: new Date().toISOString(),
+        usageDelta: usageDeltaBlocked,
+        modelNames: [modelName].filter((model): model is string => Boolean(model)),
+        sectionCount: draftsWithMatrix.length,
+        docxQaScore: null,
+        masterQa: null,
+        universityQa: null,
+        provenanceReport,
+        packageQualitySummary,
+        freshRunIsolation,
+        staleContentScan,
+        warnings: unique(warnings),
+        blockers: unique(blockers),
+      });
+      writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);
+      writeText(
+        path.join(outputFolder, "LAB_B_FULL_DIAGNOSTIC_DOCX_REPORT.md"),
+        renderDiagnosticReport({
+          summary,
+          degradedWarnings,
+          labCompatibility: compatibility,
+          reportSignals: {
+            warning_propagation_ok: true,
+            likely_overclaims: true,
+            sections_preserve_gaps_or_limitations: true,
+            citations_traceable: true,
+            metadata_only_overuse_risk: degradedWarnings.signals.metadata_or_intake_direct_quote_count > 0,
+            adjacent_energy_dissipator_misuse_risk: degradedWarnings.signals.adjacent_energy_dissipator_source_count > 0,
+            matrix_status: matrixArtifact.status,
+            validation_passed: validation.validationReport.quality_report.passed,
+            master_docx_qa_passed: null,
+            university_docx_qa_passed: null,
+          },
+          masterDocxPath: null,
+          universityDocxPath: null,
+          masterQa: null,
+          universityQa: null,
+        }),
+      );
+      console.log(JSON.stringify(summary, null, 2));
+      process.exitCode = 1;
+      return;
+    }
+
+    if (staleBlockers.length > 0 && options.allowStaleContent) {
+      warnings.push(
+        "--allow-stale-content enabled; DOCX rendering continued despite severe stale-content findings.",
+      );
+    }
+
     masterDocxPath = path.join(outputFolder, "12-master-docx-preview.docx");
     const masterManifest = await renderMasterDocx({
       project: fixtures.project,
@@ -2079,10 +2553,20 @@ async function runDiagnostic(options: CliOptions) {
     case_id: options.caseId,
     handoff_id: handoff.handoff_id,
     project_id: handoff.project_id,
+    schema_compatible: productionSafety?.schema_compatible ?? false,
+    diagnostic_compatible: productionSafety?.diagnostic_compatible ?? false,
+    production_eligible: productionSafety?.production_eligible ?? false,
     diagnostic_only: true,
     production_valid: false,
     degraded_handoff: true,
     allow_degraded_handoff: options.allowDegradedHandoff,
+    production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
+    fresh_run_isolation_passed: freshRunIsolation?.passed ?? false,
+    fresh_run_isolation_warnings: freshRunIsolation?.warnings ?? [],
+    ...collectStaleGuardSummary({
+      freshRunIsolation,
+      staleContentScan,
+    }),
     completed_steps: completedSteps,
     quality_gate_status: handoff.quality_gate.status,
     source_count: handoff.source_registry.length,
@@ -2102,6 +2586,35 @@ async function runDiagnostic(options: CliOptions) {
     output_folder: outputFolder,
   };
 
+  const runCompletedAt = new Date().toISOString();
+  const masterQaScore = typeof masterQa?.score_100 === "number" ? masterQa.score_100 : null;
+  const universityQaScore = typeof universityQa?.score_100 === "number" ? universityQa.score_100 : null;
+  writeRunAnalyticsArtifacts({
+    outputFolder,
+    runId: blueprintInput.run_request.blueprint_run_id ?? `lab-b-full-diagnostic-${handoff.handoff_id}-${timestamp}`,
+    caseId: options.caseId,
+    handoff,
+    reducedEvidencePack,
+    productionSafety,
+    completedSteps,
+    startedAt: runStartedAt,
+    completedAt: runCompletedAt,
+    usageDelta,
+    modelNames: [modelName].filter((model): model is string => Boolean(model)),
+    sectionCount: draftsWithMatrix.length,
+    docxQaScore:
+      masterQaScore !== null && universityQaScore !== null
+        ? Math.min(masterQaScore, universityQaScore)
+        : masterQaScore ?? universityQaScore,
+    masterQa,
+    universityQa,
+    provenanceReport,
+    packageQualitySummary,
+    freshRunIsolation,
+    staleContentScan,
+    warnings: unique(warnings),
+    blockers: unique(blockers),
+  });
   writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);
   writeText(
     path.join(outputFolder, "LAB_B_FULL_DIAGNOSTIC_DOCX_REPORT.md"),
@@ -2132,10 +2645,17 @@ runDiagnostic(parseArgs()).catch(async (error) => {
     case_id: options.caseId,
     handoff_id: null,
     project_id: null,
+    schema_compatible: false,
+    diagnostic_compatible: false,
+    production_eligible: false,
     diagnostic_only: true,
     production_valid: false,
     degraded_handoff: true,
     allow_degraded_handoff: options.allowDegradedHandoff,
+    production_ineligibility_reasons: [message],
+    fresh_run_isolation_passed: false,
+    fresh_run_isolation_warnings: [],
+    ...emptyStaleGuardSummary(),
     completed_steps: [],
     quality_gate_status: null,
     source_count: 0,
