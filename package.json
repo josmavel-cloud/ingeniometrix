@@ -37,6 +37,7 @@
     "test:project-management-content": "tsx scripts/test-project-management-content.ts",
     "test:hero-infographic-policy": "tsx scripts/test-hero-infographic-policy.ts",
     "test:fresh-run-isolation": "tsx scripts/test-fresh-run-isolation.ts",
+    "test:method-selection": "tsx scripts/test-method-selection.ts",
     "test:evidence-budget": "tsx scripts/test-evidence-budget.ts",
     "test:run-telemetry": "tsx scripts/test-run-telemetry.ts",
     "test:production-readiness-dashboard": "tsx scripts/test-production-readiness-dashboard.ts",

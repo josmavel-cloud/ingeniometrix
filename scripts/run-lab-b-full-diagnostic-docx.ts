@@ -36,6 +36,7 @@ import {
   buildCoarseStepTelemetry,
   buildRunTelemetryArtifact,
 } from "@/server/blueprint-engine/quality/run-telemetry";
+import { buildMethodSelectionForHandoff } from "@/server/blueprint-engine/quality/method-selection";
 import {
   buildQualityDashboard,
   renderProductionReadinessReport,
@@ -1984,6 +1985,38 @@ async function runDiagnostic(options: CliOptions) {
   writeJson(path.join(outputFolder, "production-safety-report.json"), productionSafety);
   writeJson(path.join(outputFolder, "fresh-run-isolation-report.json"), freshRunIsolation);
   writeJson(path.join(outputFolder, "stale-content-scan-report.json"), staleContentScan);
+  const methodSelection = await buildMethodSelectionForHandoff({
+    handoff,
+    reducedEvidencePack,
+    options: {
+      caseId: options.caseId,
+      productionSafety,
+      collectUsage: true,
+    },
+  });
+  writeJson(
+    path.join(outputFolder, "method-selection-evidence-context.json"),
+    methodSelection.evidenceContext,
+  );
+  writeJson(
+    path.join(outputFolder, "method-selection-artifact.json"),
+    methodSelection.artifact,
+  );
+  writeJson(
+    path.join(outputFolder, "method-selection-validation-report.json"),
+    methodSelection.validationReport,
+  );
+  writeText(path.join(outputFolder, "method-selection-report.md"), methodSelection.reportMarkdown);
+  completedSteps.push("method_selection_read_only");
+  warnings.push(
+    ...methodSelection.validationReport.validation_downgrades.map(
+      (warning) => `method_selection:${warning}`,
+    ),
+    ...methodSelection.validationReport.warnings.map((warning) => `method_selection:${warning}`),
+  );
+  if (!methodSelection.validationReport.passed) {
+    warnings.push("method_selection_validation_report_requires_review");
+  }
 
   if (blockers.length > 0) {
     const summary: FullDiagnosticSummary = {
