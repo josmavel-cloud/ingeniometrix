@@ -70,6 +70,8 @@ const MODEL_PRICING: Record<string, PricingRecord> = {
   "gpt-5.4 mini": { inputUsdPer1M: 0.75, cachedInputUsdPer1M: 0.075, outputUsdPer1M: 4.5 },
   "gpt-5.4-nano": { inputUsdPer1M: 0.2, cachedInputUsdPer1M: 0.02, outputUsdPer1M: 1.25 },
   "gpt-5.4 nano": { inputUsdPer1M: 0.2, cachedInputUsdPer1M: 0.02, outputUsdPer1M: 1.25 },
+  "o4-mini-deep-research": { inputUsdPer1M: 2, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 8 },
+  "o3-deep-research": { inputUsdPer1M: 10, cachedInputUsdPer1M: 2.5, outputUsdPer1M: 40 },
 };
 
 function roundMoney(value: number) {

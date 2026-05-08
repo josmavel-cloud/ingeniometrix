@@ -39,7 +39,6 @@ import {
   capitalizePublicTableRows,
   sentenceStyleCapitalizePublicText,
 } from "@/server/blueprint-v2/editorial/capitalization-hygiene";
-import { sanitizePublicAppendixText } from "@/server/blueprint-engine/quality/production-safety";
 import type {
   AcademicBrandingAsset,
   AcademicDocument,
@@ -68,7 +67,6 @@ import type {
   MasterSectionDraft,
   MasterTemplateRuntime,
   UniversityBlueprintPackage,
-  UniversityBlueprintSection,
 } from "@/server/blueprint-v2/types";
 
 type DocxVariant = "master" | "university";
@@ -131,6 +129,7 @@ export type LabDocxRenderManifest = {
     has_matrix_table: boolean;
     has_references: boolean;
     has_traceability_annex: boolean;
+    no_public_traceability_annex: boolean;
     has_brand_logo: boolean;
     has_renderable_assets: boolean;
     control_content_moved_to_annex: boolean;
@@ -151,26 +150,15 @@ export type LabDocxRenderManifest = {
   warnings: string[];
 };
 
-type RenderSection = {
-  section_key: string;
-  title: string;
-  content: string;
-  level: number;
-  supported_source_ids?: string[];
-};
-
 type TocEntry = {
   number: string;
   title: string;
   level: number;
 };
 
-type SourceLike = EvidenceLedger["source_registry"][number];
-
 const BODY_FONT = "Times New Roman";
 const HEADING_COLOR = "1F2937";
 const ACCENT_COLOR = "6B4A2F";
-const LIGHT_FILL = "F6F1EA";
 const TABLE_HEADER_FILL = "F3EFE8";
 const BORDER_COLOR = "4B5563";
 const PAGE_WIDTH_PORTRAIT = 11906;
@@ -206,13 +194,6 @@ function cleanDocText(value: string | null | undefined) {
     .trim();
 }
 
-function stripListPrefix(value: string) {
-  return value
-    .replace(/^\s*[-*]\s*/, "")
-    .replace(/^\s*\d+[\).\-\s]+/, "")
-    .trim();
-}
-
 function splitParagraphs(value: string) {
   return cleanDocText(value)
     .split(/\n{2,}/)
@@ -229,27 +210,44 @@ function compactHeaderText(value: string, maxLength = 88) {
   return `${text.slice(0, maxLength - 1).trim()}...`;
 }
 
-function parseListItems(value: string) {
-  return cleanDocText(value)
-    .split(/\n+/)
-    .map(stripListPrefix)
+export function placeCitationInAcademicTextForDiagnostics(text: string, citationSuffix: string) {
+  const cleanText = sentenceStyleCapitalizePublicText(cleanDocText(text), "sentence");
+  const citation = cleanDocText(citationSuffix);
+  if (!citation) {
+    return cleanText;
+  }
+
+  if (cleanText.includes(citation)) {
+    return cleanText;
+  }
+
+  const sentences = cleanText
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
     .filter(Boolean);
+
+  if (sentences.length >= 2 && sentences[0].length >= 40) {
+    return [sentences[0], citation, ...sentences.slice(1)].join(" ");
+  }
+
+  return `${cleanText} ${citation}`;
 }
 
-function parseMarkdownTable(value: string) {
-  const rows = cleanDocText(value)
-    .split(/\n+/)
-    .filter((line) => /^\s*\|/.test(line))
-    .filter((line) => !/\|?\s*:?-{3,}:?\s*(\||$)/.test(line))
-    .map((line) =>
-      line
-        .replace(/^\s*\|/, "")
-        .replace(/\|\s*$/, "")
-        .split("|")
-        .map((cell) => cleanDocText(cell)),
-    );
+function publicWordCount(value: string) {
+  return cleanDocText(value).split(/\s+/).filter(Boolean).length;
+}
 
-  return rows.length >= 2 ? rows : [];
+export function shouldSplitDensePublicBlockForDiagnostics(sectionKey: string, text: string) {
+  const excluded = new Set([
+    "abstract",
+    "keywords",
+    "references",
+    "schedule",
+    "budget",
+    "consistency_matrix",
+  ]);
+
+  return !excluded.has(sectionKey) && publicWordCount(text) > 150;
 }
 
 function textRun(text: string, options: Partial<IRunOptions> = {}) {
@@ -289,6 +287,54 @@ function paragraph(text: string, options: {
         size: ptToHalfPt(options.sizePt ?? 11),
       }),
     ],
+  });
+}
+
+function paragraphWithBoldLead(text: string, options: {
+  alignment?: (typeof AlignmentType)[keyof typeof AlignmentType];
+  beforePt?: number;
+  afterPt?: number;
+  indentFirstLine?: boolean;
+  sizePt?: number;
+  color?: string;
+} = {}) {
+  const clean = sentenceStyleCapitalizePublicText(text, "sentence");
+  const colonIndex = clean.indexOf(":");
+  const lead = colonIndex > 0 ? clean.slice(0, colonIndex).trim() : "";
+  const rest = colonIndex > 0 ? clean.slice(colonIndex + 1).trim() : "";
+  const leadWordCount = lead.split(/\s+/).filter(Boolean).length;
+  const shouldBoldLead = colonIndex > 0 && colonIndex <= 70 && leadWordCount > 0 && leadWordCount <= 9;
+
+  const children = shouldBoldLead
+    ? [
+        textRun(`${lead}: `, {
+          bold: true,
+          color: options.color,
+          size: ptToHalfPt(options.sizePt ?? 11),
+        }),
+        textRun(rest, {
+          color: options.color,
+          size: ptToHalfPt(options.sizePt ?? 11),
+        }),
+      ]
+    : [
+        textRun(clean, {
+          color: options.color,
+          size: ptToHalfPt(options.sizePt ?? 11),
+        }),
+      ];
+
+  return new Paragraph({
+    alignment: options.alignment ?? AlignmentType.JUSTIFIED,
+    spacing: {
+      before: ptToTwip(options.beforePt ?? 0),
+      after: ptToTwip(options.afterPt ?? 6),
+      line: 360,
+    },
+    indent: {
+      firstLine: options.indentFirstLine === false ? 0 : cmToTwip(0.75),
+    },
+    children,
   });
 }
 
@@ -332,21 +378,27 @@ function heading(text: string, level: number) {
 }
 
 function bullet(text: string) {
+  const clean = sentenceStyleCapitalizePublicText(text, "sentence");
+  const colonIndex = clean.indexOf(":");
+  const lead = colonIndex > 0 ? clean.slice(0, colonIndex).trim() : "";
+  const rest = colonIndex > 0 ? clean.slice(colonIndex + 1).trim() : "";
+  const leadWordCount = lead.split(/\s+/).filter(Boolean).length;
+  const shouldBoldLead = colonIndex > 0 && colonIndex <= 70 && leadWordCount > 0 && leadWordCount <= 9;
+
   return new Paragraph({
     spacing: { after: ptToTwip(4), line: 320 },
     indent: {
-      firstLine: 0,
-      left: 0,
+      left: 420,
+      hanging: 220,
     },
-    children: [
-      textRun("- ", { bold: true }),
-      textRun(text),
-    ],
+    children: shouldBoldLead
+      ? [textRun("\u2022 ", { bold: true }), textRun(`${lead}: `, { bold: true }), textRun(rest)]
+      : [textRun("\u2022 ", { bold: true }), textRun(clean)],
   });
 }
 
 function smallNote(text: string) {
-  return paragraph(text, {
+  return paragraph(sentenceStyleCapitalizePublicText(text, "sentence"), {
     italics: true,
     alignment: AlignmentType.LEFT,
     indentFirstLine: false,
@@ -396,9 +448,7 @@ function buildBlankHeader() {
   });
 }
 
-function buildAcademicFooter(input: {
-  academicDocument: AcademicDocument;
-}) {
+function buildAcademicFooter() {
   return new Footer({
     children: [
       new Paragraph({
@@ -433,6 +483,7 @@ function cell(text: string, options: {
   fontSizePt?: number;
   minimalBorders?: boolean;
 } = {}) {
+  const publicText = sentenceStyleCapitalizePublicText(text, "table_cell");
   const nilBorder = { style: BorderStyle.NIL, size: 0, color: "FFFFFF" };
   const horizontalBorder = {
     style: BorderStyle.SINGLE,
@@ -471,7 +522,7 @@ function cell(text: string, options: {
         spacing: { before: 0, after: 0, line: 300 },
         indent: { firstLine: 0 },
         children: [
-          textRun(text, {
+          textRun(publicText, {
             bold: options.header,
             size: ptToHalfPt(options.fontSizePt ?? (options.header ? 8.5 : 8)),
           }),
@@ -776,17 +827,6 @@ function renderCoverVisual(input: {
           }),
         ],
       }),
-      smallNote(
-        buildDeterministicFigureCaption({
-          figureNumber: 1,
-          sectionTitle: "portada",
-          assetKind: "infografia metodologica",
-          existingCaption:
-            input.academicDocument.layout_plan.cover_visual.hero_visual_caption ??
-            input.academicDocument.layout_plan.cover_visual.title,
-        }),
-      ),
-      smallNote("Fuente: elaboracion propia a partir del intake, el plan de evidencia y la metodologia propuesta."),
     ];
   }
 
@@ -817,17 +857,6 @@ function renderCoverVisual(input: {
         }),
       ],
     }),
-    smallNote(
-      buildDeterministicFigureCaption({
-        figureNumber: 1,
-        sectionTitle: "portada",
-        assetKind: "infografia metodologica",
-        existingCaption:
-          input.academicDocument.layout_plan.cover_visual.hero_visual_caption ??
-          input.academicDocument.layout_plan.cover_visual.title,
-      }),
-    ),
-    smallNote("Fuente: elaboracion propia a partir del intake, el plan de evidencia y la metodologia propuesta."),
   ];
 }
 
@@ -878,9 +907,33 @@ function renderImageAsset(input: {
 
 function mathText(value: string) {
   return value
+    .replace(
+      /\\begin\{(?:bmatrix|pmatrix|matrix)\}([\s\S]*?)\\end\{(?:bmatrix|pmatrix|matrix)\}/g,
+      (_match, body: string) =>
+        `[${body
+          .replace(/\\\\/g, "; ")
+          .replace(/&/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()}]`,
+    )
+    .replace(/\b(?:begin|end)?(?:bmatrix|pmatrix|matrix|array|cases)\b/gi, "")
     .replace(/\\lambda/g, "\u03bb")
+    .replace(/\\alpha/g, "\u03b1")
+    .replace(/\\beta/g, "\u03b2")
+    .replace(/\\gamma/g, "\u03b3")
+    .replace(/\\delta/g, "\u03b4")
+    .replace(/\\theta/g, "\u03b8")
+    .replace(/\\omega/g, "\u03c9")
+    .replace(/\\sigma/g, "\u03c3")
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1) / ($2)")
+    .replace(/\\sqrt\{([^{}]+)\}/g, "sqrt($1)")
+    .replace(/\\(?:mathrm|mathbf|text)\{([^{}]+)\}/g, "$1")
+    .replace(/\\begin\{[^{}]+\}|\\end\{[^{}]+\}/g, "")
+    .replace(/\\[a-zA-Z]+/g, "")
     .replace(/\\_/g, "_")
+    .replace(/\$\$/g, "")
     .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -921,13 +974,100 @@ function equationMath(equation: EquationLayoutPlan) {
   });
 }
 
+function equationSvg(equation: EquationLayoutPlan) {
+  const equationText =
+    equation.render_strategy === "generated_equation_image"
+      ? equation.source_latex || equation.normalized_latex || equation.latex || equation.display_text
+      : equation.display_text || equation.normalized_latex || equation.latex;
+  const text = escapeSvgText(mathText(equationText));
+  const caption = escapeSvgText(`Ecuacion ${equation.equation_number}`);
+
+  return `
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220">
+  <rect width="960" height="220" rx="18" fill="#ffffff"/>
+  <rect x="18" y="18" width="924" height="184" rx="14" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+  <text x="480" y="104" text-anchor="middle" font-family="Cambria Math, Georgia, serif" font-size="36" fill="#111827">${text}</text>
+  <text x="902" y="166" text-anchor="end" font-family="Georgia, serif" font-size="22" fill="#374151">(${equation.equation_number})</text>
+  <text x="58" y="166" font-family="Georgia, serif" font-size="18" fill="#64748b">${caption}</text>
+</svg>`;
+}
+
 function renderEquationAsset(equation: EquationLayoutPlan) {
+  const imageBuffer =
+    equation.file_path && fs.existsSync(equation.file_path)
+      ? fs.readFileSync(equation.file_path)
+      : null;
+  const imageDimensions = imageBuffer
+    ? resolveImageDimensions({
+        buffer: imageBuffer,
+      })
+    : null;
+  const fittedImage =
+    imageDimensions && imageBuffer
+      ? fitImage({
+          width: imageDimensions.width,
+          height: imageDimensions.height,
+          maxWidth: 540,
+          maxHeight: 280,
+        })
+      : null;
+  const variableRows =
+    equation.variable_notes.length > 0
+      ? [
+          ["Símbolo", "Descripción"],
+          ...equation.variable_notes.map((note) => [
+            note.symbol,
+            note.description,
+            note.unit ?? "No recuperada",
+          ]),
+        ]
+      : [];
+  const normalizedVariableRows = variableRows.map((row, index) =>
+    index === 0 ? ["Simbolo", "Descripcion", "Unidad"] : row,
+  );
+  const equationVisualChildren =
+    imageBuffer && fittedImage
+      ? [
+          new ImageRun({
+            type: imageTypeFromMimeOrPath({
+              filePath: equation.file_path ?? null,
+            }),
+            data: imageBuffer,
+            transformation: fittedImage,
+          }),
+        ]
+      : equation.render_strategy === "generated_equation_image"
+        ? [
+            new ImageRun({
+              type: "svg",
+              data: Buffer.from(equationSvg(equation), "utf8"),
+              fallback: {
+                type: "png",
+                data: TRANSPARENT_PNG_BUFFER,
+              },
+              transformation: {
+                width: 500,
+                height: 115,
+              },
+            }),
+          ]
+        : [equationMath(equation)];
+
   return [
     paragraph(equation.body_reference, {
       indentFirstLine: false,
       beforePt: 8,
       afterPt: 4,
     }),
+    ...(equation.section_explanation
+      ? [
+          paragraph(equation.section_explanation, {
+            indentFirstLine: false,
+            beforePt: 0,
+            afterPt: 4,
+          }),
+        ]
+      : []),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       layout: TableLayoutType.FIXED,
@@ -962,7 +1102,7 @@ function renderEquationAsset(equation: EquationLayoutPlan) {
                   alignment: AlignmentType.CENTER,
                   spacing: { before: 0, after: 0, line: 320 },
                   indent: { firstLine: 0 },
-                  children: [equationMath(equation)],
+                  children: equationVisualChildren,
                 }),
               ],
             }),
@@ -976,19 +1116,33 @@ function renderEquationAsset(equation: EquationLayoutPlan) {
         }),
       ],
     }),
+    smallNote(`Ecuación ${equation.equation_number}. ${cleanDocText(equation.caption)}`),
+    smallNote(equation.purpose),
+    ...(normalizedVariableRows.length > 0
+      ? [
+          simpleTable(normalizedVariableRows, [20, 62, 18], {
+            paperLike: true,
+            fontSizePt: 8,
+          }),
+        ]
+      : []),
+    ...(equation.limitations?.length
+      ? equation.limitations.map((limitation) => smallNote(limitation))
+      : []),
+    smallNote(equation.source_note),
   ];
 }
 
 function renderNonImageAssetBlock(asset: AssetPlacement) {
   const label =
     asset.render_mode === "equation"
-      ? "Ecuacion"
+      ? "Ecuación"
       : asset.render_mode === "table"
         ? "Tabla"
-        : "Asset";
+        : "Apoyo visual";
 
   return [
-    paragraph(`${label} planificada: ${cleanDocText(asset.caption)}`, {
+    paragraph(`${label} de apoyo: ${cleanDocText(asset.caption)}`, {
       bold: true,
       alignment: AlignmentType.LEFT,
       indentFirstLine: false,
@@ -999,113 +1153,13 @@ function renderNonImageAssetBlock(asset: AssetPlacement) {
     simpleTable(
       [
         ["Campo", "Detalle"],
-        ["asset_key", asset.asset_key],
-        ["seccion destino", asset.section_key],
-        ["modo", asset.render_mode],
-        ["fuente", asset.source_id],
-        ["notas", cleanDocText(asset.text_content) || "Pendiente de reconstruccion estructurada."],
+        ["Tipo de apoyo", label],
+        ["Uso previsto", "Complementar la explicación académica de la sección correspondiente."],
+        ["Estado", "Pendiente de reconstrucción estructurada con soporte de fuente antes de uso productivo."],
       ],
       [24, 76],
     ),
   ];
-}
-
-function authorLastName(author: string) {
-  const clean = author.replace(/\s+/g, " ").trim();
-  const parts = clean.split(" ");
-  return parts.at(-1) ?? clean;
-}
-
-function citationLabel(source: SourceLike) {
-  const year = source.year ?? "s.f.";
-  if (source.authors.length === 0) {
-    return `(${year})`;
-  }
-
-  if (source.authors.length === 1) {
-    return `(${authorLastName(source.authors[0])}, ${year})`;
-  }
-
-  if (source.authors.length === 2) {
-    return `(${authorLastName(source.authors[0])} & ${authorLastName(source.authors[1])}, ${year})`;
-  }
-
-  return `(${authorLastName(source.authors[0])} et al., ${year})`;
-}
-
-function buildSourceLookup(evidenceLedger: EvidenceLedger) {
-  const lookup = new Map<string, SourceLike>();
-  for (const source of evidenceLedger.source_registry) {
-    lookup.set(source.source_id, source);
-    if (source.reference_id) {
-      lookup.set(source.reference_id, source);
-    }
-  }
-  return lookup;
-}
-
-function sectionCitations(input: {
-  section: RenderSection;
-  sourceLookup: Map<string, SourceLike>;
-}) {
-  return Array.from(
-    new Set((input.section.supported_source_ids ?? []).map((id) => input.sourceLookup.get(id))),
-  )
-    .filter((source): source is SourceLike => Boolean(source))
-    .slice(0, 2)
-    .map(citationLabel);
-}
-
-function shouldInsertCitations(sectionKey: string) {
-  return ![
-    "abstract",
-    "keywords",
-    "references",
-    "consistency_matrix",
-    "schedule",
-    "budget",
-    "annexes",
-    "general_objective",
-    "specific_objectives",
-    "research_questions",
-    "general_research_question",
-    "specific_research_questions",
-    "general_hypothesis",
-    "specific_hypotheses",
-  ].includes(sectionKey);
-}
-
-function renderContentBlock(input: {
-  section: RenderSection;
-  sourceLookup: Map<string, SourceLike>;
-}) {
-  const citations = shouldInsertCitations(input.section.section_key)
-    ? sectionCitations({ section: input.section, sourceLookup: input.sourceLookup })
-    : [];
-  const markdownTable = parseMarkdownTable(input.section.content);
-
-  if (markdownTable.length > 0) {
-    const nonTableText = cleanDocText(input.section.content)
-      .split(/\n+/)
-      .filter((line) => !/^\s*\|/.test(line))
-      .join("\n");
-
-    return [
-      ...splitParagraphs(nonTableText).flatMap((item) => [paragraph(item)]),
-      simpleTable(markdownTable, markdownTable[0].map((_, index) => (index === 0 ? 24 : 19))),
-    ];
-  }
-
-  if (/^[-*]\s/m.test(input.section.content)) {
-    return parseListItems(input.section.content).map((item) => bullet(item));
-  }
-
-  return splitParagraphs(input.section.content).map((item, index) => {
-    const citationSuffix = index < citations.length && !/[)]\.$/.test(item)
-      ? ` ${citations[index]}`
-      : "";
-    return paragraph(`${item}${citationSuffix}`);
-  });
 }
 
 function renderAcademicContentBlocks(section: AcademicSection) {
@@ -1134,7 +1188,11 @@ function renderAcademicContentBlocks(section: AcademicSection) {
     }
 
     if (block.block_type === "bullet") {
-      children.push(bullet(block.text));
+      const citationSuffix = block.citation_anchor_ids
+        .map((anchorId) => citationLookup.get(anchorId))
+        .filter((citation): citation is string => Boolean(citation))
+        .join(" ");
+      children.push(bullet(placeCitationInAcademicTextForDiagnostics(block.text, citationSuffix)));
       continue;
     }
 
@@ -1142,8 +1200,51 @@ function renderAcademicContentBlocks(section: AcademicSection) {
       .map((anchorId) => citationLookup.get(anchorId))
       .filter((citation): citation is string => Boolean(citation))
       .join(" ");
+    const text = cleanDocText(block.text);
+    const bulletPreferred = new Set([
+      "research_questions",
+      "general_research_question",
+      "specific_research_questions",
+      "objectives",
+      "general_objective",
+      "specific_objectives",
+      "variables_or_categories",
+      "population_and_sample",
+      "data_collection_techniques",
+      "research_instruments",
+      "research_procedure",
+      "analysis_plan",
+      "scope_and_limitations",
+      "terms_definition",
+    ]);
+    const sentenceBullets = bulletPreferred.has(section.section_key)
+      ? sentenceChunks(text, 5).filter((chunk) => chunk.length > 20)
+      : [];
 
-    children.push(paragraph(`${block.text}${citationSuffix ? ` ${citationSuffix}` : ""}`));
+    if (sentenceBullets.length >= 3) {
+      sentenceBullets.forEach((item, index) => {
+        const suffix =
+          index === sentenceBullets.length - 1 && citationSuffix
+            ? ` ${citationSuffix}`
+            : "";
+        children.push(bullet(`${item}${suffix}`));
+      });
+      continue;
+    }
+
+    if (shouldSplitDensePublicBlockForDiagnostics(section.section_key, text)) {
+      const denseBullets = sentenceChunks(text, 5).filter((chunk) => chunk.length > 20);
+      if (denseBullets.length >= 3) {
+        denseBullets.forEach((item, index) => {
+          children.push(
+            bullet(index === 0 ? placeCitationInAcademicTextForDiagnostics(item, citationSuffix) : item),
+          );
+        });
+        continue;
+      }
+    }
+
+    children.push(paragraphWithBoldLead(placeCitationInAcademicTextForDiagnostics(text, citationSuffix)));
   }
 
   return children;
@@ -1171,48 +1272,25 @@ function renderStructuredTheoreticalFramework(section: AcademicSection) {
     .map((block) => ("text" in block ? block.text : ""))
     .join(" ");
   const chunks = sentenceChunks(text, 4);
+  const citations = section.citation_anchors.map((anchor) => anchor.rendered_citation);
+  const baseLabel = sentenceStyleCapitalizePublicText(section.title, "heading");
   const labels = [
-    "Reutilizacion adaptativa y sostenibilidad urbana",
-    "Vacancia, subutilizacion y valor del parque edificado",
-    "Criterios de decision para compatibilidad de nuevo uso",
-    "Brecha metodologica que orienta la propuesta",
+    `${baseLabel}: contexto conceptual`,
+    `${baseLabel}: antecedentes clave`,
+    `${baseLabel}: criterios analiticos`,
+    `${baseLabel}: brecha y enfoque`,
   ];
 
   if (chunks.length <= 1) {
-    return splitParagraphs(text).map((item) => paragraph(item));
+    return splitParagraphs(text).map((item, index) =>
+      paragraphWithBoldLead(placeCitationInAcademicTextForDiagnostics(item, citations[index] ?? "")),
+    );
   }
 
   return chunks.flatMap((chunk, index) => [
     heading(labels[index] ?? `Componente teorico ${index + 1}`, Math.min(5, section.level + 1)),
-    paragraph(chunk),
+    paragraphWithBoldLead(placeCitationInAcademicTextForDiagnostics(chunk, citations[index] ?? "")),
   ]);
-}
-
-function formatAuthorApa(author: string) {
-  const parts = author.replace(/\s+/g, " ").trim().split(" ");
-  if (parts.length <= 1) {
-    return author;
-  }
-  const lastName = parts.pop();
-  const initials = parts
-    .map((part) => part.charAt(0).toUpperCase())
-    .filter(Boolean)
-    .map((initial) => `${initial}.`)
-    .join(" ");
-
-  return `${lastName}, ${initials}`;
-}
-
-function formatReferenceApa(source: SourceLike) {
-  const authors =
-    source.authors.length > 0
-      ? source.authors.slice(0, 8).map(formatAuthorApa).join(", ")
-      : "Autor no disponible";
-  const year = source.year ?? "s.f.";
-  const venue = source.venue ? ` ${source.venue}.` : "";
-  const doi = source.doi ? ` https://doi.org/${source.doi.replace(/^https?:\/\/doi.org\//i, "")}` : "";
-
-  return `${authors} (${year}). ${source.title}.${venue}${doi}`;
 }
 
 function renderCover(input: {
@@ -1278,7 +1356,7 @@ function renderCover(input: {
 function renderTableOfContents(_entries: TocEntry[]) {
   return [
     new TableOfContents("Tabla de contenido", {
-      hyperlink: true,
+      hyperlink: false,
       headingStyleRange: "1-3",
     }),
     new Paragraph({ children: [new PageBreak()] }),
@@ -1305,7 +1383,7 @@ function renderMatrix(academicDocument: AcademicDocument) {
       paperLike: true,
       fontSizePt: academicDocument.matrix_layout.font_size_pt,
     }),
-    smallNote("Fuente: elaboracion propia a partir de los objetivos, preguntas, hipotesis y metodologia generados con trazabilidad."),
+    smallNote("Fuente: elaboracion propia a partir de los objetivos, preguntas, hipotesis y metodologia del proyecto."),
   ];
 }
 
@@ -1392,6 +1470,14 @@ function formatBudgetRange(range: BudgetRange) {
   return `${range.currency} ${range.min.toLocaleString("en-US")} - ${range.max.toLocaleString("en-US")}`;
 }
 
+function formatCostType(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "direct") return "Directo";
+  if (normalized === "optional") return "Opcional";
+  if (normalized === "contingency") return "Contingencia";
+  return value;
+}
+
 function renderBudgetPlan(input: {
   rows: ResearchBudgetRow[];
   totalRange: BudgetRange | null;
@@ -1406,9 +1492,9 @@ function renderBudgetPlan(input: {
 
   const rows = capitalizePublicTableRows([
     [
-      "Categoria",
+      "Categoría",
       "Tipo",
-      "Item",
+      "Ítem",
       "Unidad",
       "Cantidad",
       "Costo unitario",
@@ -1417,7 +1503,7 @@ function renderBudgetPlan(input: {
     ],
     ...input.rows.map((row) => [
       row.category,
-      row.cost_type,
+      formatCostType(row.cost_type),
       row.item,
       row.unit,
       String(row.quantity),
@@ -1428,15 +1514,15 @@ function renderBudgetPlan(input: {
   ]);
 
   return [
-    smallNote("Tabla 3. Presupuesto preliminar de investigacion con rangos referenciales."),
+    smallNote("Tabla 3. Presupuesto preliminar de investigación con rangos referenciales."),
     simpleTable(rows, [11, 9, 22, 10, 8, 12, 12, 16], {
       paperLike: true,
       fontSizePt: 7.5,
     }),
     smallNote(
       input.totalRange
-        ? `Total estimado referencial: ${formatBudgetRange(input.totalRange)}. Fuente: elaboracion propia; no corresponde a cotizaciones de proveedor.`
-        : "Fuente: elaboracion propia; no corresponde a cotizaciones de proveedor.",
+        ? `Total estimado referencial: ${formatBudgetRange(input.totalRange)}. Fuente: elaboración propia; no corresponde a cotizaciones de proveedor.`
+        : "Fuente: elaboración propia; no corresponde a cotizaciones de proveedor.",
     ),
   ];
 }
@@ -1454,51 +1540,8 @@ function renderPublicAppendixPolicyItems(items: PublicAppendixItem[]) {
   ]);
 
   return [
-    heading("Anexo D. Indice de anexos academicos publicos", 1),
-    smallNote(
-      "Los anexos publicos se limitan a contenidos academicos utiles para lectura, evaluacion metodologica y gestion del proyecto.",
-    ),
+    heading("Anexo B. Anexos académicos públicos", 1),
     simpleTable(rows, [34, 66], { paperLike: true, fontSizePt: 8.5 }),
-  ];
-}
-
-function renderTraceabilityAnnex(input: {
-  evidenceLedger: EvidenceLedger;
-  validationReport: MasterBlueprintValidationReport;
-  matrixArtifact: ConsistencyMatrixArtifact;
-}) {
-  const quality = input.validationReport.quality_report;
-  const rows = [
-    ["Criterio", "Resultado"],
-    ["Calidad academica preliminar", sanitizePublicAppendixText(`${quality.score_10}/10`)],
-    [
-      "Trazabilidad de referencias",
-      sanitizePublicAppendixText(
-        input.validationReport.reference_traceability_ok ? "Verificada" : "Requiere revision",
-      ),
-    ],
-    [
-      "Matriz de consistencia",
-      sanitizePublicAppendixText(
-        `${input.matrixArtifact.specific_rows.length} filas; alineacion: ${input.matrixArtifact.validation.row_alignment_ok ? "verificada" : "por revisar"}`,
-      ),
-    ],
-    ["Fuentes formales", `${input.evidenceLedger.source_registry.filter((source) => source.eligible_for_formal_reference).length}`],
-    [
-      "Advertencias",
-      sanitizePublicAppendixText(
-        [...input.validationReport.warnings, ...input.matrixArtifact.validation.warnings].slice(0, 4).join(" | ") ||
-          "Sin advertencias criticas",
-      ),
-    ],
-  ];
-
-  return [
-    heading("Anexo A. Declaracion de trazabilidad academica", 1),
-    smallNote(
-      "Este anexo resume condiciones academicas verificables del documento. Los identificadores tecnicos de proveedores, rutas locales y registros internos quedan fuera del documento publico.",
-    ),
-    simpleTable(rows, [28, 72], { paperLike: true, fontSizePt: 8.5 }),
   ];
 }
 
@@ -1506,37 +1549,22 @@ function renderProjectManagementAnnex(input: {
   sections: AcademicSection[];
   titleOverrides: Record<string, string>;
   scheduleVisual: ScheduleVisualPlan | null;
-  budgetRows: ResearchBudgetRow[];
-  budgetTotalRange: BudgetRange | null;
 }) {
   const managementSections = input.sections.filter((section) =>
-    ["schedule", "budget", "annexes"].includes(section.section_key),
+    section.section_key === "schedule",
   );
 
-  if (managementSections.length === 0 && !input.scheduleVisual && input.budgetRows.length === 0) {
+  if (managementSections.length === 0 && !input.scheduleVisual) {
     return [];
   }
 
   return [
-    heading("Anexo C. Gestion del proyecto", 1),
-    smallNote(
-      "Contenido operativo movido a anexo para preservar un cuerpo principal con lectura tipo articulo academico.",
-    ),
+    heading("Anexo A. Cronograma de investigación", 1),
     ...managementSections.flatMap((section) => {
       if (section.section_key === "schedule" && input.scheduleVisual) {
         return [
           heading(input.titleOverrides[section.section_key] ?? section.title, 2),
           ...renderScheduleVisual(input.scheduleVisual),
-        ];
-      }
-
-      if (section.section_key === "budget") {
-        return [
-          heading(input.titleOverrides[section.section_key] ?? section.title, 2),
-          ...renderBudgetPlan({
-            rows: input.budgetRows,
-            totalRange: input.budgetTotalRange,
-          }),
         ];
       }
 
@@ -1551,15 +1579,6 @@ function renderProjectManagementAnnex(input: {
           heading("Cronograma de investigacion", 2),
           ...renderScheduleVisual(input.scheduleVisual),
         ]),
-    ...(managementSections.some((section) => section.section_key === "budget") || input.budgetRows.length === 0
-      ? []
-      : [
-          heading("Presupuesto referencial", 2),
-          ...renderBudgetPlan({
-            rows: input.budgetRows,
-            totalRange: input.budgetTotalRange,
-          }),
-        ]),
   ];
 }
 
@@ -1573,47 +1592,77 @@ function renderAssetPlanAnnex(input: {
   const equations = input.academicDocument.layout_plan.equations.filter(
     (equation) => !input.renderedAssetKeys.has(`${equation.section_key}|${equation.source_id}|${equation.asset_key}`),
   );
+  const plannedNonRenderableAssets = input.academicDocument.asset_placements
+    .filter((asset) => !input.renderedAssetKeys.has(assetPlacementIdentity(asset)))
+    .filter((asset) => asset.render_mode === "equation" || asset.render_mode === "table" || asset.render_mode === "text_fallback")
+    .slice(0, 8);
 
-  if (figures.length === 0 && equations.length === 0) {
-    return [
-      heading("Anexo B. Registro academico de apoyos visuales", 1),
-      smallNote("No quedaron figuras o ecuaciones pendientes de insercion en anexos publicos. Los apoyos textuales no publicables se conservan fuera del DOCX para revision interna."),
-    ];
+  if (figures.length === 0 && equations.length === 0 && plannedNonRenderableAssets.length === 0) {
+    return [];
   }
 
   const rows = [
-    ["Elemento", "Seccion", "Uso academico"],
+    ["Elemento", "Uso académico"],
     ...figures.map((figure) => [
       `Figura ${figure.figure_number}`,
-      figure.section_key,
       figure.caption,
     ]),
     ...equations.map((equation) => [
-      `Ecuacion ${equation.equation_number}`,
-      equation.section_key,
+      `Ecuación ${equation.equation_number}`,
       equation.caption,
+    ]),
+    ...plannedNonRenderableAssets.map((asset, index) => [
+      asset.render_mode === "equation"
+        ? `Ecuación pendiente ${index + 1}`
+        : asset.render_mode === "table"
+          ? `Tabla pendiente ${index + 1}`
+          : `Apoyo pendiente ${index + 1}`,
+      cleanDocText(asset.caption),
     ]),
   ];
 
   return [
-    heading("Anexo B. Registro academico de apoyos visuales", 1),
-    smallNote("Solo se muestran apoyos visuales publicables. Identificadores tecnicos, rutas locales, hashes y enlaces de proveedor quedan fuera del DOCX y se conservan en registros internos."),
-    simpleTable(rows, [20, 20, 60], { paperLike: true, fontSizePt: 8.5 }),
+    heading("Anexo C. Apoyos visuales académicos", 1),
+    simpleTable(rows, [24, 76], { paperLike: true, fontSizePt: 8.5 }),
     ...equations.flatMap((equation) => renderEquationAsset(equation)),
     ...figures.flatMap((figure) => renderImageAsset({ figure })),
+    ...plannedNonRenderableAssets.flatMap((asset) => renderNonImageAssetBlock(asset)),
   ];
 }
 
 function renderReferences(references: AcademicReference[]) {
+  const primaryReferences = references.filter(
+    (reference) => reference.reference_kind !== "secondary_unrecovered",
+  );
+  const secondaryReferences = references.filter(
+    (reference) => reference.reference_kind === "secondary_unrecovered",
+  );
+
   return [
     heading("Referencias", 1),
-    ...references.slice(0, 24).map((reference) =>
+    ...primaryReferences.slice(0, 60).map((reference) =>
       paragraph(reference.apa_reference, {
         alignment: AlignmentType.LEFT,
         indentFirstLine: false,
         afterPt: 4,
       }),
     ),
+    ...(secondaryReferences.length > 0
+      ? [
+          heading("Referencias secundarias detectadas y pendientes de recuperacion", 2),
+          smallNote(
+            "Estas fuentes fueron mencionadas dentro de documentos recuperados. No se citan como fuentes primarias hasta recuperarlas, validarlas y agregarlas al corpus.",
+          ),
+          ...secondaryReferences.slice(0, 25).map((reference) =>
+            paragraph(reference.apa_reference, {
+              alignment: AlignmentType.LEFT,
+              indentFirstLine: false,
+              afterPt: 4,
+              color: "5E6470",
+            }),
+          ),
+        ]
+      : []),
   ];
 }
 
@@ -1735,62 +1784,6 @@ function renderSections(input: {
   };
 }
 
-function buildMasterSections(input: {
-  masterTemplate: MasterTemplateRuntime;
-  drafts: MasterSectionDraft[];
-}): RenderSection[] {
-  const draftMap = new Map(input.drafts.map((draft) => [draft.section_key, draft]));
-  const sections: RenderSection[] = [];
-  const mergedIntoParent = new Set(["variables_indicators", "categories_subcategories"]);
-  const unique = (items: string[]) => Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
-
-  for (const templateSection of input.masterTemplate.sections) {
-    if (mergedIntoParent.has(templateSection.semantic_key)) {
-      continue;
-    }
-
-    const draft = draftMap.get(templateSection.semantic_key);
-    const mergeDrafts =
-      templateSection.semantic_key === "variables_or_categories"
-        ? [
-            draft,
-            draftMap.get("variables_indicators"),
-            draftMap.get("categories_subcategories"),
-          ].filter((item): item is MasterSectionDraft => Boolean(item))
-        : draft
-          ? [draft]
-          : [];
-    if (mergeDrafts.length === 0) {
-      continue;
-    }
-
-    sections.push({
-      section_key: templateSection.semantic_key,
-      title: templateSection.title || draft?.title || templateSection.semantic_key,
-      content: unique(mergeDrafts.map((item) => cleanDocText(item.content))).join("\n\n"),
-      level: templateSection.level,
-      supported_source_ids: unique(
-        mergeDrafts.flatMap((item) => [
-          ...item.supported_source_ids,
-          ...item.supported_pdf_source_ids,
-        ]),
-      ),
-    });
-  }
-
-  return sections;
-}
-
-function buildUniversitySections(universityBlueprint: UniversityBlueprintPackage): RenderSection[] {
-  return universityBlueprint.sections.map((section: UniversityBlueprintSection) => ({
-    section_key: section.section_key,
-    title: section.title,
-    content: section.content,
-    level: section.level ?? (section.section_key.includes("_") ? 2 : 1),
-    supported_source_ids: section.source_ids ?? [],
-  }));
-}
-
 function createDocument(input: {
   project: MasterBlueprintEngineProject;
   academicDocument: AcademicDocument;
@@ -1801,11 +1794,17 @@ function createDocument(input: {
     academicDocument: input.academicDocument,
     assetPlacements: input.academicDocument.asset_placements,
   });
+  const projectManagementChildren = renderProjectManagementAnnex({
+    sections: input.academicDocument.sections,
+    titleOverrides: input.academicDocument.editorial_plan.title_overrides,
+    scheduleVisual: input.academicDocument.layout_plan.schedule_visual,
+  });
+  const publicAppendixChildren: never[] = [];
 
   return new Document({
     creator: "Ingeniometrix",
     title: input.academicDocument.metadata.title,
-    description: "Proyecto de investigacion generado con trazabilidad academica.",
+    description: "Proyecto de investigación académica asistida por Ingeniometrix.",
     styles: {
       default: {
         document: {
@@ -1834,9 +1833,7 @@ function createDocument(input: {
         },
         footers: {
           first: buildBlankFooter(),
-          default: buildAcademicFooter({
-            academicDocument: input.academicDocument,
-          }),
+          default: buildAcademicFooter(),
         },
         children: [
           ...renderCover({
@@ -1862,9 +1859,7 @@ function createDocument(input: {
           }),
         },
         footers: {
-          default: buildAcademicFooter({
-            academicDocument: input.academicDocument,
-          }),
+          default: buildAcademicFooter(),
         },
         children: renderMatrix(input.academicDocument),
       },
@@ -1879,31 +1874,48 @@ function createDocument(input: {
           }),
         },
         footers: {
-          default: buildAcademicFooter({
-            academicDocument: input.academicDocument,
-          }),
+          default: buildAcademicFooter(),
         },
-        children: [
-          ...renderReferences(input.academicDocument.references),
-          ...renderTraceabilityAnnex({
-            evidenceLedger: input.evidenceLedger,
-            validationReport: input.validationReport,
-            matrixArtifact: input.academicDocument.matrix,
-          }),
-          ...renderProjectManagementAnnex({
-            sections: input.academicDocument.sections,
-            titleOverrides: input.academicDocument.editorial_plan.title_overrides,
-            scheduleVisual: input.academicDocument.layout_plan.schedule_visual,
-            budgetRows: input.academicDocument.layout_plan.budget_rows ?? [],
-            budgetTotalRange: input.academicDocument.layout_plan.budget_total_range ?? null,
-          }),
-          ...renderPublicAppendixPolicyItems(input.academicDocument.layout_plan.appendix_public_items ?? []),
-          ...renderAssetPlanAnnex({
-            academicDocument: input.academicDocument,
-            renderedAssetKeys: renderedSections.renderedAssetKeys,
-          }),
-        ],
+        children: renderReferences(input.academicDocument.references),
       },
+      ...(projectManagementChildren.length > 0
+        ? [
+            {
+              properties: makeSectionProperties("landscape", {
+                variant: input.academicDocument.variant,
+              }),
+              headers: {
+                default: buildAcademicHeader({
+                  academicDocument: input.academicDocument,
+                  sectionLabel: "Gestión del proyecto",
+                }),
+              },
+              footers: {
+                default: buildAcademicFooter(),
+              },
+              children: projectManagementChildren,
+            },
+          ]
+        : []),
+      ...(publicAppendixChildren.length > 0
+        ? [
+            {
+              properties: makeSectionProperties("portrait", {
+                variant: input.academicDocument.variant,
+              }),
+              headers: {
+                default: buildAcademicHeader({
+                  academicDocument: input.academicDocument,
+                  sectionLabel: "Anexos",
+                }),
+              },
+              footers: {
+                default: buildAcademicFooter(),
+              },
+              children: publicAppendixChildren,
+            },
+          ]
+        : []),
     ],
   });
 }
@@ -2038,7 +2050,8 @@ function buildManifest(input: {
       has_cover: true,
       has_matrix_table: input.academicDocument.matrix.specific_rows.length > 0,
       has_references: input.academicDocument.references.length > 0,
-      has_traceability_annex: true,
+      has_traceability_annex: false,
+      no_public_traceability_annex: true,
       has_brand_logo: availableLogoCount > 0,
       has_renderable_assets: renderableImageAssetCount > 0,
       control_content_moved_to_annex: true,
@@ -2053,7 +2066,7 @@ function buildManifest(input: {
           cleanDocText(figure.body_reference).includes(`Figura ${figure.figure_number}`),
         ) &&
         input.academicDocument.layout_plan.equations.every((equation) =>
-          cleanDocText(equation.body_reference).includes(`Ecuacion ${equation.equation_number}`),
+          cleanDocText(equation.body_reference).includes(`Ecuación ${equation.equation_number}`),
         ),
       has_clean_public_annex:
         input.academicDocument.layout_plan.public_annex_policy.include_internal_traceability === false,
@@ -2072,22 +2085,6 @@ function buildManifest(input: {
     },
     warnings,
   } satisfies LabDocxRenderManifest;
-}
-
-function countSectionCitations(input: {
-  sections: RenderSection[];
-  evidenceLedger: EvidenceLedger;
-}) {
-  const sourceLookup = buildSourceLookup(input.evidenceLedger);
-
-  return input.sections.reduce(
-    (sum, section) =>
-      sum +
-      (shouldInsertCitations(section.section_key)
-        ? sectionCitations({ section, sourceLookup }).length
-        : 0),
-    0,
-  );
 }
 
 export async function renderMasterDocx(input: {

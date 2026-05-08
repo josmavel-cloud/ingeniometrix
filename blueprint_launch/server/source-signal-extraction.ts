@@ -7,6 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 import { getConfiguredLlmProvider } from "@/llm";
+import { buildSecondaryReferenceRecoveryQueue } from "@/server/blueprint-engine/quality/secondary-reference-recovery";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 
 import type {
@@ -44,7 +45,6 @@ const MAX_EQUATION_ASSETS_PER_SOURCE = 2;
 const MAX_TABLE_ASSETS_PER_SOURCE = 3;
 const MAX_IMAGE_ASSETS_PER_SOURCE = 3;
 const MAX_TOTAL_ASSETS_PER_SOURCE = 6;
-const MAX_SECTION_SNIPPET_CHARS = 1_400;
 const MAX_CHUNK_CHARS = 1_500;
 const MIN_CHUNK_CHARS = 180;
 const MAX_CHUNK_CANDIDATES_FOR_LLM = 24;
@@ -862,14 +862,13 @@ function splitTopicTerms(topic: string) {
 function scoreOriginalChunk(value: string) {
   const text = value.toLowerCase();
   const weightedPatterns: Array<[RegExp, number]> = [
-    [/\badaptive reuse\b|\breutili[sz]aci[oó]n adaptativa\b/, 0.22],
     [/\bmethod|\bmethodology|\bmetodolog|\bapproach|\bframework|\bmodel\b/, 0.18],
     [/\bcriteria|\bcriterion|\bdecision[- ]making|\bmatrix|\bahp\b|\bmulti-criteria|\bmcdm\b/, 0.2],
     [/\bobjective|\baim|\bpurpose|\bresearch question|\bgoal\b/, 0.12],
-    [/\bproblem|\bgap|\bchallenge|\bbarrier|\bvacan|\bdemolition|\bunderuse\b/, 0.14],
-    [/\bcarbon|\bemission|\blife cycle|\bembodied|\bghg\b|\bsustainab|\bcircular\b/, 0.14],
+    [/\bproblem|\bgap|\bchallenge|\bbarrier|\bneed|\brisk|\bconstraint\b/, 0.14],
+    [/\bvariable|\bindicator|\bparameter|\bmeasure|\bmetric|\bdataset\b/, 0.14],
     [/\bresult|\bfinding|\bshow|\bconclusion|\blimitation|\bfuture work\b/, 0.12],
-    [/\bbuilding|\bcommercial|\bhousing|\bmasterplan|\bheritage|\bmass timber\b/, 0.1],
+    [/\btheory|\bconcept|\bdefinition|\bprotocol|\bvalidation|\bcalibration\b/, 0.1],
   ];
   const score = weightedPatterns.reduce(
     (sum, [pattern, weight]) => sum + (pattern.test(text) ? weight : 0),
@@ -1756,19 +1755,38 @@ export async function extractBlueprintLaunchSourceSignals(input: {
     sources,
     warnings: Array.from(new Set(warnings)),
   };
+  const evidencePacksArtifactBase: EvidencePackArtifact = {
+    artifact_type: "evidence_packs",
+    artifact_version: "v1",
+    generated_at: runAt,
+    extraction_mode: extractionMode,
+    project_context: {
+      project_title: input.projectTitle,
+      intake_topic: input.savedIntake.intake.topic,
+    },
+    packs,
+    warnings: Array.from(new Set(warnings)),
+  };
+  const secondaryReferenceRecoveryQueue = buildSecondaryReferenceRecoveryQueue({
+    case_id: null,
+    evidencePacksArtifact: evidencePacksArtifactBase,
+  });
+  const evidencePackWarnings = Array.from(
+    new Set([
+      ...warnings,
+      ...(secondaryReferenceRecoveryQueue.candidate_count > 0
+        ? [
+            `Se detectaron ${secondaryReferenceRecoveryQueue.candidate_count} referencia(s) secundaria(s) recuperables; no son citables hasta recuperarlas y seleccionarlas.`,
+          ]
+        : []),
+    ]),
+  );
 
   return {
     evidencePacksArtifact: {
-      artifact_type: "evidence_packs",
-      artifact_version: "v1",
-      generated_at: runAt,
-      extraction_mode: extractionMode,
-      project_context: {
-        project_title: input.projectTitle,
-        intake_topic: input.savedIntake.intake.topic,
-      },
-      packs,
-      warnings: Array.from(new Set(warnings)),
+      ...evidencePacksArtifactBase,
+      secondary_reference_recovery_queue: secondaryReferenceRecoveryQueue,
+      warnings: evidencePackWarnings,
     },
     sourceSignalExtraction,
   };

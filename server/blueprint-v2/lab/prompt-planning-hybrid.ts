@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { getConfiguredLlmProvider } from "@/llm";
 import type { ConsolidatedEvidenceArtifact, ConsolidatedEvidenceUnit } from "@/blueprint_launch/server/local-playground-store";
 import { buildSourceHealthLookup } from "@/server/blueprint-engine/quality/section-evidence-binding";
+import { isCentralClaimSection } from "@/server/blueprint-engine/quality/semantic-source-use-policy";
 import {
   buildAcademicEditorialPolicy,
   recommendedContentKindForSection,
@@ -942,14 +943,18 @@ function buildSectionEvidenceHydrationPlan(input: {
     const directUnits = directClaimSupportUnits(relevantUnits);
     const cautiousUnits = cautiousSupportUnits(relevantUnits);
     const contextUnits = relevantUnits.filter((unit) => isContextOnlyUnit(unit));
+    const centralClaimSection = isCentralClaimSection(section.section_key);
+    const allowedCautiousUnits = centralClaimSection ? [] : cautiousUnits;
+    const allowedContextUnits = centralClaimSection ? [] : contextUnits;
     const priorityOriginalExcerpts = directUnits.slice(0, 4);
     const priorityEvidence = uniqueStrings([
       ...directUnits.map((unit) => unit.evidence_id),
-      ...cautiousUnits.map((unit) => unit.evidence_id),
+      ...allowedCautiousUnits.map((unit) => unit.evidence_id),
       ...relevantUnits
         .filter((unit) => unit.citation_eligibility === "asset_reference")
+        .filter((unit) => !centralClaimSection || unitAllowedUse(unit) === "direct_claim_support")
         .map((unit) => unit.evidence_id),
-      ...contextUnits.map((unit) => unit.evidence_id),
+      ...allowedContextUnits.map((unit) => unit.evidence_id),
     ])
       .map((evidenceId) => unitsById.get(evidenceId))
       .filter((unit): unit is ConsolidatedEvidenceUnit => Boolean(unit))
@@ -969,7 +974,9 @@ function buildSectionEvidenceHydrationPlan(input: {
       claims_to_avoid: uniqueStrings([
         ...(claimsGuidance?.claims_to_avoid ?? []),
         cautiousUnits.length > 0
-          ? "No usar fuentes adyacentes como soporte directo de claims centrales sobre aisladores sismicos."
+          ? centralClaimSection
+            ? "No usar fuentes adyacentes/contextuales en esta seccion central; moverlas a antecedentes, contexto o limitaciones."
+            : "No usar fuentes adyacentes o de contexto como soporte directo de claims centrales del estudio."
           : null,
         contextUnits.length > 0
           ? "No usar fuentes metadata/context-only como soporte de claims cuantitativos o normativos."
@@ -1492,7 +1499,7 @@ function buildRetryPolicy(input: {
     | null;
   isRequiredSection: boolean;
 }) {
-  const missingEvidence = input.weakPacket?.missing_evidence.length ?? 0;
+  const missingEvidence = input.weakPacket?.missing_evidence?.length ?? 0;
   const inferableWithCare =
     input.weakPacket?.draftability_status === "inferable_with_care";
   const blockedByMissingEvidence =
@@ -1674,7 +1681,7 @@ function buildDefaultSupportStrategy(input: {
     anchors.push("declarar vacios y no sobreafirmar");
   }
 
-  if (input.weakPacket?.missing_evidence.length) {
+  if (input.weakPacket?.missing_evidence?.length) {
     anchors.push(
       `dejar visible la falta de evidencia en ${input.weakPacket.missing_evidence
         .slice(0, 2)
@@ -2026,38 +2033,6 @@ function buildIntakeRefinementPrompt(input: {
   ].join("\n");
 }
 
-function buildSlimProjectContext(input: {
-  project: MasterBlueprintEngineProject;
-  templateImportContext: MasterTemplateImportContextArtifact | null;
-  refinedIntakeContext?: RefinedIntakeContext | null;
-}) {
-  return uniqueStrings([
-    `- area: ${input.templateImportContext?.imported_project_context.knowledge_area_label ?? "NO_DISPONIBLE"}`,
-    `- tema: ${input.refinedIntakeContext?.refined_topic_es ?? input.project.intake.topic}`,
-    input.refinedIntakeContext?.normalized_problem_es || input.project.intake.problemContext
-      ? `- problema: ${input.refinedIntakeContext?.normalized_problem_es ?? input.project.intake.problemContext}`
-      : null,
-    input.refinedIntakeContext?.normalized_research_line_es || input.project.intake.researchLine
-      ? `- linea de investigacion: ${input.refinedIntakeContext?.normalized_research_line_es ?? input.project.intake.researchLine}`
-      : null,
-    input.refinedIntakeContext?.normalized_methodology_es || input.project.intake.preferredMethodology
-      ? `- metodologia preferida: ${input.refinedIntakeContext?.normalized_methodology_es ?? input.project.intake.preferredMethodology}`
-      : null,
-    input.project.intake.availableData
-      ? `- datos disponibles: ${input.project.intake.availableData}`
-      : null,
-    input.refinedIntakeContext?.normalized_population_es || input.project.intake.targetPopulation
-      ? `- poblacion o unidades de analisis: ${input.refinedIntakeContext?.normalized_population_es ?? input.project.intake.targetPopulation}`
-      : null,
-    input.refinedIntakeContext?.normalized_constraints_es || input.project.intake.academicConstraints
-      ? `- restricciones academicas: ${input.refinedIntakeContext?.normalized_constraints_es ?? input.project.intake.academicConstraints}`
-      : null,
-    input.project.intake.advisorNotes
-      ? `- notas del asesor: ${input.project.intake.advisorNotes}`
-      : null,
-  ]).join("\n");
-}
-
 function buildPromptProjectContext(input: {
   project: MasterBlueprintEngineProject;
   templateImportContext: MasterTemplateImportContextArtifact | null;
@@ -2229,37 +2204,37 @@ function buildSectionImportedContextLines(input: {
     sectionPacket?.summary
       ? `- resumen del packet importado: ${clipText(sectionPacket.summary, 160) ?? sectionPacket.summary}`
       : null,
-    sectionPacket?.key_points.length
+    sectionPacket?.key_points?.length
       ? `- puntos respaldados a priorizar: ${sectionPacket.key_points
           .slice(0, 2)
           .map((item) => clipText(item, 100) ?? item)
           .join(" | ")}`
       : null,
-    sectionPacket?.open_questions.length
+    sectionPacket?.open_questions?.length
       ? `- preguntas abiertas a no cerrar sin evidencia: ${sectionPacket.open_questions
           .slice(0, 2)
           .map((item) => clipText(item, 100) ?? item)
           .join(" | ")}`
       : null,
-    weakPacket?.evidence_backed_points.length
+    weakPacket?.evidence_backed_points?.length
       ? `- puntos con soporte fuerte: ${weakPacket.evidence_backed_points
           .slice(0, 2)
           .map((item) => clipText(item, 100) ?? item)
           .join(" | ")}`
       : null,
-    weakPacket?.inference_bridges.length
+    weakPacket?.inference_bridges?.length
       ? `- puentes inferenciales permitidos con prudencia: ${weakPacket.inference_bridges
           .slice(0, 2)
           .map((item) => clipText(item, 100) ?? item)
           .join(" | ")}`
       : null,
-    weakPacket?.assumptions_needed.length
+    weakPacket?.assumptions_needed?.length
       ? `- assumptions que podrian ser necesarias: ${weakPacket.assumptions_needed
           .slice(0, 2)
           .map((item) => clipText(item, 100) ?? item)
           .join(" | ")}`
       : null,
-    weakPacket?.missing_evidence.length
+    weakPacket?.missing_evidence?.length
       ? `- evidencia faltante a declarar si persiste: ${weakPacket.missing_evidence
           .slice(0, 2)
           .map((item) => clipText(item, 100) ?? item)
@@ -2271,7 +2246,7 @@ function buildSectionImportedContextLines(input: {
           .map((item) => `${item.title} (${item.priority})`)
           .join(" | ")}`
       : null,
-    input.alignmentEntry?.notes.length
+    input.alignmentEntry?.notes?.length
       ? `- notas de alineacion: ${input.alignmentEntry.notes
           .slice(0, 2)
           .map((item) => clipText(item, 120) ?? item)
@@ -2347,17 +2322,17 @@ function buildSectionInstructions(input: {
 }) {
   return uniqueStrings([
     ...input.section.instructions,
-    input.sectionPacket?.key_points.length
+    input.sectionPacket?.key_points?.length
       ? `Prioriza estos puntos respaldados: ${input.sectionPacket.key_points
           .slice(0, 3)
           .join("; ")}.`
       : null,
-    input.sectionPacket?.open_questions.length
+    input.sectionPacket?.open_questions?.length
       ? `No cierres estos vacios sin evidencia: ${input.sectionPacket.open_questions
           .slice(0, 2)
           .join("; ")}.`
       : null,
-    input.weakPacket?.missing_evidence.length
+    input.weakPacket?.missing_evidence?.length
       ? `Si persiste la falta de soporte, declaro como limite: ${input.weakPacket.missing_evidence
           .slice(0, 2)
           .join("; ")}.`
@@ -2366,7 +2341,7 @@ function buildSectionInstructions(input: {
     input.alignmentEntry?.method_relevance !== "low"
       ? `Mantener coherencia con el modo metodologico del template: ${input.masterTemplate.methodology_mode}.`
       : null,
-    input.alignmentEntry?.notes.length
+    input.alignmentEntry?.notes?.length
       ? `Atiende estas notas de alineacion: ${input.alignmentEntry.notes
           .slice(0, 2)
           .join("; ")}.`

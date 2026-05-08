@@ -18,6 +18,10 @@ import {
 } from "@/blueprint_launch/server/local-playground-store";
 import { materializeBlueprintLaunchSourceContent } from "@/blueprint_launch/server/source-content-materialization";
 import { planBlueprintLaunchEvidence } from "@/blueprint_launch/server/source-evidence-planning";
+import {
+  inspectBlueprintLaunchSourcesLimited,
+  renderLimitedInspectionReport,
+} from "@/blueprint_launch/server/source-limited-inspection";
 import { evaluateBlueprintLaunchSourceIntakeGate } from "@/blueprint_launch/server/source-intake-gate";
 import { resolveBlueprintLaunchSourceAccess } from "@/blueprint_launch/server/source-access-resolution";
 import { extractBlueprintLaunchSourceSignals } from "@/blueprint_launch/server/source-signal-extraction";
@@ -39,14 +43,49 @@ import {
 } from "@/server/blueprint-engine/quality/evidence-budget";
 import { evaluateBlueprintProductionSafety } from "@/server/blueprint-engine/quality/production-safety";
 import {
+  buildUserProvidedPdfProductionWarnings,
+  loadUserProvidedSourcePdfManifest,
+  type UserProvidedSourcePdfManifestV1,
+} from "@/server/blueprint-engine/quality/user-provided-source-pdfs";
+import {
+  buildExactStepTelemetry,
   buildCoarseStepTelemetry,
   buildRunTelemetryArtifact,
   normalizeUsageDelta,
+  StepTimer,
+  type StepTelemetrySpan,
 } from "@/server/blueprint-engine/quality/run-telemetry";
 import {
   buildQualityDashboard,
   renderProductionReadinessReport,
 } from "@/server/blueprint-engine/quality/production-readiness-dashboard";
+import {
+  buildSecondaryReferenceRecoveryQueue,
+  renderSecondaryReferenceRecoveryQueueReport,
+} from "@/server/blueprint-engine/quality/secondary-reference-recovery";
+import {
+  buildSourceSufficiencyReport,
+  renderSourceSufficiencyReport,
+} from "@/server/blueprint-engine/quality/source-sufficiency";
+import {
+  buildPostInspectionSourceSufficiencyReport,
+  renderPostInspectionSourceSufficiencyReport,
+  shouldStopAfterPostInspectionSufficiency,
+} from "@/server/blueprint-engine/quality/source-post-inspection-sufficiency";
+import {
+  renderPdfRelevanceReviewReport,
+  reviewPdfRelevanceFromLimitedInspection,
+} from "@/server/blueprint-engine/quality/pdf-relevance-review";
+import {
+  buildDeepResearchLightArtifacts,
+  renderDeepResearchLightReport,
+  shouldBuildDeepResearchLightArtifacts,
+} from "@/server/blueprint-engine/quality/deep-research-light";
+import {
+  buildRapidDeepResearchRequest,
+  renderRapidDeepResearchReport,
+  runRapidDeepResearchFallback,
+} from "@/server/blueprint-engine/quality/rapid-deep-research-fallback";
 import { readLlmUsageRegistry, type LlmUsageRegistry } from "@/server/llm-usage-registry";
 import type { IntakeInput } from "@/server/projects/project-validation";
 import { resolveProjectStatusFromIntake } from "@/server/projects/project-validation";
@@ -67,6 +106,8 @@ type CliArgs = {
   caseId: string;
   runFolder: string | null;
   allowBlocked: boolean;
+  userProvidedPdfManifest: string | null;
+  rapidDeepResearchFallback: boolean;
 };
 
 type IntakeFixture = {
@@ -175,9 +216,18 @@ type RunSummary = {
   warning?: string;
   error?: string;
   full_consolidated_evidence_artifact_path?: string | null;
+  user_provided_pdf_manifest_path?: string | null;
+  user_provided_pdf_count?: number;
+  user_provided_pdf_production_review_required?: boolean;
 };
 
-type BlockedRunStep = "step_2_source_access_resolution" | "step_3_evidence_planning";
+type BlockedRunStep =
+  | "step_2_source_access_resolution"
+  | "step_3_evidence_planning"
+  | "step_4a_limited_source_inspection"
+  | "step_4b_pdf_relevance_review"
+  | "step_4c_source_sufficiency"
+  | "step_4b_post_inspection_sufficiency";
 
 type SourceReplacementReportSource = {
   source_id: string;
@@ -239,6 +289,8 @@ export function parseArgs(args = process.argv.slice(2)): CliArgs {
   let caseId = DEFAULT_CASE_ID;
   let runFolder: string | null = null;
   let allowBlocked = false;
+  let userProvidedPdfManifest: string | null = null;
+  let rapidDeepResearchFallback = false;
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -246,6 +298,11 @@ export function parseArgs(args = process.argv.slice(2)): CliArgs {
 
     if (arg === "--allow-blocked") {
       allowBlocked = true;
+      continue;
+    }
+
+    if (arg === "--rapid-deep-research-fallback") {
+      rapidDeepResearchFallback = true;
       continue;
     }
 
@@ -258,10 +315,16 @@ export function parseArgs(args = process.argv.slice(2)): CliArgs {
     if (arg === "--run-folder" && next) {
       runFolder = next;
       index += 1;
+      continue;
+    }
+
+    if (arg === "--user-provided-pdf-manifest" && next) {
+      userProvidedPdfManifest = next;
+      index += 1;
     }
   }
 
-  return { caseId, runFolder, allowBlocked };
+  return { caseId, runFolder, allowBlocked, userProvidedPdfManifest, rapidDeepResearchFallback };
 }
 
 function buildTimestampToken(value = new Date().toISOString()) {
@@ -435,6 +498,28 @@ function buildUsageDelta(before: LlmUsageRegistry, after: LlmUsageRegistry) {
   };
 }
 
+async function measureEvidenceStep<T>(input: {
+  timer: StepTimer;
+  step_id: string;
+  step_name: string;
+  fn: () => Promise<T>;
+}) {
+  const handle = input.timer.startStep({
+    pipeline_stage: "evidence_engine",
+    step_id: input.step_id,
+    step_name: input.step_name,
+  });
+  const usageBefore = await readLlmUsageRegistry().catch(() => null);
+  try {
+    return await input.fn();
+  } finally {
+    const usageAfter = await readLlmUsageRegistry().catch(() => null);
+    input.timer.completeStep(handle, {
+      usage_delta: usageBefore && usageAfter ? buildUsageDelta(usageBefore, usageAfter).delta : null,
+    });
+  }
+}
+
 function unique(values: string[]) {
   return Array.from(new Set(values.filter((value) => value.trim().length > 0)));
 }
@@ -472,11 +557,37 @@ export function buildRunSummaryBase(input: {
     openai_called: false,
     estimated_or_logged_token_usage: null,
     full_consolidated_evidence_artifact_path: null,
+    user_provided_pdf_manifest_path: null,
+    user_provided_pdf_count: 0,
+    user_provided_pdf_production_review_required: false,
   };
 }
 
 function isBlockDecision(value: unknown) {
   return typeof value === "string" && value.toUpperCase() === "BLOCK";
+}
+
+export function shouldStopAfterEvidencePlanningGate(input: {
+  evidencePlanning: Pick<
+    BlueprintLaunchEvidencePlanningResult,
+    "decision" | "preMaterializationDecision" | "blockingCategory"
+  >;
+  allowBlocked: boolean;
+}) {
+  if (input.allowBlocked || !isBlockDecision(input.evidencePlanning.decision)) {
+    return false;
+  }
+
+  const preMaterializationDecision = input.evidencePlanning.preMaterializationDecision;
+
+  if (!preMaterializationDecision) {
+    return true;
+  }
+
+  return (
+    preMaterializationDecision === "BLOCK_ACCESS_OR_IDENTITY" ||
+    preMaterializationDecision === "NEEDS_SOURCE_REPLACEMENT"
+  );
 }
 
 function normalizeForRiskMatch(value: string | null | undefined) {
@@ -726,9 +837,14 @@ async function writeEvidenceRunAnalytics(input: {
   startedAt: string;
   handoff?: ReturnType<typeof adaptCurrentLabAArtifactToEvidenceHandoffV1> | null;
   reducedEvidencePack?: ReducedEvidencePackV1 | null;
+  userProvidedPdfManifest?: UserProvidedSourcePdfManifestV1 | null;
+  stepSpans?: StepTelemetrySpan[] | null;
 }) {
   const completedAt = new Date().toISOString();
   const usageDelta = normalizeUsageDelta(input.summary.estimated_or_logged_token_usage);
+  const userProvidedPdfWarnings = buildUserProvidedPdfProductionWarnings(
+    input.userProvidedPdfManifest,
+  );
   const productionSafety = input.handoff
     ? evaluateBlueprintProductionSafety(
         buildBlueprintEngineInputFromEvidenceHandoffV1(input.handoff, {
@@ -755,6 +871,7 @@ async function writeEvidenceRunAnalytics(input: {
             materialized_source_count: input.summary.materialized_source_count,
             min_materialized_source_count: 4,
           },
+          structural_warnings: userProvidedPdfWarnings,
         },
       )
     : null;
@@ -773,24 +890,41 @@ async function writeEvidenceRunAnalytics(input: {
     warning_count: input.summary.warnings.length,
     blocker_count: input.summary.blockers.length,
   });
-  const stepTelemetry = buildCoarseStepTelemetry({
-    run_id: input.summary.run_id,
-    completed_steps: input.summary.completed_steps,
-    pipeline_stage: "evidence_engine",
-    started_at: input.startedAt,
-    completed_at: completedAt,
-    usage_delta: usageDelta,
-    source_count: input.summary.selected_source_count,
-    usable_full_text_source_count: productionSafety?.counts.usable_full_text_sources ?? null,
-    evidence_unit_count: input.summary.evidence_unit_count,
-    reduced_evidence_unit_count: input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
-    direct_quote_count: productionSafety?.counts.true_source_backed_direct_quote_count ?? input.summary.direct_quote_count,
-    section_count: input.summary.section_dossier_count,
-    production_eligible: productionSafety?.production_eligible ?? false,
-    diagnostic_compatible: productionSafety?.diagnostic_compatible ?? input.summary.status !== "failed",
-    warning_count: input.summary.warnings.length,
-    blocker_count: input.summary.blockers.length,
-  });
+  const stepTelemetry = input.stepSpans?.length
+    ? buildExactStepTelemetry({
+        run_id: input.summary.run_id,
+        spans: input.stepSpans,
+        source_count: input.summary.selected_source_count,
+        usable_full_text_source_count: productionSafety?.counts.usable_full_text_sources ?? null,
+        evidence_unit_count: input.summary.evidence_unit_count,
+        reduced_evidence_unit_count: input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
+        direct_quote_count:
+          productionSafety?.counts.true_source_backed_direct_quote_count ?? input.summary.direct_quote_count,
+        section_count: input.summary.section_dossier_count,
+        production_eligible: productionSafety?.production_eligible ?? false,
+        diagnostic_compatible: productionSafety?.diagnostic_compatible ?? input.summary.status !== "failed",
+        warning_count: input.summary.warnings.length,
+        blocker_count: input.summary.blockers.length,
+      })
+    : buildCoarseStepTelemetry({
+        run_id: input.summary.run_id,
+        completed_steps: input.summary.completed_steps,
+        pipeline_stage: "evidence_engine",
+        started_at: input.startedAt,
+        completed_at: completedAt,
+        usage_delta: usageDelta,
+        source_count: input.summary.selected_source_count,
+        usable_full_text_source_count: productionSafety?.counts.usable_full_text_sources ?? null,
+        evidence_unit_count: input.summary.evidence_unit_count,
+        reduced_evidence_unit_count: input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
+        direct_quote_count:
+          productionSafety?.counts.true_source_backed_direct_quote_count ?? input.summary.direct_quote_count,
+        section_count: input.summary.section_dossier_count,
+        production_eligible: productionSafety?.production_eligible ?? false,
+        diagnostic_compatible: productionSafety?.diagnostic_compatible ?? input.summary.status !== "failed",
+        warning_count: input.summary.warnings.length,
+        blocker_count: input.summary.blockers.length,
+      });
   const dashboard = buildQualityDashboard({
     run_id: input.summary.run_id,
     case_id: input.summary.case_id,
@@ -823,6 +957,7 @@ export async function writeBlockedGateArtifacts(input: {
   sourceSelection?: SourceSelection | null;
   usageBefore?: LlmUsageRegistry | null;
   startedAt?: string | null;
+  stepSpans?: StepTelemetrySpan[] | null;
 }) {
   const summary = input.summary;
   const report = buildSourceReplacementReport({
@@ -844,12 +979,20 @@ export async function writeBlockedGateArtifacts(input: {
   summary.allow_blocked = false;
   summary.production_valid = false;
   summary.quality_gate_status = "blocked";
+  const blockedGateMessage =
+    input.blockedAtStep === "step_2_source_access_resolution"
+      ? "Step 2 source intake gate returned BLOCK."
+      : input.blockedAtStep === "step_3_evidence_planning"
+        ? "Step 3 evidence planning returned BLOCK."
+        : input.blockedAtStep === "step_4a_limited_source_inspection"
+          ? "Step 4A limited source inspection stopped before full extraction."
+          : input.blockedAtStep === "step_4b_pdf_relevance_review"
+            ? "Step 4B PDF relevance review stopped before source sufficiency."
+            : "Step 4C source sufficiency stopped before full extraction.";
   summary.blockers = unique([
     ...summary.blockers,
     ...report.source_set_blockers,
-    input.blockedAtStep === "step_2_source_access_resolution"
-      ? "Step 2 source intake gate returned BLOCK."
-      : "Step 3 evidence planning returned BLOCK.",
+    blockedGateMessage,
   ]);
   summary.warnings = unique([
     ...summary.warnings,
@@ -873,6 +1016,7 @@ export async function writeBlockedGateArtifacts(input: {
       startedAt: input.startedAt,
       handoff: null,
       reducedEvidencePack: null,
+      stepSpans: input.stepSpans,
     });
   }
 
@@ -891,10 +1035,19 @@ async function main() {
   loadLocalEnv();
 
   const runStartedAt = new Date().toISOString();
-  const { caseId, runFolder, allowBlocked } = parseArgs();
+  const {
+    caseId,
+    runFolder,
+    allowBlocked,
+    userProvidedPdfManifest: userProvidedPdfManifestPath,
+    rapidDeepResearchFallback,
+  } = parseArgs();
   const sourceCandidateRunFolder = path.resolve(
     runFolder ?? (await findLatestRunFolderWithSelection(caseId)),
   );
+  const userProvidedPdfManifest = userProvidedPdfManifestPath
+    ? loadUserProvidedSourcePdfManifest(path.resolve(userProvidedPdfManifestPath))
+    : null;
   const runId = `evidence-selected-sources-${caseId}-${buildTimestampToken()}`;
   const outputFolder = path.join(
     SELECTED_SOURCE_RUN_ROOT,
@@ -911,6 +1064,15 @@ async function main() {
 
   if (allowBlocked) {
     markAllowBlockedDiagnostic(summary);
+  }
+
+  if (userProvidedPdfManifest) {
+    const warnings = buildUserProvidedPdfProductionWarnings(userProvidedPdfManifest);
+    summary.user_provided_pdf_manifest_path = path.resolve(userProvidedPdfManifestPath ?? "");
+    summary.user_provided_pdf_count = userProvidedPdfManifest.entries.length;
+    summary.user_provided_pdf_production_review_required = warnings.length > 0;
+    summary.production_valid = false;
+    summary.warnings = unique([...summary.warnings, ...warnings]);
   }
 
   await mkdir(outputFolder, { recursive: true });
@@ -931,6 +1093,12 @@ async function main() {
 
     await copyIfExists(intakeFixturePath, path.join(outputFolder, "intake-fixture.json"));
     await copyIfExists(sourceSelectionPath, path.join(outputFolder, "source-selection.json"));
+    if (userProvidedPdfManifest) {
+      await writeJson(
+        path.join(outputFolder, "user-provided-source-pdfs.json"),
+        userProvidedPdfManifest,
+      );
+    }
 
     if (sourceSelection.selection_status !== "completed") {
       throw new Error(`source-selection.json no esta completado: ${sourceSelection.selection_status}.`);
@@ -1037,27 +1205,36 @@ async function main() {
     await writeJson(path.join(outputFolder, "selected-source-bundle.json"), selectedSourceBundle);
 
     const usageBefore = await readLlmUsageRegistry();
+    const stepTimer = new StepTimer();
 
     console.log(`[${new Date().toISOString()}] Step 2: resolving selected source access`);
-    const sourceAccessResolution = await resolveBlueprintLaunchSourceAccess({
-      bundle: selectedSourceBundle,
-      projectGlobalContext,
-    });
-    const sourceIntakeGate = evaluateBlueprintLaunchSourceIntakeGate(
-      searchSnapshot.references,
-      sourceAccessResolution,
-    );
-    await writeJson(
-      path.join(outputFolder, "step-2-access-resolution.json"),
-      {
-        source_access_resolution: sourceAccessResolution,
-        source_intake_gate: sourceIntakeGate,
+    const { sourceAccessResolution, sourceIntakeGate } = await measureEvidenceStep({
+      timer: stepTimer,
+      step_id: "step_2_source_access_resolution",
+      step_name: "Step 2 source access resolution",
+      fn: async () => {
+        const resolved = await resolveBlueprintLaunchSourceAccess({
+          bundle: selectedSourceBundle,
+          projectGlobalContext,
+        });
+        const gate = evaluateBlueprintLaunchSourceIntakeGate(
+          searchSnapshot.references,
+          resolved,
+        );
+        await writeJson(
+          path.join(outputFolder, "step-2-access-resolution.json"),
+          {
+            source_access_resolution: resolved,
+            source_intake_gate: gate,
+          },
+        );
+        summary.completed_steps.push("step_2_source_access_resolution");
+        summary.access_resolved_count = resolved.items.filter(
+          (item) => item.status !== "unresolved",
+        ).length;
+        return { sourceAccessResolution: resolved, sourceIntakeGate: gate };
       },
-    );
-    summary.completed_steps.push("step_2_source_access_resolution");
-    summary.access_resolved_count = sourceAccessResolution.items.filter(
-      (item) => item.status !== "unresolved",
-    ).length;
+    });
 
     if (isBlockDecision(sourceIntakeGate.decision) && !allowBlocked) {
       console.log(
@@ -1073,6 +1250,7 @@ async function main() {
         sourceSelection,
         usageBefore,
         startedAt: runStartedAt,
+        stepSpans: stepTimer.getSpans(),
       });
 
       console.log(
@@ -1126,20 +1304,25 @@ async function main() {
     };
 
     console.log(`[${new Date().toISOString()}] Step 3: planning evidence`);
-    const evidencePlanning = await planBlueprintLaunchEvidence({
-      savedIntake,
-      projectGlobalContext,
-      bundle: selectedSourceBundle,
-      sourceAccessResolution,
-      sourceIntakeGate,
-      state: stateForStep3,
+    const evidencePlanning = await measureEvidenceStep({
+      timer: stepTimer,
+      step_id: "step_3_evidence_planning",
+      step_name: "Step 3 evidence planning",
+      fn: async () => planBlueprintLaunchEvidence({
+        savedIntake,
+        projectGlobalContext,
+        bundle: selectedSourceBundle,
+        sourceAccessResolution,
+        sourceIntakeGate,
+        state: stateForStep3,
+      }),
     });
     await writeJson(path.join(outputFolder, "step-3-evidence-planning.json"), evidencePlanning);
     summary.completed_steps.push("step_3_evidence_planning");
 
-    if (isBlockDecision(evidencePlanning.decision) && !allowBlocked) {
+    if (shouldStopAfterEvidencePlanningGate({ evidencePlanning, allowBlocked })) {
       console.log(
-        `[${new Date().toISOString()}] Step 3 gate BLOCK; stopping before Step 4. Use --allow-blocked only for diagnostics.`,
+        `[${new Date().toISOString()}] Step 3 pre-materialization gate ${evidencePlanning.preMaterializationDecision ?? "BLOCK"}; stopping before Step 4. Use --allow-blocked only for diagnostics.`,
       );
       const report = await writeBlockedGateArtifacts({
         summary,
@@ -1152,6 +1335,7 @@ async function main() {
         sourceSelection,
         usageBefore,
         startedAt: runStartedAt,
+        stepSpans: stepTimer.getSpans(),
       });
 
       console.log(
@@ -1185,11 +1369,252 @@ async function main() {
       markAllowBlockedDiagnostic(summary);
     }
 
+    if (evidencePlanning.preMaterializationDecision === "PROCEED_TO_LIMITED_INSPECTION") {
+      console.log(`[${new Date().toISOString()}] Step 4A: limited source inspection`);
+      const limitedInspection = await measureEvidenceStep({
+        timer: stepTimer,
+        step_id: "step_4a_limited_source_inspection",
+        step_name: "Step 4A limited source inspection",
+        fn: async () => inspectBlueprintLaunchSourcesLimited({
+          bundle: selectedSourceBundle,
+          sourceAccessResolution,
+          evidencePlanning,
+          userProvidedPdfManifest,
+        }),
+      });
+      await writeJson(
+        path.join(outputFolder, "step-4a-limited-source-inspection.json"),
+        limitedInspection,
+      );
+      await writeFile(
+        path.join(outputFolder, "limited-inspection-summary.md"),
+        renderLimitedInspectionReport(limitedInspection),
+        "utf8",
+      );
+      summary.completed_steps.push("step_4a_limited_source_inspection");
+      summary.warnings = unique([...summary.warnings, ...limitedInspection.warnings]);
+
+      console.log(`[${new Date().toISOString()}] Step 4B: PDF high-level relevance review`);
+      const pdfRelevanceReview = await measureEvidenceStep({
+        timer: stepTimer,
+        step_id: "step_4b_pdf_relevance_review",
+        step_name: "Step 4B PDF high-level relevance review",
+        fn: async () => reviewPdfRelevanceFromLimitedInspection({
+          caseId,
+          intake: savedIntake.intake as unknown as Record<string, unknown>,
+          knowledgeAreaLabel: project.knowledgeAreaLabel,
+          limitedInspection,
+          selectedSourceBundle,
+        }),
+      });
+      await writeJson(
+        path.join(outputFolder, "step-4b-pdf-relevance-review.json"),
+        pdfRelevanceReview,
+      );
+      await writeFile(
+        path.join(outputFolder, "step-4b-pdf-relevance-review.md"),
+        renderPdfRelevanceReviewReport(pdfRelevanceReview),
+        "utf8",
+      );
+      summary.completed_steps.push("step_4b_pdf_relevance_review");
+      summary.warnings = unique([...summary.warnings, ...pdfRelevanceReview.warnings]);
+      summary.blockers = unique([...summary.blockers, ...pdfRelevanceReview.blockers]);
+
+      const postInspectionSufficiency = buildPostInspectionSourceSufficiencyReport({
+        case_id: caseId,
+        selected_source_count: selectedSourceBundle.selectedCount,
+        evidencePlanning,
+        limitedInspection,
+        pdfRelevanceReview,
+        minUsableFullTextSources:
+          (intakeFixture as { source_policy?: { min_selected_sources?: number } }).source_policy
+            ?.min_selected_sources ?? 3,
+      });
+      await writeJson(
+        path.join(outputFolder, "post-inspection-source-sufficiency.json"),
+        postInspectionSufficiency,
+      );
+      await writeJson(
+        path.join(outputFolder, "step-4c-source-sufficiency.json"),
+        postInspectionSufficiency,
+      );
+      await writeFile(
+        path.join(outputFolder, "post-inspection-source-sufficiency.md"),
+        renderPostInspectionSourceSufficiencyReport(postInspectionSufficiency),
+        "utf8",
+      );
+      summary.completed_steps.push("step_4c_source_sufficiency");
+      summary.warnings = unique([...summary.warnings, ...postInspectionSufficiency.warnings]);
+
+      if (shouldBuildDeepResearchLightArtifacts({ postInspectionSufficiency })) {
+        const referenceCandidatePath = path.join(
+          outputFolder,
+          "deep-research-light-reference-candidates.json",
+        );
+        const deepResearchLight = buildDeepResearchLightArtifacts({
+          caseId,
+          intake: savedIntake.intake as unknown as Record<string, unknown>,
+          bundle: selectedSourceBundle,
+          evidencePlanning,
+          limitedInspection,
+          postInspectionSufficiency,
+          referenceCandidateOutputPath: referenceCandidatePath,
+        });
+        await writeJson(
+          path.join(outputFolder, "deep-research-light-gap-analysis.json"),
+          deepResearchLight.gapAnalysis,
+        );
+        await writeJson(
+          path.join(outputFolder, "deep-research-light-search-plan.json"),
+          deepResearchLight.searchPlan,
+        );
+        await writeJson(referenceCandidatePath, deepResearchLight.referenceCandidates);
+        await writeFile(
+          path.join(outputFolder, "deep-research-light-report.md"),
+          renderDeepResearchLightReport(deepResearchLight),
+          "utf8",
+        );
+        summary.warnings = unique([
+          ...summary.warnings,
+          "Deep Research light fallback artifacts were prepared for source selection; no external search was executed by this runner.",
+        ]);
+
+        if (rapidDeepResearchFallback) {
+          console.log(`[${new Date().toISOString()}] Step 4D: rapid Deep Research fallback`);
+          const rapidRequest = buildRapidDeepResearchRequest({
+            caseId,
+            bundle: selectedSourceBundle,
+            limitedInspection,
+            postInspectionSufficiency,
+            deepResearchLight,
+          });
+          const rapidFallback = await measureEvidenceStep({
+            timer: stepTimer,
+            step_id: "step_4d_rapid_deep_research_fallback",
+            step_name: "Step 4D rapid Deep Research fallback",
+            fn: async () =>
+              runRapidDeepResearchFallback({
+                request: rapidRequest,
+                selectedSources: selectedSourceBundle.sources,
+              }),
+          });
+          await writeJson(
+            path.join(outputFolder, "rapid-deep-research-request.json"),
+            rapidFallback.request,
+          );
+          await writeJson(
+            path.join(outputFolder, "rapid-deep-research-result.json"),
+            rapidFallback.result,
+          );
+          await writeJson(
+            path.join(outputFolder, "rapid-deep-research-candidate-sources.json"),
+            rapidFallback.candidateSources,
+          );
+          await writeJson(
+            path.join(outputFolder, "deep-research-evidence-candidates.json"),
+            rapidFallback.evidenceCandidates,
+          );
+          await writeJson(
+            path.join(outputFolder, "rapid-deep-research-validation-report.json"),
+            rapidFallback.validationReport,
+          );
+          await writeFile(
+            path.join(outputFolder, "rapid-deep-research-report.md"),
+            renderRapidDeepResearchReport(rapidFallback),
+            "utf8",
+          );
+          summary.completed_steps.push("step_4d_rapid_deep_research_fallback");
+          summary.warnings = unique([
+            ...summary.warnings,
+            ...rapidFallback.result.warnings,
+            `Rapid Deep Research fallback status: ${rapidFallback.result.status}.`,
+          ]);
+        }
+      }
+
+      if (
+        shouldStopAfterPostInspectionSufficiency({
+          report: postInspectionSufficiency,
+          allowBlocked,
+        })
+      ) {
+        summary.blockers = unique([
+          ...summary.blockers,
+          ...postInspectionSufficiency.blockers,
+          ...postInspectionSufficiency.reasons,
+          `Step 4C source sufficiency decision: ${postInspectionSufficiency.decision}.`,
+        ]);
+        console.log(
+          `[${new Date().toISOString()}] Step 4C gate ${postInspectionSufficiency.decision}; stopping before full Step 4/5/6.`,
+        );
+        const report = await writeBlockedGateArtifacts({
+          summary,
+          blockedAtStep: "step_4c_source_sufficiency",
+          selectedSourceBundle,
+          sourceAccessResolution,
+          sourceIntakeGate,
+          evidencePlanning,
+          candidateSources,
+          sourceSelection,
+          usageBefore,
+          startedAt: runStartedAt,
+          stepSpans: stepTimer.getSpans(),
+        });
+
+        console.log(
+          JSON.stringify(
+            {
+              status: summary.status,
+              case_id: summary.case_id,
+              output_folder: summary.output_folder,
+              blocked_at_step: summary.blocked_at_step,
+              post_inspection_decision: limitedInspection.postInspectionDecision,
+              post_inspection_sufficiency_decision: postInspectionSufficiency.decision,
+              selected_source_count: summary.selected_source_count,
+              selected_sources_needing_replacement: unique([
+                ...report.low_relevance_source_ids,
+                ...report.missing_or_weak_public_content_source_ids,
+                ...report.wrong_pdf_risk_source_ids,
+                ...limitedInspection.sourceIdsNeedingReplacement,
+                ...postInspectionSufficiency.source_ids_needing_replacement,
+              ]),
+              prevented_steps: [
+                "step_4_content_materialization",
+                "step_5_source_signal_extraction",
+                "step_6_consolidated_evidence",
+              ],
+              openai_called: summary.openai_called,
+            },
+            null,
+            2,
+          ),
+        );
+        return;
+      }
+
+      if (
+        !["READY_FOR_FULL_EXTRACTION", "READY_WITH_WARNINGS"].includes(postInspectionSufficiency.decision) &&
+        allowBlocked
+      ) {
+        markAllowBlockedDiagnostic(summary);
+        summary.warnings = unique([
+          ...summary.warnings,
+          `Run continued despite Step 4C source sufficiency decision ${postInspectionSufficiency.decision}.`,
+        ]);
+      }
+    }
+
     console.log(`[${new Date().toISOString()}] Step 4: materializing source content`);
-    const contentMaterialization = await materializeBlueprintLaunchSourceContent({
-      bundle: selectedSourceBundle,
-      sourceAccessResolution,
-      evidencePlanning,
+    const contentMaterialization = await measureEvidenceStep({
+      timer: stepTimer,
+      step_id: "step_4_content_materialization",
+      step_name: "Step 4 content materialization",
+      fn: async () => materializeBlueprintLaunchSourceContent({
+        bundle: selectedSourceBundle,
+        sourceAccessResolution,
+        evidencePlanning,
+        userProvidedPdfManifest,
+      }),
     });
     await writeJson(
       path.join(outputFolder, "step-4-materialization-manifest.json"),
@@ -1200,13 +1625,18 @@ async function main() {
 
     console.log(`[${new Date().toISOString()}] Step 5: extracting source signals`);
     const { evidencePacksArtifact, sourceSignalExtraction } =
-      await extractBlueprintLaunchSourceSignals({
-        projectTitle: project.title,
-        savedIntake,
-        bundle: selectedSourceBundle,
-        sourceAccessResolution,
-        contentMaterialization,
-        evidenceCompletion: null,
+      await measureEvidenceStep({
+        timer: stepTimer,
+        step_id: "step_5_source_signal_extraction",
+        step_name: "Step 5 source signal extraction",
+        fn: async () => extractBlueprintLaunchSourceSignals({
+          projectTitle: project.title,
+          savedIntake,
+          bundle: selectedSourceBundle,
+          sourceAccessResolution,
+          contentMaterialization,
+          evidenceCompletion: null,
+        }),
       });
     await writeJson(path.join(outputFolder, "step-5-signal-extraction-summary.json"), {
       source_signal_extraction: sourceSignalExtraction,
@@ -1216,11 +1646,16 @@ async function main() {
     summary.extracted_text_char_count = sourceSignalExtraction.totalTextCharCount;
 
     console.log(`[${new Date().toISOString()}] Step 6: consolidating evidence`);
-    const consolidatedEvidenceArtifact = await consolidateBlueprintLaunchEvidence({
-      projectTitle: project.title,
-      savedIntake,
-      sourceSignalExtraction,
-      evidencePacksArtifact,
+    const consolidatedEvidenceArtifact = await measureEvidenceStep({
+      timer: stepTimer,
+      step_id: "step_6_consolidated_evidence",
+      step_name: "Step 6 consolidated evidence",
+      fn: async () => consolidateBlueprintLaunchEvidence({
+        projectTitle: project.title,
+        savedIntake,
+        sourceSignalExtraction,
+        evidencePacksArtifact,
+      }),
     });
     const step6OutputPath = path.join(outputFolder, "step-6-consolidated-evidence.json");
     await writeJson(step6OutputPath, consolidatedEvidenceArtifact);
@@ -1253,6 +1688,59 @@ async function main() {
     await writeJson(path.join(outputFolder, "evidence-handoff-v1.json"), handoff);
     const reducedEvidencePack = buildReducedEvidencePackFromHandoff(handoff);
     await writeJson(path.join(outputFolder, "reduced-evidence-pack.json"), reducedEvidencePack);
+    const productionSafetyForReports = evaluateBlueprintProductionSafety(
+      buildBlueprintEngineInputFromEvidenceHandoffV1(handoff, {
+        blueprintRunId: `blueprint-diagnostic-${summary.run_id}`,
+      }),
+      {
+        signals: {
+          diagnostic_only: summary.allow_blocked,
+          production_valid: summary.production_valid,
+          degraded_handoff: summary.allow_blocked || summary.blocked_by_gate,
+          allow_blocked_upstream: summary.allow_blocked,
+          upstream_step_3_decision:
+            summary.blocked_at_step === "step_3_evidence_planning" || summary.allow_blocked
+              ? "BLOCK"
+              : null,
+          materialized_source_count: summary.materialized_source_count,
+          min_materialized_source_count: 4,
+        },
+        structural_warnings: buildUserProvidedPdfProductionWarnings(userProvidedPdfManifest),
+      },
+    );
+    const secondaryReferenceRecoveryQueue = buildSecondaryReferenceRecoveryQueue({
+      case_id: caseId,
+      handoff,
+      evidencePacksArtifact,
+      reducedEvidencePack,
+    });
+    await writeJson(
+      path.join(outputFolder, "secondary-reference-recovery-queue.json"),
+      secondaryReferenceRecoveryQueue,
+    );
+    await writeFile(
+      path.join(outputFolder, "secondary-reference-recovery-queue-report.md"),
+      `${renderSecondaryReferenceRecoveryQueueReport(secondaryReferenceRecoveryQueue)}\n`,
+      "utf8",
+    );
+    const sourceSufficiencyReport = buildSourceSufficiencyReport({
+      case_id: caseId,
+      handoff,
+      productionSafety: productionSafetyForReports,
+      secondaryReferenceQueue: secondaryReferenceRecoveryQueue,
+      minUsableFullTextSources:
+        (intakeFixture as { source_policy?: { min_selected_sources?: number } }).source_policy
+          ?.min_selected_sources ?? 4,
+      userProvidedPdfProductionReviewRequired:
+        Boolean(userProvidedPdfManifest) &&
+        buildUserProvidedPdfProductionWarnings(userProvidedPdfManifest).length > 0,
+    });
+    await writeJson(path.join(outputFolder, "source-sufficiency-recommendations.json"), sourceSufficiencyReport);
+    await writeFile(
+      path.join(outputFolder, "source-sufficiency-recommendations.md"),
+      `${renderSourceSufficiencyReport(sourceSufficiencyReport)}\n`,
+      "utf8",
+    );
 
     const evidenceUnits = consolidatedEvidenceArtifact.evidence_units ?? [];
     summary.evidence_unit_count = evidenceUnits.length;
@@ -1271,6 +1759,7 @@ async function main() {
     summary.estimated_or_logged_token_usage = usageDelta;
 
     summary.warnings = unique([
+      ...summary.warnings,
       ...sourceAccessResolution.items.flatMap((item) => item.warnings),
       ...sourceIntakeGate.warnings,
       ...evidencePlanning.warnings,
@@ -1293,6 +1782,8 @@ async function main() {
       startedAt: runStartedAt,
       handoff,
       reducedEvidencePack,
+      userProvidedPdfManifest,
+      stepSpans: stepTimer.getSpans(),
     });
     await writeJson(path.join(outputFolder, "run-summary.json"), summary);
 

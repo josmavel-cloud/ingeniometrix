@@ -584,7 +584,7 @@ function adaptSectionPackets(
   packets: unknown[],
   artifact: CurrentLabAConsolidatedEvidenceArtifact,
 ): SectionPacketHandoffRecord[] {
-  return packets.map((entry, index) => {
+  return packets.map((entry) => {
     const packet = asRecord(entry);
     const sectionKey = asString(packet.section_key, stableId("section", packet));
     const snippetIds = asStringArray(packet.snippet_ids);
@@ -621,26 +621,57 @@ function adaptSectionPackets(
 }
 
 function adaptAssets(artifact: CurrentLabAConsolidatedEvidenceArtifact): AssetHandoffRecord[] {
+  const assetUnitByKey = new Map<string, Record<string, unknown>>();
+  for (const entry of asArray(artifact.evidence_units).map(asRecord)) {
+    const assetKey = asString(entry.asset_key);
+    if (!assetKey || assetUnitByKey.has(assetKey)) {
+      continue;
+    }
+    assetUnitByKey.set(assetKey, entry);
+  }
+
   const assetsByKey = new Map<string, AssetHandoffRecord>();
 
   for (const [index, entry] of asArray(artifact.asset_usage_plan).entries()) {
     const asset = asRecord(entry);
     const assetKey = asString(asset.asset_key, stableId("asset", asset));
+    const unit = assetUnitByKey.get(assetKey) ?? {};
     const sectionKey = asString(asset.section_key);
+    const unitType = asString(unit.unit_type);
+    const inferredKind =
+      unitType === "equation"
+        ? "equation"
+        : unitType === "table"
+          ? "table"
+          : unitType === "image"
+            ? "image"
+            : "image";
+    const filePath =
+      asNullableString(asset.asset_path ?? asset.file_path) ??
+      asNullableString(unit.asset_path ?? unit.file_path);
+    const recommendedSectionKeys = uniqueStrings([
+      sectionKey,
+      ...asStringArray(unit.section_keys),
+    ]);
 
     assetsByKey.set(assetKey, {
       asset_key: assetKey,
-      source_id: asString(asset.source_id, "unknown-source"),
-      asset_kind: normalizeAssetKind(asset.asset_kind),
-      title: asNullableString(asset.title),
-      caption: asNullableString(asset.caption),
-      page_number: asNullableInteger(asset.page_number),
-      text_content: asNullableString(asset.text_content),
-      latex: asNullableString(asset.latex),
-      file_ref: asNullableString(asset.asset_path ?? asset.file_path)
+      source_id: asString(asset.source_id ?? unit.source_id, "unknown-source"),
+      asset_kind: normalizeAssetKind(asset.asset_kind ?? inferredKind),
+      title: asNullableString(asset.title) ?? asNullableString(unit.label),
+      caption: asNullableString(asset.caption) ?? asNullableString(unit.caption),
+      page_number: asNullableInteger(asset.page_number) ?? asNullableInteger(unit.page_start),
+      text_content:
+        asNullableString(asset.text_content) ?? asNullableString(unit.original_text),
+      latex:
+        asNullableString(asset.latex) ??
+        (normalizeAssetKind(asset.asset_kind ?? inferredKind) === "equation"
+          ? asNullableString(unit.original_text)
+          : null),
+      file_ref: filePath
         ? localArtifactRef({
             refId: `${assetKey}-file`,
-            uri: asString(asset.asset_path ?? asset.file_path),
+            uri: filePath,
           })
         : null,
       mime_type: asNullableString(asset.mime_type),
@@ -649,14 +680,61 @@ function adaptAssets(artifact: CurrentLabAConsolidatedEvidenceArtifact): AssetHa
       content_hash: asNullableString(asset.content_hash),
       extraction_origin: "pdf_native",
       citation_eligibility: "asset_reference",
-      recommended_section_keys: sectionKey ? [sectionKey] : [],
+      recommended_section_keys: recommendedSectionKeys,
       usage_reason: asNullableString(asset.usage_reason),
-      handling_notes: asStringArray(asset.handling_notes),
+      handling_notes: uniqueStrings([
+        ...asStringArray(asset.handling_notes),
+        ...(filePath ? [] : ["Asset sin file_path local renderizable en esta corrida."]),
+      ]),
     });
 
     if (!assetKey) {
       assetsByKey.delete(`asset-${index + 1}`);
     }
+  }
+
+  for (const [assetKey, unit] of assetUnitByKey.entries()) {
+    if (assetsByKey.has(assetKey)) {
+      continue;
+    }
+    const unitType = asString(unit.unit_type);
+    const inferredKind =
+      unitType === "equation"
+        ? "equation"
+        : unitType === "table"
+          ? "table"
+          : unitType === "image"
+            ? "image"
+            : "image";
+    const filePath = asNullableString(unit.asset_path ?? unit.file_path);
+    assetsByKey.set(assetKey, {
+      asset_key: assetKey,
+      source_id: asString(unit.source_id, "unknown-source"),
+      asset_kind: normalizeAssetKind(inferredKind),
+      title: asNullableString(unit.label),
+      caption: asNullableString(unit.caption),
+      page_number: asNullableInteger(unit.page_start),
+      text_content: asNullableString(unit.original_text),
+      latex:
+        inferredKind === "equation" ? asNullableString(unit.original_text) : null,
+      file_ref: filePath
+        ? localArtifactRef({
+            refId: `${assetKey}-file`,
+            uri: filePath,
+          })
+        : null,
+      mime_type: asNullableString(unit.mime_type),
+      width_px: asNullableInteger(unit.width_px),
+      height_px: asNullableInteger(unit.height_px),
+      content_hash: asNullableString(unit.content_hash),
+      extraction_origin: "pdf_native",
+      citation_eligibility: "asset_reference",
+      recommended_section_keys: asStringArray(unit.section_keys),
+      usage_reason: asNullableString(unit.label),
+      handling_notes: filePath
+        ? []
+        : ["Asset derivado desde evidence_unit sin file_path local renderizable."],
+    });
   }
 
   return Array.from(assetsByKey.values());
@@ -717,6 +795,13 @@ function sourceArtifactRefs(input: {
     manifest.latest_consolidated_evidence_artifact_path,
   ].entries()) {
     if (typeof uri === "string" && uri.length > 0) {
+      const normalized = uri.toLowerCase();
+      const isMutableLatestPath =
+        normalized.includes("latest-consolidated-evidence.json") ||
+        normalized.includes("latest_consolidated_evidence_artifact_path");
+      if (isMutableLatestPath) {
+        continue;
+      }
       refs.push(
         localArtifactRef({
           refId: `current-lab-a-source-artifact-${index + 1}`,

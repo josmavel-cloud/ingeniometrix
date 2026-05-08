@@ -27,6 +27,29 @@ function normalizeSpacing(value: string) {
     .trim();
 }
 
+function normalizeSentenceEndings(value: string) {
+  const danglingConnectorPattern =
+    /\b(de|del|de la|para|con|y|o|e|en|en la|en el|que|como|mediante|segun|segun la|a traves de|de modo|por medio de)\s*$/i;
+
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      let next = paragraph.trim();
+      if (!next) {
+        return "";
+      }
+      if (danglingConnectorPattern.test(next)) {
+        next = next.replace(danglingConnectorPattern, "").trim();
+      }
+      if (!/[.!?]$/.test(next)) {
+        next = `${next}.`;
+      }
+      return next;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 function normalizeMarkdownTables(value: string) {
   const lines = value.split(/\r?\n/);
   const normalized = lines.map((line) => {
@@ -185,8 +208,9 @@ export function normalizeGeneratedSectionContent(input: {
       sectionKey: input.sectionKey,
     }),
   );
+  const normalizedWithEndings = normalizeSentenceEndings(normalized);
   const after = inspectSectionOutput({
-    content: normalized,
+    content: normalizedWithEndings,
     sectionKey: input.sectionKey,
     sourceTitles: input.sourceTitles,
   });
@@ -200,10 +224,13 @@ export function normalizeGeneratedSectionContent(input: {
     before.source_title_mentions.length > 0
       ? "Se removieron titulos de fuentes del contenido; las citas quedan diferidas al DOCX."
       : null,
+    normalized !== normalizedWithEndings
+      ? "Se normalizaron cierres de frase para evitar enunciados incompletos."
+      : null,
   ].filter((warning): warning is string => Boolean(warning));
 
   return {
-    content: normalized,
+    content: normalizedWithEndings,
     warnings,
     inspection: after,
     qualityChecks: {

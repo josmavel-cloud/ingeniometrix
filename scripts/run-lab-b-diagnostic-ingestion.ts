@@ -181,15 +181,6 @@ function extractSourceAccessSignals(companion: CompanionArtifacts) {
   };
 }
 
-function extractSkippedMaterializationCount(companion: CompanionArtifacts) {
-  const step6 = companion.step_6_consolidated_evidence;
-  if (!step6) {
-    return null;
-  }
-
-  return null;
-}
-
 function buildDegradedInputWarnings(input: {
   handoff: EvidenceEngineHandoffV1;
   companion: CompanionArtifacts;

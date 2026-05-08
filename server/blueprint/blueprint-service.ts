@@ -37,7 +37,6 @@ import type {
   BlueprintAntecedentSynthesis,
   BlueprintContextCompletion,
   BlueprintCitationPlanSection,
-  BlueprintReadinessSnapshot,
   BlueprintReferenceSnapshot,
 } from "./blueprint-types";
 
@@ -62,14 +61,6 @@ async function logBlueprintStage(input: {
       progress: input.progress,
     },
   });
-}
-
-function describeError(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Razon no identificada.";
 }
 
 function isTraceabilityErrorMessage(message: string) {

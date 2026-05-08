@@ -116,6 +116,13 @@ const LEGACY_STALE_TOPIC_MARKERS = [
   "fire egress",
   "glulam",
   "clt",
+  "reutilizacion adaptativa y sostenibilidad urbana",
+  "reutilización adaptativa y sostenibilidad urbana",
+  "vacancia subutilizacion y valor del parque edificado",
+  "vacancia, subutilizacion y valor del parque edificado",
+  "vacancia, subutilización y valor del parque edificado",
+  "criterios de decision para compatibilidad de nuevo uso",
+  "criterios de decisión para compatibilidad de nuevo uso",
 ];
 
 function unique(values: Array<string | null | undefined>) {
@@ -126,6 +133,14 @@ function unique(values: Array<string | null | undefined>) {
         .filter((value): value is string => Boolean(value)),
     ),
   );
+}
+
+function isMutableLatestWarning(value: string) {
+  return value.toLowerCase().startsWith("mutable_latest_path:");
+}
+
+function publicSummaryWarnings(values: Array<string | null | undefined>) {
+  return unique(values).filter((value) => !isMutableLatestWarning(value));
 }
 
 function normalize(value: string | null | undefined) {
@@ -204,7 +219,12 @@ function collectForeignIds(text: string, handoff: EvidenceEngineHandoffV1) {
 
 function buildScope(handoff: EvidenceEngineHandoffV1): Scope {
   const evidenceIds = new Set(handoff.evidence_units.map((unit) => unit.evidence_id));
-  const assetKeys = new Set(handoff.asset_registry.map((asset) => asset.asset_key));
+  const assetKeys = new Set([
+    ...handoff.asset_registry.map((asset) => asset.asset_key),
+    ...handoff.evidence_units
+      .map((unit) => unit.asset_key)
+      .filter((assetKey): assetKey is string => Boolean(assetKey)),
+  ]);
   const sourceIds = new Set(handoff.source_registry.map((source) => source.source_id));
   const originalExcerptIds = new Set(
     handoff.evidence_units
@@ -643,7 +663,7 @@ export function collectStaleGuardSummary(input: {
       ...(input.freshRunIsolation?.blockers ?? []),
       ...(input.staleContentScan?.blockers ?? []),
     ]),
-    stale_content_warnings: unique([
+    stale_content_warnings: publicSummaryWarnings([
       ...(input.freshRunIsolation?.warnings ?? []),
       ...(input.staleContentScan?.warnings ?? []),
     ]),

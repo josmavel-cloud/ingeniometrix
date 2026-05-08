@@ -134,6 +134,7 @@ export async function searchBlueprintLaunchReferences(input: {
   intake: IntakeInput;
   knowledgeAreaLabel: string | null;
   desiredTotal?: number;
+  searchMetadataOverride?: BlueprintLaunchSearchMetadata;
 }): Promise<BlueprintLaunchSearchSnapshot> {
   const desiredTotal = Math.min(
     Math.max(input.desiredTotal ?? REFERENCE_BATCH_SIZE, MIN_SELECTED_REFERENCES),
@@ -142,10 +143,12 @@ export async function searchBlueprintLaunchReferences(input: {
   const aggregationTarget = Math.max(desiredTotal + 10, 16);
   const intake = input.intake;
 
-  const searchMetadata = await buildBlueprintLaunchSearchMetadata({
-    intake,
-    knowledgeAreaLabel: input.knowledgeAreaLabel,
-  });
+  const searchMetadata =
+    input.searchMetadataOverride ??
+    (await buildBlueprintLaunchSearchMetadata({
+      intake,
+      knowledgeAreaLabel: input.knowledgeAreaLabel,
+    }));
   const searchQuery = searchMetadata.normalizedTopic;
   const queryStages = [
     {

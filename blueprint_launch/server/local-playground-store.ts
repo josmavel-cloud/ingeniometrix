@@ -2,6 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { IntakeInput } from "@/server/projects/project-validation";
+import type { SecondaryReferenceRecoveryQueueV1 } from "@/server/blueprint-engine/quality/secondary-reference-recovery";
+import type { SourceHealthSummary } from "@/server/blueprint-engine/quality/source-health";
 import type {
   BlueprintLaunchIntakeImprovementResult,
   BlueprintLaunchProjectGlobalContext,
@@ -250,6 +252,20 @@ export type BlueprintLaunchEvidencePlanningDecision = "PASS" | "PASS_WITH_WARNIN
 
 export type BlueprintLaunchEvidencePlanningReadiness = "alta" | "media" | "baja";
 
+export type BlueprintLaunchEvidencePreMaterializationDecision =
+  | "PROCEED_TO_MATERIALIZATION"
+  | "PROCEED_TO_LIMITED_INSPECTION"
+  | "PROCEED_WITH_WARNINGS"
+  | "NEEDS_SOURCE_REPLACEMENT"
+  | "BLOCK_ACCESS_OR_IDENTITY";
+
+export type BlueprintLaunchEvidencePlanningBlockingCategory =
+  | "none"
+  | "source_intake_gate"
+  | "access_or_identity"
+  | "insufficient_inspectable_sources"
+  | "source_replacement_required";
+
 export type BlueprintLaunchEvidencePlanningMaterializationItem = {
   sourceId: string;
   title: string;
@@ -330,6 +346,15 @@ export type BlueprintLaunchEvidencePlanningResult = {
   savedAt: string;
   decision: BlueprintLaunchEvidencePlanningDecision;
   summary: string;
+  preMaterializationDecision?: BlueprintLaunchEvidencePreMaterializationDecision;
+  blockingCategory?: BlueprintLaunchEvidencePlanningBlockingCategory | null;
+  inspectionRecommended?: boolean;
+  preMaterializationGateReasons?: string[];
+  inspectableSourceIds?: string[];
+  replacementRecommendedSourceIds?: string[];
+  identityBlockedSourceIds?: string[];
+  accessBlockedSourceIds?: string[];
+  sufficiencyWarnings?: string[];
   llmStatus: "llm" | "fallback" | "skipped";
   llmPromptCount: number;
   llmCallCount: number;
@@ -364,6 +389,17 @@ export type BlueprintLaunchContentMaterializationItem = {
   resolverFamily?: BlueprintLaunchEvidencePlanningMaterializationItem["resolverFamily"];
   expectedKind?: BlueprintLaunchEvidencePlanningMaterializationItem["expectedKind"];
   validationChecks?: string[];
+  userProvidedPdfProvenance?: {
+    manifest_path?: string | null;
+    local_pdf_path: string;
+    filename: string;
+    sha256: string;
+    acquisition_mode: "user_provided_file";
+    provenance_status: "user_provided_pdf";
+    allowed_for_diagnostic: true;
+    allowed_for_production: false;
+    reviewer_note?: string | null;
+  };
   warnings: string[];
 };
 
@@ -382,6 +418,72 @@ export type BlueprintLaunchContentMaterializationResult = {
   totalByteSize: number;
   readyForStep5: boolean;
   items: BlueprintLaunchContentMaterializationItem[];
+};
+
+export type BlueprintLaunchLimitedInspectionPostDecision =
+  | "PROCEED_TO_FULL_EXTRACTION"
+  | "NEEDS_DEEP_RESEARCH_LIGHT"
+  | "NEEDS_MANUAL_PDF_REVIEW"
+  | "NEEDS_SOURCE_REPLACEMENT"
+  | "BLOCK_NO_USABLE_EVIDENCE";
+
+export type BlueprintLaunchLimitedInspectionIdentityStatus =
+  | "matched"
+  | "weak_match"
+  | "mismatch"
+  | "unknown";
+
+export type BlueprintLaunchLimitedInspectionItem = {
+  sourceId: string;
+  title: string;
+  plannedContentUrl: string | null;
+  status: "inspected" | "skipped" | "failed";
+  inspectedKind: "pdf" | "web_text" | "user_provided_pdf" | "unknown";
+  localPrimaryPath: string | null;
+  localSampleTextPath: string | null;
+  byteSize: number | null;
+  pageCount: number | null;
+  sampledPageCount: number;
+  textCharCount: number;
+  sampleTextCharCount: number;
+  identityStatus: BlueprintLaunchLimitedInspectionIdentityStatus;
+  titleTokenMatchRatio: number | null;
+  doiMatched: boolean | null;
+  methodSignalCount: number;
+  theorySignalCount: number;
+  variableSignalCount: number;
+  equationCandidateCount: number;
+  tableCandidateCount: number;
+  figureCandidateCount: number;
+  secondaryReferenceCandidateCount: number;
+  secondaryReferenceCandidates?: string[];
+  inspectionSummary: string;
+  methodSignals: string[];
+  theorySignals: string[];
+  variableSignals: string[];
+  warnings: string[];
+};
+
+export type BlueprintLaunchLimitedSourceInspectionResult = {
+  artifact_type: "limited_source_inspection";
+  artifact_version: "v1";
+  savedAt: string;
+  summary: string;
+  runDir: string | null;
+  attemptedCount: number;
+  inspectedCount: number;
+  usableInspectionCount: number;
+  failedCount: number;
+  skippedCount: number;
+  postInspectionDecision: BlueprintLaunchLimitedInspectionPostDecision;
+  postInspectionReasons: string[];
+  sourceIdsForFullExtraction: string[];
+  sourceIdsNeedingReplacement: string[];
+  sourceIdsNeedingManualReview: string[];
+  sourceIdsForDeepResearchLight: string[];
+  secondaryReferenceCandidateCount: number;
+  items: BlueprintLaunchLimitedInspectionItem[];
+  warnings: string[];
 };
 
 export type EvidenceSnippet = {
@@ -481,6 +583,7 @@ export type EvidencePackArtifact = {
     intake_topic: string;
   };
   packs: ExtractedEvidencePack[];
+  secondary_reference_recovery_queue?: SecondaryReferenceRecoveryQueueV1 | null;
   warnings: string[];
 };
 
@@ -572,6 +675,13 @@ export type ConsolidatedEvidenceSourcePriority = {
   title: string;
   priority: "alta" | "media" | "baja";
   reason: string;
+  input_mode?: string;
+  text_char_count?: number;
+  source_chunk_count?: number;
+  asset_count?: number;
+  topic_relevance?: string;
+  proposal_usefulness?: string;
+  source_health_classification?: unknown;
 };
 
 export type ConsolidatedEvidenceProposalMethodCandidate = {
@@ -613,6 +723,7 @@ export type ConsolidatedEvidenceUnit = {
     | "table"
     | "equation"
     | "image"
+    | "metadata_context"
     | "intake_context";
   section_keys: string[];
   label: string;
@@ -707,6 +818,11 @@ export type ConsolidatedEvidenceContextPreservationContract = {
   full_text_char_count: number;
   evidence_unit_count: number;
   direct_quote_count: number;
+  reported_direct_quote_count?: number;
+  true_source_backed_direct_quote_count?: number;
+  metadata_context_count?: number;
+  intake_context_count?: number;
+  citation_semantics_warnings?: string[];
   asset_reference_count: number;
   preserved_path_count: number;
   hydration_notes_es: string[];
@@ -796,6 +912,15 @@ export type ConsolidatedEvidenceArtifact = {
     optional: string[];
   };
   evidence_units?: ConsolidatedEvidenceUnit[];
+  citation_semantics_summary?: {
+    reported_direct_quote_count: number;
+    true_source_backed_direct_quote_count: number;
+    metadata_context_count: number;
+    intake_context_count: number;
+    citation_semantics_warnings: string[];
+  };
+  source_health_summary?: SourceHealthSummary;
+  secondary_reference_recovery_queue?: SecondaryReferenceRecoveryQueueV1 | null;
   section_dossiers?: ConsolidatedEvidenceSectionDossier[];
   methodology_decision_packet?: ConsolidatedEvidenceProposalMethodCandidate;
   framework_decision_packet?: ConsolidatedEvidenceProposalFrameworkCandidate;

@@ -156,7 +156,7 @@ function unitBucket(
   return sourceBucket(classification);
 }
 
-function hasCentralIsolatorClaim(input: {
+function hasCentralTopicalClaim(input: {
   sectionKey: string;
   title?: string | null;
   content?: string | null;
@@ -167,7 +167,7 @@ function hasCentralIsolatorClaim(input: {
       text,
     );
   const centralTopic =
-    /aislad|aislam|isolator|isolation|base isolation|desempeno sismico|performance|edific/.test(
+    /method|metodo|metodolog|model|modelo|techni|tecnic|system|sistema|control|performance|desempeno|evaluation|evaluacion|validation|validacion|analysis|analisis|framework|marco|objective|objetivo|problem|problema|variable|indicator|indicador/.test(
       text,
     );
 
@@ -277,7 +277,7 @@ export function evaluateSectionEvidenceBinding(
   };
   const warnings: string[] = [];
   const guardFailures: string[] = [];
-  const centralClaim = hasCentralIsolatorClaim({
+  const centralClaim = hasCentralTopicalClaim({
     sectionKey: input.section_key,
     title: input.title,
     content: input.content,
@@ -286,7 +286,7 @@ export function evaluateSectionEvidenceBinding(
 
   if (centralClaim && adjacentSourceCount > 0) {
     const message =
-      "Adjacent/background source is present in a central isolator-performance section; keep it as cautious context, not direct claim support.";
+      "Adjacent/background source is present in a central topical or methodological section; keep it as cautious context, not direct claim support.";
     warnings.push(message);
     guardFailures.push(message);
   }

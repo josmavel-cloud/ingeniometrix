@@ -8,6 +8,10 @@ import {
   summarizeSourceHealthFromHandoff,
   type SourceHealthClassification,
 } from "@/server/blueprint-engine/quality/source-health";
+import {
+  isCentralClaimSection,
+  semanticSourceRoleForSource,
+} from "@/server/blueprint-engine/quality/semantic-source-use-policy";
 
 export type EvidenceBudgetPolicyV1 = {
   policy_version: "evidence_budget.v1";
@@ -18,6 +22,8 @@ export type EvidenceBudgetPolicyV1 = {
   max_evidence_units_total: number;
   max_evidence_units_per_section: number;
   max_evidence_units_per_source_per_section: number;
+  max_adjacent_evidence_units_total: number;
+  max_contextual_evidence_units_total: number;
   max_asset_refs_total: number;
   max_pdf_pages_without_reduction: number;
   oversized_pdf_page_threshold: number;
@@ -106,6 +112,8 @@ export const DEFAULT_EVIDENCE_BUDGET_POLICY: EvidenceBudgetPolicyV1 = {
   max_evidence_units_total: 80,
   max_evidence_units_per_section: 8,
   max_evidence_units_per_source_per_section: 3,
+  max_adjacent_evidence_units_total: 8,
+  max_contextual_evidence_units_total: 4,
   max_asset_refs_total: 12,
   max_pdf_pages_without_reduction: 50,
   oversized_pdf_page_threshold: 100,
@@ -129,6 +137,30 @@ function unique(values: Array<string | null | undefined>) {
         .filter((value): value is string => Boolean(value)),
     ),
   );
+}
+
+function assetPriority(input: {
+  asset: AssetHandoffRecord;
+  evidenceAssetKeys: Set<string>;
+  selectedSourceIds: Set<string>;
+  sourceHealth: SourceHealthClassification | undefined;
+}) {
+  let score = 0;
+  if (input.evidenceAssetKeys.has(input.asset.asset_key)) score += 1000;
+  if (input.selectedSourceIds.has(input.asset.source_id)) score += 180;
+  if (input.asset.asset_kind === "equation") score += 120;
+  if (input.asset.asset_kind === "table") score += 90;
+  if (input.asset.citation_eligibility === "asset_reference") score += 70;
+  if (input.sourceHealth?.source_health === "usable_full_text") score += 70;
+  if (input.sourceHealth?.source_health === "partial_full_text") score += 45;
+  if (input.sourceHealth?.topic_fit === "direct") score += 110;
+  if (input.sourceHealth?.allowed_evidence_use === "direct_claim_support") score += 90;
+  if (input.sourceHealth?.allowed_evidence_use === "cautious_support") score -= 70;
+  if (input.sourceHealth?.topic_fit === "adjacent") score -= 180;
+  if (input.sourceHealth?.source_health === "metadata_only") score -= 120;
+  if (input.sourceHealth?.source_health === "unresolved") score -= 160;
+  if (input.asset.latex || input.asset.text_content || input.asset.caption || input.asset.title) score += 20;
+  return score;
 }
 
 function round3(value: number) {
@@ -234,6 +266,8 @@ function includeUnit(input: {
   sourceCounts: Map<string, number>;
   sectionSourceCounts: Map<string, number>;
   maxUnitsPerSource: number;
+  adjacentCounts: Map<string, number>;
+  contextualCounts: Map<string, number>;
   forceSectionCoverage?: boolean;
 }) {
   const { candidate, selected, policy, sourceCounts, sectionSourceCounts } = input;
@@ -244,10 +278,9 @@ function includeUnit(input: {
   }
 
   if (
-    !input.forceSectionCoverage &&
-    (candidate.evidenceUse === "context_only" ||
-      candidate.evidenceUse === "gap_only" ||
-      candidate.evidenceUse === "do_not_use")
+    candidate.evidenceUse === "context_only" ||
+    candidate.evidenceUse === "gap_only" ||
+    candidate.evidenceUse === "do_not_use"
   ) {
     return false;
   }
@@ -256,9 +289,35 @@ function includeUnit(input: {
     return false;
   }
 
+  const role = semanticSourceRoleForSource({ source: candidate.health }).role;
   const sourceCount = sourceCounts.get(unit.source_id) ?? 0;
-  if (!input.forceSectionCoverage && sourceCount >= input.maxUnitsPerSource) {
+  const roleAdjustedSourceCap =
+    role === "adjacent_source"
+      ? Math.max(1, Math.min(input.maxUnitsPerSource, input.policy.max_adjacent_evidence_units_total))
+      : role === "contextual_background_source"
+        ? Math.max(0, Math.min(input.maxUnitsPerSource, input.policy.max_contextual_evidence_units_total))
+        : input.maxUnitsPerSource;
+
+  if (sourceCount >= roleAdjustedSourceCap) {
     return false;
+  }
+
+  if (role === "adjacent_source") {
+    const adjacentTotal = Array.from(input.adjacentCounts.values()).reduce((sum, count) => sum + count, 0);
+    if (adjacentTotal >= input.policy.max_adjacent_evidence_units_total) return false;
+  }
+
+  if (role === "contextual_background_source") {
+    const contextualTotal = Array.from(input.contextualCounts.values()).reduce((sum, count) => sum + count, 0);
+    if (contextualTotal >= input.policy.max_contextual_evidence_units_total) return false;
+  }
+
+  if (role === "adjacent_source") {
+    const sectionKeys = unit.section_keys.length > 0 ? unit.section_keys : ["unmapped"];
+    const hasCentralSection = sectionKeys.some((sectionKey) => isCentralClaimSection(sectionKey));
+    if (hasCentralSection) {
+      return false;
+    }
   }
 
   for (const sectionKey of unit.section_keys.length > 0 ? unit.section_keys : ["unmapped"]) {
@@ -274,6 +333,12 @@ function includeUnit(input: {
 
   selected.set(unit.evidence_id, candidate);
   sourceCounts.set(unit.source_id, sourceCount + 1);
+  if (role === "adjacent_source") {
+    input.adjacentCounts.set(unit.source_id, (input.adjacentCounts.get(unit.source_id) ?? 0) + 1);
+  }
+  if (role === "contextual_background_source") {
+    input.contextualCounts.set(unit.source_id, (input.contextualCounts.get(unit.source_id) ?? 0) + 1);
+  }
   for (const sectionKey of unit.section_keys.length > 0 ? unit.section_keys : ["unmapped"]) {
     const sectionSourceKey = `${sectionKey}::${unit.source_id}`;
     sectionSourceCounts.set(sectionSourceKey, (sectionSourceCounts.get(sectionSourceKey) ?? 0) + 1);
@@ -310,6 +375,8 @@ export function buildReducedEvidencePackFromHandoff(
   const { units, sourceHealthById } = makeScoredUnits(handoff);
   const selected = new Map<string, ScoredUnit>();
   const sourceCounts = new Map<string, number>();
+  const adjacentCounts = new Map<string, number>();
+  const contextualCounts = new Map<string, number>();
   const sectionSourceCounts = new Map<string, number>();
   const sourceIds = new Set(handoff.source_registry.map((source) => source.source_id));
   const maxUnitsPerSource = Math.max(
@@ -318,7 +385,6 @@ export function buildReducedEvidencePackFromHandoff(
       ? policy.max_evidence_units_total
       : Math.ceil(policy.max_evidence_units_total * policy.source_dominance_threshold),
   );
-  const scoredById = new Map(units.map((unit) => [unit.unit.evidence_id, unit]));
   const sectionKeys = unique(handoff.section_packets.map((packet) => packet.section_key));
 
   for (const sectionKey of sectionKeys) {
@@ -339,6 +405,8 @@ export function buildReducedEvidencePackFromHandoff(
           candidate,
           policy,
           sourceCounts,
+          adjacentCounts,
+          contextualCounts,
           sectionSourceCounts,
           maxUnitsPerSource,
           forceSectionCoverage: true,
@@ -364,6 +432,8 @@ export function buildReducedEvidencePackFromHandoff(
         candidate,
         policy,
         sourceCounts,
+        adjacentCounts,
+        contextualCounts,
         sectionSourceCounts,
         maxUnitsPerSource,
       });
@@ -376,6 +446,8 @@ export function buildReducedEvidencePackFromHandoff(
       candidate,
       policy,
       sourceCounts,
+      adjacentCounts,
+      contextualCounts,
       sectionSourceCounts,
       maxUnitsPerSource,
     });
@@ -384,8 +456,43 @@ export function buildReducedEvidencePackFromHandoff(
   const selectedUnits = Array.from(selected.values()).sort(unitSort);
   const selectedEvidenceIds = new Set(selectedUnits.map((unit) => unit.unit.evidence_id));
   const selectedAssetKeys = unique(selectedUnits.map((unit) => unit.unit.asset_key ?? undefined));
+  const evidenceAssetKeySet = new Set(selectedAssetKeys);
+  const selectedSourceIdSet = new Set(selectedUnits.map((unit) => unit.unit.source_id));
   const selectedAssets = handoff.asset_registry
-    .filter((asset) => selectedAssetKeys.includes(asset.asset_key))
+    .filter((asset) => {
+      if (evidenceAssetKeySet.has(asset.asset_key)) {
+        return true;
+      }
+
+      const health = sourceHealthById.get(asset.source_id);
+      if (!selectedSourceIdSet.has(asset.source_id)) {
+        return false;
+      }
+
+      if (asset.asset_kind !== "equation" && asset.asset_kind !== "table") {
+        return false;
+      }
+
+      return (
+        health?.source_health === "usable_full_text" ||
+        health?.source_health === "partial_full_text"
+      );
+    })
+    .sort((left, right) => {
+      const leftScore = assetPriority({
+        asset: left,
+        evidenceAssetKeys: evidenceAssetKeySet,
+        selectedSourceIds: selectedSourceIdSet,
+        sourceHealth: sourceHealthById.get(left.source_id),
+      });
+      const rightScore = assetPriority({
+        asset: right,
+        evidenceAssetKeys: evidenceAssetKeySet,
+        selectedSourceIds: selectedSourceIdSet,
+        sourceHealth: sourceHealthById.get(right.source_id),
+      });
+      return rightScore - leftScore || left.asset_key.localeCompare(right.asset_key);
+    })
     .slice(0, policy.max_asset_refs_total);
   const selectedAssetKeySet = new Set(selectedAssets.map((asset) => asset.asset_key));
   const citationSummary = summarizeCitationSemantics(selectedUnits.map((unit) => unit.unit));
@@ -449,11 +556,37 @@ export function buildReducedEvidencePackFromHandoff(
   ) {
     warnings.push("adjacent_source_limited: adjacent evidence was limited to cautious/contextual use.");
   }
+  if (Array.from(adjacentCounts.values()).reduce((sum, count) => sum + count, 0) > 0) {
+    warnings.push(
+      `adjacent_source_quarantined: ${Array.from(adjacentCounts.values()).reduce((sum, count) => sum + count, 0)} adjacent evidence units retained only for cautious/contextual use.`,
+    );
+  }
   if (
     selectedUnits.length === 0 ||
     selectedSectionKeys.size < Math.min(sectionKeys.length, Math.max(1, Math.floor(sectionKeys.length * 0.6)))
   ) {
     warnings.push("insufficient_evidence_after_reduction: reduced evidence pack has weak section coverage.");
+  }
+  const preservedTechnicalAssets = selectedAssets.filter(
+    (asset) =>
+      !evidenceAssetKeySet.has(asset.asset_key) &&
+      (asset.asset_kind === "equation" || asset.asset_kind === "table"),
+  );
+  if (preservedTechnicalAssets.length > 0) {
+    warnings.push(
+      `technical_asset_refs_preserved_for_method_review: ${preservedTechnicalAssets.length} current equation/table asset refs were retained for method review.`,
+    );
+  }
+  const equationAssetsMissingFormula = selectedAssets.filter(
+    (asset) =>
+      asset.asset_kind === "equation" &&
+      !asset.latex &&
+      !asset.text_content,
+  );
+  if (equationAssetsMissingFormula.length > 0) {
+    warnings.push(
+      `equation_assets_missing_formula_content: ${equationAssetsMissingFormula.length} current equation asset refs lack source-backed formula text and must not be reconstructed.`,
+    );
   }
 
   const reducedEvidenceUnits = selectedUnits.map((entry) => ({
@@ -557,6 +690,27 @@ export function applyReducedEvidencePackToHandoff(
 ): EvidenceEngineHandoffV1 {
   const evidenceIds = new Set(reducedPack.evidence_units.map((unit) => unit.evidence_id));
   const assetKeys = new Set(reducedPack.asset_refs.map((asset) => asset.asset_key));
+
+  // Preserve source-backed asset evidence units tied to retained assets so formulas/tables/images
+  // remain available for downstream rendering without pulling full corpora.
+  for (const unit of handoff.evidence_units) {
+    if (!unit.asset_key) continue;
+    if (!assetKeys.has(unit.asset_key)) continue;
+    if (
+      unit.unit_type === "equation" ||
+      unit.unit_type === "table" ||
+      unit.unit_type === "image"
+    ) {
+      evidenceIds.add(unit.evidence_id);
+    }
+  }
+
+  // If preserved evidence units reference additional assets, keep those refs as well.
+  for (const unit of handoff.evidence_units) {
+    if (!evidenceIds.has(unit.evidence_id)) continue;
+    if (!unit.asset_key) continue;
+    assetKeys.add(unit.asset_key);
+  }
 
   return {
     ...handoff,

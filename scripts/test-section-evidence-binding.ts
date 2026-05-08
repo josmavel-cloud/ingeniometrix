@@ -2,6 +2,7 @@ import type {
   ConsolidatedEvidenceUnit,
 } from "@/blueprint_launch/server/local-playground-store";
 import { evaluateSectionEvidenceBinding } from "@/server/blueprint-engine/quality/section-evidence-binding";
+import { buildCitationReferenceLayerForDiagnostics } from "@/server/blueprint-v2/lab/academic-document-compiler";
 import { buildDocumentProvenanceReport } from "@/server/blueprint-v2/validation/blueprint-provenance-engine";
 import type { MasterSectionDraft } from "@/server/blueprint-v2/types";
 
@@ -167,6 +168,35 @@ function runTests() {
     draft("theoretical_framework", adjacentBinding),
     draft("general_research_question", contextBinding),
   ]);
+  const centralCitationLayer = buildCitationReferenceLayerForDiagnostics({
+    sectionKey: "theoretical_framework",
+    title: "Marco teórico",
+    content:
+      "La sección central debe citar únicamente fuentes directas cuando se discuten fundamentos.",
+    sourceRegistry: [
+      {
+        source_id: "source-direct",
+        title: "Direct source",
+        authors: [],
+        year: 2026,
+        citation_label: "Direct, 2026",
+        source_health: "usable_full_text",
+        topic_fit: "direct",
+        allowed_evidence_use: "direct_claim_support",
+      },
+      {
+        source_id: "source-adjacent",
+        title: "Adjacent source",
+        authors: [],
+        year: 2026,
+        citation_label: "Adjacent, 2026",
+        source_health: "usable_full_text",
+        topic_fit: "adjacent",
+        allowed_evidence_use: "cautious_support",
+      },
+    ] as never,
+    sourceIds: ["source-direct", "source-adjacent"],
+  });
 
   return [
     result(
@@ -210,6 +240,17 @@ function runTests() {
         adjacent: provenance.sections_with_adjacent_source_warnings,
         score: provenance.section_evidence_binding_score,
       }),
+    ),
+    result(
+      "central section compiler omits adjacent/context-only citation anchors",
+      centralCitationLayer.citation_anchors.length === 1 &&
+        centralCitationLayer.citation_anchors[0]?.source_ids[0] === "source-direct" &&
+        centralCitationLayer.blocks.every(
+          (block) =>
+            !("citation_anchor_ids" in block) ||
+            !block.citation_anchor_ids.some((anchorId) => /adjacent/i.test(anchorId)),
+        ),
+      JSON.stringify(centralCitationLayer.citation_anchors),
     ),
   ];
 }

@@ -34,16 +34,46 @@ import {
 } from "@/server/blueprint-engine/quality/fresh-run-isolation";
 import {
   buildCoarseStepTelemetry,
+  buildExactStepTelemetry,
   buildRunTelemetryArtifact,
+  StepTimer,
+  type StepTelemetrySpan,
 } from "@/server/blueprint-engine/quality/run-telemetry";
 import { buildMethodSelectionForHandoff } from "@/server/blueprint-engine/quality/method-selection";
+import {
+  buildMethodGenerationContract,
+  buildSecondaryReferenceCandidatesReport,
+  buildSemanticConsistencyReport,
+  methodContractMarkdownBlock,
+  renderSecondaryReferenceCandidatesReport,
+  renderSemanticConsistencyReport,
+  type MethodGenerationContractV1,
+  type SecondaryReferenceCandidatesReport,
+  type SemanticConsistencyReportV1,
+} from "@/server/blueprint-engine/quality/method-generation-contract";
+import {
+  applySemanticSourceUsePolicyToAcademicDocument,
+  buildSemanticSourceUseReport,
+  renderSemanticSourceUseReport,
+  type SemanticSourceUseReport,
+} from "@/server/blueprint-engine/quality/semantic-source-use-policy";
 import {
   buildQualityDashboard,
   renderProductionReadinessReport,
 } from "@/server/blueprint-engine/quality/production-readiness-dashboard";
+import {
+  buildSecondaryReferenceRecoveryQueue,
+  renderSecondaryReferenceRecoveryQueueReport,
+} from "@/server/blueprint-engine/quality/secondary-reference-recovery";
+import {
+  buildSourceSufficiencyReport,
+  renderSourceSufficiencyReport,
+} from "@/server/blueprint-engine/quality/source-sufficiency";
+import { buildSpanishPublicTextQaReport } from "@/server/blueprint-v2/editorial/spanish-public-text-qa";
 import { buildLegacyBlueprintFromMaster } from "@/server/blueprint-v2/compose/blueprint-composition-engine";
 import { deriveUniversityBlueprint } from "@/server/blueprint-v2/derivation/university-blueprint-derivation-engine";
 import { buildEvidenceLedger } from "@/server/blueprint-v2/evidence/evidence-ledger-engine";
+import { normalizeAcademicDocumentPublicFields } from "@/server/blueprint-v2/editorial/public-document-normalizer";
 import {
   buildMasterAcademicDocument,
   buildUniversityAcademicDocument,
@@ -58,6 +88,15 @@ import {
   renderUniversityDocx,
 } from "@/server/blueprint-v2/lab/docx-renderer";
 import { buildPackageQualitySummary } from "@/server/blueprint-v2/lab/package-quality-summary";
+import {
+  resolveMasterTemplateRuntimeForMode,
+  type TemplateRuntimeMode,
+} from "@/server/blueprint-v2/lab/template-runtime-policy";
+import {
+  buildProfessionalEquationReport,
+  renderProfessionalEquationReport,
+  type ProfessionalEquationReport,
+} from "@/server/blueprint-v2/lab/professional-equation-report";
 import { planMasterTemplateSectionPromptsForLab } from "@/server/blueprint-v2/lab/prompt-planning-hybrid";
 import type { AcademicDocument } from "@/server/blueprint-v2/lab/academic-document-model";
 import type {
@@ -130,6 +169,8 @@ type CliOptions = {
   skipHeroImage: boolean;
   renderDocx: boolean;
   maxSections: number | null;
+  allowCriticalLlmFallback: boolean;
+  templateRuntime: TemplateRuntimeMode;
 };
 
 type IntakeFixture = {
@@ -199,7 +240,7 @@ type DegradedInputWarnings = {
     materialized_source_count: number | null;
     unsupported_claim_count: number | null;
     metadata_or_intake_direct_quote_count: number;
-    adjacent_energy_dissipator_source_count: number;
+    adjacent_background_source_count: number;
     handoff_warning_count: number;
   };
 };
@@ -234,6 +275,28 @@ type FullDiagnosticSummary = {
   generated_docx_count: number;
   master_docx_path: string | null;
   institutional_docx_path: string | null;
+  method_contract_applied?: boolean;
+  semantic_consistency_passed?: boolean | null;
+  semantic_source_guard_passed?: boolean | null;
+  adjacent_reduced_evidence_unit_count?: number;
+  central_section_adjacent_source_count?: number;
+  public_docx_central_section_adjacent_source_count?: number;
+  draft_generation_central_section_adjacent_source_count?: number;
+  reduced_pack_central_section_adjacent_source_count?: number;
+  spanish_public_text_qa_passed?: boolean | null;
+  secondary_reference_candidate_count?: number;
+  secondary_reference_recovery_candidate_count?: number;
+  template_runtime_mode?: TemplateRuntimeMode;
+  template_source?: "local_fixture" | "database";
+  template_prisma_called?: boolean;
+  source_sufficiency_recommendation_count?: number;
+  professional_equations_available?: boolean;
+  professional_equation_render_count?: number;
+  equation_source_grounded_explanation_count?: number;
+  equation_image_fallback_count?: number;
+  raw_latex_public_leak_count?: number;
+  equation_rendering_warnings?: string[];
+  equation_rendering_blockers?: string[];
   openai_called: boolean;
   token_cost_usage: {
     before: LlmUsageTotals | null;
@@ -252,12 +315,50 @@ function emptyStaleGuardSummary() {
   });
 }
 
+function professionalEquationSummaryFields(report: ProfessionalEquationReport | null) {
+  return {
+    professional_equations_available: Boolean(report && report.equation_candidate_count > 0),
+    professional_equation_render_count: report?.rendered_equation_count ?? 0,
+    equation_source_grounded_explanation_count: report?.source_grounded_explanation_count ?? 0,
+    equation_image_fallback_count:
+      (report?.source_image_fallback_count ?? 0) + (report?.generated_image_fallback_count ?? 0),
+    raw_latex_public_leak_count: report?.raw_latex_public_leak_count ?? 0,
+    equation_rendering_warnings: report?.warnings ?? [],
+    equation_rendering_blockers: report?.blockers ?? [],
+  };
+}
+
+function semanticSourceUseSummaryFields(report: SemanticSourceUseReport) {
+  return {
+    adjacent_reduced_evidence_unit_count: report.adjacent_reduced_evidence_unit_count,
+    central_section_adjacent_source_count: report.central_section_adjacent_source_count,
+    public_docx_central_section_adjacent_source_count:
+      report.public_docx_central_section_adjacent_source_count,
+    draft_generation_central_section_adjacent_source_count:
+      report.draft_generation_central_section_adjacent_source_count,
+    reduced_pack_central_section_adjacent_source_count:
+      report.reduced_pack_central_section_adjacent_source_count,
+  };
+}
+
 function timestampForPath(date = new Date()) {
   return date.toISOString().replace(/[:.]/g, "-");
 }
 
+function inferCaseIdFromHandoffPath(handoffPath: string) {
+  const parts = path.resolve(handoffPath).split(/[\\/]+/);
+  const markerIndex = parts.lastIndexOf("evidence-selected-source-runs");
+
+  if (markerIndex >= 0 && parts[markerIndex + 1]) {
+    return parts[markerIndex + 1];
+  }
+
+  return null;
+}
+
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
+  let explicitCaseId = false;
   const options: CliOptions = {
     handoffPath: DEFAULT_HANDOFF_PATH,
     caseId: DEFAULT_CASE_ID,
@@ -267,6 +368,8 @@ function parseArgs(): CliOptions {
     skipHeroImage: false,
     renderDocx: true,
     maxSections: null,
+    allowCriticalLlmFallback: false,
+    templateRuntime: "local-fixture",
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -281,6 +384,7 @@ function parseArgs(): CliOptions {
 
     if (arg === "--case" && next) {
       options.caseId = next;
+      explicitCaseId = true;
       index += 1;
       continue;
     }
@@ -310,12 +414,29 @@ function parseArgs(): CliOptions {
       options.renderDocx = false;
       continue;
     }
+    if (arg === "--allow-critical-llm-fallback") {
+      options.allowCriticalLlmFallback = true;
+      continue;
+    }
+
+    if (arg === "--template-runtime" && next) {
+      if (next !== "local-fixture" && next !== "database") {
+        throw new Error("--template-runtime must be local-fixture or database.");
+      }
+      options.templateRuntime = next;
+      index += 1;
+      continue;
+    }
 
     if (arg === "--max-sections" && next) {
       const parsed = Number.parseInt(next, 10);
       options.maxSections = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
       index += 1;
     }
+  }
+
+  if (!explicitCaseId) {
+    options.caseId = inferCaseIdFromHandoffPath(options.handoffPath) ?? options.caseId;
   }
 
   return options;
@@ -381,6 +502,37 @@ function unique(values: Array<string | null | undefined>) {
         .filter((value): value is string => Boolean(value)),
     ),
   );
+}
+
+function normalizedWarningList(values: Array<string | null | undefined>) {
+  return unique(values).filter((warning) => {
+    const normalized = warning.toLowerCase();
+    if (normalized.startsWith("mutable_latest_path:")) {
+      return false;
+    }
+    if (
+      normalized.includes("latest-consolidated-evidence.json") ||
+      normalized.includes("latest-selected-sources") ||
+      normalized.includes("latest_selected_sources") ||
+      normalized.includes("latest-debug")
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function isMutableLatestPath(value: string | null | undefined) {
+  const normalized = (value ?? "").toLowerCase();
+  return (
+    normalized.includes("latest-consolidated-evidence.json") ||
+    normalized.includes("latest-debug.json") ||
+    normalized.includes("latest-selected-sources.json")
+  );
+}
+
+function filterMutableLatestArtifactRefs<T extends { uri: string }>(refs: T[]) {
+  return refs.filter((ref) => !isMutableLatestPath(ref.uri));
 }
 
 function clip(value: string | null | undefined, max = 420) {
@@ -602,25 +754,180 @@ function absoluteLocalPath(uri: string | null | undefined) {
   return path.isAbsolute(uri) ? uri : path.join(process.cwd(), uri);
 }
 
+function normalizeAssetKindFromUnitType(unitType: string): PdfAssetRecord["kind"] {
+  if (unitType === "equation" || unitType === "table") {
+    return unitType;
+  }
+  return "image";
+}
+
+function assetKindRank(kind: PdfAssetRecord["kind"]) {
+  if (kind === "equation") return 3;
+  if (kind === "table") return 2;
+  return 1;
+}
+
+function pickPreferredAssetKind(
+  existing: PdfAssetRecord["kind"],
+  incoming: PdfAssetRecord["kind"],
+): PdfAssetRecord["kind"] {
+  return assetKindRank(incoming) > assetKindRank(existing) ? incoming : existing;
+}
+
+function textContentScore(value: string | null | undefined) {
+  const text = (value ?? "").trim();
+  if (!text) {
+    return 0;
+  }
+
+  const normalized = text.toLowerCase();
+  let score = 1;
+
+  if (normalized.includes("conservar latex y renderizarlo en la etapa de redaccion")) {
+    score -= 2;
+  }
+  if (/[=]/.test(text)) {
+    score += 2;
+  }
+  if (/\\[a-z]+/i.test(text)) {
+    score += 2;
+  }
+  if (text.length >= 60) {
+    score += 1;
+  }
+
+  return score;
+}
+
+function pickPreferredTextContent(existing: string | null, incoming: string | null) {
+  const existingScore = textContentScore(existing);
+  const incomingScore = textContentScore(incoming);
+  return incomingScore > existingScore ? incoming : existing;
+}
+
+function isDiagnosticWarningSafeForAssumptions(warning: string) {
+  const normalized = warning.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  if (
+    normalized.includes("latest-consolidated-evidence") ||
+    normalized.includes("latest_selected_sources") ||
+    normalized.includes("latest-selected-sources") ||
+    normalized.includes("latest-debug") ||
+    normalized.includes("stale-content") ||
+    normalized.includes("stale content") ||
+    normalized.includes("contamination")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function buildAssetRecords(handoff: EvidenceEngineHandoffV1): PdfAssetRecord[] {
-  return handoff.asset_registry.map((asset) => {
-    const filePath = absoluteLocalPath(asset.file_ref?.uri ?? null);
-    return {
+  const usageByKey = new Map<string, Record<string, unknown>>();
+  for (const entry of handoff.asset_usage_plan) {
+    const record = asRecord(entry);
+    const key = asString(record.asset_key);
+    if (!key || usageByKey.has(key)) {
+      continue;
+    }
+    usageByKey.set(key, record);
+  }
+
+  const recordsByKey = new Map<string, PdfAssetRecord>();
+  const upsert = (record: PdfAssetRecord) => {
+    const existing = recordsByKey.get(record.asset_key);
+    if (!existing) {
+      recordsByKey.set(record.asset_key, record);
+      return;
+    }
+    recordsByKey.set(record.asset_key, {
+      ...existing,
+      source_id: existing.source_id || record.source_id,
+      title: existing.title || record.title,
+      kind: pickPreferredAssetKind(existing.kind, record.kind),
+      caption: existing.caption ?? record.caption,
+      page_number: existing.page_number ?? record.page_number,
+      file_path: existing.file_path ?? record.file_path,
+      mime_type: existing.mime_type ?? record.mime_type,
+      width_px: existing.width_px ?? record.width_px,
+      height_px: existing.height_px ?? record.height_px,
+      text_content: pickPreferredTextContent(existing.text_content, record.text_content),
+      extraction_origin:
+        existing.extraction_origin === "pdf_native" || record.extraction_origin !== "pdf_native"
+          ? existing.extraction_origin
+          : "pdf_native",
+      extracted: existing.extracted || record.extracted,
+    });
+  };
+
+  for (const asset of handoff.asset_registry) {
+    const usage = usageByKey.get(asset.asset_key) ?? {};
+    const filePath = absoluteLocalPath(
+      asset.file_ref?.uri ??
+        asNullableString((usage as Record<string, unknown>).asset_path) ??
+        asNullableString((usage as Record<string, unknown>).file_path),
+    );
+    upsert({
       source_id: asset.source_id,
       asset_key: asset.asset_key,
       title: asset.title ?? asset.asset_key,
       kind: normalizeAssetKind(asset.asset_kind),
-      caption: asset.caption ?? asset.usage_reason,
+      caption:
+        asset.caption ??
+        asset.usage_reason ??
+        asNullableString((usage as Record<string, unknown>).usage_reason),
       page_number: asset.page_number,
       file_path: filePath,
       mime_type: asset.mime_type,
       width_px: asset.width_px,
       height_px: asset.height_px,
-      text_content: asset.text_content ?? asset.latex ?? asset.handling_notes.join("\n"),
+      text_content:
+        asset.text_content ??
+        asset.latex ??
+        (asset.handling_notes.length > 0 ? asset.handling_notes.join("\n") : null),
       extraction_origin: filePath ? "pdf_native" : "llm_reconstructed",
       extracted: Boolean(filePath && existsSync(filePath)),
-    };
-  });
+    });
+  }
+
+  for (const unit of handoff.evidence_units) {
+    if (!unit.asset_key) {
+      continue;
+    }
+    const usage = usageByKey.get(unit.asset_key) ?? {};
+    const filePath = absoluteLocalPath(
+      unit.asset_ref?.uri ??
+        asNullableString((usage as Record<string, unknown>).asset_path) ??
+        asNullableString((usage as Record<string, unknown>).file_path),
+    );
+    upsert({
+      source_id: unit.source_id,
+      asset_key: unit.asset_key,
+      title: unit.label ?? unit.asset_key,
+      kind: normalizeAssetKindFromUnitType(unit.unit_type),
+      caption:
+        unit.caption ??
+        asNullableString((usage as Record<string, unknown>).caption) ??
+        asNullableString((usage as Record<string, unknown>).usage_reason),
+      page_number: unit.page_start,
+      file_path: filePath,
+      mime_type: null,
+      width_px: null,
+      height_px: null,
+      text_content:
+        unit.original_text ??
+        unit.summary_es ??
+        asNullableString((usage as Record<string, unknown>).text_content),
+      extraction_origin: filePath ? "pdf_native" : "llm_reconstructed",
+      extracted: Boolean(filePath && existsSync(filePath)),
+    });
+  }
+
+  return Array.from(recordsByKey.values());
 }
 
 function bestEvidenceTextForSection(
@@ -690,12 +997,15 @@ function buildAssumptions(
       reason: "Preservar el contexto de --allow-blocked y production_valid=false.",
       section_keys: [],
     },
-    ...degradedWarnings.warnings.slice(0, 6).map((warning, index) => ({
+    ...degradedWarnings.warnings
+      .filter(isDiagnosticWarningSafeForAssumptions)
+      .slice(0, 6)
+      .map((warning, index) => ({
       assumption_id: `diagnostic-warning-${index + 1}`,
       statement: warning,
       reason: "Advertencia importada para evitar sobreafirmaciones en Lab B.",
       section_keys: [],
-    })),
+      })),
   ];
 
   return [...imported, ...diagnosticAssumptions];
@@ -766,12 +1076,26 @@ function buildProject(input: {
   handoff: EvidenceEngineHandoffV1;
   blueprintInput: BlueprintEngineInputV1;
   companion: CompanionArtifacts;
+  methodContract?: MethodGenerationContractV1 | null;
+  secondaryReferenceReport?: SecondaryReferenceCandidatesReport | null;
 }): MasterBlueprintEngineProject {
   const fixture = input.companion.intake_fixture;
   const projectContext = fixture?.project_context;
   const intake = fixture?.intake;
   const projectId = fixture?.project_id ?? input.handoff.project_id;
   const now = new Date();
+  const methodSummary =
+    input.methodContract?.method_summary_for_generation ??
+    intake?.preferredMethodology ??
+    input.handoff.project_context.methodology_preference ??
+    null;
+  const advisorNotes = unique([
+    intake?.advisorNotes,
+    input.handoff.project_context.advisor_or_user_notes,
+    input.methodContract
+      ? `Orientación metodológica para redacción prudente: ${input.methodContract.method_summary_for_generation ?? "método por validar"}. ${input.methodContract.prompt_guidance.methodology}`
+      : null,
+  ]).join("\n");
   const project = {
     id: projectId,
     userId: fixture?.user_id ?? input.blueprintInput.run_request.user_id,
@@ -814,9 +1138,8 @@ function buildProject(input: {
       academicConstraints: intake?.academicConstraints ?? input.handoff.project_context.constraints,
       targetPopulation: intake?.targetPopulation ?? input.handoff.project_context.population_or_context,
       availableData: intake?.availableData ?? null,
-      preferredMethodology:
-        intake?.preferredMethodology ?? input.handoff.project_context.methodology_preference,
-      advisorNotes: intake?.advisorNotes ?? input.handoff.project_context.advisor_or_user_notes,
+      preferredMethodology: methodSummary,
+      advisorNotes: advisorNotes || null,
       searchQuery: null,
       createdAt: now,
       updatedAt: now,
@@ -825,7 +1148,11 @@ function buildProject(input: {
     blueprintVersions: [],
   };
 
-  return project as unknown as MasterBlueprintEngineProject;
+  return {
+    ...project,
+    method_generation_contract: input.methodContract ?? null,
+    secondary_reference_candidates_report: input.secondaryReferenceReport ?? null,
+  } as unknown as MasterBlueprintEngineProject;
 }
 
 function buildEvidenceLedgerFromHandoff(input: {
@@ -925,9 +1252,12 @@ function buildDegradedInputWarnings(input: {
   const materializedSourceCount = materializationItems.filter(
     (item) => asString(item.materializationStatus) === "downloaded",
   ).length;
-  const adjacentEnergyDissipatorSourceCount = input.handoff.source_registry.filter((source) =>
-    /dissipator|disipador/i.test(source.title),
-  ).length;
+  const adjacentBackgroundSourceIds = new Set<string>();
+  for (const warning of unique([...input.handoff.warnings, ...input.handoff.quality_gate.warnings])) {
+    const sourceMatch = warning.match(/Source\s+(\S+)\s+is adjacent\/background/i);
+    if (sourceMatch?.[1]) adjacentBackgroundSourceIds.add(sourceMatch[1].replace(/[.,;:]+$/, ""));
+  }
+  const adjacentBackgroundSourceCount = adjacentBackgroundSourceIds.size;
   const warnings = unique([
     ...input.handoff.warnings,
     ...input.handoff.quality_gate.warnings,
@@ -961,9 +1291,9 @@ function buildDegradedInputWarnings(input: {
           `${countMetadataOrIntakeDirectQuotes(input.handoff)} direct_quote unit(s) appear to be metadata/intake/title snippets; citation support may be inflated.`,
         ]
       : []),
-    ...(adjacentEnergyDissipatorSourceCount > 0
+    ...(adjacentBackgroundSourceCount > 0
       ? [
-          `${adjacentEnergyDissipatorSourceCount} source(s) concern adjacent energy-dissipator evidence; do not use as direct isolator evidence.`,
+          `${adjacentBackgroundSourceCount} source(s) are marked adjacent/background; do not use them as direct support for central claims.`,
         ]
       : []),
   ]);
@@ -991,7 +1321,7 @@ function buildDegradedInputWarnings(input: {
       materialized_source_count: materializationItems.length > 0 ? materializedSourceCount : null,
       unsupported_claim_count: unsupportedClaimCount || null,
       metadata_or_intake_direct_quote_count: countMetadataOrIntakeDirectQuotes(input.handoff),
-      adjacent_energy_dissipator_source_count: adjacentEnergyDissipatorSourceCount,
+      adjacent_background_source_count: adjacentBackgroundSourceCount,
       handoff_warning_count: input.handoff.warnings.length,
     },
   } satisfies DegradedInputWarnings;
@@ -1191,6 +1521,7 @@ function buildStep7ImportContext(input: {
   masterTemplate: MasterTemplateRuntime;
   companion: CompanionArtifacts;
   degradedWarnings: DegradedInputWarnings;
+  methodContract?: MethodGenerationContractV1 | null;
 }): MasterTemplateImportContextArtifact {
   const materializedPdfCount = getMaterializationItems(input.companion).filter(
     (item) => asString(item.storedKind) === "pdf",
@@ -1200,6 +1531,8 @@ function buildStep7ImportContext(input: {
     handoff: input.handoff,
     masterTemplate: input.masterTemplate,
   });
+  const methodContract = input.methodContract ?? null;
+  const methodContractSummary = methodContract ? methodContractMarkdownBlock(methodContract) : null;
   const importedContext = {
     knowledge_area_label: input.companion.intake_fixture?.project_context?.knowledge_area_label ?? null,
     topic: input.handoff.project_context.topic,
@@ -1217,6 +1550,7 @@ function buildStep7ImportContext(input: {
       input.handoff.project_context.population_or_context ??
       null,
     preferred_methodology:
+      methodContract?.method_summary_for_generation ??
       input.companion.intake_fixture?.intake?.preferredMethodology ??
       input.handoff.project_context.methodology_preference ??
       null,
@@ -1308,8 +1642,18 @@ function buildStep7ImportContext(input: {
     proposal_context: {
       method_candidate: input.handoff.proposal_context.method_candidate as never,
       framework_candidate: input.handoff.proposal_context.framework_candidate as never,
-      dominant_methods: input.handoff.proposal_context.dominant_methods as never,
-      dominant_frameworks: input.handoff.proposal_context.dominant_frameworks as never,
+      dominant_methods: unique([
+        methodContract?.primary_method_label,
+        methodContract?.selected_strategy_label,
+        ...(methodContract?.technique_terms ?? []),
+        ...(methodContract?.model_terms ?? []),
+        ...(input.handoff.proposal_context.dominant_methods as string[]),
+      ]) as never,
+      dominant_frameworks: unique([
+        ...(methodContract?.theoretical_focus_terms ?? []),
+        ...(methodContract?.model_terms ?? []),
+        ...(input.handoff.proposal_context.dominant_frameworks as string[]),
+      ]) as never,
       key_findings: input.handoff.proposal_context.key_findings as never,
       evidence_gaps: input.handoff.proposal_context.evidence_gaps,
       followup_requirements: input.handoff.proposal_context.followup_requirements as never,
@@ -1320,8 +1664,12 @@ function buildStep7ImportContext(input: {
     section_alignment_map: sectionAlignmentMap,
     global_generation_hints: {
       knowledge_area_label: importedContext.knowledge_area_label,
-      methodology_mode_hint: asNullableString(asRecord(input.handoff.proposal_context.method_candidate).method_family),
-      framework_priority_hint: asNullableString(asRecord(input.handoff.proposal_context.framework_candidate).core_framework),
+      methodology_mode_hint:
+        methodContract?.method_summary_for_generation ??
+        asNullableString(asRecord(input.handoff.proposal_context.method_candidate).method_family),
+      framework_priority_hint:
+        methodContract?.theoretical_focus_terms[0] ??
+        asNullableString(asRecord(input.handoff.proposal_context.framework_candidate).core_framework),
       case_context_strength: "low",
       local_regulatory_support: "low",
       title_refinement_expected: true,
@@ -1335,16 +1683,18 @@ function buildStep7ImportContext(input: {
       baseline_comparison_status: "warn",
       previous_lab_warnings: input.degradedWarnings.warnings,
       handoff_notes: [
-        "diagnostic_only=true",
-        "production_valid=false",
-        "degraded_handoff=true",
-      ],
+        "Entrada de diagnóstico: redactar con límites y supuestos visibles; no presentar como producto final validado.",
+        methodContractSummary ? `Orientación metodológica:\n${methodContractSummary}` : null,
+        methodContract && !methodContract.production_ready
+          ? "La orientación metodológica requiere revisión humana antes de uso productivo."
+          : null,
+      ].filter((note): note is string => Boolean(note)),
       traceability_warnings: input.handoff.quality_gate.warnings,
       unsupported_claims: asStringArray(getStep6QualityGate(input.companion).unsupported_claims),
       read_only_input_paths: [
         ...input.handoff.traceability.source_artifacts.map((artifact) => artifact.uri),
         ...input.handoff.source_snapshot.map((artifact) => artifact.uri),
-      ],
+      ].filter((uri) => !isMutableLatestPath(uri)),
       next_lab_should_read: ["EvidenceEngineHandoffV1", "BlueprintEngineInputV1"],
       next_lab_should_not_modify: [
         "source artifacts",
@@ -1367,21 +1717,25 @@ function buildStep7ImportContext(input: {
       selected_sources_match: true,
       stale_snapshot_detected: false,
     },
-    warnings: input.degradedWarnings.warnings,
+    warnings: unique([
+      ...input.degradedWarnings.warnings,
+      ...(methodContract?.warnings.map((warning) => `method_contract:${warning}`) ?? []),
+      ...(methodContract?.blockers.map((blocker) => `method_contract:${blocker}`) ?? []),
+    ]),
   };
 }
 
-async function loadMasterTemplateRuntimeForDiagnostic(warnings: string[]) {
-  try {
-    return await loadMasterTemplateRuntimeV2();
-  } catch (error) {
-    warnings.push(
-      `No se pudo cargar MASTER_TEMPLATE_LATAM desde BD; se uso fixture local: ${
-        error instanceof Error ? error.message : "error desconocido"
-      }`,
-    );
-    return buildMasterTemplateLatamRuntimeFixture();
-  }
+async function loadMasterTemplateRuntimeForDiagnostic(input: {
+  mode: TemplateRuntimeMode;
+  warnings: string[];
+}) {
+  const resolution = await resolveMasterTemplateRuntimeForMode({
+    mode: input.mode,
+    loadDatabaseRuntime: loadMasterTemplateRuntimeV2,
+    buildLocalFixture: buildMasterTemplateLatamRuntimeFixture,
+  });
+  input.warnings.push(...resolution.warnings);
+  return resolution;
 }
 
 function buildMatrixDraft(input: {
@@ -1439,6 +1793,30 @@ function diffUsage(after: LlmUsageTotals | null, before: LlmUsageTotals | null):
   };
 }
 
+async function measureLabBStep<T>(input: {
+  timer: StepTimer;
+  step_id: string;
+  step_name: string;
+  modelNames?: string[];
+  fn: () => Promise<T>;
+}) {
+  const handle = input.timer.startStep({
+    pipeline_stage: "blueprint_engine",
+    step_id: input.step_id,
+    step_name: input.step_name,
+  });
+  const usageBefore = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
+  try {
+    return await input.fn();
+  } finally {
+    const usageAfter = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
+    input.timer.completeStep(handle, {
+      usage_delta: diffUsage(usageAfter, usageBefore),
+      model_names: input.modelNames,
+    });
+  }
+}
+
 function writeRunAnalyticsArtifacts(input: {
   outputFolder: string;
   runId: string;
@@ -1447,6 +1825,7 @@ function writeRunAnalyticsArtifacts(input: {
   reducedEvidencePack?: ReducedEvidencePackV1 | null;
   productionSafety?: ProductionSafetyEvaluation | null;
   completedSteps: string[];
+  stepSpans?: StepTelemetrySpan[] | null;
   startedAt: string;
   completedAt: string;
   usageDelta: LlmUsageTotals | null;
@@ -1479,29 +1858,49 @@ function writeRunAnalyticsArtifacts(input: {
     warning_count: input.warnings.length,
     blocker_count: input.blockers.length,
   });
-  const stepTelemetry = buildCoarseStepTelemetry({
-    run_id: input.runId,
-    completed_steps: input.completedSteps,
-    pipeline_stage: "blueprint_engine",
-    started_at: input.startedAt,
-    completed_at: input.completedAt,
-    usage_delta: input.usageDelta,
-    source_count: input.handoff?.source_registry.length ?? null,
-    usable_full_text_source_count:
-      input.productionSafety?.counts.usable_full_text_sources ?? null,
-    evidence_unit_count: input.handoff?.evidence_units.length ?? null,
-    reduced_evidence_unit_count:
-      input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
-    direct_quote_count:
-      input.productionSafety?.counts.true_source_backed_direct_quote_count ?? null,
-    section_count: input.sectionCount ?? null,
-    docx_qa_score: input.docxQaScore ?? null,
-    production_eligible: input.productionSafety?.production_eligible ?? null,
-    diagnostic_compatible: input.productionSafety?.diagnostic_compatible ?? null,
-    warning_count: input.warnings.length,
-    blocker_count: input.blockers.length,
-    model_names: input.modelNames,
-  });
+  const stepTelemetry = input.stepSpans?.length
+    ? buildExactStepTelemetry({
+        run_id: input.runId,
+        spans: input.stepSpans,
+        source_count: input.handoff?.source_registry.length ?? null,
+        usable_full_text_source_count:
+          input.productionSafety?.counts.usable_full_text_sources ?? null,
+        evidence_unit_count: input.handoff?.evidence_units.length ?? null,
+        reduced_evidence_unit_count:
+          input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
+        direct_quote_count:
+          input.productionSafety?.counts.true_source_backed_direct_quote_count ?? null,
+        section_count: input.sectionCount ?? null,
+        docx_qa_score: input.docxQaScore ?? null,
+        production_eligible: input.productionSafety?.production_eligible ?? null,
+        diagnostic_compatible: input.productionSafety?.diagnostic_compatible ?? null,
+        warning_count: input.warnings.length,
+        blocker_count: input.blockers.length,
+        model_names: input.modelNames,
+      })
+    : buildCoarseStepTelemetry({
+        run_id: input.runId,
+        completed_steps: input.completedSteps,
+        pipeline_stage: "blueprint_engine",
+        started_at: input.startedAt,
+        completed_at: input.completedAt,
+        usage_delta: input.usageDelta,
+        source_count: input.handoff?.source_registry.length ?? null,
+        usable_full_text_source_count:
+          input.productionSafety?.counts.usable_full_text_sources ?? null,
+        evidence_unit_count: input.handoff?.evidence_units.length ?? null,
+        reduced_evidence_unit_count:
+          input.reducedEvidencePack?.reduced_counts.evidence_units ?? null,
+        direct_quote_count:
+          input.productionSafety?.counts.true_source_backed_direct_quote_count ?? null,
+        section_count: input.sectionCount ?? null,
+        docx_qa_score: input.docxQaScore ?? null,
+        production_eligible: input.productionSafety?.production_eligible ?? null,
+        diagnostic_compatible: input.productionSafety?.diagnostic_compatible ?? null,
+        warning_count: input.warnings.length,
+        blocker_count: input.blockers.length,
+        model_names: input.modelNames,
+      });
   const dashboard = buildQualityDashboard({
     run_id: input.runId,
     case_id: input.caseId,
@@ -1635,15 +2034,22 @@ function assessReportSignals(input: {
       input.drafts.every((draft) => draft.section_key === "consistency_matrix" || draft.supported_source_ids.length > 0),
     metadata_only_overuse_risk:
       input.degradedWarnings.signals.metadata_or_intake_direct_quote_count > 0,
-    adjacent_energy_dissipator_misuse_risk:
-      input.degradedWarnings.signals.adjacent_energy_dissipator_source_count > 0 &&
-      /disipador|dissipator/.test(allDraftText) &&
-      /aislador|aislamiento/.test(allDraftText),
+    adjacent_background_misuse_risk:
+      input.degradedWarnings.signals.adjacent_background_source_count > 0 &&
+      /demuestra|garantiza|concluyente|definitiv|superioridad general|viabilidad total/.test(allDraftText),
     matrix_status: input.matrixArtifact?.status ?? null,
     validation_passed: input.validationReport?.quality_report.passed ?? null,
     master_docx_qa_passed: typeof input.masterQa?.passed === "boolean" ? input.masterQa.passed : null,
     university_docx_qa_passed: typeof input.universityQa?.passed === "boolean" ? input.universityQa.passed : null,
   };
+}
+
+function readDocxQaScore(qa: Record<string, unknown> | null): number | null {
+  if (!qa) {
+    return null;
+  }
+  const score = qa.score_100;
+  return typeof score === "number" ? score : null;
 }
 
 function renderDiagnosticReport(input: {
@@ -1719,9 +2125,17 @@ ${input.summary.production_ineligibility_reasons.length > 0 ? input.summary.prod
 - sections_preserve_gaps_or_limitations: ${input.reportSignals.sections_preserve_gaps_or_limitations}
 - citations_traceable: ${input.reportSignals.citations_traceable}
 - metadata_only_overuse_risk: ${input.reportSignals.metadata_only_overuse_risk}
-- adjacent_energy_dissipator_misuse_risk: ${input.reportSignals.adjacent_energy_dissipator_misuse_risk}
+- adjacent_background_misuse_risk: ${input.reportSignals.adjacent_background_misuse_risk}
 - consistency_matrix_status: ${input.reportSignals.matrix_status ?? "not_available"}
 - validation_passed: ${input.reportSignals.validation_passed ?? "not_available"}
+
+## Professional Equations
+
+- professional_equations_available: ${input.summary.professional_equations_available ?? false}
+- professional_equation_render_count: ${input.summary.professional_equation_render_count ?? 0}
+- equation_source_grounded_explanation_count: ${input.summary.equation_source_grounded_explanation_count ?? 0}
+- equation_image_fallback_count: ${input.summary.equation_image_fallback_count ?? 0}
+- raw_latex_public_leak_count: ${input.summary.raw_latex_public_leak_count ?? 0}
 
 ## DOCX Render Status
 
@@ -1757,6 +2171,7 @@ async function runDiagnostic(options: CliOptions) {
   const warnings: string[] = [];
   const blockers: string[] = [];
   const completedSteps: string[] = [];
+  const stepTimer = new StepTimer();
   mkdirSync(outputFolder, { recursive: true });
 
   const usageBefore = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
@@ -1793,6 +2208,16 @@ async function runDiagnostic(options: CliOptions) {
       generated_docx_count: 0,
       master_docx_path: null,
       institutional_docx_path: null,
+      method_contract_applied: false,
+      semantic_consistency_passed: null,
+      spanish_public_text_qa_passed: null,
+      secondary_reference_candidate_count: 0,
+      secondary_reference_recovery_candidate_count: 0,
+      template_runtime_mode: options.templateRuntime,
+      template_source: "local_fixture",
+      template_prisma_called: false,
+      source_sufficiency_recommendation_count: 0,
+      ...professionalEquationSummaryFields(null),
       openai_called: false,
       token_cost_usage: { before: usageBefore, after: null, delta: null },
       warnings,
@@ -1807,6 +2232,7 @@ async function runDiagnostic(options: CliOptions) {
       reducedEvidencePack: null,
       productionSafety: null,
       completedSteps,
+      stepSpans: stepTimer.getSpans(),
       startedAt: runStartedAt,
       completedAt: new Date().toISOString(),
       usageDelta: zeroUsageDelta(),
@@ -1815,7 +2241,7 @@ async function runDiagnostic(options: CliOptions) {
       docxQaScore: null,
       freshRunIsolation: null,
       staleContentScan: null,
-      warnings: unique(warnings),
+      warnings: normalizedWarningList(warnings),
       blockers: unique(blockers),
     });
     writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);
@@ -1846,7 +2272,7 @@ async function runDiagnostic(options: CliOptions) {
             materialized_source_count: null,
             unsupported_claim_count: null,
             metadata_or_intake_direct_quote_count: 0,
-            adjacent_energy_dissipator_source_count: 0,
+            adjacent_background_source_count: 0,
             handoff_warning_count: 0,
           },
         },
@@ -1857,7 +2283,7 @@ async function runDiagnostic(options: CliOptions) {
           sections_preserve_gaps_or_limitations: false,
           citations_traceable: false,
           metadata_only_overuse_risk: false,
-          adjacent_energy_dissipator_misuse_risk: false,
+          adjacent_background_misuse_risk: false,
           matrix_status: null,
           validation_passed: null,
           master_docx_qa_passed: null,
@@ -1985,6 +2411,7 @@ async function runDiagnostic(options: CliOptions) {
   writeJson(path.join(outputFolder, "production-safety-report.json"), productionSafety);
   writeJson(path.join(outputFolder, "fresh-run-isolation-report.json"), freshRunIsolation);
   writeJson(path.join(outputFolder, "stale-content-scan-report.json"), staleContentScan);
+  const criticalLlmFallbacks: string[] = [];
   const methodSelection = await buildMethodSelectionForHandoff({
     handoff,
     reducedEvidencePack,
@@ -2014,9 +2441,69 @@ async function runDiagnostic(options: CliOptions) {
     ),
     ...methodSelection.validationReport.warnings.map((warning) => `method_selection:${warning}`),
   );
+  if (
+    [
+      ...methodSelection.validationReport.validation_downgrades,
+      ...methodSelection.validationReport.warnings,
+    ].some((warning) => /method_selection_llm_(unavailable|failed)/i.test(warning))
+  ) {
+    criticalLlmFallbacks.push("method_selection_llm_unavailable_or_failed");
+  }
   if (!methodSelection.validationReport.passed) {
     warnings.push("method_selection_validation_report_requires_review");
   }
+  const methodContract = buildMethodGenerationContract(methodSelection.artifact);
+  const secondaryReferenceReport = buildSecondaryReferenceCandidatesReport(reducedEvidencePack);
+  const secondaryReferenceRecoveryQueue = buildSecondaryReferenceRecoveryQueue({
+    case_id: options.caseId,
+    handoff,
+    evidencePacksArtifact: companion.step_5_signal_extraction_summary
+      ?.evidence_packs_artifact as Parameters<typeof buildSecondaryReferenceRecoveryQueue>[0]["evidencePacksArtifact"],
+    reducedEvidencePack,
+  });
+  const sourceSufficiencyReport = buildSourceSufficiencyReport({
+    case_id: options.caseId,
+    handoff,
+    methodContract,
+    productionSafety,
+    secondaryReferenceQueue: secondaryReferenceRecoveryQueue,
+    minUsableFullTextSources: asNumberOrNull(companion.intake_fixture?.source_policy?.min_selected_sources) ?? 4,
+    userProvidedPdfProductionReviewRequired:
+      degradedWarnings.warnings.some((warning) => /user.provided|usuario|diagnostico/i.test(warning)) ||
+      JSON.stringify(companion.step_4_materialization_manifest ?? {}).includes("userProvidedPdfProvenance"),
+  });
+  let semanticSourceUseReport: SemanticSourceUseReport = buildSemanticSourceUseReport({
+    handoff,
+    reducedEvidencePack,
+    methodContract,
+  });
+  writeJson(path.join(outputFolder, "method-generation-contract.json"), methodContract);
+  writeText(path.join(outputFolder, "method-generation-contract.md"), methodContractMarkdownBlock(methodContract));
+  writeJson(path.join(outputFolder, "secondary-reference-candidates.json"), secondaryReferenceReport);
+  writeText(
+    path.join(outputFolder, "secondary-reference-candidates-report.md"),
+    renderSecondaryReferenceCandidatesReport(secondaryReferenceReport),
+  );
+  writeJson(path.join(outputFolder, "secondary-reference-recovery-queue.json"), secondaryReferenceRecoveryQueue);
+  writeText(
+    path.join(outputFolder, "secondary-reference-recovery-queue-report.md"),
+    renderSecondaryReferenceRecoveryQueueReport(secondaryReferenceRecoveryQueue),
+  );
+  writeJson(path.join(outputFolder, "source-sufficiency-recommendations.json"), sourceSufficiencyReport);
+  writeText(
+    path.join(outputFolder, "source-sufficiency-recommendations.md"),
+    renderSourceSufficiencyReport(sourceSufficiencyReport),
+  );
+  writeJson(path.join(outputFolder, "semantic-source-use-report.json"), semanticSourceUseReport);
+  writeText(path.join(outputFolder, "semantic-source-use-report.md"), renderSemanticSourceUseReport(semanticSourceUseReport));
+  completedSteps.push("method_generation_contract");
+  warnings.push(
+    ...methodContract.warnings.map((warning) => `method_contract:${warning}`),
+    ...secondaryReferenceReport.warnings.map((warning) => `secondary_references:${warning}`),
+    ...secondaryReferenceRecoveryQueue.warnings.map((warning) => `secondary_reference_queue:${warning}`),
+    ...sourceSufficiencyReport.warnings.map((warning) => `source_sufficiency:${warning}`),
+    ...semanticSourceUseReport.warnings.map((warning) => `semantic_source_use:${warning}`),
+  );
 
   if (blockers.length > 0) {
     const summary: FullDiagnosticSummary = {
@@ -2033,7 +2520,7 @@ async function runDiagnostic(options: CliOptions) {
       allow_degraded_handoff: options.allowDegradedHandoff,
       production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
       fresh_run_isolation_passed: freshRunIsolation?.passed ?? false,
-      fresh_run_isolation_warnings: freshRunIsolation?.warnings ?? [],
+      fresh_run_isolation_warnings: normalizedWarningList(freshRunIsolation?.warnings ?? []),
       ...collectStaleGuardSummary({
         freshRunIsolation,
         staleContentScan,
@@ -2046,9 +2533,14 @@ async function runDiagnostic(options: CliOptions) {
       generated_docx_count: 0,
       master_docx_path: null,
       institutional_docx_path: null,
+      template_runtime_mode: options.templateRuntime,
+      template_source: "local_fixture",
+      template_prisma_called: false,
+      secondary_reference_recovery_candidate_count: secondaryReferenceRecoveryQueue.candidate_count,
+      source_sufficiency_recommendation_count: sourceSufficiencyReport.recommendations.length,
       openai_called: false,
       token_cost_usage: { before: usageBefore, after: null, delta: null },
-      warnings: unique(warnings),
+      warnings: normalizedWarningList(warnings),
       blockers: unique(blockers),
       output_folder: outputFolder,
     };
@@ -2065,7 +2557,7 @@ async function runDiagnostic(options: CliOptions) {
           sections_preserve_gaps_or_limitations: false,
           citations_traceable: false,
           metadata_only_overuse_risk: degradedWarnings.signals.metadata_or_intake_direct_quote_count > 0,
-          adjacent_energy_dissipator_misuse_risk: degradedWarnings.signals.adjacent_energy_dissipator_source_count > 0,
+          adjacent_background_misuse_risk: degradedWarnings.signals.adjacent_background_source_count > 0,
           matrix_status: null,
           validation_passed: null,
           master_docx_qa_passed: null,
@@ -2083,7 +2575,13 @@ async function runDiagnostic(options: CliOptions) {
   }
 
   const sourceRegistry = buildSourceRegistry(handoff, companion);
-  const project = buildProject({ handoff, blueprintInput, companion });
+  const project = buildProject({
+    handoff,
+    blueprintInput,
+    companion,
+    methodContract,
+    secondaryReferenceReport,
+  });
   const ledgerBundle = buildEvidenceLedgerFromHandoff({
     handoff: reducedHandoffForPrompting,
     sourceRegistry,
@@ -2106,41 +2604,74 @@ async function runDiagnostic(options: CliOptions) {
   const provider = getConfiguredLlmProvider();
   providerName = provider.name;
   modelName = process.env.LLM_DEFAULT_MODEL?.trim() || "gpt-5.4";
+  let templateRuntimeResolution: Awaited<ReturnType<typeof loadMasterTemplateRuntimeForDiagnostic>> | null = null;
+  let templateRuntimeMode: TemplateRuntimeMode = options.templateRuntime;
+  let templateSource: "local_fixture" | "database" = "local_fixture";
+  let templatePrismaCalled = false;
 
-  const masterTemplate = await loadMasterTemplateRuntimeForDiagnostic(warnings);
-  const templateImportContext = buildStep7ImportContext({
-    handoff,
-    blueprintInput,
-    masterTemplate,
-    companion,
-    degradedWarnings,
+  const { masterTemplate, templateImportContext } = await measureLabBStep({
+    timer: stepTimer,
+    step_id: "step_7_import_context",
+    step_name: "Step 7 import context",
+    modelNames: [modelName].filter((model): model is string => Boolean(model)),
+    fn: async () => {
+      templateRuntimeResolution = await loadMasterTemplateRuntimeForDiagnostic({
+        mode: options.templateRuntime,
+        warnings,
+      });
+      const loadedMasterTemplate = templateRuntimeResolution.masterTemplate;
+      templateRuntimeMode = templateRuntimeResolution.template_runtime_mode;
+      templateSource = templateRuntimeResolution.template_source;
+      templatePrismaCalled = templateRuntimeResolution.prisma_called;
+      const builtTemplateImportContext = buildStep7ImportContext({
+        handoff,
+        blueprintInput,
+        masterTemplate: loadedMasterTemplate,
+        companion,
+        degradedWarnings,
+        methodContract,
+      });
+      writeJson(path.join(outputFolder, "00-diagnostic-fixture-summary.json"), {
+        case_id: options.caseId,
+        selected_reference_ids: getSelectedReferenceIds(companion, handoff),
+        source_count: sourceRegistry.length,
+        evidence_pack_count: ledgerBundle.evidencePacks.length,
+        evidence_snippet_count: ledgerBundle.ledger.snippets.length,
+        full_evidence_unit_count: handoff.evidence_units.length,
+        reduced_evidence_unit_count: reducedEvidencePack.reduced_counts.evidence_units,
+        asset_count: ledgerBundle.ledger.assets.length,
+        skip_hero_image: options.skipHeroImage,
+        allow_stale_content: options.allowStaleContent,
+        render_docx: options.renderDocx,
+        max_sections: options.maxSections,
+        template_runtime_mode: templateRuntimeMode,
+        template_source: templateSource,
+        template_prisma_called: templatePrismaCalled,
+      });
+      writeJson(path.join(outputFolder, "05-step-7-template-import-context.json"), builtTemplateImportContext);
+      completedSteps.push("step_7_import_context");
+      return { masterTemplate: loadedMasterTemplate, templateImportContext: builtTemplateImportContext };
+    },
   });
-  writeJson(path.join(outputFolder, "00-diagnostic-fixture-summary.json"), {
-    case_id: options.caseId,
-    selected_reference_ids: getSelectedReferenceIds(companion, handoff),
-    source_count: sourceRegistry.length,
-    evidence_pack_count: ledgerBundle.evidencePacks.length,
-    evidence_snippet_count: ledgerBundle.ledger.snippets.length,
-    full_evidence_unit_count: handoff.evidence_units.length,
-    reduced_evidence_unit_count: reducedEvidencePack.reduced_counts.evidence_units,
-    asset_count: ledgerBundle.ledger.assets.length,
-    skip_hero_image: options.skipHeroImage,
-    allow_stale_content: options.allowStaleContent,
-    render_docx: options.renderDocx,
-    max_sections: options.maxSections,
-  });
-  writeJson(path.join(outputFolder, "05-step-7-template-import-context.json"), templateImportContext);
-  completedSteps.push("step_7_import_context");
 
-  const promptPlan = await planMasterTemplateSectionPromptsForLab({
-    project: fixtures.project,
-    masterTemplate,
-    evidenceLedger: fixtures.evidenceLedger,
-    templateImportContext,
-    allowLlm: true,
+  const promptPlan = await measureLabBStep({
+    timer: stepTimer,
+    step_id: "step_8_planning",
+    step_name: "Step 8 planning",
+    modelNames: [modelName].filter((model): model is string => Boolean(model)),
+    fn: async () => {
+      const plan = await planMasterTemplateSectionPromptsForLab({
+        project: fixtures.project,
+        masterTemplate,
+        evidenceLedger: fixtures.evidenceLedger,
+        templateImportContext,
+        allowLlm: true,
+      });
+      writeJson(path.join(outputFolder, "10-section-prompt-plan.json"), plan);
+      completedSteps.push("step_8_planning");
+      return plan;
+    },
   });
-  writeJson(path.join(outputFolder, "10-section-prompt-plan.json"), promptPlan);
-  completedSteps.push("step_8_planning");
 
   const plannedSectionKeys = promptPlan.generation_plan
     .map((planItem) => (planItem.section_key === "consistency_matrix" ? null : planItem.section_key))
@@ -2148,47 +2679,176 @@ async function runDiagnostic(options: CliOptions) {
   const sectionKeys = options.maxSections
     ? plannedSectionKeys.slice(0, options.maxSections)
     : plannedSectionKeys;
-  const drafts = options.maxSections
-    ? await generateSectionDraftsForKeys({
-        project: fixtures.project,
-        masterTemplate,
-        evidenceLedger: fixtures.evidenceLedger,
-        promptPlan,
-        templateImportContext,
-        sectionKeys,
-        llmRequired: true,
-      })
-    : await runSectionGenerationEngine({
-        project: fixtures.project,
-        masterTemplate,
-        evidenceLedger: fixtures.evidenceLedger,
-        promptPlan,
-        templateImportContext,
-        llmRequired: true,
-      });
-  writeJson(path.join(outputFolder, "20-master-section-drafts.json"), drafts);
-  completedSteps.push("step_9_section_drafts");
+  const drafts = await measureLabBStep({
+    timer: stepTimer,
+    step_id: "step_9_section_drafts",
+    step_name: "Step 9 section drafts",
+    modelNames: [modelName].filter((model): model is string => Boolean(model)),
+    fn: async () => {
+      const generatedDrafts = options.maxSections
+        ? await generateSectionDraftsForKeys({
+            project: fixtures.project,
+            masterTemplate,
+            evidenceLedger: fixtures.evidenceLedger,
+            promptPlan,
+            templateImportContext,
+            sectionKeys,
+            llmRequired: true,
+          })
+        : await runSectionGenerationEngine({
+            project: fixtures.project,
+            masterTemplate,
+            evidenceLedger: fixtures.evidenceLedger,
+            promptPlan,
+            templateImportContext,
+            llmRequired: true,
+          });
+      writeJson(path.join(outputFolder, "20-master-section-drafts.json"), generatedDrafts);
+      completedSteps.push("step_9_section_drafts");
+      return generatedDrafts;
+    },
+  });
+  semanticSourceUseReport = buildSemanticSourceUseReport({
+    handoff,
+    reducedEvidencePack,
+    methodContract,
+    drafts,
+  });
+  writeJson(path.join(outputFolder, "semantic-source-use-report.json"), semanticSourceUseReport);
+  writeText(path.join(outputFolder, "semantic-source-use-report.md"), renderSemanticSourceUseReport(semanticSourceUseReport));
+  warnings.push(...semanticSourceUseReport.warnings.map((warning) => `semantic_source_use:${warning}`));
 
-  let matrixArtifact: ConsistencyMatrixArtifact;
-  try {
-    matrixArtifact = await buildConsistencyMatrixArtifactFromSectionsWithLlm({
-      drafts,
-      provider,
-      model: process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini",
-    });
-  } catch (error) {
-    warnings.push(
-      `Step 10 LLM matrix alignment failed; deterministic matrix artifact used: ${
-        error instanceof Error ? error.message : "error desconocido"
-      }`,
+  const { matrixArtifact, consistencyMatrix } = await measureLabBStep({
+    timer: stepTimer,
+    step_id: "step_10_consistency_matrix",
+    step_name: "Step 10 consistency matrix",
+    modelNames: [process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini"].filter(Boolean),
+    fn: async () => {
+      let builtMatrixArtifact: ConsistencyMatrixArtifact;
+      try {
+        builtMatrixArtifact = await buildConsistencyMatrixArtifactFromSectionsWithLlm({
+          drafts,
+          provider,
+          model: process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini",
+          methodContract,
+        });
+      } catch (error) {
+        criticalLlmFallbacks.push("step_10_consistency_matrix_llm_failed");
+        warnings.push(
+          `Step 10 LLM matrix alignment failed; deterministic matrix artifact used: ${
+            error instanceof Error ? error.message : "error desconocido"
+          }`,
+        );
+        builtMatrixArtifact = buildConsistencyMatrixArtifactFromSections(drafts);
+      }
+      const builtConsistencyMatrix = legacyRowsFromMatrix(builtMatrixArtifact);
+      writeJson(path.join(outputFolder, "30-consistency-matrix.json"), builtConsistencyMatrix);
+      writeJson(path.join(outputFolder, "31-consistency-matrix-artifact.json"), builtMatrixArtifact);
+      completedSteps.push("step_10_consistency_matrix");
+      return { matrixArtifact: builtMatrixArtifact, consistencyMatrix: builtConsistencyMatrix };
+    },
+  });
+
+  if (criticalLlmFallbacks.length > 0 && !options.allowCriticalLlmFallback) {
+    blockers.push(
+      "Critical LLM stage fell back deterministically; DOCX generation stopped to avoid low-quality academic output.",
+      ...criticalLlmFallbacks.map((item) => `critical_llm_fallback:${item}`),
     );
-    matrixArtifact = buildConsistencyMatrixArtifactFromSections(drafts);
+    const usageAfterBlocked = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
+    const usageDeltaBlocked = diffUsage(usageAfterBlocked, usageBefore) ?? zeroUsageDelta();
+    const summary: FullDiagnosticSummary = {
+      status: "blocked",
+      case_id: options.caseId,
+      handoff_id: handoff.handoff_id,
+      project_id: handoff.project_id,
+      schema_compatible: productionSafety?.schema_compatible ?? false,
+      diagnostic_compatible: productionSafety?.diagnostic_compatible ?? false,
+      production_eligible: productionSafety?.production_eligible ?? false,
+      diagnostic_only: true,
+      production_valid: false,
+      degraded_handoff: true,
+      allow_degraded_handoff: options.allowDegradedHandoff,
+      production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
+      fresh_run_isolation_passed: freshRunIsolation?.passed ?? false,
+      fresh_run_isolation_warnings: normalizedWarningList(freshRunIsolation?.warnings ?? []),
+      ...collectStaleGuardSummary({
+        freshRunIsolation,
+        staleContentScan,
+      }),
+      completed_steps: completedSteps,
+      quality_gate_status: handoff.quality_gate.status,
+      source_count: handoff.source_registry.length,
+      evidence_unit_count: handoff.evidence_units.length,
+      section_count: drafts.length,
+      generated_docx_count: 0,
+      master_docx_path: null,
+      institutional_docx_path: null,
+      method_contract_applied: true,
+      semantic_consistency_passed: null,
+      semantic_source_guard_passed:
+        semanticSourceUseReport.central_section_adjacent_source_count === 0 &&
+        semanticSourceUseReport.central_section_context_only_source_count === 0,
+      ...semanticSourceUseSummaryFields(semanticSourceUseReport),
+      spanish_public_text_qa_passed: null,
+      secondary_reference_candidate_count: secondaryReferenceReport.candidate_count,
+      secondary_reference_recovery_candidate_count: secondaryReferenceRecoveryQueue.candidate_count,
+      template_runtime_mode: templateRuntimeMode,
+      template_source: templateSource,
+      template_prisma_called: templatePrismaCalled,
+      source_sufficiency_recommendation_count: sourceSufficiencyReport.recommendations.length,
+      ...professionalEquationSummaryFields(null),
+      openai_called: usageDeltaBlocked.calls > 0,
+      token_cost_usage: {
+        before: usageBefore,
+        after: usageAfterBlocked,
+        delta: usageDeltaBlocked,
+      },
+      warnings: normalizedWarningList(warnings),
+      blockers: unique(blockers),
+      output_folder: outputFolder,
+    };
+    writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);
+    writeText(
+      path.join(outputFolder, "LAB_B_FULL_DIAGNOSTIC_DOCX_REPORT.md"),
+      renderDiagnosticReport({
+        summary,
+        degradedWarnings,
+        labCompatibility: compatibility,
+        reportSignals: {
+          warning_propagation_ok: true,
+          likely_overclaims: true,
+          sections_preserve_gaps_or_limitations: true,
+          citations_traceable: true,
+          metadata_only_overuse_risk: degradedWarnings.signals.metadata_or_intake_direct_quote_count > 0,
+          adjacent_background_misuse_risk: semanticSourceUseReport.adjacent_reduced_evidence_unit_count > 0,
+          matrix_status: matrixArtifact.status,
+          validation_passed: null,
+          master_docx_qa_passed: null,
+          university_docx_qa_passed: null,
+        },
+        masterDocxPath: null,
+        universityDocxPath: null,
+        masterQa: null,
+        universityQa: null,
+      }),
+    );
+    console.log(JSON.stringify(summary, null, 2));
+    process.exitCode = 1;
+    return;
   }
-  const consistencyMatrix = legacyRowsFromMatrix(matrixArtifact);
-  writeJson(path.join(outputFolder, "30-consistency-matrix.json"), consistencyMatrix);
-  writeJson(path.join(outputFolder, "31-consistency-matrix-artifact.json"), matrixArtifact);
-  completedSteps.push("step_10_consistency_matrix");
+  if (criticalLlmFallbacks.length > 0 && options.allowCriticalLlmFallback) {
+    warnings.push(
+      "--allow-critical-llm-fallback enabled; DOCX generation continues despite deterministic fallback in a critical LLM stage.",
+      ...criticalLlmFallbacks.map((item) => `critical_llm_fallback:${item}`),
+    );
+  }
 
+  const step11Handle = stepTimer.startStep({
+    pipeline_stage: "blueprint_engine",
+    step_id: "step_11_composition_provenance_validation",
+    step_name: "Step 11 composition provenance validation",
+  });
+  const step11UsageBefore = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
   const matrixDraft = buildMatrixDraft({ drafts, matrixArtifact });
   const draftsWithMatrix = [...drafts, matrixDraft];
   const templateContext = buildLabBlueprintTemplateContext(fixtures.project);
@@ -2287,12 +2947,21 @@ async function runDiagnostic(options: CliOptions) {
     ]),
   });
   completedSteps.push("step_11_composition_provenance_validation");
+  const step11UsageAfter = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
+  stepTimer.completeStep(step11Handle, {
+    usage_delta: diffUsage(step11UsageAfter, step11UsageBefore),
+    model_names: [modelName].filter((model): model is string => Boolean(model)),
+    section_count: draftsWithMatrix.length,
+  });
 
   let masterDocxPath: string | null = null;
   let universityDocxPath: string | null = null;
   let generatedDocxCount = 0;
   let masterQa: Record<string, unknown> | null = null;
   let universityQa: Record<string, unknown> | null = null;
+  let semanticConsistencyReport: SemanticConsistencyReportV1 | null = null;
+  let spanishPublicTextQa: ReturnType<typeof buildSpanishPublicTextQaReport> | null = null;
+  let professionalEquationReport: ProfessionalEquationReport | null = null;
 
   if (options.renderDocx) {
     const editorialProvider = provider;
@@ -2330,6 +2999,17 @@ async function runDiagnostic(options: CliOptions) {
       provider: editorialProvider,
     });
 
+    masterAcademicDocument = applySemanticSourceUsePolicyToAcademicDocument({
+      document: masterAcademicDocument,
+      handoff,
+      methodContract,
+    });
+    universityAcademicDocument = applySemanticSourceUsePolicyToAcademicDocument({
+      document: universityAcademicDocument,
+      handoff,
+      methodContract,
+    });
+
     if (!options.skipHeroImage) {
       masterAcademicDocument = await applyAcademicHeroImageGeneration({
         document: masterAcademicDocument,
@@ -2340,6 +3020,9 @@ async function runDiagnostic(options: CliOptions) {
         runDir: outputFolder,
       });
     }
+
+    masterAcademicDocument = normalizeAcademicDocumentPublicFields(masterAcademicDocument);
+    universityAcademicDocument = normalizeAcademicDocumentPublicFields(universityAcademicDocument);
 
     const masterAppendixPolicy = validatePublicAppendixPolicyText(
       collectPublicAppendixText(masterAcademicDocument),
@@ -2366,10 +3049,10 @@ async function runDiagnostic(options: CliOptions) {
     freshRunIsolation = buildFreshRunIsolationReport({
       handoff,
       mode: "diagnostic",
-      artifact_refs: [
+      artifact_refs: filterMutableLatestArtifactRefs([
         ...handoff.traceability.source_artifacts,
         ...handoff.source_snapshot,
-      ],
+      ]),
       academic_documents: [
         { label: "master_academic_document", document: masterAcademicDocument },
         { label: "university_academic_document", document: universityAcademicDocument },
@@ -2386,10 +3069,10 @@ async function runDiagnostic(options: CliOptions) {
     staleContentScan = buildStaleContentScanReport({
       handoff,
       mode: "diagnostic",
-      artifact_refs: [
+      artifact_refs: filterMutableLatestArtifactRefs([
         ...handoff.traceability.source_artifacts,
         ...handoff.source_snapshot,
-      ],
+      ]),
       academic_documents: [
         { label: "master_academic_document", document: masterAcademicDocument },
         { label: "university_academic_document", document: universityAcademicDocument },
@@ -2399,6 +3082,71 @@ async function runDiagnostic(options: CliOptions) {
     writeJson(path.join(outputFolder, "fresh-run-isolation-report.json"), freshRunIsolation);
     writeJson(path.join(outputFolder, "stale-content-scan-report.json"), staleContentScan);
     warnings.push(...freshRunIsolation.warnings, ...staleContentScan.warnings);
+    spanishPublicTextQa = buildSpanishPublicTextQaReport({
+      documents: [
+        { label: "master", document: masterAcademicDocument },
+        { label: "university", document: universityAcademicDocument },
+      ],
+    });
+    professionalEquationReport = buildProfessionalEquationReport({
+      documents: [
+        { label: "master", document: masterAcademicDocument },
+        { label: "university", document: universityAcademicDocument },
+      ],
+    });
+    semanticConsistencyReport = buildSemanticConsistencyReport({
+      handoff,
+      reducedEvidencePack,
+      methodContract,
+      matrixArtifact,
+      drafts: draftsWithMatrix,
+      academicDocuments: [masterAcademicDocument, universityAcademicDocument],
+      secondaryReferenceReport,
+    });
+    semanticSourceUseReport = buildSemanticSourceUseReport({
+      handoff,
+      reducedEvidencePack,
+      methodContract,
+      drafts: draftsWithMatrix,
+      academicDocuments: [masterAcademicDocument, universityAcademicDocument],
+    });
+    writeJson(path.join(outputFolder, "spanish-public-text-qa-report.json"), spanishPublicTextQa);
+    writeJson(path.join(outputFolder, "professional-equation-report.json"), professionalEquationReport);
+    writeText(
+      path.join(outputFolder, "PROFESSIONAL_EQUATION_REPORT.md"),
+      renderProfessionalEquationReport(professionalEquationReport),
+    );
+    writeJson(path.join(outputFolder, "semantic-consistency-report.json"), semanticConsistencyReport);
+    writeJson(path.join(outputFolder, "semantic-source-use-report.json"), semanticSourceUseReport);
+    writeText(
+      path.join(outputFolder, "semantic-source-use-report.md"),
+      renderSemanticSourceUseReport(semanticSourceUseReport),
+    );
+    writeText(
+      path.join(outputFolder, "SEMANTIC_CONSISTENCY_REPORT.md"),
+      renderSemanticConsistencyReport(semanticConsistencyReport),
+    );
+    if (!spanishPublicTextQa.passed) {
+      warnings.push(
+        `spanish_public_text_qa_findings:${spanishPublicTextQa.finding_count}`,
+        ...spanishPublicTextQa.warnings,
+      );
+    }
+    if (professionalEquationReport.warnings.length > 0) {
+      warnings.push(
+        ...professionalEquationReport.warnings.map((warning) => `professional_equation:${warning}`),
+      );
+    }
+    if (professionalEquationReport.blockers.length > 0) {
+      blockers.push(
+        ...professionalEquationReport.blockers.map((blocker) => `professional_equation:${blocker}`),
+      );
+    }
+    warnings.push(
+      ...semanticConsistencyReport.warnings.map((warning) => `semantic_consistency:${warning}`),
+      ...semanticConsistencyReport.blockers.map((blocker) => `semantic_consistency:${blocker}`),
+      ...semanticSourceUseReport.warnings.map((warning) => `semantic_source_use:${warning}`),
+    );
     const staleBlockers = unique([
       ...freshRunIsolation.blockers,
       ...staleContentScan.blockers,
@@ -2407,8 +3155,11 @@ async function runDiagnostic(options: CliOptions) {
     writeJson(path.join(outputFolder, "115-master-academic-document-model.json"), masterAcademicDocument);
     writeJson(path.join(outputFolder, "135-university-academic-document-model.json"), universityAcademicDocument);
 
-    if (staleBlockers.length > 0 && !options.allowStaleContent) {
-      blockers.push(...staleBlockers);
+    const equationBlockers = professionalEquationReport.blockers.map(
+      (blocker) => `professional_equation:${blocker}`,
+    );
+    if ((staleBlockers.length > 0 && !options.allowStaleContent) || equationBlockers.length > 0) {
+      blockers.push(...staleBlockers, ...equationBlockers);
       const usageAfterBlocked = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
       const usageDeltaBlocked = diffUsage(usageAfterBlocked, usageBefore) ?? zeroUsageDelta();
       const summary: FullDiagnosticSummary = {
@@ -2425,7 +3176,7 @@ async function runDiagnostic(options: CliOptions) {
         allow_degraded_handoff: options.allowDegradedHandoff,
         production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
         fresh_run_isolation_passed: freshRunIsolation.passed,
-        fresh_run_isolation_warnings: freshRunIsolation.warnings,
+        fresh_run_isolation_warnings: normalizedWarningList(freshRunIsolation.warnings),
         ...collectStaleGuardSummary({
           freshRunIsolation,
           staleContentScan,
@@ -2438,13 +3189,27 @@ async function runDiagnostic(options: CliOptions) {
         generated_docx_count: 0,
         master_docx_path: null,
         institutional_docx_path: null,
+        method_contract_applied: true,
+        semantic_consistency_passed: semanticConsistencyReport?.passed ?? null,
+        semantic_source_guard_passed:
+          semanticSourceUseReport.central_section_adjacent_source_count === 0 &&
+          semanticSourceUseReport.central_section_context_only_source_count === 0,
+        ...semanticSourceUseSummaryFields(semanticSourceUseReport),
+        spanish_public_text_qa_passed: spanishPublicTextQa?.passed ?? null,
+        secondary_reference_candidate_count: secondaryReferenceReport.candidate_count,
+        secondary_reference_recovery_candidate_count: secondaryReferenceRecoveryQueue.candidate_count,
+        template_runtime_mode: templateRuntimeMode,
+        template_source: templateSource,
+        template_prisma_called: templatePrismaCalled,
+        source_sufficiency_recommendation_count: sourceSufficiencyReport.recommendations.length,
+        ...professionalEquationSummaryFields(professionalEquationReport),
         openai_called: usageDeltaBlocked.calls > 0,
         token_cost_usage: {
           before: usageBefore,
           after: usageAfterBlocked,
           delta: usageDeltaBlocked,
         },
-        warnings: unique(warnings),
+        warnings: normalizedWarningList(warnings),
         blockers: unique(blockers),
         output_folder: outputFolder,
       };
@@ -2456,6 +3221,7 @@ async function runDiagnostic(options: CliOptions) {
         reducedEvidencePack,
         productionSafety,
         completedSteps,
+        stepSpans: stepTimer.getSpans(),
         startedAt: runStartedAt,
         completedAt: new Date().toISOString(),
         usageDelta: usageDeltaBlocked,
@@ -2468,7 +3234,7 @@ async function runDiagnostic(options: CliOptions) {
         packageQualitySummary,
         freshRunIsolation,
         staleContentScan,
-        warnings: unique(warnings),
+        warnings: normalizedWarningList(warnings),
         blockers: unique(blockers),
       });
       writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);
@@ -2484,7 +3250,7 @@ async function runDiagnostic(options: CliOptions) {
             sections_preserve_gaps_or_limitations: true,
             citations_traceable: true,
             metadata_only_overuse_risk: degradedWarnings.signals.metadata_or_intake_direct_quote_count > 0,
-            adjacent_energy_dissipator_misuse_risk: degradedWarnings.signals.adjacent_energy_dissipator_source_count > 0,
+            adjacent_background_misuse_risk: degradedWarnings.signals.adjacent_background_source_count > 0,
             matrix_status: matrixArtifact.status,
             validation_passed: validation.validationReport.quality_report.passed,
             master_docx_qa_passed: null,
@@ -2507,64 +3273,78 @@ async function runDiagnostic(options: CliOptions) {
       );
     }
 
-    masterDocxPath = path.join(outputFolder, "12-master-docx-preview.docx");
-    const masterManifest = await renderMasterDocx({
-      project: fixtures.project,
-      masterTemplate,
-      drafts: draftsWithMatrix,
-      matrixArtifact,
-      evidenceLedger: fixtures.evidenceLedger,
-      validationReport: validation.validationReport,
-      legacyBlueprint,
-      consolidatedAssetUsagePlan: handoff.asset_usage_plan as Array<Record<string, unknown>>,
-      academicDocumentOverride: masterAcademicDocument,
-      outputPath: masterDocxPath,
-      runDir: outputFolder,
+    await measureLabBStep({
+      timer: stepTimer,
+      step_id: "step_12_master_docx",
+      step_name: "Step 12 master DOCX",
+      fn: async () => {
+        masterDocxPath = path.join(outputFolder, "12-master-docx-preview.docx");
+        const masterManifest = await renderMasterDocx({
+          project: fixtures.project,
+          masterTemplate,
+          drafts: draftsWithMatrix,
+          matrixArtifact,
+          evidenceLedger: fixtures.evidenceLedger,
+          validationReport: validation.validationReport,
+          legacyBlueprint,
+          consolidatedAssetUsagePlan: handoff.asset_usage_plan as Array<Record<string, unknown>>,
+          academicDocumentOverride: masterAcademicDocument,
+          outputPath: masterDocxPath,
+          runDir: outputFolder,
+        });
+        masterQa = await validateDocxPackage({
+          docxPath: masterManifest.output_docx_path,
+          minTableCount: 4,
+          minSectionCount: 3,
+          forbiddenSourceTitles: fixtures.evidenceLedger.source_registry.map((source) => source.title),
+        }) as unknown as Record<string, unknown>;
+        masterManifest.academic_model_path = path.join(outputFolder, "115-master-academic-document-model.json");
+        masterManifest.qa_report_path = path.join(outputFolder, "121-master-docx-qa-report.json");
+        masterManifest.qa_passed = Boolean(masterQa.passed);
+        masterManifest.qa_score_100 = typeof masterQa.score_100 === "number" ? masterQa.score_100 : undefined;
+        writeJson(path.join(outputFolder, "120-master-docx-manifest.json"), masterManifest);
+        writeJson(path.join(outputFolder, "121-master-docx-qa-report.json"), masterQa);
+        generatedDocxCount += 1;
+        completedSteps.push("step_12_master_docx");
+      },
     });
-    masterQa = await validateDocxPackage({
-      docxPath: masterManifest.output_docx_path,
-      minTableCount: 4,
-      minSectionCount: 3,
-      forbiddenSourceTitles: fixtures.evidenceLedger.source_registry.map((source) => source.title),
-    }) as unknown as Record<string, unknown>;
-    masterManifest.academic_model_path = path.join(outputFolder, "115-master-academic-document-model.json");
-    masterManifest.qa_report_path = path.join(outputFolder, "121-master-docx-qa-report.json");
-    masterManifest.qa_passed = Boolean(masterQa.passed);
-    masterManifest.qa_score_100 = typeof masterQa.score_100 === "number" ? masterQa.score_100 : undefined;
-    writeJson(path.join(outputFolder, "120-master-docx-manifest.json"), masterManifest);
-    writeJson(path.join(outputFolder, "121-master-docx-qa-report.json"), masterQa);
-    generatedDocxCount += 1;
-    completedSteps.push("step_12_master_docx");
 
-    universityDocxPath = path.join(outputFolder, "13-university-docx-preview.docx");
-    const universityManifest = await renderUniversityDocx({
-      project: fixtures.project,
-      universityBlueprint,
-      matrixArtifact,
-      evidenceLedger: fixtures.evidenceLedger,
-      validationReport: validation.validationReport,
-      legacyBlueprint,
-      consolidatedAssetUsagePlan: handoff.asset_usage_plan as Array<Record<string, unknown>>,
-      academicDocumentOverride: universityAcademicDocument,
-      outputPath: universityDocxPath,
-      runDir: outputFolder,
+    await measureLabBStep({
+      timer: stepTimer,
+      step_id: "step_13_institutional_docx",
+      step_name: "Step 13 institutional DOCX",
+      fn: async () => {
+        universityDocxPath = path.join(outputFolder, "13-university-docx-preview.docx");
+        const universityManifest = await renderUniversityDocx({
+          project: fixtures.project,
+          universityBlueprint,
+          matrixArtifact,
+          evidenceLedger: fixtures.evidenceLedger,
+          validationReport: validation.validationReport,
+          legacyBlueprint,
+          consolidatedAssetUsagePlan: handoff.asset_usage_plan as Array<Record<string, unknown>>,
+          academicDocumentOverride: universityAcademicDocument,
+          outputPath: universityDocxPath,
+          runDir: outputFolder,
+        });
+        universityQa = await validateDocxPackage({
+          docxPath: universityManifest.output_docx_path,
+          minTableCount: 3,
+          minSectionCount: 3,
+          forbiddenSourceTitles: fixtures.evidenceLedger.source_registry.map((source) => source.title),
+        }) as unknown as Record<string, unknown>;
+        universityManifest.academic_model_path = path.join(outputFolder, "135-university-academic-document-model.json");
+        universityManifest.qa_report_path = path.join(outputFolder, "131-university-docx-qa-report.json");
+        universityManifest.qa_passed = Boolean(universityQa.passed);
+        universityManifest.qa_score_100 =
+          typeof universityQa.score_100 === "number" ? universityQa.score_100 : undefined;
+        writeJson(path.join(outputFolder, "130-university-docx-manifest.json"), universityManifest);
+        writeJson(path.join(outputFolder, "131-university-docx-qa-report.json"), universityQa);
+        writeJson(path.join(outputFolder, "135-university-academic-document-model.json"), universityAcademicDocument);
+        generatedDocxCount += 1;
+        completedSteps.push("step_13_institutional_docx");
+      },
     });
-    universityQa = await validateDocxPackage({
-      docxPath: universityManifest.output_docx_path,
-      minTableCount: 3,
-      minSectionCount: 3,
-      forbiddenSourceTitles: fixtures.evidenceLedger.source_registry.map((source) => source.title),
-    }) as unknown as Record<string, unknown>;
-    universityManifest.academic_model_path = path.join(outputFolder, "135-university-academic-document-model.json");
-    universityManifest.qa_report_path = path.join(outputFolder, "131-university-docx-qa-report.json");
-    universityManifest.qa_passed = Boolean(universityQa.passed);
-    universityManifest.qa_score_100 =
-      typeof universityQa.score_100 === "number" ? universityQa.score_100 : undefined;
-    writeJson(path.join(outputFolder, "130-university-docx-manifest.json"), universityManifest);
-    writeJson(path.join(outputFolder, "131-university-docx-qa-report.json"), universityQa);
-    writeJson(path.join(outputFolder, "135-university-academic-document-model.json"), universityAcademicDocument);
-    generatedDocxCount += 1;
-    completedSteps.push("step_13_institutional_docx");
   }
 
   const usageAfter = await readLlmUsageRegistry().then((registry) => registry.cumulative).catch(() => null);
@@ -2595,7 +3375,7 @@ async function runDiagnostic(options: CliOptions) {
     allow_degraded_handoff: options.allowDegradedHandoff,
     production_ineligibility_reasons: productionSafety?.production_ineligibility_reasons ?? [],
     fresh_run_isolation_passed: freshRunIsolation?.passed ?? false,
-    fresh_run_isolation_warnings: freshRunIsolation?.warnings ?? [],
+    fresh_run_isolation_warnings: normalizedWarningList(freshRunIsolation?.warnings ?? []),
     ...collectStaleGuardSummary({
       freshRunIsolation,
       staleContentScan,
@@ -2608,20 +3388,34 @@ async function runDiagnostic(options: CliOptions) {
     generated_docx_count: generatedDocxCount,
     master_docx_path: masterDocxPath,
     institutional_docx_path: universityDocxPath,
+    method_contract_applied: true,
+    semantic_consistency_passed: semanticConsistencyReport?.passed ?? null,
+    semantic_source_guard_passed:
+      semanticSourceUseReport.central_section_adjacent_source_count === 0 &&
+      semanticSourceUseReport.central_section_context_only_source_count === 0,
+    ...semanticSourceUseSummaryFields(semanticSourceUseReport),
+    spanish_public_text_qa_passed: spanishPublicTextQa?.passed ?? null,
+    secondary_reference_candidate_count: secondaryReferenceReport.candidate_count,
+    secondary_reference_recovery_candidate_count: secondaryReferenceRecoveryQueue.candidate_count,
+    template_runtime_mode: templateRuntimeMode,
+    template_source: templateSource,
+    template_prisma_called: templatePrismaCalled,
+    source_sufficiency_recommendation_count: sourceSufficiencyReport.recommendations.length,
+    ...professionalEquationSummaryFields(professionalEquationReport),
     openai_called: usageDelta.calls > 0,
     token_cost_usage: {
       before: usageBefore,
       after: usageAfter,
       delta: usageDelta,
     },
-    warnings: unique(warnings),
+    warnings: normalizedWarningList(warnings),
     blockers: unique(blockers),
     output_folder: outputFolder,
   };
 
   const runCompletedAt = new Date().toISOString();
-  const masterQaScore = typeof masterQa?.score_100 === "number" ? masterQa.score_100 : null;
-  const universityQaScore = typeof universityQa?.score_100 === "number" ? universityQa.score_100 : null;
+  const masterQaScore = readDocxQaScore(masterQa);
+  const universityQaScore = readDocxQaScore(universityQa);
   writeRunAnalyticsArtifacts({
     outputFolder,
     runId: blueprintInput.run_request.blueprint_run_id ?? `lab-b-full-diagnostic-${handoff.handoff_id}-${timestamp}`,
@@ -2630,6 +3424,7 @@ async function runDiagnostic(options: CliOptions) {
     reducedEvidencePack,
     productionSafety,
     completedSteps,
+    stepSpans: stepTimer.getSpans(),
     startedAt: runStartedAt,
     completedAt: runCompletedAt,
     usageDelta,
@@ -2645,7 +3440,7 @@ async function runDiagnostic(options: CliOptions) {
     packageQualitySummary,
     freshRunIsolation,
     staleContentScan,
-    warnings: unique(warnings),
+    warnings: normalizedWarningList(warnings),
     blockers: unique(blockers),
   });
   writeJson(path.join(outputFolder, "full-diagnostic-summary.json"), summary);

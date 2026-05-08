@@ -57,6 +57,10 @@ export type WordStyleContract = {
 export type AcademicReference = {
   source_id: string;
   reference_id: string | null;
+  reference_kind?: "primary_recovered" | "secondary_unrecovered";
+  cited_through_source_id?: string | null;
+  evidence_id?: string | null;
+  recovery_status?: string | null;
   title: string;
   authors: string[];
   year: number | null;
@@ -220,12 +224,39 @@ export type EquationLayoutPlan = {
   source_id: string;
   section_key: string;
   equation_number: number;
+  artifact_type?: "professional_equation_model";
+  artifact_version?: "v1";
   latex: string;
+  source_latex?: string | null;
+  normalized_latex?: string | null;
   display_text: string;
+  source_image_path?: string | null;
+  generated_image_path?: string | null;
+  render_strategy?:
+    | "docx_math_native"
+    | "source_equation_image"
+    | "generated_equation_image"
+    | "blocked_no_professional_render";
+  professional_render_available?: boolean;
+  source_grounded_explanation_available?: boolean;
   caption: string;
+  purpose: string;
+  source_context_summary?: string;
+  section_explanation?: string;
+  variable_notes: Array<{
+    symbol: string;
+    description: string;
+    unit?: string | null;
+    source_backed?: boolean;
+    evidence_id?: string | null;
+    status?: "source_backed" | "not_recovered" | "required_but_missing";
+  }>;
+  limitations?: string[];
   source_note: string;
   body_reference: string;
+  file_path?: string | null;
   warnings: string[];
+  blockers?: string[];
 };
 
 export type ScheduleVisualTask = {

@@ -21,14 +21,21 @@ function hasOpenAiKey() {
   return Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 
-function imageFileName(document: AcademicDocument) {
+export function buildAcademicHeroImageFileName(document: AcademicDocument) {
+  const coverVisual = document.layout_plan.cover_visual;
+  const sharedIdentity = [
+    coverVisual.source_handoff_id,
+    coverVisual.source_evidence_run_id,
+    coverVisual.source_snapshot_hash,
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join("|");
+  const hashBasis = sharedIdentity || coverVisual.prompt;
   const promptHash = createHash("sha256")
-    .update(document.layout_plan.cover_visual.prompt)
+    .update(hashBasis)
     .digest("hex")
     .slice(0, 12);
-  return document.variant === "master"
-    ? `cover-hero-master-${promptHash}.png`
-    : `cover-hero-university-${promptHash}.png`;
+  return `cover-hero-shared-${promptHash}.png`;
 }
 
 function withCoverWarning(document: AcademicDocument, warning: string): AcademicDocument {
@@ -53,7 +60,7 @@ export async function applyAcademicHeroImageGeneration(input: {
   document: AcademicDocument;
   runDir: string;
 }): Promise<AcademicDocument> {
-  const outputPath = path.join(input.runDir, imageFileName(input.document));
+  const outputPath = path.join(input.runDir, buildAcademicHeroImageFileName(input.document));
   try {
     const stats = await stat(outputPath);
     if (stats.size > 20_000) {

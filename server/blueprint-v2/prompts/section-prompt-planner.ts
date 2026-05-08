@@ -64,6 +64,10 @@ function resolvePhase(sectionKey: string): SectionGenerationPhase {
     return "logic";
   }
 
+  if (FRAMING_PHASE_KEYS.has(sectionKey)) {
+    return "framing";
+  }
+
   if (REFERENCE_PHASE_KEYS.has(sectionKey)) {
     return "references";
   }

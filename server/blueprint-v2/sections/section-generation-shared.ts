@@ -294,6 +294,10 @@ export async function loadReadonlyConsolidatedEvidence(
     return null;
   }
 
+  if (/(^|[\\/])latest([-.]|[\\/])|latest-[^\\/]+\.json$/i.test(consolidatedEvidencePath)) {
+    return null;
+  }
+
   try {
     const raw = await readFile(consolidatedEvidencePath, "utf8");
     const parsed = JSON.parse(raw) as ConsolidatedEvidenceArtifact;

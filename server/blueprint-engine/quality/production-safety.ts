@@ -582,6 +582,7 @@ const PUBLIC_APPENDIX_FORBIDDEN_PATTERNS: Array<{ label: string; pattern: RegExp
   { label: "provider debug log", pattern: /\b(?:raw_openalex_json|raw_crossref_json|provider debug|debug log|llm usage)\b/i },
   { label: "raw prompt trace", pattern: /\b(?:system prompt|developer prompt|raw prompt|prompt trace|debug prompt)\b/i },
   { label: "backend traceability dump", pattern: /\b(?:artifact_type|backend artifact|runtime backend|source_id|asset_key|file_path)\b/i },
+  { label: "internal academic traceability annex", pattern: /\b(?:trazabilidad academica|control de trazabilidad)\b/i },
 ];
 
 export function validatePublicAppendixPolicyText(text: string): PublicAppendixPolicyReport {

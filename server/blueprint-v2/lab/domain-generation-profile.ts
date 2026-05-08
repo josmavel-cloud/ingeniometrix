@@ -37,7 +37,7 @@ export function resolveDomainGenerationProfile(input: {
   const tableCount = input.evidenceLedger.assets.filter((asset) => asset.kind === "table").length;
   const imageCount = input.evidenceLedger.assets.filter((asset) => asset.kind === "image").length;
 
-  const domainFamily = includesAny(joinedContext, [/architect/i, /urban/i, /adaptive reuse/i, /housing/i, /regener/i])
+  const domainFamily = includesAny(joinedContext, [/architect/i, /urban/i, /built environment/i, /spatial/i, /territor/i, /regener/i])
     ? "arquitectura_urbanismo"
     : includesAny(joinedContext, [/ingenier/i, /control/i, /estructura/i, /sism/i, /algorithm/i, /modela/i, /simulation/i])
       ? "ingenieria_tecnica"

@@ -63,10 +63,6 @@ function paragraph(id: string, text: string): CanonicalContentBlock {
   return { id, kind: "paragraph", text };
 }
 
-function list(id: string, items: string[]): CanonicalContentBlock {
-  return { id, kind: "bullet_list", items };
-}
-
 function equation(
   id: string,
   latex: string,

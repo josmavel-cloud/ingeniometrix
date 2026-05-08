@@ -6,6 +6,7 @@ import {
   heroInfographicPolicy,
 } from "../server/blueprint-v2/editorial/hero-infographic-policy";
 import {
+  buildAcademicHeroImageFileName,
   DEFAULT_ACADEMIC_HERO_IMAGE_MODEL,
   resolveAcademicHeroImageModel,
 } from "../server/blueprint-v2/lab/academic-document-hero-image";
@@ -81,6 +82,8 @@ function fakeDocument(variant: "master" | "university"): AcademicDocument {
 
 const masterSvg = buildCoverInfographicSvg(fakeDocument("master"));
 const universitySvg = buildCoverInfographicSvg(fakeDocument("university"));
+const sharedMasterHeroFileName = buildAcademicHeroImageFileName(fakeDocument("master"));
+const sharedUniversityHeroFileName = buildAcademicHeroImageFileName(fakeDocument("university"));
 
 const lowerHeading = sentenceStyleCapitalizePublicText(
   "cronograma de investigacion para BIM e IA aplicada",
@@ -114,9 +117,9 @@ const results: TestResult[] = [
   ),
   test(
     "hero prompt includes methodology and workflow guidance",
-    /metodologia|enfoque/.test(promptLower) &&
+      /metodologia|enfoque/.test(promptLower) &&
       /flujo|etapas/.test(promptLower) &&
-      /4 a 6/.test(promptLower) &&
+      /3 a 5/.test(promptLower) &&
       /problema/.test(promptLower) &&
       /analisis/.test(promptLower),
     plan.prompt,
@@ -199,8 +202,14 @@ const results: TestResult[] = [
     `master=${masterSvg.length}, university=${universitySvg.length}`,
   ),
   test(
+    "master and institutional documents reuse one hero image per handoff/run",
+    sharedMasterHeroFileName === sharedUniversityHeroFileName &&
+      /^cover-hero-shared-[a-f0-9]{12}\.png$/.test(sharedMasterHeroFileName),
+    `${sharedMasterHeroFileName} | ${sharedUniversityHeroFileName}`,
+  ),
+  test(
     "lower-case heading becomes capitalized",
-    lowerHeading === "Cronograma de investigacion para BIM e IA aplicada",
+    lowerHeading === "Cronograma de investigaci\u00f3n para BIM e IA aplicada",
     lowerHeading,
   ),
   test(
@@ -222,12 +231,13 @@ const results: TestResult[] = [
   test(
     "Spanish sentence-style capitalization is used instead of English title case",
     spanishSentence ===
-      "Analisis comparativo para aisladores sismicos en edificios peruanos",
+      "An\u00e1lisis comparativo para aisladores s\u00edsmicos en edificios peruanos",
     spanishSentence,
   ),
   test(
     "hero policy requires fallback infographic behavior",
     heroInfographicPolicy.fallback_rule.includes("SVG deterministico") &&
+      heroInfographicPolicy.fallback_rule.includes("no usar caption") &&
       heroInfographicPolicy.visual_type === "methodological_infographic_cover",
     JSON.stringify(heroInfographicPolicy, null, 2),
   ),

@@ -2,7 +2,16 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import path from "node:path";
 
 import { searchBlueprintLaunchReferences } from "@/blueprint_launch/server/local-reference-search";
-import type { BlueprintLaunchReferenceListItem } from "@/blueprint_launch/server/local-playground-store";
+import type {
+  BlueprintLaunchKeywordGroup,
+  BlueprintLaunchReferenceListItem,
+  BlueprintLaunchSearchMetadata,
+} from "@/blueprint_launch/server/local-playground-store";
+import {
+  buildBlueprintLaunchSearchMetadata,
+  buildDeterministicBlueprintLaunchSearchMetadata,
+} from "@/blueprint_launch/server/reference-search-lab";
+import { extractSearchTerms } from "@/lib/text";
 import { parseIntakeInput, type IntakeInput } from "@/server/projects/project-validation";
 
 const FIXTURE_DIR = path.join(process.cwd(), "fixtures", "intakes");
@@ -18,6 +27,55 @@ const INTAKE_KEYS = [
   "preferredMethodology",
   "advisorNotes",
 ] as const;
+
+function parseEnvValue(rawValue: string) {
+  const trimmed = rawValue.trim();
+
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+
+  return trimmed;
+}
+
+function loadLocalEnvForCandidateSearch() {
+  for (const fileName of [".env.local", ".env"]) {
+    const filePath = path.join(process.cwd(), fileName);
+
+    if (!existsSync(filePath)) {
+      continue;
+    }
+
+    const lines = readFileSync(filePath, "utf8").split(/\r?\n/);
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
+
+      const withoutExport = trimmed.startsWith("export ") ? trimmed.slice("export ".length) : trimmed;
+      const separator = withoutExport.indexOf("=");
+
+      if (separator <= 0) {
+        continue;
+      }
+
+      const key = withoutExport.slice(0, separator).trim();
+      const value = parseEnvValue(withoutExport.slice(separator + 1));
+
+      if (key && process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+loadLocalEnvForCandidateSearch();
 
 type IntakeKey = (typeof INTAKE_KEYS)[number];
 type IntakeFixture = {
@@ -108,6 +166,18 @@ type CliArgs = {
   maxCandidates: number;
   queryVariant: string | null;
   avoidSelectedFrom: string | null;
+  secondaryReferenceQueue: string | null;
+  plannerMode: "auto" | "llm" | "off";
+};
+
+type SecondaryReferenceRecoveryQueue = {
+  candidates?: Array<{
+    candidate_id?: string;
+    title?: string | null;
+    doi?: string | null;
+    year?: number | null;
+    recommended_search_query?: string | null;
+  }>;
 };
 
 type ExpandedQueryVariant = {
@@ -116,6 +186,22 @@ type ExpandedQueryVariant = {
   language: "es" | "en";
   focusTerms: string[];
   rationale: string;
+  category_mix?: "necessary" | "necessary_complementary" | "optional_backup";
+  source_keyword_groups?: {
+    necessary: string[];
+    complementary: string[];
+    optional: string[];
+  };
+};
+
+type CandidateSearchProfile = {
+  knowledgeAreaLabel: string;
+  primarySystem: string;
+  primaryObjectTerms: string[];
+  primaryPhenomenon: string;
+  primaryGoal: string;
+  keywordGroups: BlueprintLaunchSearchMetadata["keywordGroups"];
+  focusTerms: string[];
 };
 
 type PreviousSelectionContext = {
@@ -186,6 +272,29 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function plannerStatusFromSearchSummary(summary: {
+  metadata: unknown;
+} | null) {
+  const metadata = asRecord(summary?.metadata);
+  const baseMetadata = asRecord(metadata.base_search_metadata);
+  const firstMetadata = asRecord(metadata.first_snapshot_metadata);
+  const directMetadata = metadata;
+  const plannerStatus =
+    String(baseMetadata.plannerStatus ?? firstMetadata.plannerStatus ?? directMetadata.plannerStatus ?? "")
+      .trim()
+      .toLowerCase() || "unknown";
+  const planSource =
+    String(baseMetadata.planSource ?? firstMetadata.planSource ?? directMetadata.planSource ?? "")
+      .trim()
+      .toLowerCase() || "unknown";
+
+  return {
+    plannerStatus,
+    planSource,
+    llmUsed: plannerStatus === "llm" || planSource === "llm",
+  };
+}
+
 function sameMembers(actual: string[], expected: readonly string[]) {
   return (
     actual.length === expected.length &&
@@ -205,6 +314,8 @@ function parseArgs(): CliArgs {
   let maxCandidates = 10;
   let queryVariant: string | null = null;
   let avoidSelectedFrom: string | null = null;
+  let secondaryReferenceQueue: string | null = null;
+  let plannerMode: CliArgs["plannerMode"] = "auto";
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
@@ -236,6 +347,22 @@ function parseArgs(): CliArgs {
     if (arg === "--avoid-selected-from" && next) {
       avoidSelectedFrom = next;
       index += 1;
+      continue;
+    }
+
+    if (arg === "--secondary-reference-queue" && next) {
+      secondaryReferenceQueue = path.isAbsolute(next) ? next : path.join(process.cwd(), next);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--use-llm-planner") {
+      plannerMode = "llm";
+      continue;
+    }
+
+    if (arg === "--no-llm-planner") {
+      plannerMode = "off";
     }
   }
 
@@ -245,6 +372,8 @@ function parseArgs(): CliArgs {
     maxCandidates,
     queryVariant,
     avoidSelectedFrom,
+    secondaryReferenceQueue,
+    plannerMode,
   };
 }
 
@@ -368,65 +497,7 @@ function buildDeterministicNormalizedIntakeContext(fixture: IntakeFixture, intak
   };
 }
 
-function hasAny(value: string, terms: string[]) {
-  const normalized = value.toLowerCase();
-  return terms.some((term) => normalized.includes(term));
-}
-
-function appendSearchTerms(value: string | undefined, terms: string[]) {
-  const normalized = normalizeWhitespace(value);
-  const suffix = terms.filter((term) => !normalized.toLowerCase().includes(term.toLowerCase()));
-  return normalizeWhitespace([normalized, ...suffix].join(" "));
-}
-
-function buildLabASearchInput(fixture: IntakeFixture, intake: IntakeInput): IntakeInput {
-  const blob = [
-    fixture.project_context.knowledge_area_label,
-    intake.topic,
-    intake.problemContext,
-    intake.researchLine,
-    intake.targetPopulation,
-    intake.preferredMethodology,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  if (hasAny(blob, ["aislador", "aislamiento sismico", "aislamiento sísmico"])) {
-    return {
-      ...intake,
-      topic: appendSearchTerms(intake.topic, [
-        "seismic isolation",
-        "base isolation",
-        "isolated buildings",
-        "Peru",
-      ]),
-      problemContext: appendSearchTerms(intake.problemContext, [
-        "seismic performance",
-        "reinforced concrete buildings",
-        "seismic design",
-      ]),
-      researchLine: appendSearchTerms(intake.researchLine, [
-        "seismic isolation",
-        "base-isolated structures",
-      ]),
-      targetPopulation: appendSearchTerms(intake.targetPopulation, [
-        "Peruvian buildings",
-        "medium-rise buildings",
-        "high seismic hazard",
-      ]),
-      availableData: appendSearchTerms(intake.availableData, [
-        "base isolation case studies",
-        "performance-based seismic evaluation",
-        "seismic codes",
-      ]),
-      preferredMethodology: appendSearchTerms(intake.preferredMethodology, [
-        "comparative review",
-        "multi-criteria assessment",
-        "seismic isolation criteria",
-      ]),
-    };
-  }
-
+function buildLabASearchInput(_fixture: IntakeFixture, intake: IntakeInput): IntakeInput {
   return {
     topic: normalizeWhitespace(intake.topic),
     problemContext: normalizeWhitespace(intake.problemContext),
@@ -439,94 +510,190 @@ function buildLabASearchInput(fixture: IntakeFixture, intake: IntakeInput): Inta
   };
 }
 
-function buildLabASearchKnowledgeAreaLabel(fixture: IntakeFixture, intake: IntakeInput) {
-  const blob = [
-    fixture.project_context.knowledge_area_label,
-    intake.topic,
-    intake.problemContext,
-    intake.researchLine,
-    intake.targetPopulation,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  if (hasAny(blob, ["aislador", "aislamiento sismico", "aislamiento sísmico"])) {
-    return "Seismic isolation and base-isolated buildings";
-  }
-
+function buildLabASearchKnowledgeAreaLabel(fixture: IntakeFixture, _intake: IntakeInput) {
   return fixture.project_context.knowledge_area_label;
 }
-
-function buildExpandedQueryVariants(): ExpandedQueryVariant[] {
-  return [
-    {
-      name: "seismic-isolation-buildings-peru",
-      query: "seismic isolation buildings Peru",
-      language: "en",
-      focusTerms: ["seismic isolation", "buildings", "Peru", "performance"],
-      rationale: "Busca evidencia internacional indexada que mencione edificios y Peru.",
-    },
-    {
-      name: "base-isolation-reinforced-concrete-buildings",
-      query: "base isolation reinforced concrete buildings",
-      language: "en",
-      focusTerms: ["base isolation", "reinforced concrete", "buildings", "seismic design"],
-      rationale: "Amplia la busqueda tecnica hacia edificios de concreto armado.",
-    },
-    {
-      name: "aisladores-sismicos-edificios-peru",
-      query: "aisladores sismicos edificios Peru",
-      language: "es",
-      focusTerms: ["aisladores sismicos", "edificios", "Peru", "concreto armado"],
-      rationale: "Busca resultados en espanol con terminos usados por tesistas y revistas regionales.",
-    },
-    {
-      name: "aislamiento-sismico-edificaciones-peruanas",
-      query: "aislamiento sismico edificaciones peruanas",
-      language: "es",
-      focusTerms: ["aislamiento sismico", "edificaciones peruanas", "desempeno"],
-      rationale: "Refuerza el enfoque local peruano y de edificaciones.",
-    },
-    {
-      name: "seismic-isolation-latin-america-buildings",
-      query: "seismic isolation Latin America buildings",
-      language: "en",
-      focusTerms: ["seismic isolation", "Latin America", "buildings", "implementation"],
-      rationale: "Busca evidencia regional cuando Peru directo no tenga suficiente cobertura.",
-    },
-    {
-      name: "base-isolation-cost-benefit-buildings",
-      query: "base isolation cost-benefit buildings",
-      language: "en",
-      focusTerms: ["base isolation", "cost-benefit", "buildings", "decision criteria"],
-      rationale: "Busca fuentes para reemplazar vacios economicos y de decision multicriterio.",
-    },
-    {
-      name: "desempeno-sismico-edificios-con-aisladores",
-      query: "desempeno sismico edificios con aisladores",
-      language: "es",
-      focusTerms: ["desempeno sismico", "edificios", "aisladores", "reduccion de demanda"],
-      rationale: "Busca evidencia tecnica de desempeno en espanol.",
-    },
-    {
-      name: "fragility-seismic-performance-isolated-buildings",
-      query: "fragility seismic performance isolated buildings",
-      language: "en",
-      focusTerms: ["fragility", "seismic performance", "isolated buildings", "risk"],
-      rationale: "Busca evidencia cuantitativa de desempeno y fragilidad.",
-    },
-    {
-      name: "implementation-barriers-seismic-isolation-developing-countries",
-      query: "implementation barriers seismic isolation developing countries",
-      language: "en",
-      focusTerms: ["implementation barriers", "seismic isolation", "developing countries", "adoption"],
-      rationale: "Busca evidencia para barreras normativas, economicas y constructivas.",
-    },
-  ];
+function keywordGroupTerms(groups: BlueprintLaunchKeywordGroup[], limit: number) {
+  return uniqueStrings(
+    groups.flatMap((group) => [
+      group.variants[0] ?? group.label,
+      group.variants[1] ?? "",
+    ]),
+  ).slice(0, limit);
 }
 
-function selectExpandedQueryVariants(requested: string | null) {
-  const variants = buildExpandedQueryVariants();
+function slugForVariant(value: string) {
+  return normalizeForDedup(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 54);
+}
+
+function buildQueryFromParts(parts: string[]) {
+  return normalizeWhitespace(uniqueStrings(parts).join(" "));
+}
+
+function buildVariant(
+  input: {
+    name: string;
+    query: string;
+    focusTerms: string[];
+    rationale: string;
+    categoryMix: ExpandedQueryVariant["category_mix"];
+    keywordGroups: BlueprintLaunchSearchMetadata["keywordGroups"];
+  },
+): ExpandedQueryVariant {
+  return {
+    name: input.name,
+    query: input.query,
+    language: "en",
+    focusTerms: input.focusTerms,
+    rationale: input.rationale,
+    category_mix: input.categoryMix,
+    source_keyword_groups: {
+      necessary: input.keywordGroups.necessary.map((group) => group.label),
+      complementary: input.keywordGroups.complementary.map((group) => group.label),
+      optional: input.keywordGroups.optional.map((group) => group.label),
+    },
+  };
+}
+
+function ensurePrimarySystemVariant(
+  primarySystem: string,
+  necessaryTerms: string[],
+) {
+  const normalizedSystem = normalizeForDedup(primarySystem);
+  const normalizedNecessary = normalizeForDedup(necessaryTerms.join(" "));
+
+  if (!normalizedSystem || normalizedNecessary.includes(normalizedSystem)) {
+    return necessaryTerms;
+  }
+
+  return uniqueStrings([primarySystem, ...necessaryTerms]).slice(0, 5);
+}
+
+export function buildExpandedQueryVariantsFromMetadata(input: {
+  metadata: BlueprintLaunchSearchMetadata;
+  fixture: IntakeFixture;
+  intake: IntakeInput;
+}): ExpandedQueryVariant[] {
+  const keywordGroups = input.metadata.keywordGroups;
+  const necessaryTerms = ensurePrimarySystemVariant(
+    input.metadata.primarySystem,
+    keywordGroupTerms(keywordGroups.necessary, 5),
+  );
+  const complementaryTerms = keywordGroupTerms(keywordGroups.complementary, 4);
+  const optionalTerms = keywordGroupTerms(keywordGroups.optional, 3);
+  const intakeTerms = extractSearchTerms(
+    [
+      input.fixture.project_context.knowledge_area_label,
+      input.intake.topic,
+      input.intake.problemContext,
+      input.intake.researchLine,
+      input.intake.availableData,
+      input.intake.preferredMethodology,
+    ].join(" "),
+    { maxTerms: 10, minLength: 5 },
+  );
+
+  const variants = [
+    buildVariant({
+      name: `necessary-core-${slugForVariant(input.metadata.primarySystem || input.metadata.normalizedTopic)}`,
+      query: buildQueryFromParts([
+        input.metadata.primarySystem,
+        ...necessaryTerms.slice(0, 4),
+      ]),
+      focusTerms: uniqueStrings([...necessaryTerms, input.metadata.primarySystem]).slice(0, 8),
+      rationale:
+        "Expande desde las categorias necesarias del intake actual: objeto/sistema, fenomeno y proposito central.",
+      categoryMix: "necessary",
+      keywordGroups,
+    }),
+    buildVariant({
+      name: `necessary-goal-${slugForVariant(input.metadata.primaryGoal || input.metadata.primaryPhenomenon)}`,
+      query: buildQueryFromParts([
+        input.metadata.primarySystem,
+        input.metadata.primaryPhenomenon,
+        input.metadata.primaryGoal,
+        ...necessaryTerms.slice(0, 2),
+      ]),
+      focusTerms: uniqueStrings([
+        input.metadata.primarySystem,
+        input.metadata.primaryPhenomenon,
+        input.metadata.primaryGoal,
+        ...necessaryTerms,
+      ]).slice(0, 8),
+      rationale:
+        "Combina las categorias necesarias con el objetivo tecnico/metodologico del intake actual.",
+      categoryMix: "necessary",
+      keywordGroups,
+    }),
+    buildVariant({
+      name: `necessary-complementary-${slugForVariant(complementaryTerms[0] ?? input.metadata.normalizedTopic)}`,
+      query: buildQueryFromParts([
+        input.metadata.primarySystem,
+        ...necessaryTerms.slice(0, 3),
+        ...complementaryTerms.slice(0, 2),
+      ]),
+      focusTerms: uniqueStrings([...necessaryTerms, ...complementaryTerms]).slice(0, 8),
+      rationale:
+        "Cruza categorias necesarias con complementarias para priorizar fuentes tecnicas mas especificas.",
+      categoryMix: "necessary_complementary",
+      keywordGroups,
+    }),
+    buildVariant({
+      name: `complementary-method-${slugForVariant(complementaryTerms.slice(1, 3).join(" ") || input.metadata.intentSummary)}`,
+      query: buildQueryFromParts([
+        input.metadata.primarySystem,
+        ...complementaryTerms,
+        ...necessaryTerms.slice(0, 2),
+      ]),
+      focusTerms: uniqueStrings([...complementaryTerms, ...necessaryTerms]).slice(0, 8),
+      rationale:
+        "Refuerza variables, herramientas, criterios o tecnologia que el intake marca como complementarios.",
+      categoryMix: "necessary_complementary",
+      keywordGroups,
+    }),
+    buildVariant({
+      name: `intake-method-${slugForVariant(intakeTerms.slice(0, 5).join(" ") || input.metadata.normalizedTopic)}`,
+      query: buildQueryFromParts([
+        input.metadata.primarySystem,
+        ...necessaryTerms.slice(0, 2),
+        ...intakeTerms.slice(0, 5),
+      ]),
+      focusTerms: uniqueStrings([...necessaryTerms, ...intakeTerms]).slice(0, 8),
+      rationale:
+        "Usa terminos extraidos del intake actual como apoyo debil, sin reemplazar las categorias necesarias.",
+      categoryMix: "necessary_complementary",
+      keywordGroups,
+    }),
+    buildVariant({
+      name: `optional-backup-${slugForVariant(optionalTerms.join(" ") || input.metadata.normalizedTopic)}`,
+      query: buildQueryFromParts([
+        input.metadata.primarySystem,
+        ...necessaryTerms.slice(0, 2),
+        ...optionalTerms,
+      ]),
+      focusTerms: uniqueStrings([...necessaryTerms.slice(0, 2), ...optionalTerms]).slice(0, 8),
+      rationale:
+        "Busqueda de respaldo: conserva categorias necesarias y agrega terminos opcionales del intake actual.",
+      categoryMix: "optional_backup",
+      keywordGroups,
+    }),
+  ];
+
+  const byName = new Map<string, ExpandedQueryVariant>();
+  for (const variant of variants) {
+    if (!variant.query || normalizeForDedup(variant.query).length < 8) {
+      continue;
+    }
+    byName.set(variant.name, variant);
+  }
+
+  return [...byName.values()];
+}
+
+function selectExpandedQueryVariants(variants: ExpandedQueryVariant[], requested: string | null) {
 
   if (!requested) {
     return variants;
@@ -540,6 +707,37 @@ function selectExpandedQueryVariants(requested: string | null) {
   }
 
   return selected;
+}
+
+function loadSecondaryReferenceQueue(filePath: string | null): SecondaryReferenceRecoveryQueue | null {
+  return filePath ? readJsonIfExists<SecondaryReferenceRecoveryQueue>(filePath) : null;
+}
+
+function buildSecondaryReferenceQueryVariants(queue: SecondaryReferenceRecoveryQueue | null): ExpandedQueryVariant[] {
+  const variants: ExpandedQueryVariant[] = [];
+  for (const [index, candidate] of (queue?.candidates ?? []).slice(0, 8).entries()) {
+    const query = normalizeWhitespace(
+      candidate.recommended_search_query ||
+        [candidate.title, candidate.year ? String(candidate.year) : null, candidate.doi].filter(Boolean).join(" "),
+    );
+    if (query.length < 8) continue;
+    const focusTerms = extractSearchTerms(query, { maxTerms: 8 });
+    variants.push({
+      name: `secondary-reference-${index + 1}-${slugForVariant(candidate.candidate_id || candidate.title || query)}`,
+      query,
+      language: "en",
+      focusTerms,
+      rationale:
+        "Referencia secundaria detectada en PDFs recuperados del intake actual; debe buscarse como nueva candidata y no citarse hasta recuperacion/seleccion.",
+      category_mix: "optional_backup",
+      source_keyword_groups: {
+        necessary: focusTerms,
+        complementary: [],
+        optional: [],
+      },
+    });
+  }
+  return variants;
 }
 
 function buildVariantSearchInput(input: {
@@ -563,28 +761,183 @@ function buildVariantSearchInput(input: {
   } satisfies IntakeInput;
 }
 
-async function runWithoutLlmPlanner<T>(work: () => Promise<T>) {
-  const previousOpenAiKey = process.env.OPENAI_API_KEY;
-  const previousProvider = process.env.LLM_PROVIDER;
+function buildCandidateSearchProfile(metadata: BlueprintLaunchSearchMetadata): CandidateSearchProfile {
+  const primarySystemTokens = normalizeForDedup(metadata.primarySystem)
+    .split(/\s+/)
+    .filter((term) => term.length > 2);
+  const tailObject =
+    primarySystemTokens.length >= 2
+      ? primarySystemTokens.slice(-2).join(" ")
+      : primarySystemTokens.join(" ");
 
-  delete process.env.OPENAI_API_KEY;
-  process.env.LLM_PROVIDER = "openai";
+  return {
+    knowledgeAreaLabel: metadata.knowledgeArea ?? "General Academic Research",
+    primarySystem: metadata.primarySystem,
+    primaryObjectTerms: uniqueStrings([
+      metadata.primarySystem,
+      tailObject,
+      primarySystemTokens.length >= 3 ? primarySystemTokens.slice(-3).join(" ") : "",
+    ]).filter((term) => normalizeForDedup(term).length >= 5),
+    primaryPhenomenon: metadata.primaryPhenomenon,
+    primaryGoal: metadata.primaryGoal,
+    keywordGroups: metadata.keywordGroups,
+    focusTerms: metadata.focusTerms,
+  };
+}
 
-  try {
-    return await work();
-  } finally {
-    if (previousOpenAiKey === undefined) {
-      delete process.env.OPENAI_API_KEY;
-    } else {
-      process.env.OPENAI_API_KEY = previousOpenAiKey;
+function termsForContaminationScan(value: string) {
+  return extractSearchTerms(value, { maxTerms: 80, minLength: 4 });
+}
+
+const GENERIC_EXPANSION_TERMS = new Set([
+  "actual",
+  "apoyo",
+  "backup",
+  "categorias",
+  "category",
+  "complementary",
+  "complementarias",
+  "core",
+  "current",
+  "desde",
+  "expande",
+  "focus",
+  "fuentes",
+  "intake",
+  "method",
+  "necesarias",
+  "necessary",
+  "optional",
+  "prioritizar",
+  "query",
+  "respaldo",
+  "search",
+  "source",
+  "terminos",
+  "variant",
+]);
+
+export function inspectExpandedQueryContamination(input: {
+  fixture: IntakeFixture;
+  intake: IntakeInput;
+  metadata: BlueprintLaunchSearchMetadata;
+  variants: ExpandedQueryVariant[];
+}) {
+  const currentTerms = new Set(
+    termsForContaminationScan(
+      [
+        input.fixture.case_id,
+        input.fixture.case_name,
+        input.fixture.project_context.title,
+        input.fixture.project_context.program,
+        input.fixture.project_context.knowledge_area_label,
+        input.intake.topic,
+        input.intake.problemContext,
+        input.intake.researchLine,
+        input.intake.targetPopulation,
+        input.intake.availableData,
+        input.intake.preferredMethodology,
+        input.metadata.knowledgeArea,
+        input.metadata.subdomain,
+        input.metadata.primarySystem,
+        input.metadata.primaryPhenomenon,
+        input.metadata.primaryGoal,
+        input.metadata.normalizedTopic,
+        input.metadata.intentSummary,
+        input.metadata.focusTerms.join(" "),
+        input.metadata.keywordGroups.necessary.flatMap((group) => group.variants).join(" "),
+        input.metadata.keywordGroups.complementary.flatMap((group) => group.variants).join(" "),
+        input.metadata.keywordGroups.optional.flatMap((group) => group.variants).join(" "),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    ),
+  );
+
+  const blockers: string[] = [];
+  const warnings: string[] = [];
+
+  for (const variant of input.variants) {
+    const variantTerms = termsForContaminationScan(
+      [
+        variant.name,
+        variant.query,
+        variant.focusTerms.join(" "),
+        variant.rationale,
+      ].join(" "),
+    ).filter((term) => !GENERIC_EXPANSION_TERMS.has(term));
+    const currentOverlap = variantTerms.filter((term) => currentTerms.has(term));
+    const foreignTerms = variantTerms.filter((term) => !currentTerms.has(term));
+
+    if (currentOverlap.length === 0 && foreignTerms.length >= 3) {
+      blockers.push(
+        `Expanded query variant ${variant.name} has no overlap with current intake keywords. Foreign terms: ${foreignTerms.slice(0, 8).join(", ")}.`,
+      );
+      continue;
     }
 
-    if (previousProvider === undefined) {
-      delete process.env.LLM_PROVIDER;
-    } else {
-      process.env.LLM_PROVIDER = previousProvider;
+    if (foreignTerms.length > Math.max(currentOverlap.length * 2, 6)) {
+      warnings.push(
+        `Expanded query variant ${variant.name} has many terms not present in the current intake/category plan: ${foreignTerms.slice(0, 8).join(", ")}.`,
+      );
     }
   }
+
+  return {
+    status: blockers.length > 0 ? "blocked" : warnings.length > 0 ? "warn" : "pass",
+    blockers,
+    warnings,
+  };
+}
+
+function hasOpenAiPlannerKey() {
+  return Boolean(process.env.OPENAI_API_KEY?.trim());
+}
+
+async function buildCandidateSearchMetadata(input: {
+  intake: IntakeInput;
+  knowledgeAreaLabel: string | null;
+  plannerMode: CliArgs["plannerMode"];
+}) {
+  if (input.plannerMode === "off") {
+    return buildDeterministicBlueprintLaunchSearchMetadata(input);
+  }
+
+  if (input.plannerMode === "auto" && !hasOpenAiPlannerKey()) {
+    return buildDeterministicBlueprintLaunchSearchMetadata({
+      ...input,
+      plannerErrorStage: "llm_planner_unavailable",
+      plannerErrorMessage:
+        "OPENAI_API_KEY no esta disponible; se uso fallback deterministico actual-intake.",
+    });
+  }
+
+  return buildBlueprintLaunchSearchMetadata({
+    intake: input.intake,
+    knowledgeAreaLabel: input.knowledgeAreaLabel,
+  });
+}
+
+function buildVariantSearchMetadata(input: {
+  baseMetadata: BlueprintLaunchSearchMetadata;
+  variant: ExpandedQueryVariant;
+}): BlueprintLaunchSearchMetadata {
+  return {
+    ...input.baseMetadata,
+    normalizedTopic: input.variant.query,
+    intentSummary: normalizeWhitespace(
+      [input.baseMetadata.intentSummary, input.variant.query].filter(Boolean).join(" "),
+    ).slice(0, 320),
+    queryPack: {
+      necessaryOnly: [input.variant.query],
+      complementaryBoosted: [],
+      optionalBackups: [],
+    },
+    focusTerms: uniqueStrings([
+      ...input.variant.focusTerms,
+      ...input.baseMetadata.focusTerms,
+    ]).slice(0, 14),
+  };
 }
 
 function providerFor(referenceId: string, doi: string | null): CandidateSource["provider"] {
@@ -774,29 +1127,70 @@ function candidateMentionsPeruOrLatinAmerica(candidate: CandidateSource) {
   );
 }
 
-function candidateDomainFitScore(candidate: CandidateSource) {
+function candidateMatchesGroup(blob: string, group: BlueprintLaunchKeywordGroup) {
+  return group.variants.some((variant) => {
+    const normalized = normalizeForDedup(variant);
+    return normalized.length > 0 && blob.includes(normalized);
+  });
+}
+
+function candidateKeywordFit(candidate: CandidateSource, profile: CandidateSearchProfile | null) {
   const blob = normalizeForDedup(
     [candidate.title, candidate.abstract, candidate.venue].filter(Boolean).join(" "),
   );
-  let score = 0;
 
-  if (/\b(aislador|aisladores|aislamiento sismico|base isolation|seismic isolation|isolated building|isolated buildings|base-isolated)\b/.test(blob)) {
-    score += 24;
-  }
-  if (/\b(disipador|disipadores|amortiguador|amortiguadores|damper|dampers|viscous damper|seismic control)\b/.test(blob)) {
-    score += 12;
-  }
-  if (/\b(sismico|sismica|sismicos|seismic|earthquake)\b/.test(blob)) {
-    score += 8;
-  }
-  if (/\b(edificio|edificios|edificacion|edificaciones|building|buildings|concreto armado|reinforced concrete|estructura|estructuras)\b/.test(blob)) {
-    score += 8;
-  }
-  if (/\b(desempeno|performance|fragility|fragilidad|cost|costo|benefit|beneficio|norma|code|barrier|barrera)\b/.test(blob)) {
-    score += 4;
+  if (!profile) {
+    return {
+      score: 0,
+      necessaryMatches: [] as string[],
+      complementaryMatches: [] as string[],
+      optionalMatches: [] as string[],
+      focusTermMatches: [] as string[],
+    };
   }
 
-  return score;
+  const necessaryMatches = profile.keywordGroups.necessary
+    .filter((group) => candidateMatchesGroup(blob, group))
+    .map((group) => group.label);
+  const complementaryMatches = profile.keywordGroups.complementary
+    .filter((group) => candidateMatchesGroup(blob, group))
+    .map((group) => group.label);
+  const optionalMatches = profile.keywordGroups.optional
+    .filter((group) => candidateMatchesGroup(blob, group))
+    .map((group) => group.label);
+  const primaryObjectMatches = profile.primaryObjectTerms.filter((term) => {
+    const normalized = normalizeForDedup(term);
+    return normalized.length > 0 && blob.includes(normalized);
+  });
+  const focusTermMatches = profile.focusTerms
+    .filter((term) => {
+      const normalized = normalizeForDedup(term);
+      return normalized.length > 0 && blob.includes(normalized);
+    })
+    .slice(0, 8);
+
+  return {
+    score:
+      necessaryMatches.length * 12 +
+      complementaryMatches.length * 8 +
+      optionalMatches.length * 3 +
+      Math.min(focusTermMatches.length * 2, 8) +
+      (primaryObjectMatches.length > 0 ? 42 : -18),
+    necessaryMatches,
+    complementaryMatches,
+    optionalMatches,
+    primaryObjectMatches,
+    focusTermMatches,
+  };
+}
+
+function candidateDomainFitScore(candidate: CandidateSource, profile: CandidateSearchProfile | null) {
+  const keywordFit = candidateKeywordFit(candidate, profile);
+  if (profile) {
+    return keywordFit.score;
+  }
+
+  return 0;
 }
 
 function candidateHasPublicAccessSignal(candidate: CandidateSource) {
@@ -850,6 +1244,7 @@ function buildMergedCandidateSet(input: {
   previousContext: PreviousSelectionContext;
   discoveredCandidates: CandidateSource[];
   maxCandidates: number;
+  profile: CandidateSearchProfile | null;
 }) {
   const byKey = new Map<string, CandidateSource>();
   const keyAlias = new Map<string, string>();
@@ -916,7 +1311,8 @@ function buildMergedCandidateSet(input: {
       directIds.map(normalizeForDedup).some((id) => rejectedIds.has(id)) ||
       keys.some((key) => rejectedKeys.has(key));
     const isPrevious = (candidate.candidate_markers ?? []).includes("previous_candidate");
-    const domainFitScore = candidateDomainFitScore(candidate);
+    const keywordFit = candidateKeywordFit(candidate, input.profile);
+    const domainFitScore = candidateDomainFitScore(candidate, input.profile);
     const possibleReplacement =
       !isSelected &&
       !isRejected &&
@@ -943,10 +1339,13 @@ function buildMergedCandidateSet(input: {
             ? "Menciona Peru, America Latina o un contexto regional comparable."
             : "",
           (candidate.relevance_score ?? 0) >= 35
-            ? "Tiene mejor score de relevancia que el set bloqueado."
+            ? "Tiene score de relevancia suficiente para revision humana."
             : "",
-          domainFitScore >= 24
-            ? "Mantiene ajuste tematico con aislamiento, control sismico o edificios."
+          keywordFit.necessaryMatches.length > 0
+            ? `Coincide con categorias necesarias: ${keywordFit.necessaryMatches.join(", ")}.`
+            : "",
+          keywordFit.complementaryMatches.length > 0
+            ? `Coincide con categorias complementarias: ${keywordFit.complementaryMatches.join(", ")}.`
             : "",
         ])
       : [];
@@ -1114,24 +1513,58 @@ async function collectCandidates(input: {
   maxCandidates: number;
   queryVariant: string | null;
   previousContext: PreviousSelectionContext;
+  secondaryReferenceQueue?: SecondaryReferenceRecoveryQueue | null;
+  plannerMode: CliArgs["plannerMode"];
 }) {
   const searchIntake = buildLabASearchInput(input.fixture, input.intake);
   const searchKnowledgeAreaLabel = buildLabASearchKnowledgeAreaLabel(input.fixture, input.intake);
+  const baseMetadata = await buildCandidateSearchMetadata({
+    intake: searchIntake,
+    knowledgeAreaLabel: searchKnowledgeAreaLabel,
+    plannerMode: input.plannerMode,
+  });
+  const searchProfile = buildCandidateSearchProfile(baseMetadata);
   const discoveredCandidates: CandidateSource[] = [];
   const attemptedQueries: string[] = [];
-  const queryVariants = input.expand ? selectExpandedQueryVariants(input.queryVariant) : [];
+  const baseQueryVariants = input.expand
+    ? selectExpandedQueryVariants(
+        buildExpandedQueryVariantsFromMetadata({
+          metadata: baseMetadata,
+          fixture: input.fixture,
+          intake: input.intake,
+        }),
+        input.queryVariant,
+      )
+    : [];
+  const secondaryReferenceQueryVariants = input.expand
+    ? buildSecondaryReferenceQueryVariants(input.secondaryReferenceQueue ?? null)
+    : [];
+  const queryVariants = [...baseQueryVariants, ...secondaryReferenceQueryVariants];
+  const contaminationReport = input.expand
+    ? inspectExpandedQueryContamination({
+        fixture: input.fixture,
+        intake: input.intake,
+        metadata: baseMetadata,
+        variants: baseQueryVariants,
+      })
+    : { status: "pass", blockers: [] as string[], warnings: [] as string[] };
   let searchQuery: string | null = null;
   let totalResults = 0;
   let metadata: unknown = null;
 
-  if (!input.expand) {
-    const snapshot = await runWithoutLlmPlanner(() =>
-      searchBlueprintLaunchReferences({
-        intake: searchIntake,
-        knowledgeAreaLabel: searchKnowledgeAreaLabel,
-        desiredTotal: input.fixture.source_policy.max_selected_sources,
-      }),
+  if (contaminationReport.blockers.length > 0) {
+    throw new Error(
+      `Expanded query contamination blocked search: ${contaminationReport.blockers.join(" ")}`,
     );
+  }
+
+  if (!input.expand) {
+    const snapshot = await searchBlueprintLaunchReferences({
+      intake: searchIntake,
+      knowledgeAreaLabel: searchKnowledgeAreaLabel,
+      desiredTotal: input.fixture.source_policy.max_selected_sources,
+      searchMetadataOverride: baseMetadata,
+    });
 
     return {
       candidates: snapshot.references.map((item, index) => ({
@@ -1144,6 +1577,7 @@ async function collectCandidates(input: {
       totalResults: snapshot.totalResults,
       metadata: snapshot.metadata,
       queryVariants,
+      contaminationReport,
     };
   }
 
@@ -1153,13 +1587,15 @@ async function collectCandidates(input: {
       intake: input.intake,
       variant,
     });
-    const snapshot = await runWithoutLlmPlanner(() =>
-      searchBlueprintLaunchReferences({
-        intake: variantIntake,
-        knowledgeAreaLabel: `${searchKnowledgeAreaLabel} / ${variant.query}`,
-        desiredTotal: input.maxCandidates,
+    const snapshot = await searchBlueprintLaunchReferences({
+      intake: variantIntake,
+      knowledgeAreaLabel: `${searchKnowledgeAreaLabel} / ${variant.query}`,
+      desiredTotal: input.maxCandidates,
+      searchMetadataOverride: buildVariantSearchMetadata({
+        baseMetadata,
+        variant,
       }),
-    );
+    });
 
     searchQuery = searchQuery ?? snapshot.searchQuery;
     metadata = metadata ?? snapshot.metadata;
@@ -1184,6 +1620,7 @@ async function collectCandidates(input: {
     previousContext: input.previousContext,
     discoveredCandidates,
     maxCandidates: input.maxCandidates,
+    profile: searchProfile,
   });
 
   return {
@@ -1193,11 +1630,15 @@ async function collectCandidates(input: {
     totalResults,
     metadata: {
       first_snapshot_metadata: metadata,
+      base_search_metadata: baseMetadata,
       expanded_query_variants: queryVariants,
+      secondary_reference_query_variants: secondaryReferenceQueryVariants,
+      expanded_query_contamination_report: contaminationReport,
       previous_candidate_run_folder: input.previousContext.sourceCandidateRunFolder,
       avoid_selected_from: input.previousContext.avoidSelectedFrom,
     },
     queryVariants,
+    contaminationReport,
   };
 }
 
@@ -1208,6 +1649,7 @@ async function main() {
   const fixture = readFixture(fixturePath);
   const outputFolder = candidateFilesOutput(fixture.case_id);
   const previousContext = loadPreviousSelectionContext(args.avoidSelectedFrom);
+  const secondaryReferenceQueue = loadSecondaryReferenceQueue(args.secondaryReferenceQueue);
   const fixtureValidation = validateFixture(fixture);
   let normalizedIntakeContext: unknown = null;
   let candidateSources: CandidateSource[] = [];
@@ -1215,6 +1657,7 @@ async function main() {
   let sourceSelectionTemplate: unknown = null;
   let queryVariants: ExpandedQueryVariant[] = [];
   const errors: string[] = [];
+  const searchWarnings: string[] = [];
   let searchSnapshotSummary: {
     search_query: string | null;
     attempted_queries: string[];
@@ -1243,10 +1686,13 @@ async function main() {
       maxCandidates: args.maxCandidates,
       queryVariant: args.queryVariant,
       previousContext,
+      secondaryReferenceQueue,
+      plannerMode: args.plannerMode,
     });
 
     candidateSources = searchResult.candidates;
     queryVariants = searchResult.queryVariants;
+    searchWarnings.push(...searchResult.contaminationReport.warnings);
     candidateSummaryMarkdown = renderCandidateSummaryMarkdown({
       fixture,
       candidates: candidateSources,
@@ -1293,6 +1739,7 @@ async function main() {
   }
 
   writeJsonFile(path.join(outputFolder, "normalized-intake-context.json"), normalizedIntakeContext);
+  const plannerStatus = plannerStatusFromSearchSummary(searchSnapshotSummary);
   writeJsonFile(path.join(outputFolder, "candidate-sources.json"), {
     case_id: fixture.case_id,
     generated_at: new Date().toISOString(),
@@ -1300,16 +1747,23 @@ async function main() {
     max_candidates_requested: args.maxCandidates,
     query_variant: args.queryVariant,
     avoid_selected_from: previousContext.avoidSelectedFrom,
+    secondary_reference_queue_path: args.secondaryReferenceQueue,
+    secondary_reference_queue_candidate_count: secondaryReferenceQueue?.candidates?.length ?? 0,
     previous_candidate_run_folder: previousContext.sourceCandidateRunFolder,
     live_provider_calls: {
       openalex: fixture.source_policy.providers.includes("openalex"),
       crossref: fixture.source_policy.providers.includes("crossref"),
-      openai: false,
+      openai: plannerStatus.llmUsed,
       pdf_download: false,
       pdf_extraction: false,
     },
+    planner_mode: args.plannerMode,
+    planner_status: plannerStatus.plannerStatus,
+    planner_plan_source: plannerStatus.planSource,
+    llm_planner_available: hasOpenAiPlannerKey(),
     search_snapshot_summary: searchSnapshotSummary,
     expanded_query_variants: queryVariants,
+    expanded_query_contamination_warnings: searchWarnings,
     candidate_counts: {
       total: candidateSources.length,
       new_candidates: candidateSources.filter((candidate) =>
@@ -1349,6 +1803,8 @@ async function main() {
     query_variant: args.queryVariant,
     avoid_selected_from: previousContext.avoidSelectedFrom,
     previous_candidate_run_folder: previousContext.sourceCandidateRunFolder,
+    secondary_reference_queue_path: args.secondaryReferenceQueue,
+    secondary_reference_queue_candidate_count: secondaryReferenceQueue?.candidates?.length ?? 0,
     intake_validation_status: fixtureValidation.blockers.length === 0 ? "pass" : "blocked",
     source_selection_required: fixture.source_selection_checkpoint.required,
     source_selection_status: "pending",
@@ -1363,7 +1819,11 @@ async function main() {
       candidate.candidate_markers?.includes("possible_replacement"),
     ).length,
     providers_requested: fixture.source_policy.providers,
-    openai_called: false,
+    openai_called: plannerStatus.llmUsed,
+    planner_mode: args.plannerMode,
+    planner_status: plannerStatus.plannerStatus,
+    planner_plan_source: plannerStatus.planSource,
+    llm_planner_available: hasOpenAiPlannerKey(),
     live_retrieval_called: errors.length > 0 ? "attempted" : "completed",
     steps_executed: ["intake_parse", "deterministic_intake_context", "candidate_source_search"],
     steps_not_executed: [
@@ -1375,7 +1835,7 @@ async function main() {
       "lab_b_generation",
       "docx_rendering",
     ],
-    warnings: fixtureValidation.warnings,
+    warnings: uniqueStrings([...fixtureValidation.warnings, ...searchWarnings]),
     errors,
     output_folder: outputFolder,
   };
@@ -1388,4 +1848,6 @@ async function main() {
   }
 }
 
-main();
+if (path.resolve(process.argv[1] ?? "") === path.resolve(__filename)) {
+  main();
+}

@@ -29,6 +29,39 @@ function metricDelta(current: number | null, previous: number | null) {
   return Number((current - previous).toFixed(6));
 }
 
+function loadStepTimings(runFolder: string) {
+  const stepTelemetry = readJsonIfExists(path.join(runFolder, "step-telemetry.json")) ?? {};
+  const steps = Array.isArray(stepTelemetry.steps) ? stepTelemetry.steps : [];
+
+  return {
+    timing_granularity:
+      typeof stepTelemetry.timing_granularity === "string"
+        ? stepTelemetry.timing_granularity
+        : null,
+    timing_note:
+      typeof stepTelemetry.timing_note === "string" ? stepTelemetry.timing_note : null,
+    steps: steps
+      .map((item) => {
+        const step = asRecord(item);
+        const stepId = typeof step.step_id === "string" ? step.step_id : null;
+        if (!stepId) return null;
+
+        return {
+          pipeline_stage: typeof step.pipeline_stage === "string" ? step.pipeline_stage : null,
+          step_id: stepId,
+          step_name: typeof step.step_name === "string" ? step.step_name : stepId,
+          duration_ms: asNumber(step.duration_ms),
+          call_count: asNumber(step.call_count),
+          total_tokens: asNumber(step.total_tokens),
+          estimated_cost_usd: asNumber(step.estimated_cost_usd),
+          warning_count: asNumber(step.warning_count),
+          blocker_count: asNumber(step.blocker_count),
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null),
+  };
+}
+
 function loadRunMetrics(runFolder: string) {
   const summary = readJsonIfExists(path.join(runFolder, "full-diagnostic-summary.json")) ?? {};
   const dashboard = readJsonIfExists(path.join(runFolder, "quality-dashboard.json")) ?? {};
@@ -78,7 +111,45 @@ function loadRunMetrics(runFolder: string) {
     stale_content_detected: asBoolean(staleScan.stale_content_detected) ?? asBoolean(summary.stale_content_detected),
     mutable_latest_path_count:
       asNumber(staleScan.mutable_latest_path_count) ?? asNumber(summary.mutable_latest_path_count),
+    step_telemetry: loadStepTimings(runFolder),
   };
+}
+
+function buildStepTimingComparison(
+  previous: ReturnType<typeof loadRunMetrics>["step_telemetry"]["steps"],
+  current: ReturnType<typeof loadRunMetrics>["step_telemetry"]["steps"],
+) {
+  const previousByStep = new Map(previous.map((step) => [step.step_id, step]));
+  const currentByStep = new Map(current.map((step) => [step.step_id, step]));
+  const stepIds = Array.from(new Set([...previousByStep.keys(), ...currentByStep.keys()]));
+
+  return stepIds.map((stepId) => {
+    const previousStep = previousByStep.get(stepId) ?? null;
+    const currentStep = currentByStep.get(stepId) ?? null;
+
+    return {
+      pipeline_stage: currentStep?.pipeline_stage ?? previousStep?.pipeline_stage ?? null,
+      step_id: stepId,
+      step_name: currentStep?.step_name ?? previousStep?.step_name ?? stepId,
+      previous_duration_ms: previousStep?.duration_ms ?? null,
+      current_duration_ms: currentStep?.duration_ms ?? null,
+      duration_ms_delta: metricDelta(currentStep?.duration_ms ?? null, previousStep?.duration_ms ?? null),
+      previous_call_count: previousStep?.call_count ?? null,
+      current_call_count: currentStep?.call_count ?? null,
+      call_count_delta: metricDelta(currentStep?.call_count ?? null, previousStep?.call_count ?? null),
+      previous_total_tokens: previousStep?.total_tokens ?? null,
+      current_total_tokens: currentStep?.total_tokens ?? null,
+      total_tokens_delta: metricDelta(currentStep?.total_tokens ?? null, previousStep?.total_tokens ?? null),
+      previous_estimated_cost_usd: previousStep?.estimated_cost_usd ?? null,
+      current_estimated_cost_usd: currentStep?.estimated_cost_usd ?? null,
+      estimated_cost_usd_delta: metricDelta(
+        currentStep?.estimated_cost_usd ?? null,
+        previousStep?.estimated_cost_usd ?? null,
+      ),
+      current_warning_count: currentStep?.warning_count ?? null,
+      current_blocker_count: currentStep?.blocker_count ?? null,
+    };
+  });
 }
 
 export function buildDiagnosticRunComparison(input: {
@@ -87,6 +158,10 @@ export function buildDiagnosticRunComparison(input: {
 }) {
   const previous = loadRunMetrics(input.previousRunFolder);
   const current = loadRunMetrics(input.currentRunFolder);
+  const step_timing_comparison = buildStepTimingComparison(
+    previous.step_telemetry.steps,
+    current.step_telemetry.steps,
+  );
 
   return {
     artifact_type: "diagnostic_run_comparison",
@@ -128,6 +203,13 @@ export function buildDiagnosticRunComparison(input: {
         previous.mutable_latest_path_count,
       ),
     },
+    step_timing_comparison,
+    step_timing_metadata: {
+      previous_granularity: previous.step_telemetry.timing_granularity,
+      current_granularity: current.step_telemetry.timing_granularity,
+      previous_note: previous.step_telemetry.timing_note,
+      current_note: current.step_telemetry.timing_note,
+    },
     verdict: {
       production_still_blocked: current.production_eligible === false,
       docx_qa_preserved:
@@ -145,6 +227,29 @@ export function buildDiagnosticRunComparison(input: {
 }
 
 function renderReport(comparison: ReturnType<typeof buildDiagnosticRunComparison>) {
+  const stepTimingRows = comparison.step_timing_comparison.length
+    ? [
+        "| Lab | Step | Previous ms | Current ms | Delta ms | Current calls | Current tokens | Current cost USD |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ...comparison.step_timing_comparison.map((step) => {
+          return [
+            step.pipeline_stage ?? "n/a",
+            step.step_name,
+            step.previous_duration_ms ?? "n/a",
+            step.current_duration_ms ?? "n/a",
+            step.duration_ms_delta ?? "n/a",
+            step.current_call_count ?? "n/a",
+            step.current_total_tokens ?? "n/a",
+            step.current_estimated_cost_usd ?? "n/a",
+          ].join(" | ");
+        }).map((row) => `| ${row} |`),
+        "",
+        `Previous timing granularity: ${comparison.step_timing_metadata.previous_granularity ?? "n/a"}.`,
+        `Current timing granularity: ${comparison.step_timing_metadata.current_granularity ?? "n/a"}.`,
+        `Note: ${comparison.step_timing_metadata.current_note ?? "Step timings reflect the granularity currently emitted by the runner telemetry."}`,
+      ]
+    : ["No step telemetry was available for these run folders."];
+
   const lines = [
     "# Run Comparison Report",
     "",
@@ -163,6 +268,10 @@ function renderReport(comparison: ReturnType<typeof buildDiagnosticRunComparison
     `- estimated cost USD: ${comparison.previous.estimated_cost_usd ?? "n/a"} -> ${comparison.current.estimated_cost_usd ?? "n/a"}`,
     `- duration ms: ${comparison.previous.duration_ms ?? "n/a"} -> ${comparison.current.duration_ms ?? "n/a"}`,
     `- stale content detected: ${comparison.previous.stale_content_detected} -> ${comparison.current.stale_content_detected}`,
+    "",
+    "## Step Timing Comparison",
+    "",
+    ...stepTimingRows,
     "",
     "## Verdict",
     "",

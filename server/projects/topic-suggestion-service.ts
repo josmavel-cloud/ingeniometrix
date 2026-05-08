@@ -12,7 +12,6 @@ import {
   buildProjectPresetSuggestionEntries,
   getInterestTokens,
   getTopicAreaLabel,
-  normalizeSearchText,
 } from "@/lib/topic-suggestion-scoring";
 import {
   buildUniversityResearchContext,

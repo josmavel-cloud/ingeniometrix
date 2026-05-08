@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 
 import type { LlmProvider, TextGenerationResult } from "@/llm/provider";
+import type { MethodGenerationContractV1 } from "@/server/blueprint-engine/quality/method-generation-contract";
+import { sentenceStyleCapitalizePublicText } from "@/server/blueprint-v2/editorial/capitalization-hygiene";
 import type { ConsistencyMatrixRow, MasterSectionDraft } from "@/server/blueprint-v2/types";
 import { clipText } from "@/server/blueprint-v2/utils";
 
@@ -10,6 +12,7 @@ type DerivationSource =
   | "draft"
   | "llm_aligned"
   | "objective_to_question_rule"
+  | "question_to_objective_rule"
   | "general_fallback"
   | "missing";
 
@@ -255,6 +258,10 @@ function safeJsonParse<T>(value: string): T {
   return JSON.parse(candidate.slice(firstBrace, lastBrace + 1)) as T;
 }
 
+function uniqueStrings(values: Array<string | null | undefined>, limit = 8) {
+  return Array.from(new Set(values.map((value) => cleanMatrixField(value, 220)).filter((value): value is string => Boolean(value)))).slice(0, limit);
+}
+
 function cleanMatrixField(value: string | null | undefined, maxLength = 520) {
   const normalized = compactMatrixText(value, maxLength)
     .replace(/\|---+\|?/g, "")
@@ -284,10 +291,9 @@ function normalizeText(value: string | null | undefined) {
 
 function stripReferenceLikeParentheticals(value: string) {
   return value
-    .replace(
-      /\(([^)]*(?:adaptive reuse|framework|existing building|existing buildings|urban buildings|dirty laundry|multi-criteria|ecosystem services|demolition)[^)]*)\)/gi,
-      "",
-    )
+    .replace(/\(([A-Z][A-Za-z'. -]{2,60},\s*(?:19|20)\d{2}[a-z]?)\)/g, "")
+    .replace(/\(([A-Z][A-Za-z'. -]{2,60}\s+et\s+al\.,?\s*(?:19|20)\d{2}[a-z]?)\)/g, "")
+    .replace(/\(\s*\d{1,3}(?:\s*,\s*\d{1,3}){0,5}\s*\)/g, "")
     .replace(/\(([^)]{70,})\)/g, "")
     .replace(/\s{2,}/g, " ")
     .replace(/\s+\./g, ".")
@@ -316,7 +322,8 @@ function stripListPrefix(value: string) {
 }
 
 function isPlaceholder(value: string | null | undefined) {
-  return /por precisar|pendiente|sin dato|no disponible|por definir|falta/i.test(value ?? "");
+  const normalized = normalizeForCompare(value);
+  return /^(por precisar|pendiente|sin dato|no disponible|por definir|falta)(?:\b|$)/i.test(normalized);
 }
 
 function isHeadingOnly(value: string) {
@@ -411,25 +418,105 @@ function deriveQuestionFromObjective(objective: string) {
 
   switch (verb.toLowerCase()) {
     case "identificar":
-      return `Que elementos permiten identificar ${remainder}?`;
+      return `¿Que elementos permiten identificar ${remainder}?`;
     case "describir":
-      return `Como se caracteriza ${remainder}?`;
+      return `¿Como se caracteriza ${remainder}?`;
     case "analizar":
     case "examinar":
-      return `Como se relaciona ${remainder} con el problema de investigacion?`;
+      return `¿Como se relaciona ${remainder} con el problema de investigacion?`;
     case "evaluar":
     case "estimar":
-      return `En que medida ${remainder}?`;
+      return `¿En que medida ${remainder}?`;
     case "determinar":
     case "establecer":
-      return `Que relacion existe respecto de ${remainder}?`;
+      return `¿Que relacion existe respecto de ${remainder}?`;
     case "comparar":
-      return `Que diferencias o similitudes se observan en ${remainder}?`;
+      return `¿Que diferencias o similitudes se observan en ${remainder}?`;
     case "proponer":
-      return `Que lineamientos resultan pertinentes para ${remainder}?`;
+      return `¿Que lineamientos resultan pertinentes para ${remainder}?`;
     default:
-      return `Como se manifiesta ${lowered}?`;
+      return `¿Como se manifiesta ${lowered}?`;
   }
+}
+
+function stripQuestionText(value: string) {
+  return normalizeText(value)
+    .replace(/^[¿?]\s*/, "")
+    .replace(/[?¿]+/g, "")
+    .replace(/\((?:validacion|validación)\s+experimental\s+(?:pendiente|por\s+confirmar)\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function lowerInitial(value: string) {
+  return value ? `${value.charAt(0).toLocaleLowerCase("es-PE")}${value.slice(1)}` : value;
+}
+
+function removeQuestionLead(value: string) {
+  return value
+    .replace(/^c[oó]mo\s+debe\s+formularse\s+/i, "")
+    .replace(/^c[oó]mo\s+se\s+debe\s+formular\s+/i, "")
+    .replace(/^c[oó]mo\s+se\s+debe\s+/i, "")
+    .replace(/^c[oó]mo\s+/i, "")
+    .replace(/^de\s+qu[eé]\s+manera\s+/i, "")
+    .replace(/^en\s+qu[eé]\s+medida\s+/i, "")
+    .replace(/^hasta\s+qu[eé]\s+punto\s+/i, "")
+    .replace(/^qu[eé]\s+/i, "")
+    .replace(/^cu[aá]les\s+/i, "")
+    .replace(/^cu[aá]l\s+/i, "")
+    .trim();
+}
+
+function objectiveVerbFromQuestion(question: string) {
+  const normalized = normalizeForCompare(question);
+
+  if (/^(como debe formularse|como se debe formular|como formular)/.test(normalized)) {
+    return "Formular";
+  }
+
+  if (/^(que restricciones|que requisitos|que criterios|cuales restricciones|cuales requisitos|cuales criterios)/.test(normalized)) {
+    return "Definir";
+  }
+
+  if (/^(que estrategia|que alternativa|que enfoque|cual estrategia|cual alternativa|cual enfoque)/.test(normalized)) {
+    return "Comparar";
+  }
+
+  if (/^(que efecto|hasta que punto|en que medida)/.test(normalized)) {
+    return "Evaluar";
+  }
+
+  if (/^(que elementos|cuales elementos|que variables|cuales variables)/.test(normalized)) {
+    return "Identificar";
+  }
+
+  if (/^(como se relaciona|que relacion)/.test(normalized)) {
+    return "Analizar";
+  }
+
+  return "Determinar";
+}
+
+function deriveObjectiveFromQuestion(question: string) {
+  const body = removeQuestionLead(stripQuestionText(question));
+  const normalizedBody = body || "el aspecto especifico planteado en la interrogante";
+  return `${objectiveVerbFromQuestion(question)} ${lowerInitial(normalizedBody)}.`;
+}
+
+function removeObjectiveLead(value: string) {
+  return normalizeText(value)
+    .replace(/^(identificar|describir|analizar|evaluar|determinar|establecer|proponer|examinar|comparar|estimar|formular|definir|diseñar|disenar|ejecutar)\s+/i, "")
+    .replace(/[.]+$/g, "")
+    .trim();
+}
+
+function deriveWorkingHypothesisFromRow(row: ConsistencyMatrixSpecificRow) {
+  const basis =
+    removeObjectiveLead(row.objetivo_especifico ?? "") ||
+    removeQuestionLead(stripQuestionText(row.interrogante_especifica ?? "")) ||
+    "la relacion planteada en la fila";
+
+  return `Como supuesto de trabajo, ${lowerInitial(basis)} puede evaluarse de manera preliminar si se operacionaliza con criterios trazables y una revisión académica posterior.`;
 }
 
 function getSpecificObjectives(drafts: MasterSectionDraft[]) {
@@ -439,9 +526,15 @@ function getSpecificObjectives(drafts: MasterSectionDraft[]) {
 }
 
 function getSpecificQuestions(drafts: MasterSectionDraft[]) {
-  return parseListItems(getSectionContent(drafts, "specific_research_questions")).filter(
-    (line) => /\?|^(como|cual|que|de que manera|en que medida)\b/i.test(line),
-  );
+  return parseListItems(getSectionContent(drafts, "specific_research_questions")).filter((line) => {
+    if (/^pregunta\s+general\b/i.test(line) || /^interrogante\s+general\b/i.test(line)) {
+      return false;
+    }
+    if (/\?|^(como|cual|que|de que manera|en que medida)\b/i.test(line)) {
+      return true;
+    }
+    return /\b(pregunta|interrogante|rq|q)\b/i.test(line);
+  });
 }
 
 function getSpecificHypotheses(drafts: MasterSectionDraft[]) {
@@ -452,6 +545,10 @@ function getSpecificHypotheses(drafts: MasterSectionDraft[]) {
 
 function extractGeneralBlock(drafts: MasterSectionDraft[]) {
   const researchQuestions = getSectionContent(drafts, "research_questions");
+  const specificQuestions = getSpecificQuestions(drafts);
+  const firstSpecificQuestion = specificQuestions[0] ?? null;
+  const firstSpecificObjective = getSpecificObjectives(drafts)[0] ?? null;
+  const firstSpecificHypothesis = getSpecificHypotheses(drafts)[0] ?? null;
 
   return {
     problema_principal: firstMeaningfulText(
@@ -461,12 +558,22 @@ function extractGeneralBlock(drafts: MasterSectionDraft[]) {
     ),
     objetivo_general: firstMeaningfulText(
       getSectionContent(drafts, "general_objective"),
+      firstSpecificObjective,
       firstMeaningfulLine(getSectionContent(drafts, "objectives")),
     ),
     hipotesis_general: firstMeaningfulText(
       getSectionContent(drafts, "general_hypothesis"),
+      firstSpecificHypothesis,
       firstMeaningfulLine(getSectionContent(drafts, "hypotheses")),
     ),
+    // Prefer explicit general question; if missing, use first specific question to keep matrix row G complete.
+    // This remains a fallback and should be revised by the human reviewer.
+    ...(!firstMeaningfulText(
+      getSectionContent(drafts, "general_research_question"),
+      findQuestion(researchQuestions),
+    ) && firstSpecificQuestion
+      ? { problema_principal: firstSpecificQuestion }
+      : {}),
   };
 }
 
@@ -548,15 +655,37 @@ function buildSpecificRows(input: {
   for (let index = 0; index < rowCount; index += 1) {
     const objective = input.objectives[index] ?? null;
     const question = input.questions[index] ?? (objective ? deriveQuestionFromObjective(objective) : null);
-    const hypothesis = input.hypotheses[index] ?? null;
-    const warnings: string[] = [];
     const questionSource: DerivationSource = input.questions[index]
       ? "draft"
       : objective
         ? "objective_to_question_rule"
         : "missing";
     const objectiveSource: DerivationSource = objective ? "draft" : "missing";
-    const hypothesisSource: DerivationSource = hypothesis ? "draft" : "missing";
+    const hypothesis =
+      input.hypotheses[index] ??
+      (objective || question
+        ? cleanMatrixField(
+            deriveWorkingHypothesisFromRow({
+              index: index + 1,
+              row_id: `OE${index + 1}`,
+              interrogante_especifica: question,
+              objetivo_especifico: objective,
+              hipotesis_especifica: null,
+              question_derivation_source: questionSource,
+              objective_derivation_source: objectiveSource,
+              hypothesis_derivation_source: "missing",
+              status: "partial",
+              warnings: [],
+            }),
+            520,
+          )
+        : null);
+    const warnings: string[] = [];
+    const hypothesisSource: DerivationSource = input.hypotheses[index]
+      ? "draft"
+      : hypothesis
+        ? "general_fallback"
+        : "missing";
 
     if (!objective) {
       warnings.push("Falta objetivo especifico para esta fila.");
@@ -568,7 +697,9 @@ function buildSpecificRows(input: {
       warnings.push("Falta interrogante especifica para esta fila.");
     }
 
-    if (!hypothesis) {
+    if (!input.hypotheses[index] && hypothesis) {
+      warnings.push("Hipotesis de trabajo prudente derivada de forma deterministica; requiere revision humana antes de produccion.");
+    } else if (!hypothesis) {
       warnings.push("Hipotesis especifica no disponible; puede ser no aplicable segun enfoque.");
     }
 
@@ -631,6 +762,9 @@ function buildValidation(input: {
 }) {
   const blockedReasons: string[] = [];
   const warnings: string[] = [];
+  const objectiveCount = input.rows.filter((row) => Boolean(row.objetivo_especifico)).length;
+  const questionCount = input.rows.filter((row) => Boolean(row.interrogante_especifica)).length;
+  const hypothesisCount = input.rows.filter((row) => Boolean(row.hipotesis_especifica)).length;
 
   if (!input.generalBlock.problema_principal) {
     blockedReasons.push("Falta problema principal o pregunta general.");
@@ -664,15 +798,15 @@ function buildValidation(input: {
     warnings.push("Hipotesis general ausente; puede ser aceptable si el enfoque no la requiere.");
   }
 
-  if (input.questions.length !== input.objectives.length) {
-    warnings.push(
-      `Cantidad de preguntas especificas (${input.questions.length}) no coincide con objetivos especificos (${input.objectives.length}).`,
+  if (questionCount !== objectiveCount) {
+    blockedReasons.push(
+      `Cantidad de preguntas especificas (${questionCount}) no coincide con objetivos especificos (${objectiveCount}).`,
     );
   }
 
-  if (input.hypotheses.length > 0 && input.hypotheses.length !== input.objectives.length) {
-    warnings.push(
-      `Cantidad de hipotesis especificas (${input.hypotheses.length}) no coincide con objetivos especificos (${input.objectives.length}).`,
+  if (hypothesisCount !== objectiveCount) {
+    blockedReasons.push(
+      `Cantidad de hipotesis especificas (${hypothesisCount}) no coincide con objetivos especificos (${objectiveCount}).`,
     );
   }
 
@@ -750,9 +884,9 @@ function buildValidation(input: {
 
   return {
     row_alignment_ok:
-      input.objectives.length > 0 &&
-      input.questions.length === input.objectives.length &&
-      (input.hypotheses.length === 0 || input.hypotheses.length === input.objectives.length) &&
+      objectiveCount > 0 &&
+      questionCount === objectiveCount &&
+      hypothesisCount === objectiveCount &&
       rowAlignmentScores.every((row) => row.warnings.length === 0),
     required_inputs_present: blockedReasons.length === 0,
     blocked_reasons: blockedReasons,
@@ -815,16 +949,19 @@ function buildLegacyRows(input: {
 
 function buildTableModel(input: {
   rows: ConsistencyMatrixSpecificRow[];
+  generalBlock: ConsistencyMatrixArtifact["general_block"];
   methodologyBlock: ConsistencyMatrixArtifact["methodology_block"];
 }): ConsistencyMatrixTableModel {
+  const publicCell = (value: string | null | undefined, fallback = "Por precisar") =>
+    sentenceStyleCapitalizePublicText(value ?? fallback, "table_cell");
   const columns = [
-    { key: "codigo", label: "Codigo", width_pct: 6, align: "center" as const },
-    { key: "interrogante", label: "Interrogante especifica", width_pct: 22, align: "left" as const },
-    { key: "objetivo", label: "Objetivo especifico", width_pct: 22, align: "left" as const },
-    { key: "hipotesis", label: "Hipotesis especifica", width_pct: 18, align: "left" as const },
-    { key: "variable", label: "Variable/categoria", width_pct: 13, align: "left" as const },
-    { key: "metodo", label: "Metodo", width_pct: 10, align: "left" as const },
-    { key: "tecnica", label: "Tecnica/instrumento", width_pct: 9, align: "left" as const },
+    { key: "codigo", label: "Código", width_pct: 6, align: "center" as const },
+    { key: "interrogante", label: "Interrogante específica", width_pct: 22, align: "left" as const },
+    { key: "objetivo", label: "Objetivo específico", width_pct: 22, align: "left" as const },
+    { key: "hipotesis", label: "Hipótesis específica", width_pct: 18, align: "left" as const },
+    { key: "variable", label: "Variable/categoría", width_pct: 13, align: "left" as const },
+    { key: "metodo", label: "Método", width_pct: 10, align: "left" as const },
+    { key: "tecnica", label: "Técnica/instrumento", width_pct: 9, align: "left" as const },
   ];
 
   return {
@@ -832,22 +969,41 @@ function buildTableModel(input: {
     caption: "Matriz de consistencia",
     columns,
     header_rows: [columns.map((column) => column.label)],
-    body_rows: input.rows.map((row, index) => ({
+    body_rows: [
+      {
+        row_id: "G",
+        cells: [
+          "G",
+          publicCell(input.generalBlock.problema_principal),
+          publicCell(input.generalBlock.objetivo_general),
+          publicCell(input.generalBlock.hipotesis_general, "No aplica / por precisar"),
+          "No aplica",
+          publicCell(input.methodologyBlock.tipo_investigacion),
+          publicCell(
+            input.methodologyBlock.tecnicas_recoleccion[0] ||
+              input.methodologyBlock.instrumentos[0] ||
+              "Por precisar",
+          ),
+        ],
+        warnings: [],
+      },
+      ...input.rows.map((row, index) => ({
       row_id: row.row_id ?? `OE${index + 1}`,
       cells: [
         row.row_id ?? `OE${index + 1}`,
-        row.interrogante_especifica ?? "Por precisar",
-        row.objetivo_especifico ?? "Por precisar",
-        row.hipotesis_especifica ?? "No aplica / por precisar",
-        row.variable_o_categoria ?? row.dimension_o_criterio ?? "Por precisar",
-        row.metodo_vinculado ?? input.methodologyBlock.tipo_investigacion ?? "Por precisar",
-        [row.tecnica, row.instrumento].filter(Boolean).join(" / ") ||
+        publicCell(row.interrogante_especifica),
+        publicCell(row.objetivo_especifico),
+        publicCell(row.hipotesis_especifica, "No aplica / por precisar"),
+        publicCell(row.variable_o_categoria ?? row.dimension_o_criterio),
+        publicCell(row.metodo_vinculado ?? input.methodologyBlock.tipo_investigacion),
+        publicCell([row.tecnica, row.instrumento].filter(Boolean).join(" / ") ||
           input.methodologyBlock.tecnicas_recoleccion[0] ||
           input.methodologyBlock.instrumentos[0] ||
-          "Por precisar",
+          "Por precisar"),
       ],
       warnings: row.warnings,
-    })),
+      })),
+    ],
     render_hints: {
       repeat_header: true,
       font_size_pt: 8,
@@ -880,7 +1036,28 @@ function buildLlmInputSections(drafts: MasterSectionDraft[]) {
 function buildLlmMatrixPrompt(input: {
   baseline: ConsistencyMatrixArtifact;
   drafts: MasterSectionDraft[];
+  methodContract?: MethodGenerationContractV1 | null;
 }) {
+  const methodContract = input.methodContract
+    ? {
+        route: input.methodContract.route,
+        status: input.methodContract.status,
+        confidence: input.methodContract.confidence,
+        production_ready: input.methodContract.production_ready,
+        selected_strategy_label: input.methodContract.selected_strategy_label,
+        selected_strategy_family: input.methodContract.selected_strategy_family,
+        primary_method_label: input.methodContract.primary_method_label,
+        theoretical_focus_terms: input.methodContract.theoretical_focus_terms,
+        technique_terms: input.methodContract.technique_terms,
+        model_terms: input.methodContract.model_terms,
+        tool_terms: input.methodContract.tool_terms,
+        variable_terms: input.methodContract.variable_terms,
+        data_requirement_terms: input.methodContract.data_requirement_terms,
+        missing_requirements: input.methodContract.missing_requirements,
+        claim_guardrails: input.methodContract.claim_guardrails,
+        consistency_matrix_guidance: input.methodContract.prompt_guidance.consistency_matrix,
+      }
+    : null;
   const payload = {
     baseline_general_block: input.baseline.general_block,
     baseline_specific_rows: input.baseline.specific_rows.map((row) => ({
@@ -892,6 +1069,7 @@ function buildLlmMatrixPrompt(input: {
     })),
     baseline_variables_block: input.baseline.variables_block,
     baseline_methodology_block: input.baseline.methodology_block,
+    method_generation_contract: methodContract,
     source_sections: buildLlmInputSections(input.drafts),
   };
 
@@ -909,6 +1087,10 @@ function buildLlmMatrixPrompt(input: {
     "- si el enfoque no justifica hipotesis causal, redacta una hipotesis de trabajo o supuesto orientador prudente, claramente preliminar",
     "- variables pueden ser categorias/criterios si el estudio es propositivo, evaluativo o cualitativo aplicado",
     "- metodologia, tecnica e instrumento deben ser consistentes con el Step 9, no conjeturados fuera del contenido",
+    "- si hay method_generation_contract, la metodologia, tecnica, instrumento, variables y supuestos deben respetarlo; si el contrato declara requisitos faltantes, marcarlos como pendientes, no como ejecutados",
+    "- conserva la primera pregunta especifica sustantiva si existe; no la omitas por reordenamiento",
+    "- cada pregunta especifica debe tener exactamente un objetivo especifico concordante y una hipotesis/supuesto concordante",
+    "- si no puedes mantener concordancia uno-a-uno, declara el gap en unresolved_gaps y no inventes filas",
     "- si algo falta, usa null y registra el gap; no rellenes con fantasia",
     "",
     "Devuelve SOLO JSON valido con esta forma exacta:",
@@ -1080,6 +1262,57 @@ function sanitizeLlmRows(rows: LlmConsistencyMatrixResponse["specific_rows"]) {
   });
 }
 
+function repairLlmRowsForConcordance(
+  rows: ConsistencyMatrixSpecificRow[],
+): ConsistencyMatrixSpecificRow[] {
+  return rows.map((row) => {
+    const question = row.interrogante_especifica;
+    let objective = row.objetivo_especifico;
+    let hypothesis = row.hipotesis_especifica;
+    let objectiveSource: DerivationSource = row.objective_derivation_source;
+    let hypothesisSource: DerivationSource = row.hypothesis_derivation_source;
+    const warnings = row.warnings.filter(
+      (warning) =>
+        !/Falta objetivo especifico|Baja correspondencia semantica|Falta hipotesis/i.test(warning),
+    );
+
+    if (question && (!objective || lexicalOverlapScore(question, objective) < 0.08)) {
+      objective = cleanMatrixField(deriveObjectiveFromQuestion(question), 520);
+      objectiveSource = "question_to_objective_rule";
+      warnings.push("Objetivo especifico alineado de forma deterministica desde la interrogante para preservar concordancia.");
+    }
+
+    if (
+      objective &&
+      (!hypothesis || lexicalOverlapScore(hypothesis, objective) < 0.05)
+    ) {
+      hypothesis = cleanMatrixField(
+        deriveWorkingHypothesisFromRow({
+          ...row,
+          objetivo_especifico: objective,
+        }),
+        520,
+      );
+      hypothesisSource = "general_fallback";
+      warnings.push("Hipotesis de trabajo prudente alineada de forma deterministica; requiere revision humana antes de produccion.");
+    }
+
+    const alignmentScore = lexicalOverlapScore(question, objective);
+
+    return {
+      ...row,
+      row_id: row.row_id ?? `OE${row.index}`,
+      objetivo_especifico: objective,
+      hipotesis_especifica: hypothesis,
+      alignment_score: alignmentScore,
+      objective_derivation_source: objectiveSource,
+      hypothesis_derivation_source: hypothesis ? hypothesisSource : "missing",
+      status: !question || !objective ? "blocked" : warnings.length > 0 ? "partial" : "complete",
+      warnings,
+    };
+  });
+}
+
 function sanitizeLlmResponse(response: LlmConsistencyMatrixResponse) {
   return {
     general_block: {
@@ -1165,6 +1398,59 @@ function buildLlmValidationWarnings(input: {
   return warnings;
 }
 
+function preserveBaselineRows(input: {
+  baselineRows: ConsistencyMatrixSpecificRow[];
+  llmRows: ConsistencyMatrixSpecificRow[];
+}) {
+  const rows = [...input.llmRows];
+
+  input.baselineRows.forEach((baselineRow, index) => {
+    const existing = rows[index];
+    const preservationWarnings = [
+      "Fila preservada desde la matriz base porque la alineacion LLM omitio una pregunta/objetivo especifico.",
+      `Revisar concordancia de la fila ${index + 1} antes de produccion.`,
+    ];
+
+    if (!existing) {
+      rows[index] = {
+        ...baselineRow,
+        warnings: uniqueStrings([...(baselineRow.warnings ?? []), ...preservationWarnings]),
+        status: baselineRow.status === "complete" ? "partial" : baselineRow.status,
+      };
+      return;
+    }
+
+    const missingQuestion = !cleanMatrixField(existing.interrogante_especifica);
+    const missingObjective = !cleanMatrixField(existing.objetivo_especifico);
+
+    if (!missingQuestion && !missingObjective) {
+      return;
+    }
+
+    rows[index] = {
+      ...existing,
+      interrogante_especifica:
+        cleanMatrixField(existing.interrogante_especifica) ??
+        cleanMatrixField(baselineRow.interrogante_especifica),
+      objetivo_especifico:
+        cleanMatrixField(existing.objetivo_especifico) ??
+        cleanMatrixField(baselineRow.objetivo_especifico),
+      question_derivation_source: missingQuestion ? "draft" : existing.question_derivation_source,
+      objective_derivation_source: missingObjective ? "draft" : existing.objective_derivation_source,
+      warnings: uniqueStrings([...(existing.warnings ?? []), ...preservationWarnings]),
+      status: "partial",
+    };
+  });
+
+  return rows
+    .filter((row): row is ConsistencyMatrixSpecificRow => Boolean(row))
+    .map((row, index) => ({
+      ...row,
+      index: index + 1,
+      row_id: row.row_id ?? `OE${index + 1}`,
+    }));
+}
+
 function buildLlmArtifact(input: {
   drafts: MasterSectionDraft[];
   baseline: ConsistencyMatrixArtifact;
@@ -1172,8 +1458,63 @@ function buildLlmArtifact(input: {
   detailedResult: TextGenerationResult;
   prompt: string;
   model: string;
+  methodContract?: MethodGenerationContractV1 | null;
 }) {
-  const sanitized = sanitizeLlmResponse(input.response);
+  const sanitizedRaw = sanitizeLlmResponse(input.response);
+  const sanitized = {
+    ...sanitizedRaw,
+    specific_rows: sanitizedRaw.specific_rows as ConsistencyMatrixSpecificRow[],
+  };
+  sanitized.general_block = {
+    problema_principal:
+      sanitized.general_block.problema_principal ??
+      input.baseline.general_block.problema_principal,
+    objetivo_general:
+      sanitized.general_block.objetivo_general ??
+      input.baseline.general_block.objetivo_general,
+    hipotesis_general:
+      sanitized.general_block.hipotesis_general ??
+      input.baseline.general_block.hipotesis_general,
+  };
+  sanitized.specific_rows = preserveBaselineRows({
+    baselineRows: input.baseline.specific_rows,
+    llmRows: sanitized.specific_rows,
+  });
+  if (input.methodContract) {
+    sanitized.methodology_block.tipo_investigacion =
+      sanitized.methodology_block.tipo_investigacion ??
+      cleanMatrixField(input.methodContract.selected_strategy_label, 360);
+    sanitized.methodology_block.diseno_investigacion =
+      sanitized.methodology_block.diseno_investigacion ??
+      cleanMatrixField(input.methodContract.primary_method_label, 360);
+    sanitized.methodology_block.tecnicas_recoleccion = uniqueStrings([
+      ...sanitized.methodology_block.tecnicas_recoleccion,
+      ...input.methodContract.technique_terms,
+      ...input.methodContract.model_terms,
+    ]);
+    sanitized.methodology_block.instrumentos = uniqueStrings([
+      ...sanitized.methodology_block.instrumentos,
+      ...input.methodContract.tool_terms,
+    ]);
+    sanitized.methodology_block.plan_analisis =
+      sanitized.methodology_block.plan_analisis ??
+      cleanMatrixField(input.methodContract.method_summary_for_generation, 520);
+    sanitized.specific_rows = sanitized.specific_rows.map((row) => ({
+      ...row,
+      metodo_vinculado:
+        row.metodo_vinculado ??
+        cleanMatrixField(input.methodContract?.primary_method_label, 260) ??
+        cleanMatrixField(input.methodContract?.selected_strategy_label, 260),
+      tecnica:
+        row.tecnica ??
+        cleanMatrixField(input.methodContract?.technique_terms[0], 220) ??
+        cleanMatrixField(input.methodContract?.model_terms[0], 220),
+      instrumento:
+        row.instrumento ??
+        cleanMatrixField(input.methodContract?.tool_terms[0], 220),
+    }));
+  }
+  sanitized.specific_rows = repairLlmRowsForConcordance(sanitized.specific_rows);
   const validation = buildValidation({
     drafts: input.drafts,
     generalBlock: sanitized.general_block,
@@ -1242,6 +1583,7 @@ function buildLlmArtifact(input: {
     validation: mergedValidation,
     table_model: buildTableModel({
       rows: sanitized.specific_rows,
+      generalBlock: sanitized.general_block,
       methodologyBlock: sanitized.methodology_block,
     }),
     legacy_rows: legacyRows,
@@ -1289,7 +1631,7 @@ export function buildConsistencyMatrixArtifactFromSections(
     variables_block: variablesBlock,
     methodology_block: methodologyBlock,
     validation,
-    table_model: buildTableModel({ rows, methodologyBlock }),
+    table_model: buildTableModel({ rows, generalBlock, methodologyBlock }),
     legacy_rows: legacyRows,
   };
 }
@@ -1298,10 +1640,15 @@ export async function buildConsistencyMatrixArtifactFromSectionsWithLlm(input: {
   drafts: MasterSectionDraft[];
   provider: LlmProvider;
   model?: string | null;
+  methodContract?: MethodGenerationContractV1 | null;
 }): Promise<ConsistencyMatrixArtifact> {
   const sourceDrafts = input.drafts.filter((draft) => draft.section_key !== "consistency_matrix");
   const baseline = buildConsistencyMatrixArtifactFromSections(sourceDrafts);
-  const prompt = buildLlmMatrixPrompt({ baseline, drafts: sourceDrafts });
+  const prompt = buildLlmMatrixPrompt({
+    baseline,
+    drafts: sourceDrafts,
+    methodContract: input.methodContract ?? null,
+  });
   const model = input.model?.trim() || process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini";
   let detailedResult = await input.provider.generateTextDetailed({
     prompt,
@@ -1332,6 +1679,7 @@ export async function buildConsistencyMatrixArtifactFromSectionsWithLlm(input: {
     detailedResult,
     prompt: prompts.join("\n\n--- HYPOTHESIS_REPAIR ---\n\n"),
     model,
+    methodContract: input.methodContract ?? null,
   });
 }
 

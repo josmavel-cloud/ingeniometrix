@@ -10,15 +10,12 @@ export type DocxOoxmlPatchReport = {
   warnings: string[];
 };
 
-function ensureUpdateFields(settingsXml: string) {
+function disableUpdateFields(settingsXml: string) {
   if (settingsXml.includes("<w:updateFields")) {
-    return settingsXml;
+    return settingsXml.replace(/<w:updateFields\b[^>]*\/>/g, '<w:updateFields w:val="false"/>');
   }
 
-  return settingsXml.replace(
-    /<w:settings([^>]*)>/,
-    '<w:settings$1><w:updateFields w:val="true"/>',
-  );
+  return settingsXml;
 }
 
 export async function patchDocxPackage(input: {
@@ -32,14 +29,14 @@ export async function patchDocxPackage(input: {
 
   if (settingsFile) {
     const settingsXml = await settingsFile.async("string");
-    const patchedSettingsXml = ensureUpdateFields(settingsXml);
+    const patchedSettingsXml = disableUpdateFields(settingsXml);
 
     if (patchedSettingsXml !== settingsXml) {
       zip.file("word/settings.xml", patchedSettingsXml);
-      patches.push("word/settings.xml:updateFields");
+      patches.push("word/settings.xml:disableUpdateFields");
     }
   } else {
-    warnings.push("No se encontro word/settings.xml; no se pudo activar updateFields.");
+    warnings.push("No se encontro word/settings.xml; no se pudo validar updateFields.");
   }
 
   if (patches.length > 0) {

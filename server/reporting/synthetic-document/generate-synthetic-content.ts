@@ -232,14 +232,6 @@ function buildBaseBlocks(
   state: GenerationState,
 ): SyntheticContentBlock[] {
   const rules = runtime.effectiveElementRules;
-  const citation =
-    state.references.length > 0
-      ? buildSyntheticInlineCitation({
-          rules,
-          referenceIndex: 0,
-          variantSeed: state.variantSeed,
-        })
-      : null;
 
   switch (section.content_kind) {
     case "bullet_list":

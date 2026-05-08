@@ -164,7 +164,6 @@ function loadHistoricalSelectedSourcesForIds(sourceIds: string[]) {
     return null;
   }
 
-  const sourceIdSet = new Set(sourceIds);
   const files = readdirSync(selectedSourcesDir)
     .filter((fileName) => fileName.startsWith("selected-sources-") && fileName.endsWith(".json"))
     .sort()

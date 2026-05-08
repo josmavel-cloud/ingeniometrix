@@ -123,6 +123,19 @@ function queryStringSchema() {
   return { type: "string", minLength: 8, maxLength: 160 };
 }
 
+function splitGeneratedQuery(value: string) {
+  return value
+    .split(/\\?["']?\s*,\s*\\?["']?/g)
+    .map((part) => part.replace(/\\+"/g, "").replace(/^["']+|["']+$/g, "").trim())
+    .filter(Boolean);
+}
+
+function sanitizeGeneratedQueries(values: Array<string | null | undefined>, limit: number) {
+  return uniqueNormalized(
+    values.flatMap((value) => (value ? splitGeneratedQuery(value) : [])),
+  ).slice(0, limit);
+}
+
 function uniqueNormalized(values: Array<string | null | undefined>) {
   const seen = new Set<string>();
 
@@ -170,10 +183,6 @@ function pushGroup(
   }
 
   target.push(group);
-}
-
-function containsAny(value: string, patterns: string[]) {
-  return patterns.some((pattern) => value.includes(pattern));
 }
 
 type KnowledgeAreaMapping = {
@@ -295,424 +304,252 @@ function buildQueryPack(keywordGroups: BlueprintLaunchSearchMetadata["keywordGro
   };
 }
 
-function structuralControlFallback(intake: IntakeInput, knowledgeAreaLabel: string | null) {
-  const blob = normalizeTitle(
-    [
-      knowledgeAreaLabel,
-      intake.topic,
-      intake.problemContext,
-      intake.targetPopulation,
-      intake.preferredMethodology,
-      intake.researchLine,
-      intake.availableData,
-      intake.advisorNotes,
-    ]
-      .filter(Boolean)
-      .join(" "),
+function buildTranslatedSeedTerms(_intake: IntakeInput, _areaKey: string) {
+  return [] as string[];
+}
+
+type CurrentTermRule = {
+  sourcePatterns: RegExp[];
+  variants: string[];
+  areaKeys?: string[];
+};
+
+const CURRENT_TERM_TRANSLATION_RULES: CurrentTermRule[] = [
+  {
+    sourcePatterns: [/enfermedad renal cronica/i, /enfermedad renal crónica/i],
+    variants: ["chronic kidney disease", "chronic renal disease", "CKD"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/adherencia terapeutica/i, /adherencia terapéutica/i],
+    variants: ["therapeutic adherence", "treatment adherence", "medication adherence"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/adherencia farmacologica/i, /adherencia farmacológica/i],
+    variants: ["medication adherence", "pharmacological adherence", "treatment adherence"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/adherencia al tratamiento/i],
+    variants: ["treatment adherence", "medication adherence", "therapeutic adherence"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/pacientes adultos/i, /adultos/i],
+    variants: ["adult patients", "adult population"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/servicios de salud/i, /servicios salud/i],
+    variants: ["health services", "healthcare services"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/salud publica/i, /salud pública/i],
+    variants: ["public health", "population health"],
+    areaKeys: ["medicine", "public_health"],
+  },
+  {
+    sourcePatterns: [/factores asociados/i],
+    variants: ["associated factors", "determinants", "predictors"],
+  },
+  {
+    sourcePatterns: [/transversal/i],
+    variants: ["cross-sectional study", "observational cross-sectional design"],
+  },
+  {
+    sourcePatterns: [/revision aplicada/i, /revisión aplicada/i, /revision de literatura/i, /revisión de literatura/i],
+    variants: ["literature review", "applied literature review"],
+  },
+  {
+    sourcePatterns: [/peru/i, /perú/i, /peruan/i],
+    variants: ["Peru", "Peruvian health services"],
+  },
+  {
+    sourcePatterns: [/latinoamerican/i, /america latina/i, /américa latina/i],
+    variants: ["Latin America", "Latin American context"],
+  },
+];
+
+function extractCurrentTranslatedTerms(input: {
+  intake: IntakeInput;
+  areaKey: string;
+}) {
+  const currentText = [
+    input.intake.topic,
+    input.intake.problemContext,
+    input.intake.researchLine,
+    input.intake.targetPopulation,
+    input.intake.availableData,
+    input.intake.preferredMethodology,
+    input.intake.advisorNotes,
+  ].join(" ");
+
+  return uniqueNormalized(
+    CURRENT_TERM_TRANSLATION_RULES.flatMap((rule) => {
+      if (rule.areaKeys && !rule.areaKeys.includes(input.areaKey)) {
+        return [];
+      }
+
+      return rule.sourcePatterns.some((pattern) => pattern.test(currentText)) ? rule.variants : [];
+    }),
   );
+}
 
-  const necessary: BlueprintLaunchKeywordGroup[] = [];
-  const complementary: BlueprintLaunchKeywordGroup[] = [];
-  const optional: BlueprintLaunchKeywordGroup[] = [];
+function extractCurrentPhrases(value: string | null | undefined, maxPhrases: number) {
+  const terms = extractSearchTerms(value ?? "", { maxTerms: 18, minLength: 4 });
+  const phrases: string[] = [];
 
-  if (
-    containsAny(blob, [
-      "mesa vibratoria",
-      "shaking table",
-      "vibrating table",
-      "mesa sismica",
-    ])
-  ) {
-    pushGroup(necessary, "experimental platform", [
-      "shaking table",
-      "vibrating table",
-      "seismic shaking table",
-      "earthquake simulator table",
-    ]);
+  for (let index = 0; index < terms.length; index += 1) {
+    const tri = terms.slice(index, index + 3).join(" ");
+    const bi = terms.slice(index, index + 2).join(" ");
+
+    if (tri.split(" ").length === 3) phrases.push(tri);
+    if (bi.split(" ").length === 2) phrases.push(bi);
   }
 
-  if (
-    containsAny(blob, [
-      "sistema de control",
-      "control",
-      "control multivariable",
-      "tracking",
-      "seguimiento",
-    ])
-  ) {
-    pushGroup(necessary, "control system", [
-      "control system",
-      "control design",
-      "multivariable control",
-      "tracking control",
-    ]);
-  }
+  return uniqueNormalized(phrases).slice(0, maxPhrases);
+}
 
-  if (
-    containsAny(blob, [
-      "simular sismos",
-      "simulacion sismica",
-      "earthquake simulation",
-      "seismic simulation",
-    ])
-  ) {
-    pushGroup(necessary, "simulation target", [
-      "earthquake simulation",
-      "seismic simulation",
-      "seismic reproduction",
-      "ground motion reproduction",
-    ]);
-  }
+function isWeakGenericPhrase(value: string | null | undefined) {
+  const normalized = normalizeTitle(value ?? "");
 
-  if (
-    containsAny(blob, [
-      "varios grados de libertad",
-      "multigrado",
-      "multi degree of freedom",
-      "mdof",
-    ])
-  ) {
-    pushGroup(necessary, "dynamic architecture", [
-      "multi degree of freedom",
-      "MDOF",
-      "multi-axis",
-      "multi-DOF",
-    ]);
-  }
+  return (
+    normalized === "factores asociados" ||
+    normalized === "revision aplicada" ||
+    normalized === "literatura propuesta" ||
+    normalized === "aplicada literatura" ||
+    normalized === "propuesta enfermedad" ||
+    normalized === "pacientes adultos" ||
+    normalized === "tratamiento pacientes" ||
+    normalized.split(" ").length < 2
+  );
+}
 
-  if (
-    containsAny(blob, [
-      "laboratorios de estructuras",
-      "laboratorio de estructuras",
-      "structural laboratory",
-      "earthquake engineering laboratory",
-    ])
-  ) {
-    pushGroup(complementary, "experimental environment", [
-      "structural laboratory",
-      "earthquake engineering laboratory",
-      "experimental structural testing",
-    ]);
-  }
+function strongTerms(values: Array<string | null | undefined>, limit: number) {
+  return uniqueNormalized(values.filter((value) => !isWeakGenericPhrase(value))).slice(0, limit);
+}
 
-  if (
-    containsAny(blob, [
-      "escala natural",
-      "cuasi natural",
-      "full scale",
-      "especimenes",
-      "specimen",
-    ])
-  ) {
-    pushGroup(complementary, "specimen type", [
-      "full-scale specimen",
-      "full-scale building specimen",
-      "large-scale specimen",
-      "two-story building specimen",
-    ]);
-  }
+function firstMatching(values: string[], patterns: RegExp[]) {
+  return values.find((value) => patterns.some((pattern) => pattern.test(value))) ?? null;
+}
 
-  if (
-    containsAny(blob, [
-      "servo-hidraul",
-      "electrohidraul",
-      "actuadores",
-      "servovalvulas",
-    ])
-  ) {
-    pushGroup(complementary, "actuation technology", [
-      "servo-hydraulic actuator",
-      "electrohydraulic actuator",
-      "hydraulic actuator",
-      "servo valve",
-    ]);
-  }
-
-  if (
-    containsAny(blob, [
-      "error de tracking",
-      "fidelidad",
-      "seguimiento",
-      "desplazamientos",
-      "aceleraciones",
-      "fuerzas",
-    ])
-  ) {
-    pushGroup(complementary, "performance metrics", [
-      "tracking error",
-      "acceleration tracking",
-      "displacement tracking",
-      "control performance",
-    ]);
-  }
-
-  if (
-    containsAny(blob, [
-      "sudamerica",
-      "south america",
-      "alta intensidad sismica",
-      "high seismic intensity",
-      "alta demanda sismica",
-    ])
-  ) {
-    pushGroup(optional, "regional context", [
-      "South America",
-      "high seismic intensity",
-      "seismic hazard region",
-    ]);
-  }
-
-  if (
-    containsAny(blob, [
-      "2 pisos",
-      "two story",
-      "two-story",
-      "edificios",
-      "building",
-    ])
-  ) {
-    pushGroup(optional, "structural scope", [
-      "two-story building",
-      "low-rise building",
-      "building specimen",
-    ]);
-  }
-
-  if (
-    containsAny(blob, [
-      "simulacion numerica",
-      "validacion virtual",
-      "space states",
-      "control robusto",
-    ])
-  ) {
-    pushGroup(optional, "numerical validation", [
-      "numerical simulation",
-      "virtual validation",
-      "state-space control",
-      "robust control",
-    ]);
-  }
+function buildDomainAwareFallbackTerms(intake: IntakeInput, areaKey: string) {
+  const translatedTerms = extractCurrentTranslatedTerms({ intake, areaKey });
+  const topicPhrases = extractCurrentPhrases(intake.topic, 10);
+  const populationPhrases = extractCurrentPhrases(intake.targetPopulation, 8);
+  const methodologyPhrases = extractCurrentPhrases(intake.preferredMethodology, 8);
+  const problemPhrases = extractCurrentPhrases(intake.problemContext, 8);
+  const researchPhrases = extractCurrentPhrases(intake.researchLine, 8);
+  const availableDataPhrases = extractCurrentPhrases(intake.availableData, 8);
+  const allCurrentPhrases = strongTerms(
+    [
+      ...translatedTerms,
+      ...topicPhrases,
+      ...populationPhrases,
+      ...methodologyPhrases,
+      ...problemPhrases,
+      ...researchPhrases,
+      ...availableDataPhrases,
+    ],
+    30,
+  );
+  const conditionOrObject =
+    firstMatching(translatedTerms, [/disease/i, /condition/i, /system/i, /platform/i, /model/i]) ??
+    topicPhrases.find((phrase) => /enfermedad|renal|cronica|crónica|pacient|sistema|plataforma|modelo/.test(phrase)) ??
+    allCurrentPhrases[0] ??
+    null;
+  const phenomenon =
+    firstMatching(translatedTerms, [/adherence/i, /determinants/i, /predictors/i, /associated factors/i]) ??
+    topicPhrases.find((phrase) => /adherencia|factores|asociados|control|gestion|gestión|evaluacion|evaluación/.test(phrase)) ??
+    allCurrentPhrases[1] ??
+    conditionOrObject;
+  const population =
+    firstMatching(translatedTerms, [/adult patients/i, /population/i, /health services/i]) ??
+    populationPhrases[0] ??
+    problemPhrases.find((phrase) => /servicios|poblacion|población|pacientes|adultos/.test(phrase)) ??
+    allCurrentPhrases[2] ??
+    null;
+  const method =
+    firstMatching(translatedTerms, [/cross-sectional/i, /literature review/i, /observational/i]) ??
+    methodologyPhrases[0] ??
+    allCurrentPhrases[3] ??
+    null;
+  const context =
+    firstMatching(translatedTerms, [/peru/i, /latin america/i, /health services/i]) ??
+    problemPhrases.find((phrase) => /peru|perú|latin|servicios|contexto/.test(phrase)) ??
+    allCurrentPhrases[4] ??
+    null;
 
   return {
-    subdomain: "Experimental control systems for seismic simulation",
-    primarySystem: "multi-degree-of-freedom shaking table",
-    primaryPhenomenon: "earthquake simulation",
-    primaryGoal: "control design for accurate seismic reproduction",
-    keywordGroups: {
-      necessary: necessary.slice(0, 6),
-      complementary: complementary.slice(0, 6),
-      optional: optional.slice(0, 6),
-    },
+    translatedTerms,
+    allCurrentPhrases,
+    conditionOrObject,
+    phenomenon,
+    population,
+    method,
+    context,
   };
 }
-
-function buildTranslatedSeedTerms(intake: IntakeInput, areaKey: string) {
-  const blob = normalizeTitle(
-    [
-      intake.topic,
-      intake.problemContext,
-      intake.targetPopulation,
-      intake.preferredMethodology,
-      intake.researchLine,
-      intake.availableData,
-      intake.advisorNotes,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
-  const seeds: Record<string, string[]> = {
-    systems_engineering: [
-      "machine learning",
-      "explainable AI",
-      "customer churn",
-      "B2B SaaS",
-      "industrial IoT",
-      "zero trust",
-      "access control",
-      "network segmentation",
-    ],
-    medicine: [
-      "prognostic model",
-      "critical care",
-      "sepsis",
-      "biomarkers",
-      "radiomics",
-      "glioblastoma",
-      "magnetic resonance imaging",
-      "survival prediction",
-    ],
-    education: [
-      "reading comprehension",
-      "metacognitive strategy",
-      "secondary education",
-      "AI-assisted feedback",
-      "academic writing",
-      "formative assessment",
-      "higher education",
-    ],
-    business_administration: [
-      "supply chain resilience",
-      "perishable food logistics",
-      "microfinance",
-      "default risk",
-      "delinquency",
-      "credit scoring",
-      "operational resilience",
-    ],
-    psychology: [
-      "burnout",
-      "nursing staff",
-      "organizational support",
-      "executive function",
-      "inhibitory control",
-      "ADHD adolescents",
-      "occupational health",
-      "neuropsychological assessment",
-    ],
-    law: [
-      "compliance",
-      "consumer protection",
-      "data privacy",
-      "algorithmic accountability",
-      "public procurement",
-      "regulatory enforcement",
-      "administrative law",
-    ],
-    architecture_and_urbanism: [
-      "adaptive reuse",
-      "mass timber",
-      "housing crisis",
-      "commercial buildings",
-      "urban regeneration",
-      "affordable housing",
-      "zoning policy",
-    ],
-    environmental_engineering: [
-      "wastewater treatment",
-      "constructed wetlands",
-      "heavy metal removal",
-      "air quality monitoring",
-      "emission inventory",
-      "environmental risk assessment",
-    ],
-    economics: [
-      "inflation expectations",
-      "labor informality",
-      "household welfare",
-      "monetary policy",
-      "productivity",
-      "panel data",
-    ],
-    communications: [
-      "digital journalism",
-      "misinformation",
-      "media literacy",
-      "audience engagement",
-      "political communication",
-      "social media",
-    ],
-    public_health: [
-      "vaccination coverage",
-      "health promotion",
-      "epidemiological surveillance",
-      "primary care",
-      "maternal health",
-      "community intervention",
-    ],
-  };
-
-  const areaSeeds = seeds[areaKey] ?? [];
-
-  return areaSeeds.filter((seed) => {
-    const normalizedSeed = normalizeTitle(seed);
-    const seedTokens = normalizedSeed.split(" ");
-
-    return seedTokens.some((token) => token.length >= 4 && blob.includes(token));
-  });
-}
-
 function genericFallback(intake: IntakeInput, knowledgeAreaLabel: string | null) {
   const resolvedArea = resolveKnowledgeArea(knowledgeAreaLabel);
-  const topicTerms = extractSearchTerms(intake.topic, { maxTerms: 14, minLength: 4 });
-  const problemTerms = extractSearchTerms(intake.problemContext ?? "", {
-    maxTerms: 10,
-    minLength: 4,
-  });
-  const populationTerms = extractSearchTerms(intake.targetPopulation ?? "", {
-    maxTerms: 10,
-    minLength: 4,
-  });
-  const methodologyTerms = extractSearchTerms(intake.preferredMethodology ?? "", {
-    maxTerms: 10,
-    minLength: 4,
-  });
-  const researchTerms = extractSearchTerms(intake.researchLine ?? "", {
-    maxTerms: 8,
-    minLength: 4,
-  });
+  const fallbackTerms = buildDomainAwareFallbackTerms(intake, resolvedArea.key);
   const translatedSeeds = buildTranslatedSeedTerms(intake, resolvedArea.key);
-  const blendedCore = uniqueNormalized([
-    ...translatedSeeds,
-    ...topicTerms.slice(0, 4),
-    ...populationTerms.slice(0, 4),
-  ]);
-  const blendedSupport = uniqueNormalized([
-    ...methodologyTerms.slice(0, 4),
-    ...problemTerms.slice(0, 4),
-    ...researchTerms.slice(0, 4),
-    ...translatedSeeds.slice(2),
-  ]);
+  const currentTerms = strongTerms(
+    [...fallbackTerms.translatedTerms, ...translatedSeeds, ...fallbackTerms.allCurrentPhrases],
+    30,
+  );
 
   const necessary: BlueprintLaunchKeywordGroup[] = [];
   const complementary: BlueprintLaunchKeywordGroup[] = [];
   const optional: BlueprintLaunchKeywordGroup[] = [];
 
-  pushGroup(necessary, "core phenomenon", [
-    translatedSeeds[0] ?? blendedCore.slice(0, 3).join(" "),
-    translatedSeeds[1] ?? blendedCore.slice(0, 2).join(" "),
+  pushGroup(necessary, "condition or object", [
+    fallbackTerms.conditionOrObject ?? currentTerms[0],
+    currentTerms.find((term) => term !== fallbackTerms.conditionOrObject) ?? currentTerms[1],
   ]);
-  pushGroup(necessary, "primary object", [
-    translatedSeeds[2] ?? blendedCore.slice(1, 4).join(" "),
-    blendedCore.slice(2, 5).join(" "),
+  pushGroup(necessary, "central phenomenon", [
+    fallbackTerms.phenomenon ?? currentTerms[1],
+    currentTerms.find((term) => term !== fallbackTerms.phenomenon && /adherence|associated|determinants|predictors|factores|adherencia/i.test(term)) ??
+      currentTerms[2],
   ]);
-  pushGroup(necessary, "technical approach", [
-    translatedSeeds[3] ?? blendedSupport.slice(0, 3).join(" "),
-    blendedSupport.slice(1, 4).join(" "),
+  pushGroup(necessary, "population or setting", [
+    fallbackTerms.population ?? currentTerms[2],
+    fallbackTerms.context ?? currentTerms[3],
   ]);
   pushGroup(complementary, "methodology", [
-    translatedSeeds[4] ?? blendedSupport.slice(0, 3).join(" "),
-    blendedSupport.slice(2, 5).join(" "),
+    fallbackTerms.method ?? currentTerms[3],
+    currentTerms.find((term) => /cross-sectional|observational|review|revision|transversal|literature/i.test(term)) ?? currentTerms[4],
   ]);
   pushGroup(complementary, "contextual scope", [
-    translatedSeeds[5] ?? blendedSupport.slice(3, 6).join(" "),
-    blendedCore.slice(3, 6).join(" "),
+    fallbackTerms.context ?? currentTerms[4],
+    currentTerms.find((term) => /peru|peruvian|latin|health services|servicios/i.test(term)) ?? currentTerms[5],
   ]);
   pushGroup(optional, "knowledge area", [
     resolvedArea.canonicalEn,
-    translatedSeeds[6] ?? blendedSupport.slice(4, 7).join(" "),
+    currentTerms[6],
   ]);
   pushGroup(optional, "secondary context", [
-    translatedSeeds[7] ?? blendedCore.slice(4, 7).join(" "),
-    blendedSupport.slice(5, 8).join(" "),
+    currentTerms[7],
+    currentTerms[8],
   ]);
 
   return {
     subdomain:
-      translatedSeeds.slice(0, 3).join(" ") ||
-      blendedSupport.slice(0, 4).join(" ") ||
+      currentTerms.slice(0, 3).join(" ") ||
       "domain-specific academic retrieval",
     primarySystem:
-      translatedSeeds[1] ||
-      blendedCore.slice(0, 4).join(" ") ||
+      fallbackTerms.conditionOrObject ||
+      currentTerms[0] ||
       "primary system not identified",
     primaryPhenomenon:
-      translatedSeeds[0] ||
-      blendedCore.slice(1, 5).join(" ") ||
+      fallbackTerms.phenomenon ||
+      currentTerms[1] ||
       "primary phenomenon not identified",
     primaryGoal:
-      translatedSeeds[3] ||
-      blendedSupport.slice(0, 5).join(" ") ||
+      fallbackTerms.method ||
+      currentTerms[2] ||
       "retrieval planning for academic sources",
     keywordGroups: {
       necessary: necessary.filter((group) => group.variants.length > 0).slice(0, 6),
@@ -729,18 +566,7 @@ function buildFallbackMetadata(input: {
   plannerErrorMessage?: string | null;
 }): BlueprintLaunchSearchMetadata {
   const resolvedArea = resolveKnowledgeArea(input.knowledgeAreaLabel);
-  const knowledgeAreaBlob = normalizeTitle(
-    [resolvedArea.sourceEs, input.intake.researchLine].filter(Boolean).join(" "),
-  );
-  const domainFallback =
-    containsAny(knowledgeAreaBlob, [
-      "ingenieria estructural",
-      "estructuras",
-      "dinamica estructural",
-      "earthquake engineering",
-    ]) || containsAny(normalizeTitle(input.intake.topic), ["mesa vibratoria", "shaking table"])
-      ? structuralControlFallback(input.intake, resolvedArea.sourceEs)
-      : genericFallback(input.intake, resolvedArea.sourceEs);
+  const domainFallback = genericFallback(input.intake, resolvedArea.sourceEs);
 
   const keywordGroups = domainFallback.keywordGroups;
   const queryPack = buildQueryPack(keywordGroups);
@@ -874,11 +700,12 @@ export async function buildBlueprintLaunchSearchMetadata(input: {
 
     const keywordGroups = sanitizeKeywordGroups(generatedPlan.keyword_groups);
     const queryPack = {
-      necessaryOnly: uniqueNormalized(generatedPlan.query_pack.necessary_only).slice(0, 4),
-      complementaryBoosted: uniqueNormalized(
+      necessaryOnly: sanitizeGeneratedQueries(generatedPlan.query_pack.necessary_only, 4),
+      complementaryBoosted: sanitizeGeneratedQueries(
         generatedPlan.query_pack.complementary_boosted,
-      ).slice(0, 4),
-      optionalBackups: uniqueNormalized(generatedPlan.query_pack.optional_backups).slice(0, 3),
+        4,
+      ),
+      optionalBackups: sanitizeGeneratedQueries(generatedPlan.query_pack.optional_backups, 3),
     };
 
     return {
@@ -939,4 +766,13 @@ export async function buildBlueprintLaunchSearchMetadata(input: {
       plannerErrorMessage: error instanceof Error ? error.message : "Fallo no identificado del planner.",
     });
   }
+}
+
+export function buildDeterministicBlueprintLaunchSearchMetadata(input: {
+  intake: IntakeInput;
+  knowledgeAreaLabel: string | null;
+  plannerErrorStage?: string | null;
+  plannerErrorMessage?: string | null;
+}) {
+  return buildFallbackMetadata(input);
 }

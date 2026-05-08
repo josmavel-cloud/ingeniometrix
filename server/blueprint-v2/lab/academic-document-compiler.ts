@@ -7,8 +7,10 @@ import {
 } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 import {
   capitalizeKeywordLine,
+  capitalizePublicTableRows,
   sentenceStyleCapitalizePublicText,
 } from "@/server/blueprint-v2/editorial/capitalization-hygiene";
+import { normalizeAcademicDocumentPublicFields } from "@/server/blueprint-v2/editorial/public-document-normalizer";
 import { buildHeroInfographicPlan } from "@/server/blueprint-v2/editorial/hero-infographic-policy";
 import {
   buildPublicAppendixPlan,
@@ -36,6 +38,9 @@ import type {
   WordStyleContract,
 } from "@/server/blueprint-v2/lab/academic-document-model";
 import type { ConsistencyMatrixArtifact } from "@/server/blueprint-v2/sections/consistency-matrix-engine";
+import type { MethodGenerationContractV1 } from "@/server/blueprint-engine/quality/method-generation-contract";
+import type { SecondaryReferenceCandidatesReport } from "@/server/blueprint-engine/quality/method-generation-contract";
+import { isCentralClaimSection } from "@/server/blueprint-engine/quality/semantic-source-use-policy";
 import type {
   EvidenceLedger,
   MasterBlueprintEngineProject,
@@ -77,6 +82,25 @@ const NO_INLINE_CITATION_SECTIONS = new Set([
   "specific_research_questions",
   "general_hypothesis",
   "specific_hypotheses",
+]);
+
+const BULLET_FRIENDLY_SECTION_KEYS = new Set([
+  "research_questions",
+  "general_research_question",
+  "specific_research_questions",
+  "objectives",
+  "general_objective",
+  "specific_objectives",
+  "hypotheses",
+  "general_hypothesis",
+  "specific_hypotheses",
+  "terms_definition",
+  "variables_or_categories",
+  "data_collection_techniques",
+  "research_instruments",
+  "research_procedure",
+  "analysis_plan",
+  "scope_and_limitations",
 ]);
 
 export function cleanAcademicText(value: string | null | undefined) {
@@ -127,6 +151,170 @@ function parseMarkdownTable(value: string) {
     );
 
   return rows.length >= 2 ? rows : [];
+}
+
+function parseDelimitedTable(value: string) {
+  const rows = cleanAcademicText(value)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter((line) => line.includes("\t"))
+    .map((line) => line.split(/\t+/).map((cell) => cleanAcademicText(cell)))
+    .filter((row) => row.length >= 2 && row.some((cell) => cell.length > 0));
+
+  return rows.length >= 2 ? rows : [];
+}
+
+function parseAcademicTable(value: string) {
+  return parseMarkdownTable(value).length > 0
+    ? parseMarkdownTable(value)
+    : parseDelimitedTable(value);
+}
+
+function removeTableLines(value: string) {
+  return cleanAcademicText(value)
+    .split(/\n+/)
+    .filter((line) => !/^\s*\|/.test(line))
+    .filter((line) => !line.includes("\t"))
+    .join("\n");
+}
+
+function isSectionIntroLine(value: string) {
+  return /^(los|las|el|la)\s+(objetivos|hipotesis|preguntas)\s+(son|se presentan|se formulan)|^a continuacion\b|^esta seccion\b|^la presente seccion\b/i.test(
+    cleanAcademicText(value),
+  );
+}
+
+function normalizeLogicMarkerText(value: string) {
+  return cleanAcademicText(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[:.;,-]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function isLogicPlaceholderLine(value: string) {
+  const normalized = normalizeLogicMarkerText(value);
+  return [
+    "objetivo general",
+    "objetivos especificos",
+    "objetivo especifico",
+    "pregunta general",
+    "preguntas especificas",
+    "pregunta especifica",
+    "hipotesis general",
+    "hipotesis especificas",
+    "hipotesis especifica",
+  ].includes(normalized);
+}
+
+function normalizeLogicLine(value: string) {
+  const stripPrefix = (text: string) =>
+    text
+      .replace(/^(objetivo|pregunta|hip[oó]tesis)\s+(general|espec[ií]fic[ao]s?)\s*[:.-]?\s*/i, "")
+      .replace(/^(oe|pe|he|p|h)\s*\d+\s*[:.-]?\s*/i, "")
+      .replace(/^espec[ií]fic[ao]\s*\d+\s*[:.-]?\s*/i, "")
+      .trim();
+
+  const stripped = stripPrefix(stripPrefix(cleanAcademicText(value)));
+  return isLogicPlaceholderLine(stripped) ? "" : stripped;
+}
+
+function firstLogicItem(value: string | null | undefined) {
+  return parseListItems(value ?? "")
+    .map(normalizeLogicLine)
+    .filter((line) => line.length > 12)
+    .filter((line) => !isSectionIntroLine(line))[0] ?? null;
+}
+
+function logicListItems(value: string | null | undefined, limit = 8) {
+  return parseListItems(value ?? "")
+    .map(normalizeLogicLine)
+    .filter((line) => line.length > 12)
+    .filter((line) => !isSectionIntroLine(line))
+    .slice(0, limit);
+}
+
+function controlledLogicSectionBlocks(input: {
+  sectionKey: string;
+  content: string;
+}): AcademicSectionBlock[] | null {
+  const lines = cleanAcademicText(input.content).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const markerIndex = (patterns: RegExp[]) =>
+    lines.findIndex((line) => patterns.some((pattern) => pattern.test(line)));
+  const splitAfterMarker = (index: number, nextMarkerIndex: number) =>
+    lines.slice(index + 1, nextMarkerIndex >= 0 ? nextMarkerIndex : undefined);
+
+  const configs: Record<string, {
+    generalLabel: string;
+    specificLabel: string;
+    generalPatterns: RegExp[];
+    specificPatterns: RegExp[];
+  }> = {
+    objectives: {
+      generalLabel: "Objetivo general",
+      specificLabel: "Objetivos específicos",
+      generalPatterns: [/^objetivo general\b/i],
+      specificPatterns: [/^objetivos espec[ií]ficos\b/i],
+    },
+    hypotheses: {
+      generalLabel: "Hipótesis general",
+      specificLabel: "Hipótesis específicas",
+      generalPatterns: [/^hip[oó]tesis general\b/i],
+      specificPatterns: [/^hip[oó]tesis espec[ií]ficas\b/i],
+    },
+    research_questions: {
+      generalLabel: "Pregunta general",
+      specificLabel: "Preguntas específicas",
+      generalPatterns: [/^pregunta general\b/i],
+      specificPatterns: [/^preguntas espec[ií]ficas\b/i],
+    },
+  };
+  const config = configs[input.sectionKey];
+  if (!config) {
+    return null;
+  }
+
+  const generalIndex = markerIndex(config.generalPatterns);
+  const specificIndex = markerIndex(config.specificPatterns);
+  const general =
+    generalIndex >= 0
+      ? firstLogicItem(splitAfterMarker(generalIndex, specificIndex).join("\n"))
+      : firstLogicItem(input.content);
+  const specificSource =
+    specificIndex >= 0
+      ? splitAfterMarker(specificIndex, -1).join("\n")
+      : input.content;
+  const specifics = logicListItems(specificSource)
+    .filter((item) => item !== general)
+    .slice(0, 6);
+
+  if (!general && specifics.length === 0) {
+    return null;
+  }
+
+  return [
+    ...(general
+        ? [{
+          block_type: "paragraph" as const,
+          text: `${sentenceStyleCapitalizePublicText(config.generalLabel, "label")}: ${sentenceStyleCapitalizePublicText(general, "sentence")}`,
+          citation_anchor_ids: [],
+        }]
+      : []),
+    ...(specifics.length > 0
+      ? [{
+          block_type: "paragraph" as const,
+          text: `${sentenceStyleCapitalizePublicText(config.specificLabel, "label")}:`,
+          citation_anchor_ids: [],
+        }]
+      : []),
+    ...specifics.map((item, index) => ({
+      block_type: "bullet" as const,
+      text: `${input.sectionKey === "research_questions" ? `P${index + 1}` : input.sectionKey === "objectives" ? `OE${index + 1}` : `HE${index + 1}`}: ${sentenceStyleCapitalizePublicText(item, "sentence")}`,
+      citation_anchor_ids: [],
+    })),
+  ];
 }
 
 function authorLastName(author: string) {
@@ -242,8 +430,8 @@ function hasSection(sections: AcademicSection[], sectionKey: string) {
 function buildTitleOverrides(archetype: AcademicReportArchetype) {
   const shared: Record<string, string> = {
     problem_statement: "Planteamiento del problema",
-    theoretical_framework: "Marco teorico",
-    methodology: "Metodologia",
+    theoretical_framework: "Marco teórico",
+    methodology: "Metodología",
     scope_and_limitations: "Alcances y limitaciones",
     consistency_matrix: "Matriz de consistencia",
   };
@@ -253,9 +441,9 @@ function buildTitleOverrides(archetype: AcademicReportArchetype) {
       ...shared,
       research_antecedents: "Antecedentes y evidencia comparada",
       state_of_the_art: "Estado del arte",
-      theoretical_bases: "Bases teoricas para la propuesta",
-      justification: "Justificacion",
-      schedule: "Cronograma de investigacion",
+      theoretical_bases: "Bases teóricas para la propuesta",
+      justification: "Justificación",
+      schedule: "Cronograma de investigación",
       budget: "Presupuesto referencial",
     };
   }
@@ -276,14 +464,26 @@ function buildEditorialPlan(input: {
     suppressed.add("variables_indicators");
     suppressed.add("categories_subcategories");
   }
+  if (hasSection(input.sections, "objectives")) {
+    suppressed.add("general_objective");
+    suppressed.add("specific_objectives");
+  }
+  if (hasSection(input.sections, "hypotheses")) {
+    suppressed.add("general_hypothesis");
+    suppressed.add("specific_hypotheses");
+  }
+  if (hasSection(input.sections, "research_questions")) {
+    suppressed.add("general_research_question");
+    suppressed.add("specific_research_questions");
+  }
 
-  if (archetype === "indexed_paper_like") {
-    for (const sectionKey of ["schedule", "budget", "annexes"]) {
-      if (hasSection(input.sections, sectionKey)) {
-        suppressed.add(sectionKey);
-        annex.add(sectionKey);
-      }
-    }
+  if (hasSection(input.sections, "annexes")) {
+    suppressed.add("annexes");
+  }
+
+  if (hasSection(input.sections, "schedule")) {
+    suppressed.add("schedule");
+    annex.add("schedule");
   }
 
   const duplicatePairs: AcademicEditorialPlan["duplicate_pairs"] = [];
@@ -345,8 +545,8 @@ function buildEditorialPlan(input: {
         ? "Se detectaron secciones con solapamiento alto; usar pase LLM editorial para fusionar antes del documento final."
         : "",
       archetype === "indexed_paper_like"
-        ? "El Master se renderiza como documento paper-like: cronograma/presupuesto se mueven a anexos si existen."
-        : "El institucional conserva estructura universitaria y aplica reduccion Master -> plantilla institucional.",
+        ? "El Master se renderiza como documento paper-like: el cronograma se mueve al anexo academico si existe."
+        : "El institucional conserva estructura universitaria y aplica reduccion Master -> plantilla institucional; el cronograma se mueve al anexo academico si existe.",
     ].filter(Boolean),
   };
 }
@@ -430,13 +630,39 @@ function resolveBrandingAssets(input: {
     : [buildInstitutionBrandingAsset(input.universityBlueprint ?? null)];
 }
 
-function resolveReferences(evidenceLedger: EvidenceLedger): AcademicReference[] {
-  return evidenceLedger.source_registry
+function resolveReferences(input: {
+  evidenceLedger: EvidenceLedger;
+  preferredSourceIds: string[];
+  secondaryReferenceReport?: SecondaryReferenceCandidatesReport | null;
+}): AcademicReference[] {
+  const sourceById = new Map<string, EvidenceLedger["source_registry"][number]>();
+  for (const source of input.evidenceLedger.source_registry) {
+    sourceById.set(source.source_id, source);
+    if (source.reference_id) {
+      sourceById.set(source.reference_id, source);
+    }
+  }
+
+  const preferred = uniqueItems(
+    input.preferredSourceIds
+      .map((sourceId) => sourceById.get(sourceId)?.source_id ?? null)
+      .filter((sourceId): sourceId is string => Boolean(sourceId)),
+  );
+  const eligible = input.evidenceLedger.source_registry
     .filter((source) => source.eligible_for_formal_reference)
-    .slice(0, 24)
+    .map((source) => source.source_id);
+  const orderedIds = uniqueItems([...preferred, ...eligible]).slice(0, 40);
+
+  const primaryReferences = orderedIds
+    .map((sourceId) => sourceById.get(sourceId))
+    .filter((source): source is EvidenceLedger["source_registry"][number] => Boolean(source))
     .map((source) => ({
       source_id: source.source_id,
       reference_id: source.reference_id,
+      reference_kind: "primary_recovered" as const,
+      cited_through_source_id: null,
+      evidence_id: null,
+      recovery_status: "recovered_source",
       title: source.title,
       authors: source.authors,
       year: source.year,
@@ -445,6 +671,31 @@ function resolveReferences(evidenceLedger: EvidenceLedger): AcademicReference[] 
       apa_label: formatCitationLabel(source),
       apa_reference: formatReferenceApa(source),
     }));
+
+  const secondaryReferences = (input.secondaryReferenceReport?.candidates ?? [])
+    .slice(0, 25)
+    .map((candidate, index): AcademicReference => ({
+      source_id: `secondary:${index + 1}`,
+      reference_id: null,
+      reference_kind: "secondary_unrecovered" as const,
+      cited_through_source_id: candidate.source_id,
+      evidence_id: candidate.evidence_id,
+      recovery_status: "detected_in_recovered_pdf_not_yet_recovered",
+      title: sentenceStyleCapitalizePublicText(
+        `Referencia secundaria detectada: ${candidate.marker}`,
+        "heading",
+      ),
+      authors: ["Pendiente de recuperación"],
+      year: null,
+      venue: "Pendiente de validación",
+      doi: null,
+      apa_label: "(Fuente secundaria pendiente)",
+      apa_reference:
+        `Referencia secundaria detectada en evidencia recuperada (${candidate.marker}). ` +
+        "Uso restringido: no citar como fuente primaria hasta su recuperación y validación.",
+    }));
+
+  return [...primaryReferences, ...secondaryReferences];
 }
 
 function titleForSection(sections: AcademicSection[], sectionKey: string) {
@@ -486,19 +737,19 @@ function academicFigureCaption(input: {
   sectionTitle: string;
 }) {
   if (!isGenericAssetCaption(input.asset.caption)) {
-    return cleanAcademicText(input.asset.caption);
+    return sentenceStyleCapitalizePublicText(cleanAcademicText(input.asset.caption), "caption");
   }
 
   const normalizedSection = cleanAcademicText(input.sectionTitle).toLowerCase();
   if (normalizedSection.includes("metodolog")) {
-    return "Representacion visual de criterios y relaciones metodologicas para la evaluacion propuesta.";
+    return "Representaci\u00f3n visual de criterios y relaciones metodol\u00f3gicas para la evaluaci\u00f3n propuesta.";
   }
 
   if (normalizedSection.includes("justific")) {
-    return "Esquema visual de argumentos de soporte para la pertinencia academica y aplicada del proyecto.";
+    return "Esquema visual de argumentos de soporte para la pertinencia acad\u00e9mica y aplicada del proyecto.";
   }
 
-  return "Esquema visual de conceptos y relaciones vinculados con la reutilizacion adaptativa del entorno construido.";
+  return "Esquema visual de conceptos, variables y relaciones metodol\u00f3gicas vinculadas con la secci\u00f3n.";
 }
 
 function academicFigureReference(input: {
@@ -512,49 +763,348 @@ function uniqueAssetIdentity(asset: AssetPlacement) {
   return `${asset.source_id}|${asset.asset_key}`;
 }
 
-function equationFromAsset(asset: AssetPlacement): Omit<EquationLayoutPlan, "equation_number" | "source_note" | "body_reference"> | null {
+function assetLooksLikeEquation(asset: AssetPlacement) {
+  const text = `${asset.render_mode} ${asset.caption} ${asset.text_content ?? ""}`.toLowerCase();
+  const normalized = normalizeForSimilarity(text);
+
+  return (
+    asset.render_mode === "equation" ||
+    /\becuacion\b|formula|equation/.test(normalized) ||
+    /\becuaci[oó]n\b|formula|f[oó]rmula|equation/.test(text) ||
+    (/[=]/.test(text) && /\\[a-z]+|[_^]/i.test(text))
+  );
+}
+
+function sectionOrderLookup(sections: AcademicSection[], mainBodySectionKeys?: string[]) {
+  const bodyKeys = new Set(mainBodySectionKeys ?? sections.map((section) => section.section_key));
+  const order = new Map<string, number>();
+  let index = 0;
+
+  for (const section of sections) {
+    if (!bodyKeys.has(section.section_key)) {
+      continue;
+    }
+    order.set(section.section_key, index);
+    index += 1;
+  }
+
+  for (const section of sections) {
+    if (order.has(section.section_key)) {
+      continue;
+    }
+    order.set(section.section_key, 1000 + index);
+    index += 1;
+  }
+
+  return order;
+}
+
+function sortAssetsByDocumentOrder(input: {
+  assetPlacements: AssetPlacement[];
+  sections: AcademicSection[];
+  mainBodySectionKeys?: string[];
+}) {
+  const order = sectionOrderLookup(input.sections, input.mainBodySectionKeys);
+
+  return input.assetPlacements.slice().sort((left, right) => {
+    const leftOrder = order.get(left.section_key) ?? 9999;
+    const rightOrder = order.get(right.section_key) ?? 9999;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+
+    const leftAnchor = left.paragraph_anchor ?? 999;
+    const rightAnchor = right.paragraph_anchor ?? 999;
+    if (leftAnchor !== rightAnchor) {
+      return leftAnchor - rightAnchor;
+    }
+
+    return `${left.source_id}|${left.asset_key}`.localeCompare(`${right.source_id}|${right.asset_key}`);
+  });
+}
+
+function readableEquationText(value: string) {
+  return cleanAcademicText(value)
+    .replace(/\$\$/g, "")
+    .replace(/\\\(|\\\)/g, "")
+    .replace(
+      /\\begin\{(?:bmatrix|pmatrix|matrix|array|cases)\}[\s\S]*?\\end\{(?:bmatrix|pmatrix|matrix|array|cases)\}/g,
+      "matriz o arreglo formal recuperado de la fuente original",
+    )
+    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1) / ($2)")
+    .replace(/\\sqrt\{([^{}]+)\}/g, "sqrt($1)")
+    .replace(/\\sum_\{?([^{}]+)\}?\^\{?([^{}]+)\}?/g, "sum($1..$2)")
+    .replace(/\\hat\{([^{}]+)\}/g, "$1 estimado")
+    .replace(/\\left|\\right/g, "")
+    .replace(/\\begin\{[^{}]+\}|\\end\{[^{}]+\}/g, "")
+    .replace(/\\(?:mathrm|mathbf|text)\{([^{}]+)\}/g, "$1")
+    .replace(/\\([a-zA-Z]+)/g, "$1")
+    .replace(/\b(?:begin|end)?(?:bmatrix|pmatrix|matrix|array|cases)\b/gi, "")
+    .replace(/[{}]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizeEquationLatex(value: string) {
+  return cleanAcademicText(value)
+    .replace(/^\$\$?|\$\$?$/g, "")
+    .replace(/^\\\(|\\\)$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function equationHasRawLatexCommand(value: string) {
+  return /\\[a-zA-Z]+/.test(value) || /\$\$?/.test(value) || /\\begin|\\end/.test(value);
+}
+
+function isNativeEquationRenderable(value: string) {
+  const latex = normalizeEquationLatex(value);
+  if (!latex) {
+    return false;
+  }
+
+  if (/\\begin|\\end|\\int|\\sum|\\prod|\\matrix|\\cases|\\left|\\right/i.test(latex)) {
+    return false;
+  }
+
+  const allowedCommands = latex.match(/\\[a-zA-Z]+/g) ?? [];
+  return allowedCommands.every((command) =>
+    ["\\frac", "\\lambda", "\\alpha", "\\beta", "\\gamma", "\\delta", "\\theta", "\\omega", "\\sigma"].includes(command),
+  );
+}
+
+function resolveEquationRenderStrategy(input: {
+  latex: string;
+  filePath: string | null | undefined;
+}): EquationLayoutPlan["render_strategy"] {
+  if (isNativeEquationRenderable(input.latex)) {
+    return "docx_math_native";
+  }
+
+  if (input.filePath) {
+    return "source_equation_image";
+  }
+
+  if (cleanAcademicText(input.latex)) {
+    return "generated_equation_image";
+  }
+
+  return "blocked_no_professional_render";
+}
+
+function sourceContextForEquation(asset: AssetPlacement) {
+  const caption = cleanAcademicText(asset.caption);
+  const text = readableEquationText(cleanAcademicText(asset.text_content));
+  const context = [caption, text && text !== caption ? text : ""].filter(Boolean).join(" ");
+
+  if (!context) {
+    return "No se recupero contexto textual suficiente de la fuente original para esta ecuacion.";
+  }
+
+  return clipText(context, 420) ?? "No se recupero contexto textual suficiente de la fuente original para esta ecuacion.";
+}
+
+function hasSourceContextForEquation(asset: AssetPlacement) {
+  return Boolean(cleanAcademicText(asset.caption) || cleanAcademicText(asset.text_content));
+}
+
+function equationPurposeFromAsset(input: {
+  asset: AssetPlacement;
+  sectionTitle: string;
+}) {
+  const caption = cleanAcademicText(input.asset.caption);
+  const sourceContext = sourceContextForEquation(input.asset);
+  if (caption) {
+    return sentenceStyleCapitalizePublicText(
+      `Prop\u00f3sito acad\u00e9mico: explicar en ${input.sectionTitle} el componente formal que la fuente original presenta como "${caption}". Contexto fuente: ${sourceContext}`,
+      "sentence",
+    );
+  }
+
+  return sentenceStyleCapitalizePublicText(
+    `Prop\u00f3sito acad\u00e9mico: registrar en ${input.sectionTitle} un componente formal recuperado de la fuente original. Contexto fuente: ${sourceContext}`,
+    "sentence",
+  );
+}
+
+function equationSectionExplanation(input: {
+  asset: AssetPlacement;
+  sectionTitle: string;
+  equationNumber: number;
+}) {
+  const sourceContext = sourceContextForEquation(input.asset);
+  return sentenceStyleCapitalizePublicText(
+    `La Ecuaci\u00f3n ${input.equationNumber} se incorpora en ${input.sectionTitle} porque el material recuperado de la fuente la presenta en este contexto: ${sourceContext}`,
+    "sentence",
+  );
+}
+
+function extractEquationSymbolNotes(value: string) {
+  const symbolCandidateText = value
+    .replace(
+      /\\begin\{(?:bmatrix|pmatrix|matrix|array|cases)\}[\s\S]*?\\end\{(?:bmatrix|pmatrix|matrix|array|cases)\}/g,
+      "",
+    )
+    .replace(/\\begin\{[^{}]+\}|\\end\{[^{}]+\}/g, "");
+  const ignored = new Set([
+    "frac",
+    "sqrt",
+    "sum",
+    "text",
+    "mathrm",
+    "mathbf",
+    "left",
+    "right",
+    "begin",
+    "end",
+    "sin",
+    "cos",
+    "tan",
+    "log",
+    "ln",
+    "exp",
+    "matrix",
+    "bmatrix",
+    "pmatrix",
+    "array",
+    "cases",
+    "beginb",
+    "endbma",
+    "trix",
+    "matri",
+  ]);
+  const matches = symbolCandidateText.match(/\\[a-zA-Z]+(?:_\{?[A-Za-z0-9]+\}?)?|[A-Za-z]{1,6}(?:_\{?[A-Za-z0-9]+\}?|\^\{?[A-Za-z0-9]+\}?)?/g) ?? [];
+  const symbols = uniqueItems(
+    matches
+      .map((match) => match.replace(/[{}]/g, ""))
+      .filter((match) => match.length > 0)
+      .filter((match) => !ignored.has(match.replace(/^\\/, "").toLowerCase()))
+      .filter((match) => !/(?:begin|end)?(?:bmatrix|pmatrix|matrix|array|cases)/i.test(match))
+      .filter((match) => !/^[a-z]{7,}$/i.test(match)),
+  ).slice(0, 10);
+
+  return symbols.map((symbol) => ({
+    symbol,
+    description:
+      "Descripci\u00f3n no recuperada de la fuente original; no se infiere autom\u00e1ticamente para evitar inventar significado.",
+    unit: null,
+    source_backed: false,
+    evidence_id: null,
+    status: "not_recovered" as const,
+  }));
+}
+
+function equationFromAsset(
+  asset: AssetPlacement,
+  sectionTitle: string,
+): Omit<EquationLayoutPlan, "equation_number" | "source_note" | "body_reference"> | null {
   const text = cleanAcademicText(asset.text_content);
-  const key = asset.asset_key.toLowerCase();
+  const normalized = text.toLowerCase();
+  const isPlaceholderOnly =
+    normalized.includes("conservar latex y renderizarlo en la etapa de redaccion") &&
+    !/[=]/.test(text) &&
+    !/\\[a-z]+/i.test(text);
+  const candidateText = isPlaceholderOnly ? "" : text;
 
-  if (/ci|consistencia|lambda|max|ahp/i.test(`${asset.caption} ${text}`) && key.includes("equation-1")) {
-    return {
-      asset_key: asset.asset_key,
-      source_id: asset.source_id,
-      section_key: asset.section_key,
-      latex: "CI = \\frac{\\lambda_{max} - n}{n - 1}",
-      display_text: "CI = (lambda_max - n) / (n - 1)",
-      caption: "Indice de consistencia empleado para verificar la coherencia de comparaciones pareadas en AHP.",
-      warnings: [
-        "Formula AHP reconstruida desde la descripcion del asset; requiere validacion metodologica antes de entrega final.",
-      ],
-    };
-  }
-
-  if (/cr|ri|consistencia|ahp/i.test(`${asset.caption} ${text}`) && key.includes("equation-2")) {
-    return {
-      asset_key: asset.asset_key,
-      source_id: asset.source_id,
-      section_key: asset.section_key,
-      latex: "CR = \\frac{CI}{RI}",
-      display_text: "CR = CI / RI",
-      caption: "Razon de consistencia para evaluar la aceptabilidad de la matriz de comparacion AHP.",
-      warnings: [
-        "Formula AHP reconstruida desde la descripcion del asset; requiere validacion metodologica antes de entrega final.",
-      ],
-    };
-  }
-
-  const latexMatch = text.match(/(?:\$\$?)([^$]{4,})(?:\$\$?)|\\\(([^)]{4,})\\\)/);
+  const latexMatch = candidateText.match(/(?:\$\$?)([^$]{4,})(?:\$\$?)|\\\(([^)]{4,})\\\)/);
   const latex = cleanAcademicText(latexMatch?.[1] ?? latexMatch?.[2]);
-  if (latex) {
+  const displayMathMatch = candidateText.match(/([A-Za-z][A-Za-z0-9_\-+\s]{0,60}=\s*[^.;\n]{3,260})/);
+  const displayMath = cleanAcademicText(displayMathMatch?.[1]);
+  const inlineLatexLike =
+    !latex &&
+    /\\[a-z]+/i.test(candidateText) &&
+    /[=]/.test(candidateText)
+      ? candidateText
+      : "";
+
+  if (latex || displayMath || inlineLatexLike) {
+    const resolvedLatex =
+      latex ||
+      inlineLatexLike ||
+      displayMath ||
+      "\\text{Ecuaci\u00f3n con respaldo de fuente en imagen; ver soporte visual}";
+    const resolvedDisplay =
+      latex || inlineLatexLike ? readableEquationText(resolvedLatex) : displayMath;
+    const normalizedLatex = normalizeEquationLatex(resolvedLatex);
+    const renderStrategy = resolveEquationRenderStrategy({
+      latex: normalizedLatex,
+      filePath: asset.file_path,
+    });
+    const sourceContextSummary = sourceContextForEquation(asset);
+    const sourceGrounded = hasSourceContextForEquation(asset);
     return {
+      artifact_type: "professional_equation_model",
+      artifact_version: "v1",
       asset_key: asset.asset_key,
       source_id: asset.source_id,
       section_key: asset.section_key,
-      latex,
-      display_text: latex.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, "($1) / ($2)"),
-      caption: cleanAcademicText(asset.caption) || "Ecuacion recuperada del corpus de evidencia.",
-      warnings: [],
+      latex: normalizedLatex,
+      source_latex: resolvedLatex,
+      normalized_latex: normalizedLatex,
+      display_text: resolvedDisplay,
+      source_image_path: asset.file_path ?? null,
+      generated_image_path: null,
+      render_strategy: renderStrategy,
+      professional_render_available: renderStrategy !== "blocked_no_professional_render",
+      source_grounded_explanation_available: sourceGrounded,
+      caption:
+        sentenceStyleCapitalizePublicText(cleanAcademicText(asset.caption), "caption") ||
+        "Ecuaci\u00f3n recuperada del corpus de evidencia.",
+      purpose: equationPurposeFromAsset({ asset, sectionTitle }),
+      source_context_summary: sourceContextSummary,
+      section_explanation: "",
+      variable_notes: extractEquationSymbolNotes(displayMath || resolvedLatex),
+      file_path: asset.file_path ?? null,
+      limitations: [
+        "Las variables y unidades solo se consideran definidas cuando aparecen en la fuente original recuperada.",
+      ],
+      warnings: [
+        renderStrategy === "generated_equation_image"
+          ? "La ecuación requiere fallback visual generado porque el formato no es seguro para math nativo DOCX."
+          : null,
+        renderStrategy === "source_equation_image"
+          ? "La ecuación se insertará como imagen de la fuente para evitar exponer código LaTeX crudo."
+          : null,
+      ].filter((warning): warning is string => Boolean(warning)),
+      blockers: renderStrategy === "blocked_no_professional_render"
+        ? ["No hay render profesional disponible para esta ecuacion."]
+        : [],
+    };
+  }
+
+  if (asset.file_path) {
+    const sourceContextSummary = sourceContextForEquation(asset);
+    const sourceGrounded = hasSourceContextForEquation(asset);
+    return {
+      artifact_type: "professional_equation_model",
+      artifact_version: "v1",
+      asset_key: asset.asset_key,
+      source_id: asset.source_id,
+      section_key: asset.section_key,
+      latex: "\\text{Ecuaci\u00f3n con respaldo de fuente en imagen; ver soporte visual}",
+      source_latex: null,
+      normalized_latex: null,
+      display_text: cleanAcademicText(asset.caption) || "Ecuaci\u00f3n con respaldo de fuente en imagen.",
+      source_image_path: asset.file_path,
+      generated_image_path: null,
+      render_strategy: "source_equation_image",
+      professional_render_available: true,
+      source_grounded_explanation_available: sourceGrounded,
+      caption:
+        cleanAcademicText(asset.caption) ||
+        "Ecuaci\u00f3n detectada en asset visual con respaldo de fuente; pendiente de transcripci\u00f3n formal.",
+      purpose: equationPurposeFromAsset({ asset, sectionTitle }),
+      source_context_summary: sourceContextSummary,
+      section_explanation: "",
+      variable_notes: extractEquationSymbolNotes(asset.text_content ?? asset.caption),
+      limitations: [
+        "La ecuacion se conserva como imagen de la fuente porque no se recupero una transcripcion formal confiable.",
+      ],
+      file_path: asset.file_path,
+      warnings: [
+        "Ecuaci\u00f3n renderizada desde imagen con respaldo de fuente por falta de transcripci\u00f3n LaTeX.",
+      ],
+      blockers: [],
     };
   }
 
@@ -565,12 +1115,13 @@ function buildFigureLayoutPlan(input: {
   assetPlacements: AssetPlacement[];
   sections: AcademicSection[];
   sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
+  mainBodySectionKeys?: string[];
 }): FigureLayoutPlan[] {
   const seen = new Set<string>();
   const figures: FigureLayoutPlan[] = [];
 
-  for (const asset of input.assetPlacements) {
-    if (!asset.renderable || asset.render_mode !== "image" || !asset.file_path) {
+  for (const asset of sortAssetsByDocumentOrder(input)) {
+    if (!asset.renderable || asset.render_mode !== "image" || !asset.file_path || assetLooksLikeEquation(asset)) {
       continue;
     }
 
@@ -602,12 +1153,13 @@ function buildEquationLayoutPlan(input: {
   assetPlacements: AssetPlacement[];
   sections: AcademicSection[];
   sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
+  mainBodySectionKeys?: string[];
 }): EquationLayoutPlan[] {
   const seen = new Set<string>();
   const equations: EquationLayoutPlan[] = [];
 
-  for (const asset of input.assetPlacements) {
-    if (asset.render_mode !== "equation") {
+  for (const asset of sortAssetsByDocumentOrder(input)) {
+    if (!assetLooksLikeEquation(asset)) {
       continue;
     }
 
@@ -617,20 +1169,32 @@ function buildEquationLayoutPlan(input: {
     }
     seen.add(identity);
 
-    const equation = equationFromAsset(asset);
+    const sectionTitle = titleForSection(input.sections, asset.section_key);
+    const equation = equationFromAsset(asset, sectionTitle);
     if (!equation) {
       continue;
     }
 
     const equationNumber = equations.length + 1;
-    const sectionTitle = titleForSection(input.sections, asset.section_key);
     const citation = sourceCitationForAsset({ asset, sourceLookup: input.sourceLookup });
     equations.push({
       ...equation,
       equation_number: equationNumber,
       source_note: sourceNoteForAsset({ asset, sourceLookup: input.sourceLookup }),
-      body_reference: `La Ecuacion ${equationNumber} resume el componente formal usado como apoyo para ${sectionTitle.toLowerCase()}${citation ? ` ${citation}` : ""}.`,
-      warnings: equation.warnings,
+      section_explanation: equationSectionExplanation({ asset, sectionTitle, equationNumber }),
+      body_reference: sentenceStyleCapitalizePublicText(
+        `La Ecuaci\u00f3n ${equationNumber} resume el componente formal usado para explicar variables, par\u00e1metros o relaciones de ${sectionTitle.toLowerCase()}${citation ? ` ${citation}` : ""}.`,
+        "sentence",
+      ),
+      warnings: [
+        ...equation.warnings,
+        ...equation.variable_notes
+          .filter((note) => note.status !== "source_backed")
+          .map((note) => `equation_variable_description_missing:${note.symbol}`),
+        equationHasRawLatexCommand(equation.display_text)
+          ? "raw_latex_removed_from_public_display_text"
+          : null,
+      ].filter((warning): warning is string => Boolean(warning)),
     });
   }
 
@@ -834,10 +1398,10 @@ function buildScheduleVisualPlan(input: {
   const resolvedTasks = tasks.length > 0 ? tasks : policyTasks.length > 0 ? policyTasks : FALLBACK_SCHEDULE_TASKS;
 
   return {
-    label: "Cronograma visual de investigacion",
-    caption: "Cronograma referencial tipo Gantt para la ejecucion del proyecto de investigacion.",
+    label: "Cronograma visual de investigación",
+    caption: "Cronograma referencial tipo Gantt para la ejecución del proyecto de investigación.",
     source_note:
-      "Fuente: elaboracion propia a partir del plan de trabajo generado para el proyecto. Los meses son referenciales y deben ajustarse al calendario academico real.",
+      "Fuente: elaboración propia a partir del plan de trabajo generado para el proyecto. Los meses son referenciales y deben ajustarse al calendario académico real.",
     tasks: resolvedTasks,
   };
 }
@@ -866,8 +1430,11 @@ function buildCoverVisualPlan(input: {
   const topic =
     cleanAcademicText(input.project.intake?.topic) ||
     cleanAcademicText(input.project.topicAreaLabel ?? input.title);
+  const methodContract = getMethodGenerationContract(input.project);
   const methodSummary =
-    "Flujo de investigacion, revision de evidencia, diseno metodologico, analisis comparativo/evaluacion basada en evidencia y criterios preliminares. No mostrar nombres de tecnicas especificas, matrices o modelos si la metodologia todavia requiere confirmacion.";
+    methodContract?.prompt_guidance.hero ||
+    methodContract?.method_summary_for_generation ||
+    "Flujo de investigación, revisión de evidencia, diseño metodológico, análisis comparativo/evaluación basada en evidencia y criterios preliminares. No mostrar nombres de técnicas específicas, matrices o modelos si la metodología todavía requiere confirmación.";
   const countryContext =
     (input.project as { country?: string | null }).country ??
     (input.project.intake as { country?: string | null } | null)?.country ??
@@ -938,6 +1505,7 @@ function buildAcademicDocxLayoutPlan(input: {
   sections: AcademicSection[];
   assetPlacements: AssetPlacement[];
   sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
+  mainBodySectionKeys?: string[];
 }): AcademicDocxLayoutPlan {
   const countryContext =
     (input.project as { country?: string | null }).country ??
@@ -999,11 +1567,13 @@ function buildAcademicDocxLayoutPlan(input: {
     assetPlacements: input.assetPlacements,
     sections: input.sections,
     sourceLookup: input.sourceLookup,
+    mainBodySectionKeys: input.mainBodySectionKeys,
   });
   const equations = buildEquationLayoutPlan({
     assetPlacements: input.assetPlacements,
     sections: input.sections,
     sourceLookup: input.sourceLookup,
+    mainBodySectionKeys: input.mainBodySectionKeys,
   });
   const renderedAssetIdentities = new Set([
     ...figures.map((figure) => `${figure.source_id}|${figure.asset_key}`),
@@ -1064,6 +1634,48 @@ function buildAcademicDocxLayoutPlan(input: {
   };
 }
 
+export function buildAssetLayoutPlanForDiagnostics(input: {
+  sections: AcademicSection[];
+  assetPlacements: AssetPlacement[];
+  sourceLookup?: Map<string, EvidenceLedger["source_registry"][number]>;
+  mainBodySectionKeys?: string[];
+}) {
+  const sourceLookup =
+    input.sourceLookup ?? new Map<string, EvidenceLedger["source_registry"][number]>();
+  const figures = buildFigureLayoutPlan({
+    assetPlacements: input.assetPlacements,
+    sections: input.sections,
+    sourceLookup,
+    mainBodySectionKeys: input.mainBodySectionKeys,
+  }).map((figure) => ({
+    ...figure,
+    caption: sentenceStyleCapitalizePublicText(figure.caption, "caption"),
+    source_note: sentenceStyleCapitalizePublicText(figure.source_note, "sentence"),
+    body_reference: sentenceStyleCapitalizePublicText(figure.body_reference, "sentence"),
+  }));
+  const equations = buildEquationLayoutPlan({
+    assetPlacements: input.assetPlacements,
+    sections: input.sections,
+    sourceLookup,
+    mainBodySectionKeys: input.mainBodySectionKeys,
+  }).map((equation) => ({
+    ...equation,
+    caption: sentenceStyleCapitalizePublicText(equation.caption, "caption"),
+    purpose: sentenceStyleCapitalizePublicText(equation.purpose, "sentence"),
+    source_note: sentenceStyleCapitalizePublicText(equation.source_note, "sentence"),
+    body_reference: sentenceStyleCapitalizePublicText(equation.body_reference, "sentence"),
+    variable_notes: equation.variable_notes.map((note) => ({
+      ...note,
+      description: sentenceStyleCapitalizePublicText(note.description, "sentence"),
+    })),
+  }));
+
+  return {
+    figures,
+    equations,
+  };
+}
+
 export function resolveWordStyleContract(): WordStyleContract {
   return {
     title: "Title",
@@ -1106,6 +1718,107 @@ export function solveTableLayout(input: {
   };
 }
 
+function citationParagraphIndexes(paragraphCount: number, citationCount: number) {
+  const safeParagraphCount = Math.max(1, paragraphCount);
+  const safeCitationCount = Math.max(0, citationCount);
+  if (safeCitationCount === 0) {
+    return [];
+  }
+
+  if (safeCitationCount === 1) {
+    return [0];
+  }
+
+  return Array.from({ length: safeCitationCount }, (_, index) => {
+    const denominator = Math.max(1, safeCitationCount - 1);
+    return Math.min(
+      safeParagraphCount - 1,
+      Math.round((index * (safeParagraphCount - 1)) / denominator),
+    );
+  });
+}
+
+function citationTargetCountForSection(input: {
+  sectionKey: string;
+  content: string;
+}) {
+  if (/^[-*]\s/m.test(input.content)) {
+    return Math.max(1, parseListItems(input.content).length);
+  }
+
+  if (BULLET_FRIENDLY_SECTION_KEYS.has(input.sectionKey)) {
+    const sentenceCount = splitParagraphs(input.content).flatMap((paragraph) =>
+      paragraph
+        .split(/(?<=[.!?])\s+/)
+        .map((sentence) => sentence.trim())
+        .filter((sentence) => sentence.length > 18),
+    ).length;
+
+    if (sentenceCount >= 3) {
+      return sentenceCount;
+    }
+  }
+
+  return Math.max(1, splitParagraphs(input.content).length);
+}
+
+function splitInlineBulletItems(content: string) {
+  return content
+    .replace(/\s+-\s+(?=[A-ZÁÉÍÓÚÑ¿])/g, "\n- ")
+    .split(/\r?\n/)
+    .flatMap((line) =>
+      line
+        .split(/\n(?=-\s+)/)
+        .map((item) => item.trim()),
+    )
+    .map(stripListPrefix)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 18);
+}
+
+function isSourceAllowedForPublicSection(input: {
+  sectionKey: string;
+  source: EvidenceLedger["source_registry"][number] | undefined;
+}) {
+  if (!input.source || !isCentralClaimSection(input.sectionKey)) {
+    return Boolean(input.source);
+  }
+
+  const source = input.source as EvidenceLedger["source_registry"][number] & {
+    source_health?: string | null;
+    topic_fit?: string | null;
+    allowed_evidence_use?: string | null;
+  };
+  const sourceHealth = String(source.source_health ?? "").toLowerCase();
+  const topicFit = String(source.topic_fit ?? "").toLowerCase();
+  const allowedUse = String(source.allowed_evidence_use ?? "").toLowerCase();
+
+  if (["metadata_only", "unresolved", "unextractable_pdf", "wrong_document_suspected"].includes(sourceHealth)) {
+    return false;
+  }
+  if (["adjacent", "background", "weak"].includes(topicFit)) {
+    return false;
+  }
+  if (["cautious_support", "context_only", "gap_only", "do_not_use"].includes(allowedUse)) {
+    return false;
+  }
+
+  return true;
+}
+
+function filterSourceIdsForPublicSection(input: {
+  sectionKey: string;
+  sourceIds: string[];
+  sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
+}) {
+  return uniqueItems(input.sourceIds).filter((sourceId) =>
+    isSourceAllowedForPublicSection({
+      sectionKey: input.sectionKey,
+      source: input.sourceLookup.get(sourceId),
+    }),
+  );
+}
+
 function buildCitationAnchors(input: {
   section: RenderSectionInput;
   sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
@@ -1114,41 +1827,57 @@ function buildCitationAnchors(input: {
     return [];
   }
 
-  const sources = uniqueItems(input.section.source_ids)
+  const sources = filterSourceIdsForPublicSection({
+    sectionKey: input.section.section_key,
+    sourceIds: input.section.source_ids,
+    sourceLookup: input.sourceLookup,
+  })
     .map((sourceId) => input.sourceLookup.get(sourceId))
     .filter((source): source is EvidenceLedger["source_registry"][number] => Boolean(source))
-    .slice(0, 2);
+    .slice(0, 4);
 
   if (sources.length === 0) {
     return [];
   }
 
+  const paragraphCount = citationTargetCountForSection({
+    sectionKey: input.section.section_key,
+    content: input.section.content,
+  });
+  const paragraphIndexes = citationParagraphIndexes(paragraphCount, sources.length);
+
   return sources.map((source, index): CitationAnchor => ({
     anchor_id: `${input.section.section_key}-cite-${index + 1}`,
     section_key: input.section.section_key,
-    paragraph_index: index,
+    paragraph_index: paragraphIndexes[index] ?? Math.min(index, paragraphCount - 1),
     source_ids: [source.source_id],
     evidence_ids: input.section.evidence_ids.slice(index, index + 1),
     original_excerpt_ids: input.section.original_excerpt_ids.slice(index, index + 1),
     rendered_citation: formatCitationLabel(source),
-    reason: "Cita conservadora compilada desde fuentes soportadas por la seccion.",
+    reason: "Cita conservadora compilada desde fuentes soportadas por la secci\u00f3n.",
   }));
 }
 
 function buildSectionBlocks(input: {
+  sectionKey: string;
   content: string;
   citationAnchors: CitationAnchor[];
 }): AcademicSectionBlock[] {
-  const markdownTable = parseMarkdownTable(input.content);
+  const controlledLogicBlocks = controlledLogicSectionBlocks({
+    sectionKey: input.sectionKey,
+    content: input.content,
+  });
+  if (controlledLogicBlocks) {
+    return controlledLogicBlocks;
+  }
+
+  const markdownTable = parseAcademicTable(input.content);
 
   if (markdownTable.length > 0) {
-    const nonTableText = cleanAcademicText(input.content)
-      .split(/\n+/)
-      .filter((line) => !/^\s*\|/.test(line))
-      .join("\n");
+    const nonTableText = removeTableLines(input.content);
     const paragraphs = splitParagraphs(nonTableText).map((text, index): AcademicSectionBlock => ({
       block_type: "paragraph",
-      text,
+      text: sentenceStyleCapitalizePublicText(text, "sentence"),
       citation_anchor_ids: input.citationAnchors
         .filter((anchor) => anchor.paragraph_index === index)
         .map((anchor) => anchor.anchor_id),
@@ -1158,7 +1887,7 @@ function buildSectionBlocks(input: {
       ...paragraphs,
       {
         block_type: "table",
-        rows: markdownTable,
+        rows: capitalizePublicTableRows(markdownTable),
         layout: solveTableLayout({
           columnCount: markdownTable[0]?.length ?? 1,
           rowCount: markdownTable.length,
@@ -1169,28 +1898,145 @@ function buildSectionBlocks(input: {
   }
 
   if (/^[-*]\s/m.test(input.content)) {
-    return parseListItems(input.content).map((text) => ({
+    return parseListItems(input.content).map((text, index) => ({
       block_type: "bullet",
-      text,
-      citation_anchor_ids: [],
+      text: sentenceStyleCapitalizePublicText(text, "sentence"),
+      citation_anchor_ids: input.citationAnchors
+        .filter((anchor) => anchor.paragraph_index === index)
+        .map((anchor) => anchor.anchor_id),
     }));
   }
 
-  return splitParagraphs(input.content).map((text, index) => ({
+  const paragraphs = splitParagraphs(input.content);
+  if (BULLET_FRIENDLY_SECTION_KEYS.has(input.sectionKey)) {
+    const inlineBulletItems = splitInlineBulletItems(input.content);
+    if (inlineBulletItems.length >= 3) {
+      return inlineBulletItems.slice(0, 20).map((text, index) => ({
+        block_type: "bullet",
+        text: sentenceStyleCapitalizePublicText(text, "sentence"),
+        citation_anchor_ids: input.citationAnchors
+          .filter((anchor) => anchor.paragraph_index === index)
+          .map((anchor) => anchor.anchor_id),
+      }));
+    }
+  }
+
+  if (BULLET_FRIENDLY_SECTION_KEYS.has(input.sectionKey) && paragraphs.length > 0) {
+    const sentenceLikeItems = paragraphs
+      .flatMap((paragraph) =>
+        paragraph
+          .split(/(?<=[.!?])\s+/)
+          .map((sentence) => sentence.trim())
+          .filter((sentence) => sentence.length > 18),
+      )
+      .slice(0, 20);
+    if (sentenceLikeItems.length >= 3) {
+      return sentenceLikeItems.map((text, index) => ({
+        block_type: "bullet",
+        text: sentenceStyleCapitalizePublicText(text, "sentence"),
+        citation_anchor_ids: input.citationAnchors
+          .filter((anchor) => anchor.paragraph_index === index)
+          .map((anchor) => anchor.anchor_id),
+      }));
+    }
+  }
+
+  return paragraphs.map((text, index) => ({
     block_type: "paragraph",
-    text,
+    text: sentenceStyleCapitalizePublicText(text, "sentence"),
     citation_anchor_ids: input.citationAnchors
       .filter((anchor) => anchor.paragraph_index === index)
       .map((anchor) => anchor.anchor_id),
   }));
 }
 
+export function buildAcademicSectionBlocksForDiagnostics(input: {
+  sectionKey: string;
+  content: string;
+}) {
+  return buildSectionBlocks({
+    sectionKey: input.sectionKey,
+    content: input.content,
+    citationAnchors: [],
+  });
+}
+
+export function buildCitationReferenceLayerForDiagnostics(input: {
+  sectionKey: string;
+  title: string;
+  content: string;
+  sourceRegistry: EvidenceLedger["source_registry"];
+  sourceIds?: string[];
+  secondaryReferenceReport?: SecondaryReferenceCandidatesReport | null;
+}) {
+  const evidenceLedger: EvidenceLedger = {
+    source_registry: input.sourceRegistry,
+    evidence_packs: [],
+    assets: [],
+    assumptions: [],
+    snippets: [],
+    warnings: [],
+  };
+  const sourceLookup = buildSourceLookup(evidenceLedger);
+  const section: RenderSectionInput = {
+    section_key: input.sectionKey,
+    title: input.title,
+    level: 1,
+    content: input.content,
+    source_ids: input.sourceIds ?? input.sourceRegistry.map((source) => source.source_id),
+    evidence_ids: [],
+    original_excerpt_ids: [],
+    asset_keys: [],
+    unsupported_or_cautious_claim_warnings: [],
+    warnings: [],
+  };
+  const citationAnchors = buildCitationAnchors({
+    section,
+    sourceLookup,
+  });
+
+  return {
+    citation_anchors: citationAnchors,
+    blocks: buildSectionBlocks({
+      sectionKey: input.sectionKey,
+      content: input.content,
+      citationAnchors,
+    }),
+    references: resolveReferences({
+      evidenceLedger,
+      preferredSourceIds: section.source_ids,
+      secondaryReferenceReport: input.secondaryReferenceReport,
+    }),
+  };
+}
+
+function getMethodGenerationContract(project: MasterBlueprintEngineProject) {
+  return (project as MasterBlueprintEngineProject & {
+    method_generation_contract?: MethodGenerationContractV1 | null;
+  }).method_generation_contract ?? null;
+}
+
+function getSecondaryReferenceReport(project: MasterBlueprintEngineProject) {
+  return (project as MasterBlueprintEngineProject & {
+    secondary_reference_candidates_report?: SecondaryReferenceCandidatesReport | null;
+  }).secondary_reference_candidates_report ?? null;
+}
+
 function compileSection(input: {
   section: RenderSectionInput;
   sourceLookup: Map<string, EvidenceLedger["source_registry"][number]>;
 }): AcademicSection {
+  const publicSourceIds = filterSourceIdsForPublicSection({
+    sectionKey: input.section.section_key,
+    sourceIds: input.section.source_ids,
+    sourceLookup: input.sourceLookup,
+  });
+  const sectionForCitations = {
+    ...input.section,
+    source_ids: publicSourceIds,
+  };
   const citationAnchors = buildCitationAnchors({
-    section: input.section,
+    section: sectionForCitations,
     sourceLookup: input.sourceLookup,
   });
 
@@ -1198,7 +2044,7 @@ function compileSection(input: {
     section_key: input.section.section_key,
     title: sentenceStyleCapitalizePublicText(input.section.title, "heading"),
     level: input.section.level,
-    source_ids: uniqueItems(input.section.source_ids),
+    source_ids: publicSourceIds,
     evidence_ids: uniqueItems(input.section.evidence_ids),
     original_excerpt_ids: uniqueItems(input.section.original_excerpt_ids),
     asset_keys: uniqueItems(input.section.asset_keys),
@@ -1210,6 +2056,7 @@ function compileSection(input: {
       input.section.unsupported_or_cautious_claim_warnings,
     citation_anchors: citationAnchors,
     blocks: buildSectionBlocks({
+      sectionKey: input.section.section_key,
       content: input.section.content,
       citationAnchors,
     }),
@@ -1221,6 +2068,25 @@ const MASTER_SECTION_KEYS_MERGED_INTO_PARENT = new Set([
   "variables_indicators",
   "categories_subcategories",
 ]);
+
+function childSectionsMergedIntoAvailableParents(sectionKeys: Set<string>) {
+  const merged = new Set(MASTER_SECTION_KEYS_MERGED_INTO_PARENT);
+
+  if (sectionKeys.has("objectives")) {
+    merged.add("general_objective");
+    merged.add("specific_objectives");
+  }
+  if (sectionKeys.has("hypotheses")) {
+    merged.add("general_hypothesis");
+    merged.add("specific_hypotheses");
+  }
+  if (sectionKeys.has("research_questions")) {
+    merged.add("general_research_question");
+    merged.add("specific_research_questions");
+  }
+
+  return merged;
+}
 
 function mergeDraftsForSection(input: {
   primaryDraft: MasterSectionDraft | null;
@@ -1256,15 +2122,101 @@ function mergeDraftsForSection(input: {
   };
 }
 
+function buildControlledLogicContent(input: {
+  sectionKey: string;
+  draftMap: Map<string, MasterSectionDraft>;
+}) {
+  const configs: Record<string, {
+    generalKey: string;
+    specificKey: string;
+    generalLabel: string;
+    specificLabel: string;
+  }> = {
+    objectives: {
+      generalKey: "general_objective",
+      specificKey: "specific_objectives",
+      generalLabel: "Objetivo general",
+      specificLabel: "Objetivos especificos",
+    },
+    hypotheses: {
+      generalKey: "general_hypothesis",
+      specificKey: "specific_hypotheses",
+      generalLabel: "Hipotesis general",
+      specificLabel: "Hipotesis especificas",
+    },
+    research_questions: {
+      generalKey: "general_research_question",
+      specificKey: "specific_research_questions",
+      generalLabel: "Pregunta general",
+      specificLabel: "Preguntas especificas",
+    },
+  };
+  const config = configs[input.sectionKey];
+
+  if (!config) {
+    return null;
+  }
+
+  const parentDraft = input.draftMap.get(input.sectionKey) ?? null;
+  const generalDraft = input.draftMap.get(config.generalKey) ?? null;
+  const specificDraft = input.draftMap.get(config.specificKey) ?? null;
+  const general =
+    firstLogicItem(generalDraft?.content) ??
+    firstLogicItem(parentDraft?.content);
+  const specifics =
+    logicListItems(specificDraft?.content).length > 0
+      ? logicListItems(specificDraft?.content)
+      : logicListItems(parentDraft?.content).filter((item) => item !== general);
+
+  if (!general && specifics.length === 0) {
+    return null;
+  }
+
+  return [
+    general
+      ? `${sentenceStyleCapitalizePublicText(config.generalLabel, "label")}:\n${sentenceStyleCapitalizePublicText(general, "sentence")}`
+      : null,
+    specifics.length > 0
+      ? [
+          `${sentenceStyleCapitalizePublicText(config.specificLabel, "label")}:`,
+          ...specifics.slice(0, 6).map((item, index) => {
+            const prefix =
+              input.sectionKey === "research_questions"
+                ? `P${index + 1}`
+                : input.sectionKey === "objectives"
+                  ? `OE${index + 1}`
+                  : `HE${index + 1}`;
+            return `- ${prefix}: ${sentenceStyleCapitalizePublicText(item, "sentence")}`;
+          }),
+        ].join("\n")
+      : null,
+  ].filter((item): item is string => Boolean(item)).join("\n\n");
+}
+
+function controlledLogicChildKeys(sectionKey: string) {
+  if (sectionKey === "objectives") {
+    return ["general_objective", "specific_objectives"];
+  }
+  if (sectionKey === "hypotheses") {
+    return ["general_hypothesis", "specific_hypotheses"];
+  }
+  if (sectionKey === "research_questions") {
+    return ["general_research_question", "specific_research_questions"];
+  }
+  return [];
+}
+
 function buildMasterSectionInputs(input: {
   masterTemplate: MasterTemplateRuntime;
   drafts: MasterSectionDraft[];
 }): RenderSectionInput[] {
   const draftMap = new Map(input.drafts.map((draft) => [draft.section_key, draft]));
+  const templateKeys = new Set(input.masterTemplate.sections.map((section) => section.semantic_key));
+  const mergedIntoParent = childSectionsMergedIntoAvailableParents(templateKeys);
   const sections: RenderSectionInput[] = [];
 
   for (const templateSection of input.masterTemplate.sections) {
-    if (MASTER_SECTION_KEYS_MERGED_INTO_PARENT.has(templateSection.semantic_key)) {
+    if (mergedIntoParent.has(templateSection.semantic_key)) {
       continue;
     }
 
@@ -1279,35 +2231,55 @@ function buildMasterSectionInputs(input: {
             ].filter((item): item is MasterSectionDraft => Boolean(item)),
           })
         : null;
-    if (!draft && !merged?.content) {
+    const controlledLogicContent = buildControlledLogicContent({
+      sectionKey: templateSection.semantic_key,
+      draftMap,
+    });
+    const controlledLogicMerged = controlledLogicContent
+      ? mergeDraftsForSection({
+          primaryDraft: draft ?? null,
+          mergedDrafts: controlledLogicChildKeys(templateSection.semantic_key)
+            .map((key) => draftMap.get(key))
+            .filter((item): item is MasterSectionDraft => Boolean(item)),
+        })
+      : null;
+    if (!draft && !merged?.content && !controlledLogicContent) {
       continue;
     }
 
     sections.push({
       section_key: templateSection.semantic_key,
       title: templateSection.title || draft?.title || templateSection.semantic_key,
-      content: merged?.content ?? draft?.content ?? "",
+      content: controlledLogicContent ?? merged?.content ?? draft?.content ?? "",
       level: templateSection.level,
       source_ids:
+        controlledLogicMerged?.source_ids ??
         merged?.source_ids ??
         [
           ...(draft?.supported_source_ids ?? []),
           ...(draft?.supported_pdf_source_ids ?? []),
           ...(draft?.supported_web_source_ids ?? []),
         ],
-      evidence_ids: merged?.evidence_ids ?? draft?.used_evidence_ids ?? [],
+      evidence_ids:
+        controlledLogicMerged?.evidence_ids ?? merged?.evidence_ids ?? draft?.used_evidence_ids ?? [],
       original_excerpt_ids:
-        merged?.original_excerpt_ids ?? draft?.used_original_excerpt_ids ?? [],
-      asset_keys: merged?.asset_keys ?? draft?.used_asset_keys ?? [],
+        controlledLogicMerged?.original_excerpt_ids ??
+        merged?.original_excerpt_ids ??
+        draft?.used_original_excerpt_ids ??
+        [],
+      asset_keys: controlledLogicMerged?.asset_keys ?? merged?.asset_keys ?? draft?.used_asset_keys ?? [],
       evidence_support_summary:
+        controlledLogicMerged?.evidence_support_summary ??
         merged?.evidence_support_summary ?? draft?.evidence_support_summary,
       section_evidence_binding:
+        controlledLogicMerged?.section_evidence_binding ??
         merged?.section_evidence_binding ?? draft?.section_evidence_binding,
       unsupported_or_cautious_claim_warnings:
+        controlledLogicMerged?.unsupported_or_cautious_claim_warnings ??
         merged?.unsupported_or_cautious_claim_warnings ??
         draft?.unsupported_or_cautious_claim_warnings ??
         [],
-      warnings: merged?.warnings ?? draft?.warnings ?? [],
+      warnings: controlledLogicMerged?.warnings ?? merged?.warnings ?? draft?.warnings ?? [],
     });
   }
 
@@ -1364,8 +2336,26 @@ function compileAssetPlacements(input: {
   const assetsByCompositeKey = new Map(
     input.evidenceLedger.assets.map((asset) => [`${asset.source_id}|${asset.asset_key}`, asset]),
   );
+  const plannedIdentities = new Set(
+    input.consolidatedAssetUsagePlan.map((plannedAsset) =>
+      `${String(plannedAsset.source_id ?? "unknown-source").trim()}|${String(plannedAsset.asset_key ?? "asset").trim()}`,
+    ),
+  );
+  const technicalAssetSupplements = input.evidenceLedger.assets
+    .filter((asset) => asset.kind === "equation" || asset.kind === "table")
+    .filter((asset) => !plannedIdentities.has(`${asset.source_id}|${asset.asset_key}`))
+    .map((asset) => ({
+      asset_key: asset.asset_key,
+      source_id: asset.source_id,
+      section_key: asset.kind === "equation" ? "theoretical_framework" : "methodology",
+      usage_reason: asset.caption ?? asset.title,
+    }));
+  const plannedAssets = [
+    ...input.consolidatedAssetUsagePlan,
+    ...technicalAssetSupplements,
+  ].slice(0, 40);
 
-  return input.consolidatedAssetUsagePlan.slice(0, 30).map((plannedAsset): AssetPlacement => {
+  return plannedAssets.map((plannedAsset): AssetPlacement => {
     const assetKey = String(plannedAsset.asset_key ?? "asset").trim();
     const plannedSourceId = String(plannedAsset.source_id ?? "unknown-source").trim();
     const ledgerAsset =
@@ -1383,7 +2373,7 @@ function compileAssetPlacements(input: {
       section_key: sectionKey,
       placement: renderMode === "image" ? "after_paragraph" : "annex",
       paragraph_anchor: renderMode === "image" ? 0 : null,
-      caption: ledgerAsset?.caption ?? String(plannedAsset.usage_reason ?? "Asset de soporte metodologico."),
+      caption: ledgerAsset?.caption ?? String(plannedAsset.usage_reason ?? "Apoyo visual de soporte metodológico."),
       render_mode: renderMode,
       renderable: Boolean(ledgerAsset?.file_path),
       file_path: ledgerAsset?.file_path ?? null,
@@ -1427,6 +2417,15 @@ function buildAcademicDocument(input: {
     evidenceLedger: input.evidenceLedger,
     consolidatedAssetUsagePlan: input.consolidatedAssetUsagePlan,
   });
+  const usedSourceIds = uniqueItems([
+    ...sections.flatMap((section) => section.source_ids),
+    ...sections.flatMap((section) =>
+      section.citation_anchors.flatMap((anchor) => anchor.source_ids),
+    ),
+    ...assetPlacements.map((asset) => asset.source_id),
+    ...input.evidenceLedger.evidence_packs.map((pack) => pack.source_id),
+    ...input.evidenceLedger.assets.map((asset) => asset.source_id),
+  ]);
   const reportArchetype = resolveReportArchetype(input.variant);
   const editorialPlan = buildEditorialPlan({
     variant: input.variant,
@@ -1436,7 +2435,9 @@ function buildAcademicDocument(input: {
     variant: input.variant,
     universityBlueprint: input.universityBlueprint ?? null,
   });
+  const methodContract = getMethodGenerationContract(input.project);
   const methodSummary =
+    methodContract?.method_summary_for_generation ||
     cleanAcademicText(input.project.intake?.preferredMethodology) ||
     sectionTextForKey(sections, [/method/i, /metodolog/i, /design/i, /diseno/i]) ||
     null;
@@ -1459,6 +2460,7 @@ function buildAcademicDocument(input: {
         .countryContext ??
       "PE",
     knowledge_area_label: input.project.topicAreaLabel,
+    keywords: methodContract?.keyword_terms ?? null,
   });
   const metadataTitle = sentenceStyleCapitalizePublicText(enforcedMetadata.final_title, "title");
   const shortHeaderTitle = sentenceStyleCapitalizePublicText(
@@ -1475,9 +2477,10 @@ function buildAcademicDocument(input: {
     sections,
     assetPlacements,
     sourceLookup,
+    mainBodySectionKeys: editorialPlan.main_body_section_keys,
   });
 
-  return {
+  const document: AcademicDocument = {
     artifact_type: "academic_document_model",
     artifact_version: "v1",
     variant: input.variant,
@@ -1490,8 +2493,8 @@ function buildAcademicDocument(input: {
       short_header_title: shortHeaderTitle,
       keywords_line: keywordsLine,
       subtitle: sentenceStyleCapitalizePublicText(input.subtitle, "sentence"),
-      university: input.project.university,
-      program: input.project.program,
+      university: sentenceStyleCapitalizePublicText(input.project.university, "label"),
+      program: sentenceStyleCapitalizePublicText(input.project.program, "label"),
       generated_at: new Date().toISOString(),
     },
     branding,
@@ -1504,7 +2507,11 @@ function buildAcademicDocument(input: {
     sections,
     matrix: input.matrixArtifact,
     matrix_layout: buildMatrixLayout(input.matrixArtifact),
-    references: resolveReferences(input.evidenceLedger),
+    references: resolveReferences({
+      evidenceLedger: input.evidenceLedger,
+      preferredSourceIds: usedSourceIds,
+      secondaryReferenceReport: getSecondaryReferenceReport(input.project),
+    }),
     asset_placements: assetPlacements,
     qa_policy: {
       require_landscape_matrix: true,
@@ -1521,6 +2528,8 @@ function buildAcademicDocument(input: {
       ...layoutPlan.warnings,
     ]),
   };
+
+  return normalizeAcademicDocumentPublicFields(document);
 }
 
 export function buildMasterAcademicDocument(input: {

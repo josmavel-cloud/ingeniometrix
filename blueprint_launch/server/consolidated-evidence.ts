@@ -4,6 +4,17 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { getConfiguredLlmProvider } from "@/llm";
+import {
+  citationCategoryToLabAEligibility,
+  citationCategoryToLabAUnitType,
+  classifyEvidenceCitation,
+  isTrueSourceBackedDirectQuote,
+  summarizeCitationSemantics,
+} from "@/server/blueprint-engine/quality/citation-semantics";
+import {
+  classifySourceHealth,
+  summarizeSourceHealth,
+} from "@/server/blueprint-engine/quality/source-health";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 
 import type {
@@ -555,16 +566,73 @@ function buildSourcePriorities(signalExtraction: BlueprintLaunchSignalExtraction
 
       const priority = score >= 8 ? "alta" : score >= 5 ? "media" : "baja";
       const reason = `relevancia=${source.topicRelevance}; utilidad=${source.proposalUsefulness}; input=${source.inputMode}; snippets=${source.snippetCount}; assets=${source.assetCount}; metodos=${source.methodologyHints.length}; frameworks=${source.frameworkHints.length}`;
+      const sourceHealthClassification = classifySourceHealth({
+        source_id: source.sourceId,
+        title: source.title,
+        source_input_mode: source.inputMode,
+        text_char_count: source.textCharCount,
+        chunk_count: source.sourceChunkCount,
+        asset_count: source.assetCount,
+        topic_relevance: source.topicRelevance,
+        proposal_usefulness: source.proposalUsefulness,
+        source_priority_reason: reason,
+        warnings: source.warnings,
+      });
 
       return {
         source_id: source.sourceId,
         title: source.title,
         priority,
         reason,
+        input_mode: source.inputMode,
+        text_char_count: source.textCharCount,
+        source_chunk_count: source.sourceChunkCount,
+        asset_count: source.assetCount,
+        topic_relevance: source.topicRelevance,
+        proposal_usefulness: source.proposalUsefulness,
+        source_health_classification: sourceHealthClassification,
         numericScore: score,
       } satisfies SourcePriorityInfo;
     })
     .sort((left, right) => right.numericScore - left.numericScore);
+}
+
+function buildLabASourceHealthSummary(params: {
+  sourceSignalExtraction: BlueprintLaunchSignalExtractionResult;
+  sourcePriorities: SourcePriorityInfo[];
+  evidenceUnits: ConsolidatedEvidenceUnit[];
+}) {
+  const priorityBySourceId = new Map(
+    params.sourcePriorities.map((source) => [source.source_id, source]),
+  );
+  const directEvidenceCountBySourceId = new Map<string, number>();
+
+  for (const unit of params.evidenceUnits) {
+    if (!isTrueSourceBackedDirectQuote(unit)) continue;
+    directEvidenceCountBySourceId.set(
+      unit.source_id,
+      (directEvidenceCountBySourceId.get(unit.source_id) ?? 0) + 1,
+    );
+  }
+
+  const classifications = params.sourceSignalExtraction.sources.map((source) => {
+    const priority = priorityBySourceId.get(source.sourceId);
+    return classifySourceHealth({
+      source_id: source.sourceId,
+      title: source.title,
+      source_input_mode: source.inputMode,
+      text_char_count: source.textCharCount,
+      chunk_count: source.sourceChunkCount,
+      direct_evidence_unit_count: directEvidenceCountBySourceId.get(source.sourceId) ?? 0,
+      asset_count: source.assetCount,
+      topic_relevance: source.topicRelevance,
+      proposal_usefulness: source.proposalUsefulness,
+      source_priority_reason: priority?.reason,
+      warnings: source.warnings,
+    });
+  });
+
+  return summarizeSourceHealth(classifications, params.evidenceUnits);
 }
 
 function buildSignalUnits(params: {
@@ -614,9 +682,24 @@ function buildEvidenceUnits(input: {
 
     for (const snippet of pack.snippets) {
       const sectionKeys = normalizeSectionKeys(snippet.section_hint_keys);
-      const unitType =
+      const fallbackUnitType =
         snippet.extraction_kind === "interpreted_signal" ? "interpreted_signal" : "original_excerpt";
       const text = snippet.original_text ?? snippet.text;
+      const citationCategory = classifyEvidenceCitation({
+        evidence_id: `snippet:${snippet.snippet_id}`,
+        snippet_id: snippet.snippet_id,
+        source_id: pack.source_id,
+        unit_type: fallbackUnitType,
+        extraction_kind: snippet.extraction_kind,
+        label: snippet.label,
+        original_text: text,
+        source_chunk_id: snippet.source_chunk_id ?? null,
+        source_input_mode: source?.inputMode ?? null,
+        quote_hash: snippet.quote_hash ?? null,
+        page_start: snippet.page_start ?? snippet.page_number ?? null,
+        char_start: snippet.char_start ?? null,
+      });
+      const unitType = citationCategoryToLabAUnitType(citationCategory, fallbackUnitType);
 
       units.push({
         evidence_id: `snippet:${snippet.snippet_id}`,
@@ -636,7 +719,7 @@ function buildEvidenceUnits(input: {
         asset_path: null,
         caption: null,
         original_language: snippet.original_language ?? language,
-        citation_eligibility: unitType === "original_excerpt" ? "direct_quote" : "paraphrase_only",
+        citation_eligibility: citationCategoryToLabAEligibility(citationCategory),
         confidence: snippet.confidence,
         relevance_score: snippet.relevance_score ?? null,
       });
@@ -781,7 +864,7 @@ function buildSectionEvidenceMap(evidenceUnits: ConsolidatedEvidenceUnit[]) {
       if (unit.citation_eligibility === "direct_quote") {
         section.directQuoteCount += 1;
       }
-      if (["original_excerpt", "interpreted_signal", "intake_context"].includes(unit.unit_type)) {
+      if (["original_excerpt", "interpreted_signal", "metadata_context", "intake_context"].includes(unit.unit_type)) {
         section.textUnitCount += 1;
       }
       if (["image", "table", "equation"].includes(unit.unit_type)) {
@@ -1131,23 +1214,23 @@ function buildFallbackStrategy(sectionReadinessMap: ConsolidatedEvidenceSectionR
   const criteria = sectionReadinessMap.find((item) => item.section_key === "evaluation_criteria");
 
   return {
-    dominant_methods: ["Revision documental de literatura recuperada", "Evaluacion multicriterio como ruta candidata"],
-    dominant_frameworks: ["Adaptive reuse de edificaciones existentes", "Sostenibilidad y decision-making en entorno construido"],
+    dominant_methods: ["Revision documental de literatura recuperada", "Metodo aplicado pendiente de validacion"],
+    dominant_frameworks: ["Marco teorico derivado del corpus recuperado", "Criterios academicos pendientes de consolidacion"],
     key_findings: [],
     evidence_gaps: weakSections
       .map((item) => `${item.section_key}: ${item.missing_elements.join(" ")}`)
       .slice(0, 10),
     proposal_directions: [
-      "Evaluar la aplicacion de una tecnica multicriterio para orientar decisiones de reutilizacion adaptativa.",
-      "Usar el corpus recuperado para fundamentar criterios, variables y limites antes de redactar secciones.",
+      "Usar el corpus recuperado para fundamentar el problema, metodo, variables y limites antes de redactar secciones.",
+      "Declarar como pendiente cualquier tecnica, modelo o teoria que no este respaldada por evidencia directa.",
     ],
     proposal_method_candidate: {
-      method_family: criteria?.asset_count ? "Evaluacion multicriterio / MCDM" : "Revision documental aplicada",
+      method_family: criteria?.asset_count ? "Metodo aplicado con apoyo de criterios o activos tecnicos" : "Revision documental aplicada",
       research_design: methodology?.readiness === "alta" ? "Investigacion aplicada con soporte documental" : "Diseno exploratorio-documental con validacion pendiente",
       application_scope_status: criteria?.asset_count ? "parcial" : "debil",
-      candidate_techniques: criteria?.asset_count ? ["AHP", "matriz multicriterio", "analisis comparativo de criterios"] : [],
+      candidate_techniques: criteria?.asset_count ? ["tecnica a confirmar con evidencia", "analisis comparativo de criterios"] : [],
       selection_rationale: [
-        "La evidencia recuperada incluye criterios, tablas, marcos y/o ecuaciones asociadas a decisiones de adaptive reuse.",
+        "La evidencia recuperada incluye criterios, tablas, marcos, modelos o ecuaciones que pueden orientar una tecnica candidata.",
       ],
       evidence_support_level: criteria?.asset_count ? "medio" : "bajo",
       missing_validations: uniqueNonEmpty(
@@ -1156,10 +1239,10 @@ function buildFallbackStrategy(sectionReadinessMap: ConsolidatedEvidenceSectionR
       ),
     },
     proposal_framework_candidate: {
-      core_framework: "Adaptive reuse de edificaciones existentes",
-      supporting_frameworks: ["decision-making multicriterio", "sostenibilidad del entorno construido"],
+      core_framework: "Marco teorico pendiente de seleccion con evidencia directa",
+      supporting_frameworks: ["criterios derivados del corpus recuperado", "contexto disciplinar declarado por el intake"],
       selection_rationale: [
-        "Las fuentes se concentran en reutilizacion adaptativa, vacancia/subutilizacion, sostenibilidad y criterios de decision.",
+        "Las fuentes recuperadas deben usarse para identificar conceptos, teorias, modelos y limites sin importar temas previos.",
       ],
       missing_validations: uniqueNonEmpty(
         weakSections.flatMap((item) => item.missing_elements),
@@ -1535,9 +1618,8 @@ function buildContextPreservationContract(params: {
   evidenceUnits: ConsolidatedEvidenceUnit[];
   handoffManifest: ConsolidatedEvidenceDownstreamHandoffManifest;
 }): ConsolidatedEvidenceContextPreservationContract {
-  const directQuoteCount = params.evidenceUnits.filter(
-    (unit) => unit.citation_eligibility === "direct_quote",
-  ).length;
+  const citationSummary = summarizeCitationSemantics(params.evidenceUnits);
+  const directQuoteCount = citationSummary.true_source_backed_direct_quote_count;
   const assetReferenceCount = params.evidenceUnits.filter(
     (unit) => unit.citation_eligibility === "asset_reference",
   ).length;
@@ -1555,6 +1637,11 @@ function buildContextPreservationContract(params: {
     full_text_char_count: params.sourceSignalExtraction.totalTextCharCount,
     evidence_unit_count: params.evidenceUnits.length,
     direct_quote_count: directQuoteCount,
+    reported_direct_quote_count: citationSummary.reported_direct_quote_count,
+    true_source_backed_direct_quote_count: citationSummary.true_source_backed_direct_quote_count,
+    metadata_context_count: citationSummary.metadata_context_count,
+    intake_context_count: citationSummary.intake_context_count,
+    citation_semantics_warnings: citationSummary.citation_semantics_warnings,
     asset_reference_count: assetReferenceCount,
     preserved_path_count: params.handoffManifest.read_only_input_paths.length,
     hydration_notes_es: [
@@ -1579,7 +1666,7 @@ function buildQualityComparisonSnapshot(
     return {
       section_key: dossier.section_key,
       evidence_unit_count: dossierUnits.length,
-      direct_quote_count: dossierUnits.filter((unit) => unit.citation_eligibility === "direct_quote").length,
+      direct_quote_count: dossierUnits.filter((unit) => isTrueSourceBackedDirectQuote(unit)).length,
       asset_count: dossier.useful_assets.length,
       missing_evidence_count: dossier.missing_evidence.length,
       claim_count: dossier.claim_candidates.length,
@@ -1590,7 +1677,7 @@ function buildQualityComparisonSnapshot(
     generated_at: artifact.generated_at ?? null,
     artifact_path: artifact.artifact_path ?? null,
     evidence_unit_count: units.length,
-    direct_quote_count: units.filter((unit) => unit.citation_eligibility === "direct_quote").length,
+    direct_quote_count: units.filter((unit) => isTrueSourceBackedDirectQuote(unit)).length,
     asset_reference_count: units.filter((unit) => unit.citation_eligibility === "asset_reference").length,
     interpreted_signal_count: units.filter((unit) => unit.citation_eligibility === "paraphrase_only").length,
     source_count: sourceIds.size,
@@ -1739,6 +1826,14 @@ export async function consolidateBlueprintLaunchEvidence(input: {
   const evidenceUnits = buildEvidenceUnits(input).sort(
     (left, right) => unitSortScore(right, sourcePriorityMap) - unitSortScore(left, sourcePriorityMap),
   );
+  const citationSemanticsSummary = summarizeCitationSemantics(evidenceUnits);
+  const sourceHealthSummary = buildLabASourceHealthSummary({
+    sourceSignalExtraction: input.sourceSignalExtraction,
+    sourcePriorities,
+    evidenceUnits,
+  });
+  const secondaryReferenceRecoveryQueue =
+    input.evidencePacksArtifact.secondary_reference_recovery_queue ?? null;
   const evidenceUnitIds = new Set(evidenceUnits.map((unit) => unit.evidence_id));
   const assetKeys = new Set(evidenceUnits.map((unit) => unit.asset_key).filter((value): value is string => Boolean(value)));
   const sectionMap = buildSectionEvidenceMap(evidenceUnits);
@@ -1973,6 +2068,9 @@ export async function consolidateBlueprintLaunchEvidence(input: {
       optional: uniqueNonEmpty(strategyPlan.followup_requirements.optional, 12),
     },
     evidence_units: evidenceUnits,
+    citation_semantics_summary: citationSemanticsSummary,
+    source_health_summary: sourceHealthSummary,
+    secondary_reference_recovery_queue: secondaryReferenceRecoveryQueue,
     section_dossiers: sectionDossiers,
     methodology_decision_packet: strategyPlan.proposal_method_candidate,
     framework_decision_packet: strategyPlan.proposal_framework_candidate,
@@ -1982,7 +2080,15 @@ export async function consolidateBlueprintLaunchEvidence(input: {
     quality_gate: qualityGate,
     context_preservation_contract: contextPreservationContract,
     quality_comparison: undefined,
-    warnings: uniqueNonEmpty(warnings, 30),
+    warnings: uniqueNonEmpty(
+      [
+        ...warnings,
+        ...citationSemanticsSummary.citation_semantics_warnings,
+        ...sourceHealthSummary.source_health_warnings,
+        ...(secondaryReferenceRecoveryQueue?.warnings ?? []),
+      ],
+      40,
+    ),
   };
   artifact.quality_comparison = buildQualityComparison({
     baseline: previousArtifact,

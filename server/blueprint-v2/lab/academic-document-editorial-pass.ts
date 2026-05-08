@@ -7,6 +7,7 @@ import type {
 } from "@/server/blueprint-v2/lab/academic-document-model";
 import { cleanAcademicText } from "@/server/blueprint-v2/lab/academic-document-compiler";
 import { buildAcademicEditorialPolicy } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
+import { sentenceStyleCapitalizePublicText } from "@/server/blueprint-v2/editorial/capitalization-hygiene";
 import { clipText } from "@/server/blueprint-v2/utils";
 
 type LlmEditorialSection = {
@@ -218,9 +219,14 @@ function applyResponseToDocument(input: {
     const revisedContent = cleanAcademicText(operation?.revised_content);
     const canApply = Boolean(revisedContent) && words(revisedContent) >= 25;
 
+    const revisedTitle = cleanAcademicText(operation?.revised_title);
+    const publicRevisedTitle = revisedTitle
+      ? sentenceStyleCapitalizePublicText(revisedTitle, "heading")
+      : null;
+
     sectionOperations.push({
       section_key: section.section_key,
-      revised_title: cleanAcademicText(operation?.revised_title) || null,
+      revised_title: publicRevisedTitle,
       applied: canApply,
       operation_summary:
         cleanAcademicText(operation?.operation_summary) ||
@@ -234,7 +240,7 @@ function applyResponseToDocument(input: {
 
     return {
       ...section,
-      title: cleanAcademicText(operation?.revised_title) || section.title,
+      title: publicRevisedTitle || section.title,
       blocks: blocksFromRevisedContent({
         section,
         revisedContent,

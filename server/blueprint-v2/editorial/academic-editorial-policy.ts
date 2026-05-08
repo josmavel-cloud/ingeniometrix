@@ -58,8 +58,52 @@ export type EnforcedEditorialMetadata = {
   keywords_line: string;
   keyword_count: number;
   title_changed: boolean;
+  thesis_title_contract: ThesisTitleContractV1;
   warnings: string[];
   editorial_policy_extra_llm_calls: 0;
+};
+
+export type ThesisTitleCandidateV1 = {
+  title: string;
+  pattern:
+    | "method_object_problem_scope"
+    | "problem_method_scope"
+    | "method_scope_problem"
+    | "fallback_refined";
+  score: number;
+  component_coverage: {
+    method_or_strategy: boolean;
+    object_of_study: boolean;
+    problem: boolean;
+    scope_or_application: boolean;
+    context: boolean;
+  };
+  warnings: string[];
+};
+
+export type ThesisTitleContractV1 = {
+  artifact_type: "thesis_title_contract";
+  artifact_version: "v1";
+  components: {
+    problem: string | null;
+    method_or_strategy: string | null;
+    object_of_study: string | null;
+    scope_or_application: string | null;
+    context: string | null;
+  };
+  final_title: string;
+  short_header_title: string;
+  candidates: ThesisTitleCandidateV1[];
+  validation: {
+    passed: boolean;
+    required_component_count: number;
+    covered_component_count: number;
+    no_dangling_fragment: boolean;
+    no_repeated_bridge: boolean;
+    title_word_count: number;
+    warnings: string[];
+  };
+  warnings: string[];
 };
 
 export type EditorialBudgetEnforcementResult = {
@@ -149,12 +193,122 @@ function uniqueNonEmpty(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.map(cleanText).filter(Boolean)));
 }
 
+function singularComparableToken(value: string) {
+  return value
+    .replace(/ciones$/i, "cion")
+    .replace(/iones$/i, "ion")
+    .replace(/es$/i, "")
+    .replace(/s$/i, "");
+}
+
+function titleTokenOverlap(left: string | null | undefined, right: string | null | undefined) {
+  const leftTokens = normalize(left)
+    .split(/\s+/)
+    .map(singularComparableToken)
+    .filter((token) => token.length >= 4);
+  const rightTokens = normalize(right)
+    .split(/\s+/)
+    .map(singularComparableToken)
+    .filter((token) => token.length >= 4);
+  if (leftTokens.length === 0 || rightTokens.length === 0) {
+    return 0;
+  }
+  const rightSet = new Set(rightTokens);
+  const shared = leftTokens.filter((token) => rightSet.has(token)).length;
+  return shared / Math.max(1, Math.min(leftTokens.length, rightTokens.length));
+}
+
 function words(value: string) {
   return cleanText(value).split(/\s+/).filter(Boolean);
 }
 
 function trimToWords(value: string, maxWords: number) {
-  return words(value).slice(0, maxWords).join(" ");
+  return words(value)
+    .slice(0, maxWords)
+    .join(" ")
+    .replace(/\s+(de|del|la|el|en|para|con|y|o|a)$/i, "")
+    .trim();
+}
+
+const TITLE_DANGLING_FRAGMENT_PATTERN =
+  /\b(de|del|de la|para|con|y|o|e|en|en la|en el|mediante|segun|segun la|por|sobre|entre|hacia|ante|frente a)\s*$/i;
+
+const TITLE_WEAK_TAIL_PATTERN =
+  /\b(con|de|del|para|en|entre)\s+(uno|dos|tres|cuatro|cinco|varios|varias|diversos|diversas|multiples|diferentes|determinados?|ciertos?)\s*$/i;
+
+function hasDanglingTitleFragment(value: string) {
+  const trimmed = cleanText(value).replace(/[,:;/-]+$/g, "").trim();
+  return (
+    trimmed.length > 0 &&
+    (TITLE_DANGLING_FRAGMENT_PATTERN.test(trimmed) ||
+      TITLE_WEAK_TAIL_PATTERN.test(trimmed) ||
+      /\b(en tiempo|en tiempo de|en funcion de|a partir de)\s*$/i.test(trimmed))
+  );
+}
+
+function trimTitleComponent(value: string | null | undefined, maxWords: number) {
+  const originalWords = words(cleanText(value));
+  if (originalWords.length === 0) {
+    return "";
+  }
+
+  let kept = originalWords.slice(0, maxWords).join(" ");
+  for (let attempt = 0; attempt < 4 && hasDanglingTitleFragment(kept); attempt += 1) {
+    const next = words(kept).slice(0, -1).join(" ");
+    if (!next || words(next).length < 2) {
+      break;
+    }
+    kept = next;
+  }
+
+  return kept
+    .replace(/\s+(de|del|la|el|en|para|con|y|o|a)$/i, "")
+    .replace(/[,:;/-]+$/g, "")
+    .trim();
+}
+
+function removeNearDuplicateScope(object: string, scope: string) {
+  if (!object || !scope) {
+    return scope;
+  }
+
+  const objectTokens = normalize(object)
+    .split(/\s+/)
+    .filter((token) => token.length >= 5);
+  const normalizedScope = normalize(scope);
+  const objectTokenHits = objectTokens.filter((token) => normalizedScope.includes(token)).length;
+
+  if (objectTokens.length > 0 && objectTokenHits / objectTokens.length >= 0.5) {
+    return "";
+  }
+
+  return scope;
+}
+
+function hasRepeatedTitleBridge(value: string) {
+  const normalized = normalize(value);
+  return (
+    /\bpara\b(?:\s+\w+){0,6}\s+\bpara\b/.test(normalized) ||
+    /\ben\b(?:\s+\w+){0,6}\s+\ben\b/.test(normalized) ||
+    /\bante\b(?:\s+\w+){0,5}\s+\bante\b/.test(normalized)
+  );
+}
+
+function titleIncludesComponent(title: string, component: string | null | undefined) {
+  const normalizedTitle = normalize(title);
+  const normalizedComponent = normalize(component);
+  if (!normalizedComponent) {
+    return false;
+  }
+  const componentTokens = normalizedComponent
+    .split(/\s+/)
+    .map(singularComparableToken)
+    .filter((token) => token.length >= 5);
+  if (componentTokens.length === 0) {
+    return normalizedTitle.includes(normalizedComponent);
+  }
+  const hits = componentTokens.filter((token) => normalizedTitle.includes(token)).length;
+  return hits / componentTokens.length >= 0.5;
 }
 
 function splitSentences(value: string) {
@@ -162,6 +316,58 @@ function splitSentences(value: string) {
     .split(/(?<=[.!?])\s+|\n+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+const INCOMPLETE_ENDING_PATTERN =
+  /\b(de|del|de la|para|con|y|o|e|en|en la|en el|que|como|mediante|segun|segun la|a traves de|de modo|por medio de)\s*$/i;
+
+function ensureTerminalPunctuation(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
+export function hasIncompleteAcademicEnding(value: string) {
+  const trimmed = cleanText(value).replace(/[,:;]+$/g, "").trim();
+
+  return (
+    trimmed.length > 0 &&
+    (INCOMPLETE_ENDING_PATTERN.test(trimmed) ||
+      /[([{¿¡]$/.test(trimmed) ||
+      /-\s*$/.test(trimmed))
+  );
+}
+
+function trimLineByCompleteSentences(line: string, maxWords: number) {
+  const lineWords = words(line);
+  if (lineWords.length <= maxWords) {
+    return { text: line.trim(), usedWords: lineWords.length, wasSafe: true };
+  }
+
+  const sentenceCandidates = splitSentences(line);
+  const kept: string[] = [];
+  let usedWords = 0;
+
+  for (const sentence of sentenceCandidates) {
+    const sentenceWords = words(sentence);
+    if (sentenceWords.length === 0) {
+      continue;
+    }
+    if (usedWords + sentenceWords.length > maxWords) {
+      break;
+    }
+    kept.push(ensureTerminalPunctuation(sentence));
+    usedWords += sentenceWords.length;
+  }
+
+  if (kept.length === 0) {
+    return { text: "", usedWords: 0, wasSafe: false };
+  }
+
+  return { text: kept.join(" "), usedWords, wasSafe: true };
 }
 
 function keywordize(value: string) {
@@ -178,7 +384,7 @@ function firstSentenceOrClause(value: string, maxWords = 12) {
   return trimToWords(text, maxWords);
 }
 
-function extractMethodTerms(value: string | null | undefined) {
+function extractMethodTerms(value: string | null | undefined, allowLooseFallback = false) {
   const text = normalize(value);
   const original = cleanText(value);
   const candidates: string[] = [];
@@ -207,7 +413,7 @@ function extractMethodTerms(value: string | null | undefined) {
     }
   }
 
-  if (candidates.length === 0) {
+  if (candidates.length === 0 && allowLooseFallback) {
     const fallback = firstSentenceOrClause(original, 8);
     if (fallback && words(fallback).length <= 8) {
       candidates.push(fallback);
@@ -235,15 +441,20 @@ function extractMethodTerms(value: string | null | undefined) {
 }
 
 function extractObjectTerms(value: string | null | undefined) {
-  const text = cleanText(value)
+  const raw = cleanText(value);
+  const objectAfterPurpose = raw.match(/\bpara\s+([^.;,]+?)(?:\s+para\s+|\s+en\s+|\s+orientad[oa]\s+|\.$|$)/i)?.[1];
+  const source = objectAfterPurpose && words(objectAfterPurpose).length >= 3 ? objectAfterPurpose : raw;
+  const text = cleanText(source)
     .replace(/^uso y evaluacion de\s+/i, "")
+    .replace(/^diseno de\s+/i, "")
     .replace(/^evaluacion de(l| la| los| las)?\s+/i, "")
     .replace(/^analisis de(l| la| los| las)?\s+/i, "")
     .replace(/\s+ubicados?.*$/i, "")
+    .replace(/\s+utilizadas?.*$/i, "")
     .replace(/\s+para\s+identificar.*$/i, "")
     .trim();
 
-  return trimToWords(text, 8);
+  return trimToWords(text, 10);
 }
 
 function extractScopeTerms(value: string | null | undefined) {
@@ -252,25 +463,54 @@ function extractScopeTerms(value: string | null | undefined) {
     .replace(/\s+de uso\s+.*$/i, "")
     .trim();
 
-  return trimToWords(text, 8);
+  return trimTitleComponent(text, 12);
 }
 
 function extractProblemTerms(value: string | null | undefined) {
   const text = normalize(value);
-  if (text.includes("alta sismicidad") || text.includes("amenaza sismica")) {
-    return "alta amenaza sismica";
-  }
-  if (text.includes("demanda sismica")) {
-    return "reduccion de demanda sismica";
-  }
-  if (text.includes("adherencia")) {
-    return "baja adherencia";
-  }
-  if (text.includes("deteccion temprana")) {
-    return "deteccion temprana";
+  if (!text) return "";
+
+  const original = cleanText(value);
+  const directGap = original.match(/\b(brechas?\s+de\s+[^.;,]+?)(?:\s+y\s+|\s+que\s+|\s+requiere|\s+requieren|[.;,]|$)/i)?.[1];
+  if (directGap) {
+    return trimToWords(directGap, 7);
   }
 
-  return firstSentenceOrClause(value ?? "", 8);
+  const verifiableNeed = original.match(/\b(requiere(?:n)?\s+criterios\s+[^.;,]+?)(?:[.;,]|$)/i)?.[1];
+  if (verifiableNeed) {
+    return trimToWords(verifiableNeed.replace(/^requiere(n)?\s+/i, "necesidad de "), 8);
+  }
+
+  const raw = firstSentenceOrClause(value ?? "", 10)
+    .replace(/^(los|las|el|la)\s+[^,.;]{4,40}\s+requieren\s+/i, "necesidad de ")
+    .replace(/^(se requiere|requiere|requieren)\s+/i, "necesidad de ")
+    .replace(/\s+capaces?\s+de\s+/i, " para ");
+  return trimToWords(raw, 8);
+}
+
+function isUsableTitleProblem(value: string) {
+  const normalized = normalize(value);
+  if (!normalized) {
+    return false;
+  }
+
+  if (words(value).length < 3) {
+    return false;
+  }
+
+  if (
+    /^necesidad de (equipos|sistemas|herramientas|instrumentos|recursos|procesos|procedimientos) para\b/.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+
+  if (/\bpara (analizar|evaluar|disenar|diseñar|reproducir|validar|implementar|medir)$/.test(normalized)) {
+    return false;
+  }
+
+  return true;
 }
 
 function isGenericKeyword(value: string) {
@@ -367,47 +607,234 @@ export function buildTitleReformulationInstruction(input: AcademicTitleInput) {
   ].join("\n");
 }
 
-export function suggestAcademicTitle(input: AcademicTitleInput) {
-  const method = extractMethodTerms(input.method_or_technique);
-  const object = extractObjectTerms(input.object_of_study || input.current_title);
+function buildThesisTitleComponents(input: AcademicTitleInput) {
+  const methodFromObject = extractMethodTerms(input.object_of_study) || extractMethodTerms(input.current_title);
+  const methodFromInput = extractMethodTerms(input.method_or_technique, true);
+  const method = trimTitleComponent(methodFromObject || methodFromInput, 10);
+  let object = extractObjectTerms(input.object_of_study || input.current_title);
   const scopeCandidate = extractScopeTerms(input.scope_or_sample);
-  const scope =
-    scopeCandidate &&
-    normalize(object)
-      .split(/\s+/)
-      .filter((token) => token.length >= 5)
-      .some((token) => normalize(scopeCandidate).includes(token))
-      ? ""
-      : scopeCandidate;
-  const problem = extractProblemTerms(input.problem_or_purpose);
+  let scope = removeNearDuplicateScope(object, scopeCandidate);
+  if (object && scopeCandidate && titleTokenOverlap(object, scopeCandidate) >= 0.5) {
+    object = scopeCandidate;
+    scope = "";
+  }
+  const extractedProblem = extractProblemTerms(input.problem_or_purpose);
+  const problem = isUsableTitleProblem(extractedProblem)
+    ? trimTitleComponent(extractedProblem, 12)
+    : "";
   const country = normalize(input.country_context) === "pe" ? "en el contexto peruano" : "";
 
-  const core = uniqueNonEmpty([
-    method ? `${method} para evaluar ${object || "el objeto de estudio"}` : object,
-    scope ? `en ${scope}` : null,
-    problem ? `ante ${problem}` : null,
-    country,
-  ]).join(" ");
+  return {
+    problem: problem || null,
+    method_or_strategy: method || null,
+    object_of_study: object || null,
+    scope_or_application: scope || null,
+    context: country || null,
+  };
+}
 
-  return trimToWords(core || cleanText(input.current_title) || "Titulo academico por precisar", 24);
+function normalizeTitleCandidate(value: string) {
+  return cleanText(value)
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\b(para)\s+\1\b/gi, "$1")
+    .replace(/\b(en)\s+\1\b/gi, "$1")
+    .replace(/[,:;/-]+$/g, "")
+    .trim();
+}
+
+function makeTitleCoverage(
+  title: string,
+  components: ThesisTitleContractV1["components"],
+): ThesisTitleCandidateV1["component_coverage"] {
+  return {
+    method_or_strategy: titleIncludesComponent(title, components.method_or_strategy),
+    object_of_study: titleIncludesComponent(title, components.object_of_study),
+    problem: titleIncludesComponent(title, components.problem),
+    scope_or_application: titleIncludesComponent(title, components.scope_or_application),
+    context: titleIncludesComponent(title, components.context),
+  };
+}
+
+function scoreTitleCandidate(
+  title: string,
+  pattern: ThesisTitleCandidateV1["pattern"],
+  components: ThesisTitleContractV1["components"],
+  currentTitle: string,
+): ThesisTitleCandidateV1 {
+  const normalizedTitle = normalizeTitleCandidate(title);
+  const coverage = makeTitleCoverage(normalizedTitle, components);
+  const titleWords = words(normalizedTitle).length;
+  const warnings = [
+    !coverage.method_or_strategy && components.method_or_strategy ? "missing_method_or_strategy" : null,
+    !coverage.problem && components.problem ? "missing_problem" : null,
+    !coverage.object_of_study && components.object_of_study ? "missing_object_of_study" : null,
+    !coverage.scope_or_application && components.scope_or_application ? "missing_scope_or_application" : null,
+    hasDanglingTitleFragment(normalizedTitle) ? "dangling_title_fragment" : null,
+    hasRepeatedTitleBridge(normalizedTitle) ? "repeated_title_bridge" : null,
+    normalize(normalizedTitle) === normalize(currentTitle) ? "copied_from_input_title" : null,
+    titleWords > 34 ? "title_too_long" : null,
+    titleWords < 9 ? "title_too_short" : null,
+  ].filter((warning): warning is string => Boolean(warning));
+
+  const score =
+    (coverage.method_or_strategy ? 25 : 0) +
+    (coverage.object_of_study ? 20 : 0) +
+    (coverage.problem ? 25 : 0) +
+    (coverage.scope_or_application ? 15 : 0) +
+    (coverage.context ? 5 : 0) -
+    (warnings.includes("dangling_title_fragment") ? 45 : 0) -
+    (warnings.includes("repeated_title_bridge") ? 30 : 0) -
+    (warnings.includes("copied_from_input_title") ? 20 : 0) -
+    (warnings.includes("title_too_long") ? 8 : 0) -
+    (warnings.includes("title_too_short") ? 8 : 0);
+
+  return {
+    title: normalizedTitle,
+    pattern,
+    score,
+    component_coverage: coverage,
+    warnings,
+  };
+}
+
+function buildShortHeaderFromTitleComponents(components: ThesisTitleContractV1["components"]) {
+  const candidate = uniqueNonEmpty([
+    components.method_or_strategy || "Enfoque aplicado",
+    components.object_of_study || components.scope_or_application || "objeto de estudio",
+  ]).join(" para ");
+
+  return trimTitleComponent(candidate, 12) || "Enfoque aplicado";
+}
+
+export function buildThesisTitleContract(input: AcademicTitleInput): ThesisTitleContractV1 {
+  const components = buildThesisTitleComponents(input);
+  const method = components.method_or_strategy ?? "Analisis academico";
+  const object = components.object_of_study ?? components.scope_or_application ?? "objeto de estudio";
+  const scope = components.scope_or_application;
+  const problem = components.problem;
+  const context = components.context;
+  const currentTitle = cleanText(input.current_title);
+
+  const rawCandidates = [
+    {
+      pattern: "method_object_problem_scope" as const,
+      title: uniqueNonEmpty([
+        `${method} para ${object}`,
+        scope ? `en ${scope}` : null,
+        problem ? `ante ${problem}` : null,
+        context,
+      ]).join(" "),
+    },
+    {
+      pattern: "problem_method_scope" as const,
+      title: uniqueNonEmpty([
+        problem ? `${problem}: ${method}` : method,
+        scope || object ? `para ${scope || object}` : null,
+        context,
+      ]).join(" "),
+    },
+    {
+      pattern: "method_scope_problem" as const,
+      title: uniqueNonEmpty([
+        `${method} aplicado a ${scope || object}`,
+        problem ? `para abordar ${problem}` : null,
+        context,
+      ]).join(" "),
+    },
+    {
+      pattern: "fallback_refined" as const,
+      title:
+        currentTitle && normalize(currentTitle) !== normalize(object)
+          ? currentTitle
+          : uniqueNonEmpty([method, object, problem, context]).join(" "),
+    },
+  ];
+
+  const candidates = rawCandidates
+    .map((candidate) =>
+      scoreTitleCandidate(candidate.title, candidate.pattern, components, currentTitle),
+    )
+    .filter((candidate, index, all) =>
+      all.findIndex((other) => normalize(other.title) === normalize(candidate.title)) === index,
+    )
+    .sort((left, right) => right.score - left.score);
+
+  const selected = candidates[0] ?? scoreTitleCandidate(
+    currentTitle || "Titulo academico por precisar",
+    "fallback_refined",
+    components,
+    currentTitle,
+  );
+  const finalTitle = trimTitleComponent(selected.title, 34) || selected.title;
+  const finalCoverage = makeTitleCoverage(finalTitle, components);
+  const availableComponents = [
+    components.method_or_strategy ? "method_or_strategy" : null,
+    components.problem ? "problem" : null,
+    components.object_of_study ? "object_of_study" : null,
+    components.scope_or_application ? "scope_or_application" : null,
+  ].filter(Boolean);
+  const coveredComponentCount = [
+    finalCoverage.method_or_strategy && components.method_or_strategy,
+    finalCoverage.problem && components.problem,
+    finalCoverage.object_of_study && components.object_of_study,
+    finalCoverage.scope_or_application && components.scope_or_application,
+  ].filter(Boolean).length;
+  const requiredComponentCount = Math.min(3, availableComponents.length);
+  const noDanglingFragment = !hasDanglingTitleFragment(finalTitle);
+  const noRepeatedBridge = !hasRepeatedTitleBridge(finalTitle);
+  const validationWarnings = [
+    coveredComponentCount < requiredComponentCount
+      ? "title_component_coverage_below_contract"
+      : null,
+    !noDanglingFragment ? "dangling_title_fragment" : null,
+    !noRepeatedBridge ? "repeated_title_bridge" : null,
+    normalize(finalTitle) === normalize(currentTitle) ? "final_title_unchanged_from_input" : null,
+  ].filter((warning): warning is string => Boolean(warning));
+
+  return {
+    artifact_type: "thesis_title_contract",
+    artifact_version: "v1",
+    components,
+    final_title: finalTitle,
+    short_header_title: buildShortHeaderFromTitleComponents(components),
+    candidates,
+    validation: {
+      passed:
+        coveredComponentCount >= requiredComponentCount &&
+        noDanglingFragment &&
+        noRepeatedBridge,
+      required_component_count: requiredComponentCount,
+      covered_component_count: coveredComponentCount,
+      no_dangling_fragment: noDanglingFragment,
+      no_repeated_bridge: noRepeatedBridge,
+      title_word_count: words(finalTitle).length,
+      warnings: validationWarnings,
+    },
+    warnings: uniqueNonEmpty([
+      ...validationWarnings,
+      ...selected.warnings.map((warning) => `selected_candidate:${warning}`),
+    ]),
+  };
+}
+
+export function suggestAcademicTitle(input: AcademicTitleInput) {
+  const contract = buildThesisTitleContract(input);
+
+  return contract.final_title;
 }
 
 export function buildShortHeaderTitle(input: AcademicTitleInput) {
-  const method = extractMethodTerms(input.method_or_technique);
-  const object = extractObjectTerms(input.object_of_study || input.current_title);
-  const candidate = uniqueNonEmpty([
-    method || "Enfoque aplicado",
-    object || "objeto de estudio",
-  ]).join(" para ");
+  const contract = buildThesisTitleContract(input);
 
-  return trimToWords(candidate, 12);
+  return contract.short_header_title;
 }
 
 export function buildKeywordsLine(input: AcademicTitleInput & {
   keywords?: string[] | null;
   knowledge_area_label?: string | null;
 }) {
-  const method = extractMethodTerms(input.method_or_technique);
+  const method = extractMethodTerms(input.method_or_technique, true);
   const object = extractObjectTerms(input.object_of_study);
   const scope = extractScopeTerms(input.scope_or_sample);
   const problem = extractProblemTerms(input.problem_or_purpose);
@@ -421,7 +848,7 @@ export function buildKeywordsLine(input: AcademicTitleInput & {
     normalize(input.country_context) === "pe" ? "contexto peruano" : null,
   ])
     .map(keywordize)
-    .filter((item) => words(item).length <= 8);
+    .filter((item) => words(item).length <= 10);
   const specificCandidates = rawCandidates.filter((item) => !isGenericKeyword(item));
   const candidates =
     specificCandidates.length >= 4
@@ -449,11 +876,9 @@ export function buildEnforcedAcademicMetadata(
     knowledge_area_label?: string | null;
   },
 ): EnforcedEditorialMetadata {
-  const finalTitle = suggestAcademicTitle(input);
-  const shortMethodTitle = buildShortHeaderTitle({
-    ...input,
-    current_title: finalTitle,
-  });
+  const titleContract = buildThesisTitleContract(input);
+  const finalTitle = titleContract.final_title;
+  const shortMethodTitle = titleContract.short_header_title;
   const keywordsLine = buildKeywordsLine({
     ...input,
     current_title: finalTitle,
@@ -483,6 +908,7 @@ export function buildEnforcedAcademicMetadata(
       .every(isGenericKeyword)
       ? "keywords_are_generic_only"
       : null,
+    ...titleContract.warnings.map((warning) => `title_contract:${warning}`),
   ].filter((warning): warning is string => Boolean(warning));
 
   return {
@@ -491,6 +917,7 @@ export function buildEnforcedAcademicMetadata(
     keywords_line: keywordsLine,
     keyword_count: keywordCount,
     title_changed: normalize(finalTitle) !== normalize(currentTitle),
+    thesis_title_contract: titleContract,
     warnings,
     editorial_policy_extra_llm_calls: 0,
   };
@@ -525,6 +952,8 @@ export function enforceEditorialWordBudget(input: {
   const lines = input.content.split(/\r?\n/);
   const keptLines: string[] = [];
   let remaining = maxWords;
+  let droppedPartialLine = false;
+
   for (const line of lines) {
     const lineWords = words(line);
     if (lineWords.length === 0) {
@@ -541,10 +970,27 @@ export function enforceEditorialWordBudget(input: {
       remaining -= lineWords.length;
       continue;
     }
-    keptLines.push(lineWords.slice(0, remaining).join(" ").replace(/[,:;]+$/g, "."));
+    const trimmedLine = trimLineByCompleteSentences(line, remaining);
+    if (trimmedLine.text && !hasIncompleteAcademicEnding(trimmedLine.text)) {
+      keptLines.push(trimmedLine.text);
+      remaining -= trimmedLine.usedWords;
+    } else {
+      droppedPartialLine = true;
+    }
     remaining = 0;
   }
   const trimmedContent = keptLines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+
+  if (!trimmedContent) {
+    return {
+      content: input.content,
+      original_word_count: originalWords.length,
+      final_word_count: originalWords.length,
+      trimmed: false,
+      safe_to_trim: false,
+      warnings: ["over_budget_not_trimmed_to_avoid_incomplete_fragment"],
+    };
+  }
 
   return {
     content: trimmedContent,
@@ -554,7 +1000,8 @@ export function enforceEditorialWordBudget(input: {
     safe_to_trim: true,
     warnings: [
       `editorial_word_budget_trimmed:${originalWords.length}->${words(trimmedContent).length}`,
-    ],
+      droppedPartialLine ? "partial_line_dropped_to_preserve_sentence_integrity" : "",
+    ].filter(Boolean),
   };
 }
 

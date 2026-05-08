@@ -2,6 +2,7 @@ import {
   buildAcademicEditorialPolicy,
   buildKeywordsLine,
   buildShortHeaderTitle,
+  buildThesisTitleContract,
   buildTitleReformulationInstruction,
   inspectAcademicEditorialPolicy,
   recommendedContentKindForSection,
@@ -34,6 +35,15 @@ const titleInput = {
 
 const titleInstruction = buildTitleReformulationInstruction(titleInput);
 const suggestedTitle = suggestAcademicTitle(titleInput);
+const titleContract = buildThesisTitleContract(titleInput);
+const weakProblemTitle = suggestAcademicTitle({
+  current_title: "Diseno aplicado de un sistema academico",
+  method_or_technique: "validacion basada en modelo",
+  object_of_study: "sistema de evaluacion de desempeno",
+  scope_or_sample: "organizaciones de servicios",
+  problem_or_purpose: "Se requiere equipos para reproducir",
+  country_context: "PE",
+});
 const shortHeader = buildShortHeaderTitle(titleInput);
 const keywordsLine = buildKeywordsLine({
   ...titleInput,
@@ -78,12 +88,26 @@ const tests: TestResult[] = [
     suggestedTitle,
   ),
   assertTest(
+    "title contract selects among scored candidates",
+    titleContract.candidates.length >= 3 &&
+      titleContract.candidates[0].score >= titleContract.candidates.at(-1)!.score &&
+      titleContract.validation.passed &&
+      titleContract.validation.covered_component_count >= 3,
+    JSON.stringify(titleContract.validation),
+  ),
+  assertTest(
     "short header is method-focused and not arbitrary truncation",
     wordCount(shortHeader) <= 12 &&
       shortHeader.includes("analisis comparativo") &&
       shortHeader.includes("adherencia") &&
       shortHeader !== titleInput.current_title.slice(0, shortHeader.length),
     shortHeader,
+  ),
+  assertTest(
+    "weak or incomplete problem phrase is not forced into title",
+    !weakProblemTitle.includes("necesidad de equipos para reproducir") &&
+      weakProblemTitle.includes("validacion basada en modelo"),
+    weakProblemTitle,
   ),
   assertTest(
     "keywords are one line with 4-7 semicolon-separated items",
@@ -134,4 +158,3 @@ console.log(`\nAcademic editorial policy tests: ${tests.length - failed.length}/
 if (failed.length > 0) {
   process.exitCode = 1;
 }
-

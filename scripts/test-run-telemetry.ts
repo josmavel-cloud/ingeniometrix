@@ -1,6 +1,8 @@
 import {
   buildCoarseStepTelemetry,
+  buildExactStepTelemetry,
   buildRunTelemetryArtifact,
+  StepTimer,
 } from "@/server/blueprint-engine/quality/run-telemetry";
 
 type TestResult = { name: string; passed: boolean; detail?: string };
@@ -63,6 +65,54 @@ async function main() {
       assert(telemetry.totals.call_count === 3, `total calls was ${telemetry.totals.call_count}`);
       assert(telemetry.totals.duration_ms === 3000, `duration was ${telemetry.totals.duration_ms}`);
       assert(telemetry.totals.warning_count === 4, `warnings were ${telemetry.totals.warning_count}`);
+      assert(
+        telemetry.timing_granularity === "coarse_allocated" &&
+          /Coarse telemetry/.test(telemetry.timing_note),
+        `timing metadata was ${telemetry.timing_granularity}: ${telemetry.timing_note}`,
+      );
+    }),
+    runTest("exact step telemetry preserves measured spans", () => {
+      const telemetry = buildExactStepTelemetry({
+        run_id: "run-1",
+        spans: [
+          {
+            pipeline_stage: "evidence_engine",
+            step_id: "step_2_source_access_resolution",
+            step_name: "Step 2 source access resolution",
+            started_at: "2026-05-05T00:00:00.000Z",
+            completed_at: "2026-05-05T00:00:01.250Z",
+            duration_ms: 1250,
+            usage_delta: { calls: 0, inputTokens: 0, cachedInputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, costCad: 0 },
+          },
+          {
+            pipeline_stage: "evidence_engine",
+            step_id: "step_3_evidence_planning",
+            step_name: "Step 3 evidence planning",
+            started_at: "2026-05-05T00:00:01.250Z",
+            completed_at: "2026-05-05T00:00:02.000Z",
+            duration_ms: 750,
+            usage_delta: usage,
+          },
+        ],
+        warning_count: 1,
+      });
+      assert(telemetry.timing_granularity === "exact", `granularity was ${telemetry.timing_granularity}`);
+      assert(telemetry.totals.duration_ms === 2000, `duration was ${telemetry.totals.duration_ms}`);
+      assert(telemetry.totals.call_count === 3, `calls were ${telemetry.totals.call_count}`);
+      assert(telemetry.steps[1]?.duration_ms === 750, `step duration was ${telemetry.steps[1]?.duration_ms}`);
+      assert(telemetry.totals.warning_count === 1, `warnings were ${telemetry.totals.warning_count}`);
+    }),
+    runTest("StepTimer records an exact span", () => {
+      const timer = new StepTimer();
+      const handle = timer.startStep({
+        pipeline_stage: "blueprint_engine",
+        step_id: "step_7_import_context",
+      });
+      const span = timer.completeStep(handle, { warning_count: 2 });
+      assert(span.step_id === "step_7_import_context", `step id was ${span.step_id}`);
+      assert(span.started_at !== null && span.completed_at !== null, "timestamps missing");
+      assert(typeof span.duration_ms === "number" && span.duration_ms >= 0, `duration was ${span.duration_ms}`);
+      assert(timer.getSpans().length === 1, `span count was ${timer.getSpans().length}`);
     }),
   ]);
 

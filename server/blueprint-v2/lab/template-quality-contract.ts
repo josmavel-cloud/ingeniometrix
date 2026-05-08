@@ -117,10 +117,6 @@ function isSpanishLanguage(value: string | null) {
   return normalized === "es" || normalized === "es-pe" || normalized.includes("spanish");
 }
 
-function hasAnySemanticKey(entry: TemplateRuntimeInspectionEntry, keys: readonly string[]) {
-  return keys.some((key) => entry.sections.semantic_keys.includes(key));
-}
-
 function missingKeys(entry: TemplateRuntimeInspectionEntry, keys: readonly string[]) {
   return keys.filter((key) => !entry.sections.semantic_keys.includes(key));
 }

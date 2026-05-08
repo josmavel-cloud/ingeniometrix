@@ -330,7 +330,6 @@ export function summarizeSourceHealth(
   classifications: SourceHealthClassification[],
   evidenceUnits: Array<{ source_id: string; citation_eligibility?: string; claim_scope?: string }> = [],
 ): SourceHealthSummary {
-  const bySource = new Map(classifications.map((source) => [source.source_id, source]));
   const directEvidenceSources = new Set(
     evidenceUnits
       .filter(
@@ -428,7 +427,6 @@ export function summarizeSourceHealthFromHandoff(handoff: EvidenceEngineHandoffV
   const classifications = handoff.source_registry.map((source) => {
     const priority = priorities.get(source.source_id) ?? {};
     const rawHealth = rawSourceHealth(source.citation_metadata.raw);
-    const unitCount = evidenceUnits.filter((unit) => unit.source_id === source.source_id).length;
     const directCount = evidenceUnits.filter(
       (unit) => unit.source_id === source.source_id && isDirectEvidence(unit),
     ).length;

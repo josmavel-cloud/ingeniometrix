@@ -80,6 +80,8 @@ export type StepTelemetryArtifact = {
   artifact_version: "v1";
   generated_at: string;
   run_id: string;
+  timing_granularity: "exact" | "coarse_allocated";
+  timing_note: string;
   steps: RunTelemetryStep[];
   totals: {
     duration_ms: number | null;
@@ -96,6 +98,28 @@ export type StepTelemetryArtifact = {
   };
 };
 
+export type StepTelemetrySpan = {
+  pipeline_stage: RunTelemetryStep["pipeline_stage"];
+  step_id: string;
+  step_name: string;
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  usage_delta?: unknown;
+  model_names?: string[];
+  source_count?: number | null;
+  usable_full_text_source_count?: number | null;
+  evidence_unit_count?: number | null;
+  reduced_evidence_unit_count?: number | null;
+  direct_quote_count?: number | null;
+  section_count?: number | null;
+  docx_qa_score?: number | null;
+  production_eligible?: boolean | null;
+  diagnostic_compatible?: boolean | null;
+  warning_count?: number;
+  blocker_count?: number;
+};
+
 export const EMPTY_RUN_TELEMETRY_USAGE: RunTelemetryUsageTotals = {
   calls: 0,
   inputTokens: 0,
@@ -105,6 +129,69 @@ export const EMPTY_RUN_TELEMETRY_USAGE: RunTelemetryUsageTotals = {
   costUsd: 0,
   costCad: 0,
 };
+
+export class StepTimer {
+  private spans: StepTelemetrySpan[] = [];
+
+  startStep(input: {
+    pipeline_stage: RunTelemetryStep["pipeline_stage"];
+    step_id: string;
+    step_name?: string;
+  }) {
+    return {
+      pipeline_stage: input.pipeline_stage,
+      step_id: input.step_id,
+      step_name: input.step_name ?? input.step_id.replace(/^step_/, "Step ").replace(/_/g, " "),
+      started_at: new Date().toISOString(),
+    };
+  }
+
+  completeStep(
+    handle: ReturnType<StepTimer["startStep"]>,
+    details: Omit<
+      Partial<StepTelemetrySpan>,
+      "pipeline_stage" | "step_id" | "step_name" | "started_at" | "completed_at" | "duration_ms"
+    > = {},
+  ) {
+    const completedAt = new Date().toISOString();
+    const elapsed = durationMs(handle.started_at, completedAt) ?? 0;
+    const span: StepTelemetrySpan = {
+      pipeline_stage: handle.pipeline_stage,
+      step_id: handle.step_id,
+      step_name: handle.step_name,
+      started_at: handle.started_at,
+      completed_at: completedAt,
+      duration_ms: elapsed,
+      ...details,
+    };
+    this.spans.push(span);
+    return span;
+  }
+
+  async measure<T>(
+    input: {
+      pipeline_stage: RunTelemetryStep["pipeline_stage"];
+      step_id: string;
+      step_name?: string;
+    },
+    fn: () => Promise<T> | T,
+    details: () => Omit<
+      Partial<StepTelemetrySpan>,
+      "pipeline_stage" | "step_id" | "step_name" | "started_at" | "completed_at" | "duration_ms"
+    > = () => ({}),
+  ): Promise<T> {
+    const handle = this.startStep(input);
+    try {
+      return await fn();
+    } finally {
+      this.completeStep(handle, details());
+    }
+  }
+
+  getSpans() {
+    return this.spans.slice();
+  }
+}
 
 function roundMoney(value: number) {
   return Math.round(value * 1_000_000) / 1_000_000;
@@ -205,6 +292,8 @@ export function buildRunTelemetryArtifact(input: {
 export function buildStepTelemetryArtifact(input: {
   run_id: string;
   steps: RunTelemetryStep[];
+  timing_granularity?: StepTelemetryArtifact["timing_granularity"];
+  timing_note?: string;
 }): StepTelemetryArtifact {
   const durationValues = input.steps
     .map((step) => step.duration_ms)
@@ -219,6 +308,10 @@ export function buildStepTelemetryArtifact(input: {
     artifact_version: "v1",
     generated_at: new Date().toISOString(),
     run_id: input.run_id,
+    timing_granularity: input.timing_granularity ?? "exact",
+    timing_note:
+      input.timing_note ??
+      "Step durations are recorded from per-step timing spans when available.",
     steps: input.steps,
     totals: {
       duration_ms: durationTotal,
@@ -238,6 +331,63 @@ export function buildStepTelemetryArtifact(input: {
       blocker_count: input.steps.reduce((sum, step) => sum + step.blocker_count, 0),
     },
   };
+}
+
+export function buildExactStepTelemetry(input: {
+  run_id: string;
+  spans: StepTelemetrySpan[];
+  source_count?: number | null;
+  usable_full_text_source_count?: number | null;
+  evidence_unit_count?: number | null;
+  reduced_evidence_unit_count?: number | null;
+  direct_quote_count?: number | null;
+  section_count?: number | null;
+  docx_qa_score?: number | null;
+  production_eligible?: boolean | null;
+  diagnostic_compatible?: boolean | null;
+  warning_count?: number;
+  blocker_count?: number;
+  model_names?: string[];
+}): StepTelemetryArtifact {
+  return buildStepTelemetryArtifact({
+    run_id: input.run_id,
+    timing_granularity: "exact",
+    timing_note:
+      "Step durations are recorded from exact per-step spans; token/cost deltas are attached when provider usage snapshots were available for the step.",
+    steps: input.spans.map((span, index) => {
+      const usage = normalizeUsageDelta(span.usage_delta);
+      return {
+        pipeline_stage: span.pipeline_stage,
+        step_id: span.step_id,
+        step_name: span.step_name,
+        started_at: span.started_at,
+        completed_at: span.completed_at,
+        duration_ms: span.duration_ms,
+        openai_called: usage.calls > 0,
+        model_names: span.model_names ?? input.model_names ?? [],
+        call_count: usage.calls,
+        input_tokens: usage.inputTokens,
+        cached_input_tokens: usage.cachedInputTokens,
+        output_tokens: usage.outputTokens,
+        total_tokens: usage.totalTokens,
+        estimated_cost_usd: roundMoney(usage.costUsd),
+        estimated_cost_cad: roundMoney(usage.costCad),
+        source_count: span.source_count ?? input.source_count ?? null,
+        usable_full_text_source_count:
+          span.usable_full_text_source_count ?? input.usable_full_text_source_count ?? null,
+        evidence_unit_count: span.evidence_unit_count ?? input.evidence_unit_count ?? null,
+        reduced_evidence_unit_count:
+          span.reduced_evidence_unit_count ?? input.reduced_evidence_unit_count ?? null,
+        direct_quote_count: span.direct_quote_count ?? input.direct_quote_count ?? null,
+        section_count: span.section_count ?? input.section_count ?? null,
+        docx_qa_score: span.docx_qa_score ?? input.docx_qa_score ?? null,
+        production_eligible: span.production_eligible ?? input.production_eligible ?? null,
+        diagnostic_compatible: span.diagnostic_compatible ?? input.diagnostic_compatible ?? null,
+        warning_count: span.warning_count ?? (index === input.spans.length - 1 ? input.warning_count ?? 0 : 0),
+        blocker_count: span.blocker_count ?? (index === input.spans.length - 1 ? input.blocker_count ?? 0 : 0),
+      };
+    }),
+  });
 }
 
 export function buildCoarseStepTelemetry(input: {
@@ -278,6 +428,9 @@ export function buildCoarseStepTelemetry(input: {
 
   return buildStepTelemetryArtifact({
     run_id: input.run_id,
+    timing_granularity: "coarse_allocated",
+    timing_note:
+      "Coarse telemetry allocates total run duration and usage evenly across completed steps; use for comparison, not precise performance profiling.",
     steps: input.completed_steps.map((step, index) => ({
       pipeline_stage: input.pipeline_stage,
       step_id: step,

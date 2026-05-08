@@ -8,8 +8,6 @@ import type {
   AssetHandoffRecord,
   EvidenceEngineHandoffV1,
   EvidenceUnitHandoffRecord,
-  JsonValue,
-  SectionPacketHandoffRecord,
   SourceHandoffRecord,
 } from "@/server/blueprint-engine/contracts";
 import { summarizeCitationSemantics } from "@/server/blueprint-engine/quality/citation-semantics";
@@ -24,8 +22,8 @@ import {
 } from "@/server/blueprint-engine/quality/source-health";
 import { readLlmUsageRegistry, type LlmUsageTotals } from "@/server/llm-usage-registry";
 
-export const METHOD_SELECTION_PROMPT_VERSION = "method_selection_prompt.v1";
-const METHOD_SELECTION_CACHE_VERSION = "method_selection_cache.v1";
+export const METHOD_SELECTION_PROMPT_VERSION = "method_selection_prompt.v2";
+const METHOD_SELECTION_CACHE_VERSION = "method_selection_cache.v2";
 const DEFAULT_METHOD_SELECTION_CACHE_ROOT = path.join(
   process.cwd(),
   "artifacts-local",
@@ -557,18 +555,6 @@ function sourceHealthById(sourceHealth: SourceHealthSummary) {
   return new Map(sourceHealth.sources.map((source) => [source.source_id, source]));
 }
 
-function sourceById(handoff: EvidenceEngineHandoffV1) {
-  return new Map(handoff.source_registry.map((source) => [source.source_id, source]));
-}
-
-function evidenceById(handoff: EvidenceEngineHandoffV1) {
-  return new Map(handoff.evidence_units.map((unit) => [unit.evidence_id, unit]));
-}
-
-function assetByKey(handoff: EvidenceEngineHandoffV1) {
-  return new Map(handoff.asset_registry.map((asset) => [asset.asset_key, asset]));
-}
-
 function secondarySummaryFromSource(source: SourceHandoffRecord) {
   const raw = asRecord(source.citation_metadata.raw);
   return clip(
@@ -577,7 +563,7 @@ function secondarySummaryFromSource(source: SourceHandoffRecord) {
       asString(raw.abstract_text) ??
       asString(raw.summary) ??
       asString(raw.description),
-    850,
+    360,
   );
 }
 
@@ -765,7 +751,7 @@ export function buildMethodSelectionEvidenceContext(input: {
       return false;
     })
     .sort((left, right) => right.relevance - left.relevance || right.reduced.score - left.reduced.score)
-    .slice(0, 48);
+    .slice(0, 24);
 
   const reducedUnits: MethodSelectionEvidenceUnitContextV1[] = scoredUnits.map((entry) => {
     const health = entry.health ?? {
@@ -797,8 +783,8 @@ export function buildMethodSelectionEvidenceContext(input: {
           : priority === "secondary"
             ? "cautious_or_asset_method_relevant_evidence"
             : "demoted_context_only_or_weak_evidence",
-      text_excerpt: clip(entry.unit.original_text ?? entry.unit.caption, 900),
-      summary_es: clip(entry.unit.summary_es, 600),
+      text_excerpt: clip(entry.unit.original_text ?? entry.unit.caption, 480),
+      summary_es: clip(entry.unit.summary_es, 320),
       asset_key: entry.unit.asset_key ?? null,
       score: entry.relevance + entry.reduced.score,
     };
@@ -823,16 +809,16 @@ export function buildMethodSelectionEvidenceContext(input: {
         methodRelevanceScore({ sectionKeys: [packet.section_key], text: joined }) >= 16
       );
     })
-    .slice(0, 24)
+    .slice(0, 12)
     .map((packet): MethodSelectionSectionPacketContextV1 => ({
       section_key: packet.section_key,
       readiness: packet.readiness,
-      summary: clip(packet.summary, 500),
-      evidence_ids: packet.evidence_ids.filter((id) => relevantEvidenceIds.has(id)).slice(0, 12),
-      source_ids: packet.source_ids.filter((id) => relevantSourceIds.has(id)).slice(0, 12),
-      key_points: packet.key_points.map((item) => clip(item, 240)).filter(Boolean) as string[],
-      missing_elements: packet.missing_elements.map((item) => clip(item, 220)).filter(Boolean) as string[],
-      do_not_claim: packet.do_not_claim.map((item) => clip(item, 220)).filter(Boolean) as string[],
+      summary: clip(packet.summary, 280),
+      evidence_ids: packet.evidence_ids.filter((id) => relevantEvidenceIds.has(id)).slice(0, 8),
+      source_ids: packet.source_ids.filter((id) => relevantSourceIds.has(id)).slice(0, 8),
+      key_points: packet.key_points.map((item) => clip(item, 160)).filter(Boolean).slice(0, 6) as string[],
+      missing_elements: packet.missing_elements.map((item) => clip(item, 160)).filter(Boolean).slice(0, 6) as string[],
+      do_not_claim: packet.do_not_claim.map((item) => clip(item, 160)).filter(Boolean).slice(0, 6) as string[],
     }));
 
   const sourceContexts = input.handoff.source_registry
@@ -847,9 +833,9 @@ export function buildMethodSelectionEvidenceContext(input: {
       const health = sourceHealthMap.get(source.source_id);
       return {
         source_id: source.source_id,
-        title: clip(source.title, 240) ?? "",
+        title: clip(source.title, 160) ?? "",
         year: source.year,
-        venue: clip(source.venue, 160),
+        venue: clip(source.venue, 120),
         abstract_or_secondary_summary: secondarySummaryFromSource(source),
         source_health: health?.source_health ?? "unknown",
         topic_fit: health?.topic_fit ?? "unknown",
@@ -870,15 +856,15 @@ export function buildMethodSelectionEvidenceContext(input: {
         asset.asset_kind === "table"
       );
     })
-    .slice(0, 18)
+    .slice(0, 12)
     .map((asset): MethodSelectionAssetContextV1 => ({
       asset_key: asset.asset_key,
       source_id: asset.source_id,
       asset_kind: asset.asset_kind,
-      title: clip(asset.title, 180),
-      caption: clip(asset.caption, 360),
-      text_content: clip(asset.text_content, 500),
-      latex: clip(asset.latex, 500),
+      title: clip(asset.title, 140),
+      caption: clip(asset.caption, 220),
+      text_content: clip(asset.text_content, 260),
+      latex: clip(asset.latex, 260),
       citation_eligibility: asset.citation_eligibility,
       recommended_section_keys: asset.recommended_section_keys,
     }));
@@ -901,13 +887,13 @@ export function buildMethodSelectionEvidenceContext(input: {
       degree_level: input.handoff.project_context.degree_level,
       knowledge_area_label: clip(input.handoff.project_context.academic_program, 180),
       template_key: input.handoff.project_context.target_template_key ?? null,
-      topic_summary: clip(input.handoff.project_context.topic, 280),
-      problem_summary: clip(input.handoff.project_context.problem_context, 500),
-      research_line_summary: clip(input.handoff.project_context.research_line, 240),
-      population_or_context_summary: clip(input.handoff.project_context.population_or_context, 240),
+      topic_summary: clip(input.handoff.project_context.topic, 220),
+      problem_summary: clip(input.handoff.project_context.problem_context, 320),
+      research_line_summary: clip(input.handoff.project_context.research_line, 180),
+      population_or_context_summary: clip(input.handoff.project_context.population_or_context, 180),
     },
     intake_weak_prior: {
-      methodology_preference: clip(input.handoff.project_context.methodology_preference, 280),
+      methodology_preference: clip(input.handoff.project_context.methodology_preference, 220),
       available_data: null,
       constraints: clip(input.handoff.project_context.constraints, 320),
       advisor_or_user_notes: clip(input.handoff.project_context.advisor_or_user_notes, 300),
@@ -1968,8 +1954,8 @@ function llmOutputJsonSchema(): Record<string, unknown> {
           "warnings",
         ],
         properties: {
-          artifact_is_read_only: { const: true },
-          do_not_feed_generation_yet: { const: true },
+          artifact_is_read_only: { type: "boolean", const: true },
+          do_not_feed_generation_yet: { type: "boolean", const: true },
           claim_ceiling: { type: "string" },
           planned_vs_executed_rule: { type: "string" },
           no_invented_requirements_rule: { type: "string" },
@@ -1989,7 +1975,7 @@ function llmOutputJsonSchema(): Record<string, unknown> {
           "weak_evidence_penalties",
         ],
         properties: {
-          score_version: { const: "method_fit_score.v1" },
+          score_version: { type: "string", const: "method_fit_score.v1" },
           winning_score: { type: ["number", "null"] },
           confidence: { enum: ["high", "medium", "low", "blocked", "unknown"] },
           score_explanation: stringArray,
@@ -2079,6 +2065,7 @@ async function writeCache(input: {
 function resolveModel() {
   return (
     process.env.METHOD_SELECTION_MODEL?.trim() ||
+    process.env.LLM_FAST_MODEL?.trim() ||
     process.env.LLM_MODEL_HIGH?.trim() ||
     process.env.LLM_DEFAULT_MODEL?.trim() ||
     null

@@ -74,6 +74,7 @@ function handoff(): EvidenceEngineHandoffV1 {
     unit({ evidence_id: "b-meta", source_id: "source-b", section_keys: ["problem_statement"], unit_type: "context_only", citation_eligibility: "not_citable", claim_scope: "do_not_claim", quote_hash: null, char_start: null }),
     unit({ evidence_id: "c-adjacent", source_id: "source-c", section_keys: ["theoretical_framework"], citation_eligibility: "paraphrase_only", claim_scope: "background_context" }),
     unit({ evidence_id: "d-method", source_id: "source-d", section_keys: ["methodology"] }),
+    unit({ evidence_id: "d-theory", source_id: "source-d", section_keys: ["theoretical_framework"] }),
   ];
 
   return {
@@ -134,7 +135,48 @@ function handoff(): EvidenceEngineHandoffV1 {
       { source_id: "source-c", source_health_classification: { source_id: "source-c", source_health: "usable_full_text", topic_fit: "adjacent", allowed_evidence_use: "cautious_support" } },
       { source_id: "source-d", source_health_classification: { source_id: "source-d", source_health: "usable_full_text", topic_fit: "direct", allowed_evidence_use: "direct_claim_support" } },
     ],
-    asset_registry: [],
+    asset_registry: [
+      {
+        asset_key: "direct-equation",
+        source_id: "source-d",
+        asset_kind: "equation",
+        title: "Ecuacion metodologica",
+        caption: "Ecuacion fuente para el metodo actual",
+        page_number: 4,
+        text_content: "$$y = f(x)$$",
+        latex: "y = f(x)",
+        file_ref: null,
+        mime_type: null,
+        width_px: null,
+        height_px: null,
+        content_hash: "asset-hash-1",
+        extraction_origin: "pdf_native",
+        citation_eligibility: "asset_reference",
+        recommended_section_keys: ["methodology"],
+        usage_reason: "method_review",
+        handling_notes: [],
+      },
+      {
+        asset_key: "adjacent-equation",
+        source_id: "source-c",
+        asset_kind: "equation",
+        title: "Ecuacion adyacente",
+        caption: "Ecuacion solo contextual",
+        page_number: 5,
+        text_content: "$$z = g(w)$$",
+        latex: "z = g(w)",
+        file_ref: null,
+        mime_type: null,
+        width_px: null,
+        height_px: null,
+        content_hash: "asset-hash-2",
+        extraction_origin: "pdf_native",
+        citation_eligibility: "asset_reference",
+        recommended_section_keys: ["theoretical_framework"],
+        usage_reason: "context_only",
+        handling_notes: [],
+      },
+    ],
     asset_usage_plan: [],
     materialized_content_refs: [],
     chunk_index_refs: [],
@@ -191,7 +233,23 @@ async function main() {
     runTest("limits adjacent evidence to cautious/contextual use", () => {
       const pack = buildReducedEvidencePackFromHandoff(handoff(), { policy: smallPolicy });
       const adjacent = pack.evidence_units.find((item) => item.source_id === "source-c");
-      assert(adjacent?.evidence_use === "cautious", "adjacent evidence should be cautious when retained");
+      assert(
+        !adjacent || adjacent.evidence_use === "cautious",
+        "adjacent evidence should be removed from central sections or cautious when retained",
+      );
+    }),
+    runTest("preserves direct current equation assets ahead of adjacent assets", () => {
+      const pack = buildReducedEvidencePackFromHandoff(handoff(), {
+        policy: { ...smallPolicy, max_asset_refs_total: 1 },
+      });
+      assert(
+        pack.asset_refs.some((asset) => asset.asset_key === "direct-equation"),
+        `expected direct equation asset, got ${pack.asset_refs.map((asset) => asset.asset_key).join(", ")}`,
+      );
+      assert(
+        !pack.asset_refs.some((asset) => asset.asset_key === "adjacent-equation"),
+        "adjacent equation should not outrank direct method equation",
+      );
     }),
   ]);
 

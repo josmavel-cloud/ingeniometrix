@@ -5,7 +5,6 @@ import {
   MathRadical,
   MathRoundBrackets,
   MathRun,
-  MathSquareBrackets,
   MathSubScript,
   MathSum,
   MathSuperScript,
@@ -75,21 +74,10 @@ function ommlCurlyVector(items: ImportedXmlComponent[]) {
   ]));
 }
 
-function mathText(value: string) {
-  return new MathRun(value);
-}
-
 function mathSub(base: string, sub: string) {
   return new MathSubScript({
     children: [new MathRun(base)],
     subScript: [new MathRun(sub)],
-  });
-}
-
-function mathSup(base: string, sup: string) {
-  return new MathSuperScript({
-    children: [new MathRun(base)],
-    superScript: [new MathRun(sup)],
   });
 }
 

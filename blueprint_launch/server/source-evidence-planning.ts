@@ -2,8 +2,9 @@ import { getConfiguredLlmProvider } from "@/llm";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 
 import type {
-  BlueprintLaunchContentMaterializationResult,
   BlueprintLaunchEvidencePlanningMaterializationItem,
+  BlueprintLaunchEvidencePlanningBlockingCategory,
+  BlueprintLaunchEvidencePreMaterializationDecision,
   BlueprintLaunchEvidencePlanningResult,
   BlueprintLaunchEvidencePlanningSectionCoverage,
   BlueprintLaunchEvidencePlanningSourceCard,
@@ -22,9 +23,6 @@ type SourceCard = BlueprintLaunchEvidencePlanningSourceCard;
 
 type EvidencePlanningLlmCard = {
   reference_id: string;
-  topic_relevance: "directa" | "parcial" | "debil";
-  proposal_usefulness: "alta" | "media" | "baja";
-  source_role: string;
   supports_section_keys: SectionKey[];
   methodology_hints: string[];
   framework_hints: string[];
@@ -62,6 +60,7 @@ const SECTION_KEYS: SectionKey[] = [
   "proposal_scope",
   "limitations",
 ];
+const MIN_INSPECTABLE_SOURCES_FOR_PRE_MATERIALIZATION = 2;
 
 const evidencePlanningSchema = {
   type: "object",
@@ -76,9 +75,6 @@ const evidencePlanningSchema = {
         additionalProperties: false,
         required: [
           "reference_id",
-          "topic_relevance",
-          "proposal_usefulness",
-          "source_role",
           "supports_section_keys",
           "methodology_hints",
           "framework_hints",
@@ -89,9 +85,6 @@ const evidencePlanningSchema = {
         ],
         properties: {
           reference_id: { type: "string", minLength: 2, maxLength: 220 },
-          topic_relevance: { type: "string", enum: ["directa", "parcial", "debil"] },
-          proposal_usefulness: { type: "string", enum: ["alta", "media", "baja"] },
-          source_role: { type: "string", minLength: 8, maxLength: 240 },
           supports_section_keys: {
             type: "array",
             maxItems: 8,
@@ -274,23 +267,23 @@ function inferSectionKeys(text: string): SectionKey[] {
   const lower = text.toLowerCase();
   const sections: SectionKey[] = ["background"];
 
-  if (includesAny(lower, ["vacancy", "underuse", "housing", "crisis", "emission", "demolition"])) {
+  if (includesAny(lower, ["problem", "gap", "need", "challenge", "risk", "barrier", "limitation", "context"])) {
     sections.push("problem_statement", "justification");
   }
 
-  if (includesAny(lower, ["framework", "criteria", "multi-criteria", "assessment", "case study", "typological"])) {
+  if (includesAny(lower, ["method", "methodology", "framework", "criteria", "assessment", "case study", "protocol", "analysis"])) {
     sections.push("methodology");
   }
 
-  if (includesAny(lower, ["adaptive reuse", "regenerative", "ecosystem", "biomimicry", "historic", "sustainable"])) {
+  if (includesAny(lower, ["theory", "concept", "definition", "model", "variable", "indicator", "principle"])) {
     sections.push("theoretical_or_technical_framework");
   }
 
-  if (includesAny(lower, ["toronto", "building", "urban", "masterplan", "hospital", "commercial"])) {
+  if (includesAny(lower, ["scope", "sample", "population", "case", "application", "site", "organization", "context"])) {
     sections.push("proposal_scope");
   }
 
-  if (includesAny(lower, ["limitation", "constraint", "barrier", "regulation", "ambition"])) {
+  if (includesAny(lower, ["limitation", "constraint", "barrier", "regulation", "assumption", "data availability"])) {
     sections.push("limitations");
   }
 
@@ -302,20 +295,20 @@ function inferMethodologyHints(text: string) {
   const lower = text.toLowerCase();
   const hints: string[] = [];
 
-  if (includesAny(lower, ["multi-criteria", "multicriteria", "criteria", "assessment"])) {
-    hints.push("Usar criterios de evaluacion y matriz multicriterio para comparar alternativas de reutilizacion.");
+  if (includesAny(lower, ["criteria", "assessment", "evaluation", "indicator", "metric"])) {
+    hints.push("Definir criterios, indicadores o metricas trazables para evaluar el objeto de estudio.");
   }
 
-  if (includesAny(lower, ["framework", "case study", "comparative", "precedent"])) {
-    hints.push("Construir un framework aplicado y validarlo contra precedentes o casos comparables.");
+  if (includesAny(lower, ["framework", "case study", "comparative", "precedent", "protocol"])) {
+    hints.push("Construir un marco metodologico aplicado y contrastarlo con evidencia, casos o protocolos comparables.");
   }
 
-  if (includesAny(lower, ["vacancy", "underuse", "existing urban buildings"])) {
-    hints.push("Caracterizar subutilizacion, vacancia y condiciones tipologicas del edificio existente.");
+  if (includesAny(lower, ["data", "dataset", "sample", "population", "measurement"])) {
+    hints.push("Caracterizar datos, muestra, poblacion o mediciones necesarias para sostener el analisis.");
   }
 
-  if (includesAny(lower, ["emission", "carbon", "demolition"])) {
-    hints.push("Incluir criterios de impacto ambiental, carbono embebido o reduccion de emisiones.");
+  if (includesAny(lower, ["validation", "reliability", "calibration", "triangulation"])) {
+    hints.push("Incluir una estrategia de validacion, confiabilidad o contraste segun la disciplina.");
   }
 
   return hints;
@@ -325,20 +318,20 @@ function inferFrameworkHints(text: string) {
   const lower = text.toLowerCase();
   const hints: string[] = [];
 
-  if (lower.includes("adaptive reuse")) {
-    hints.push("Reutilizacion adaptativa como marco tecnico principal.");
+  if (includesAny(lower, ["theory", "theoretical", "framework", "conceptual"])) {
+    hints.push("Identificar teoria, marco conceptual o enfoque principal respaldado por la fuente.");
   }
 
-  if (includesAny(lower, ["regenerative", "ecosystem", "biomimicry"])) {
-    hints.push("Diseno regenerativo, servicios ecosistemicos y biomimesis como soporte teorico complementario.");
+  if (includesAny(lower, ["model", "equation", "formula", "variable", "parameter"])) {
+    hints.push("Registrar modelos, ecuaciones, variables o parametros solo cuando esten respaldados por la fuente.");
   }
 
-  if (includesAny(lower, ["sustainable", "emission", "carbon"])) {
-    hints.push("Sostenibilidad, reduccion de emisiones y ciclo de vida como criterios de justificacion.");
+  if (includesAny(lower, ["definition", "construct", "dimension", "indicator"])) {
+    hints.push("Extraer definiciones, constructos, dimensiones o indicadores utiles para el marco teorico.");
   }
 
-  if (includesAny(lower, ["historic", "heritage"])) {
-    hints.push("Valor historico y conservacion como condicion para definir compatibilidad de nuevo uso.");
+  if (includesAny(lower, ["standard", "regulation", "guideline", "protocol"])) {
+    hints.push("Distinguir normas, guias o protocolos como contexto metodologico, no como resultados.");
   }
 
   return hints;
@@ -411,6 +404,209 @@ function buildRiskFlags(input: {
   return flags;
 }
 
+function normalizeForGate(value: string | null | undefined) {
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase();
+}
+
+function hasIdentityOrWrongDocumentRisk(input: {
+  card?: SourceCard | null;
+  planItem: BlueprintLaunchEvidencePlanningMaterializationItem;
+  access?: BlueprintLaunchSourceAccessResolutionItem | undefined;
+}) {
+  const haystack = normalizeForGate(
+    [
+      input.planItem.title,
+      input.planItem.contentUrl,
+      input.planItem.riskFlags.join(" "),
+      input.planItem.validationNotes.join(" "),
+      input.card?.riskFlags.join(" "),
+      input.card?.qualityFlags.join(" "),
+      input.access?.warnings.join(" "),
+      input.access?.candidateSummary
+        .map((candidate) => `${candidate.label} ${candidate.url}`)
+        .join(" "),
+    ].join(" "),
+  );
+
+  return [
+    "wrong pdf",
+    "wrong document",
+    "documento incorrecto",
+    "documento equivocado",
+    "no coincide",
+    "inconsisten",
+    "mismatch",
+    "identity risk",
+    "riesgo de identidad",
+    "pdf incorrecto",
+    "pdf equivocado",
+    "wrong_document_suspected",
+  ].some((marker) => haystack.includes(marker));
+}
+
+function isInspectablePlanItem(item: BlueprintLaunchEvidencePlanningMaterializationItem) {
+  return (
+    Boolean(item.contentUrl) &&
+    (item.expectedKind === "pdf" ||
+      item.expectedKind === "web_text" ||
+      item.expectedKind === "repository_fulltext")
+  );
+}
+
+export function evaluateEvidencePreMaterializationGate(input: {
+  sourceIntakeGateDecision: BlueprintLaunchSourceIntakeGateResult["decision"];
+  materializationPlan: BlueprintLaunchEvidencePlanningMaterializationItem[];
+  sourceCards?: SourceCard[];
+  accessItems?: BlueprintLaunchSourceAccessResolutionItem[];
+  evidenceWarnings?: string[];
+  staleCount?: number;
+  minInspectableSources?: number;
+}): {
+  decision: BlueprintLaunchEvidencePlanningResult["decision"];
+  preMaterializationDecision: BlueprintLaunchEvidencePreMaterializationDecision;
+  blockingCategory: BlueprintLaunchEvidencePlanningBlockingCategory;
+  inspectionRecommended: boolean;
+  preMaterializationGateReasons: string[];
+  inspectableSourceIds: string[];
+  replacementRecommendedSourceIds: string[];
+  identityBlockedSourceIds: string[];
+  accessBlockedSourceIds: string[];
+  sufficiencyWarnings: string[];
+} {
+  const sourceCardsById = new Map((input.sourceCards ?? []).map((card) => [card.sourceId, card]));
+  const accessById = new Map((input.accessItems ?? []).map((item) => [item.sourceId, item]));
+  const minInspectableSources =
+    input.minInspectableSources ?? MIN_INSPECTABLE_SOURCES_FOR_PRE_MATERIALIZATION;
+  const accessBlockedSourceIds = input.materializationPlan
+    .filter((item) => !isInspectablePlanItem(item))
+    .map((item) => item.sourceId);
+  const identityBlockedSourceIds = input.materializationPlan
+    .filter((item) =>
+      hasIdentityOrWrongDocumentRisk({
+        planItem: item,
+        card: sourceCardsById.get(item.sourceId),
+        access: accessById.get(item.sourceId),
+      }),
+    )
+    .map((item) => item.sourceId);
+  const identityBlockedSet = new Set(identityBlockedSourceIds);
+  const inspectableSourceIds = input.materializationPlan
+    .filter((item) => isInspectablePlanItem(item) && !identityBlockedSet.has(item.sourceId))
+    .map((item) => item.sourceId);
+  const replacementRecommendedSourceIds = [...new Set([...accessBlockedSourceIds, ...identityBlockedSourceIds])];
+  const sufficiencyWarnings = [...(input.evidenceWarnings ?? [])];
+  const preMaterializationGateReasons: string[] = [];
+
+  if (input.sourceIntakeGateDecision === "BLOCK") {
+    preMaterializationGateReasons.push("Step 2 source intake gate returned BLOCK.");
+    return {
+      decision: "BLOCK",
+      preMaterializationDecision: "BLOCK_ACCESS_OR_IDENTITY",
+      blockingCategory: "source_intake_gate",
+      inspectionRecommended: false,
+      preMaterializationGateReasons,
+      inspectableSourceIds,
+      replacementRecommendedSourceIds,
+      identityBlockedSourceIds,
+      accessBlockedSourceIds,
+      sufficiencyWarnings,
+    };
+  }
+
+  if (inspectableSourceIds.length === 0) {
+    preMaterializationGateReasons.push("No hay fuentes con texto completo o PDF inspeccionable.");
+    return {
+      decision: "BLOCK",
+      preMaterializationDecision: "BLOCK_ACCESS_OR_IDENTITY",
+      blockingCategory: "access_or_identity",
+      inspectionRecommended: false,
+      preMaterializationGateReasons,
+      inspectableSourceIds,
+      replacementRecommendedSourceIds,
+      identityBlockedSourceIds,
+      accessBlockedSourceIds,
+      sufficiencyWarnings,
+    };
+  }
+
+  if (inspectableSourceIds.length < minInspectableSources) {
+    preMaterializationGateReasons.push(
+      `Solo ${inspectableSourceIds.length} fuente(s) inspeccionable(s); minimo requerido: ${minInspectableSources}.`,
+    );
+    return {
+      decision: "BLOCK",
+      preMaterializationDecision: "NEEDS_SOURCE_REPLACEMENT",
+      blockingCategory: "insufficient_inspectable_sources",
+      inspectionRecommended: false,
+      preMaterializationGateReasons,
+      inspectableSourceIds,
+      replacementRecommendedSourceIds,
+      identityBlockedSourceIds,
+      accessBlockedSourceIds,
+      sufficiencyWarnings,
+    };
+  }
+
+  if (sufficiencyWarnings.length > 0 || replacementRecommendedSourceIds.length > 0) {
+    if (sufficiencyWarnings.length > 0) {
+      preMaterializationGateReasons.push(
+        "La suficiencia academica aun no puede decidirse antes de inspeccionar texto completo.",
+      );
+    }
+
+    if (replacementRecommendedSourceIds.length > 0) {
+      preMaterializationGateReasons.push(
+        "Hay fuentes que requieren reemplazo o verificacion, pero quedan fuentes inspeccionables.",
+      );
+    }
+
+    return {
+      decision: "PASS_WITH_WARNINGS",
+      preMaterializationDecision: "PROCEED_TO_LIMITED_INSPECTION",
+      blockingCategory: "none",
+      inspectionRecommended: true,
+      preMaterializationGateReasons,
+      inspectableSourceIds,
+      replacementRecommendedSourceIds,
+      identityBlockedSourceIds,
+      accessBlockedSourceIds,
+      sufficiencyWarnings,
+    };
+  }
+
+  if ((input.staleCount ?? 0) > 0) {
+    preMaterializationGateReasons.push("Hay artefactos downstream obsoletos que deben regenerarse.");
+    return {
+      decision: "PASS_WITH_WARNINGS",
+      preMaterializationDecision: "PROCEED_WITH_WARNINGS",
+      blockingCategory: "none",
+      inspectionRecommended: false,
+      preMaterializationGateReasons,
+      inspectableSourceIds,
+      replacementRecommendedSourceIds,
+      identityBlockedSourceIds,
+      accessBlockedSourceIds,
+      sufficiencyWarnings,
+    };
+  }
+
+  return {
+    decision: "PASS",
+    preMaterializationDecision: "PROCEED_TO_MATERIALIZATION",
+    blockingCategory: "none",
+    inspectionRecommended: false,
+    preMaterializationGateReasons,
+    inspectableSourceIds,
+    replacementRecommendedSourceIds,
+    identityBlockedSourceIds,
+    accessBlockedSourceIds,
+    sufficiencyWarnings,
+  };
+}
+
 function buildMaterializationPlanItem(input: {
   source: BlueprintLaunchSelectedSourceBundle["sources"][number];
   access: BlueprintLaunchSourceAccessResolutionItem | undefined;
@@ -466,20 +662,14 @@ function buildDeterministicCard(input: {
   const methodologyHints = inferMethodologyHints(text);
   const frameworkHints = inferFrameworkHints(text);
   const extractionFocus = inferExtractionFocus(text, input.planItem.expectedKind);
-  const directSignals = ["adaptive reuse", "existing building", "vacancy", "underuse", "building"]
-    .filter((token) => text.toLowerCase().includes(token)).length;
   const topicRelevance =
-    input.source.scoreLabel === "ALTO" || directSignals >= 2
-      ? "directa"
-      : input.source.scoreLabel === "MEDIO" || directSignals >= 1
-        ? "parcial"
-        : "debil";
+    input.access?.hasCompletePublicContent && input.planItem.expectedKind !== "unknown"
+      ? "parcial"
+      : "debil";
   const proposalUsefulness =
-    input.planItem.expectedKind === "pdf" && topicRelevance !== "debil"
-      ? "alta"
-      : input.access?.hasCompletePublicContent
-        ? "media"
-        : "baja";
+    input.access?.hasCompletePublicContent && input.planItem.expectedKind !== "unknown"
+      ? "media"
+      : "baja";
 
   return {
     sourceId: input.source.reference.id,
@@ -495,9 +685,9 @@ function buildDeterministicCard(input: {
     topicRelevance,
     proposalUsefulness,
     sourceRole:
-      topicRelevance === "directa"
-        ? "Fuente principal para sostener criterios, antecedentes o marco aplicado de la propuesta."
-        : "Fuente complementaria para contexto, justificacion o contraste metodologico.",
+      input.access?.hasCompletePublicContent
+        ? "Fuente candidata para inspeccion operativa; la relevancia real se decide despues de revisar el PDF/texto."
+        : "Fuente con acceso insuficiente; no debe usarse como soporte hasta resolver texto completo.",
     supportsSectionKeys,
     methodologyHints,
     frameworkHints,
@@ -507,6 +697,7 @@ function buildDeterministicCard(input: {
     qualityFlags: [
       input.access?.hasCompletePublicContent ? "contenido_completo_resuelto" : "sin_contenido_completo",
       input.source.scoreLabel ? `score_${input.source.scoreLabel.toLowerCase()}` : "score_no_disponible",
+      "step3_relevance_not_authoritative",
     ],
   } satisfies SourceCard;
 }
@@ -522,36 +713,36 @@ function readinessFromCount(count: number) {
 function defaultTargetsForSection(sectionKey: SectionKey) {
   const targets: Record<SectionKey, string[]> = {
     background: [
-      "Antecedentes de reutilizacion adaptativa y edificios existentes.",
-      "Conceptos base sobre subutilizacion, vacancia o regeneracion urbana.",
+      "Antecedentes academicos relevantes para el tema actual.",
+      "Conceptos base y lineas de investigacion que delimiten el problema.",
     ],
     problem_statement: [
-      "Evidencia sobre presion habitacional, obsolescencia o impacto de demolicion.",
-      "Senales que conecten edificios existentes con oportunidad de reconversion.",
+      "Evidencia que conecte el problema declarado con la necesidad de investigacion.",
+      "Brechas, riesgos, restricciones o impactos documentados en las fuentes.",
     ],
     justification: [
-      "Argumentos ambientales, urbanos, economicos o sociales que justifiquen la propuesta.",
-      "Beneficios potenciales frente a demolicion o nueva construccion.",
+      "Argumentos teoricos, practicos, metodologicos o sociales que justifiquen la propuesta.",
+      "Beneficios esperados o relevancia academica declarados con prudencia.",
     ],
     objectives: [
       "Variables, criterios y alcance que ayuden a formular objetivos verificables.",
-      "Relaciones entre tecnica propuesta, tipo de edificio y resultado esperado.",
+      "Relaciones entre metodo, objeto de estudio, contexto y resultado esperado.",
     ],
     methodology: [
-      "Criterios de evaluacion, matriz multicriterio, analisis comparado o estudio de caso.",
-      "Procedimientos transferibles para seleccionar tecnica, alcance y restricciones.",
+      "Metodo, diseno, procedimiento, instrumentos, criterios o modelos aplicables.",
+      "Procedimientos transferibles para delimitar tecnica, alcance, datos y restricciones.",
     ],
     theoretical_or_technical_framework: [
-      "Definiciones y marcos tecnicos: reutilizacion adaptativa, sostenibilidad, servicios ecosistemicos.",
-      "Teorias o conceptos que sostengan la decision metodologica posterior.",
+      "Definiciones, teorias, modelos, variables o conceptos centrales.",
+      "Soporte teorico o tecnico que sostenga la decision metodologica posterior.",
     ],
     proposal_scope: [
-      "Condiciones de aplicabilidad para edificios comerciales tipo B/C y contexto urbano.",
-      "Variables de alcance, restricciones y criterios de seleccion tipologica.",
+      "Condiciones de aplicabilidad para la poblacion, muestra, caso o contexto actual.",
+      "Variables de alcance, restricciones y criterios de seleccion.",
     ],
     limitations: [
-      "Limites de transferencia entre casos internacionales y Toronto.",
-      "Restricciones normativas, estructurales, economicas o de disponibilidad de datos.",
+      "Limites de transferencia, generalizacion o aplicabilidad de la evidencia.",
+      "Restricciones normativas, tecnicas, eticas, economicas o de disponibilidad de datos.",
     ],
   };
 
@@ -565,13 +756,13 @@ function defaultMissingForSection(sectionKey: SectionKey, count: number) {
 
   const missing: Record<SectionKey, string[]> = {
     background: ["Faltan extractos textuales extensos de antecedentes clave."],
-    problem_statement: ["Falta evidencia especifica que conecte el problema con edificios tipo B/C en Toronto."],
-    justification: ["Faltan datos comparables de impacto economico, carbono o factibilidad local."],
+    problem_statement: ["Falta evidencia especifica que conecte el problema con el contexto y alcance declarados."],
+    justification: ["Faltan datos comparables o argumentos fuente-respaldados sobre relevancia y factibilidad."],
     objectives: ["Falta convertir senales de evidencia en objetivos medibles y delimitados."],
     methodology: ["Falta seleccionar tecnica metodologica final y operacionalizar variables."],
     theoretical_or_technical_framework: ["Faltan definiciones trazables y citas textuales para conceptos centrales."],
-    proposal_scope: ["Falta delimitar alcance local, normativa y criterios de elegibilidad del edificio."],
-    limitations: ["Falta explicitar limites por transferencia geografica, normativa y disponibilidad de datos."],
+    proposal_scope: ["Falta delimitar alcance, poblacion/muestra/caso, criterios de elegibilidad y contexto."],
+    limitations: ["Falta explicitar limites por transferencia, normativa, etica, tecnica o disponibilidad de datos."],
   };
 
   return missing[sectionKey];
@@ -683,15 +874,18 @@ Actua como planificador academico de evidencia para una investigacion aplicada d
 Objetivo:
 - preparar el plan del siguiente paso de materializacion y extraccion
 - decidir que debe buscarse en cada fuente completa antes de descargar y procesar PDFs o texto web
-- mapear fuentes a secciones de tesis/propuesta sin inventar evidencia
+- mapear posibles focos de extraccion a secciones de tesis/propuesta sin inventar evidencia
 - detectar vacios que los pasos posteriores deben cubrir con extractos, tablas, figuras, ecuaciones o referencias
+- dejar claro que la relevancia academica real se decide despues de inspeccionar el PDF/texto completo
 
 Reglas:
 - responde en espanol
 - no inventes datos, resultados ni citas
 - usa solo el contexto del proyecto, metadata, abstracts y resolucion de acceso disponible
 - conserva terminos tecnicos consolidados si mejoran precision
-- prioriza utilidad para: marco teorico, metodologia, justificacion, objetivos, problema, alcance y limitaciones
+- no clasifiques fuentes como nucleares, directas o suficientes; Step 4B revisara relevancia real desde PDF/texto inspeccionado
+- no asignes roles semanticos de relevancia por fuente; solo sugiere secciones candidatas y focos de extraccion
+- usa la metadata solo para proponer focos de extraccion, riesgos preliminares y secciones candidatas
 - si una fuente tiene PDF completo, no extraigas aun el contenido; solo planifica que buscar despues
 - si hay ambiguedad, declarala como risk_flag o missing_element
 
@@ -785,9 +979,6 @@ function mergeLlmCards(input: {
 
     return {
       ...card,
-      topicRelevance: generatedCard.topic_relevance,
-      proposalUsefulness: generatedCard.proposal_usefulness,
-      sourceRole: generatedCard.source_role,
       supportsSectionKeys: generatedCard.supports_section_keys,
       methodologyHints: generatedCard.methodology_hints,
       frameworkHints: generatedCard.framework_hints,
@@ -842,6 +1033,29 @@ function buildSummary(input: {
   staleCount: number;
 }) {
   return `Paso 3 ${input.decision}: ${input.sourceCount} fuente(s) planificadas, ${input.completePublicContentCount} con contenido completo, ${input.pdfPlanCount} PDF(s), ${input.webPlanCount} fuente(s) web/repositorio y ${input.staleCount} artefacto(s) downstream obsoleto(s).`;
+}
+
+function buildNextStepRecommendation(input: {
+  decision: BlueprintLaunchEvidencePlanningResult["decision"];
+  preMaterializationDecision: BlueprintLaunchEvidencePreMaterializationDecision;
+}) {
+  if (input.preMaterializationDecision === "BLOCK_ACCESS_OR_IDENTITY") {
+    return "Resolver acceso o identidad documental antes de materializar.";
+  }
+
+  if (input.preMaterializationDecision === "NEEDS_SOURCE_REPLACEMENT") {
+    return "Reemplazar fuentes sin acceso suficiente antes de materializar.";
+  }
+
+  if (input.preMaterializationDecision === "PROCEED_TO_LIMITED_INSPECTION") {
+    return "Continuar con inspeccion limitada de PDFs/textos completos antes de decidir suficiencia final.";
+  }
+
+  if (input.decision === "BLOCK") {
+    return "Volver al Paso 2 y resolver acceso completo antes de materializar.";
+  }
+
+  return "Continuar al Paso 4: descargar PDFs y capturar textos completos usando este plan.";
 }
 
 export async function planBlueprintLaunchEvidence(input: {
@@ -936,13 +1150,25 @@ export async function planBlueprintLaunchEvidence(input: {
     downstreamState.evidencePacksArtifactIsStale,
     downstreamState.consolidatedEvidenceArtifactIsStale,
   ].filter(Boolean).length;
-  const decision =
-    input.sourceIntakeGate.decision === "BLOCK" || blockedSourceCount > 0
-      ? "BLOCK"
-      : evidenceWarnings.length > 0 || staleCount > 0
-        ? "PASS_WITH_WARNINGS"
-        : "PASS";
+  const preMaterializationGate = evaluateEvidencePreMaterializationGate({
+    sourceIntakeGateDecision: input.sourceIntakeGate.decision,
+    materializationPlan,
+    sourceCards,
+    accessItems: input.sourceAccessResolution.items,
+    evidenceWarnings,
+    staleCount,
+  });
+  const decision = preMaterializationGate.decision;
   const completePublicContentCount = input.sourceAccessResolution.completePublicCount;
+  const warnings = [
+    ...operationalWarnings,
+    ...evidenceWarnings,
+    ...downstreamState.staleReasons,
+    ...preMaterializationGate.preMaterializationGateReasons,
+    preMaterializationGate.preMaterializationDecision === "PROCEED_TO_LIMITED_INSPECTION"
+      ? "Inspeccion limitada recomendada: la relevancia real se decidira despues de revisar PDF/texto inspeccionado en Step 4B."
+      : "",
+  ].filter((warning) => warning.trim().length > 0);
 
   return {
     savedAt: new Date().toISOString(),
@@ -955,6 +1181,15 @@ export async function planBlueprintLaunchEvidence(input: {
       webPlanCount,
       staleCount,
     }),
+    preMaterializationDecision: preMaterializationGate.preMaterializationDecision,
+    blockingCategory: preMaterializationGate.blockingCategory,
+    inspectionRecommended: preMaterializationGate.inspectionRecommended,
+    preMaterializationGateReasons: preMaterializationGate.preMaterializationGateReasons,
+    inspectableSourceIds: preMaterializationGate.inspectableSourceIds,
+    replacementRecommendedSourceIds: preMaterializationGate.replacementRecommendedSourceIds,
+    identityBlockedSourceIds: preMaterializationGate.identityBlockedSourceIds,
+    accessBlockedSourceIds: preMaterializationGate.accessBlockedSourceIds,
+    sufficiencyWarnings: preMaterializationGate.sufficiencyWarnings,
     llmStatus: resultLlmStatus,
     llmPromptCount: llmPrompts.length,
     llmCallCount,
@@ -968,12 +1203,12 @@ export async function planBlueprintLaunchEvidence(input: {
     sourceCards,
     sectionCoverage,
     downstreamState,
-    nextStepRecommendation:
-      decision === "BLOCK"
-        ? "Volver al Paso 2 y resolver acceso completo antes de materializar."
-        : "Continuar al Paso 4: descargar PDFs y capturar textos completos usando este plan.",
+    nextStepRecommendation: buildNextStepRecommendation({
+      decision,
+      preMaterializationDecision: preMaterializationGate.preMaterializationDecision,
+    }),
     operationalWarnings,
     evidenceWarnings,
-    warnings: [...operationalWarnings, ...evidenceWarnings, ...downstreamState.staleReasons],
+    warnings,
   };
 }

@@ -57,7 +57,7 @@ export function buildProjectPresetSuggestionEntries(params: {
   interestText: string;
   limit?: number;
 }) {
-  const { areaId, degreeLevel, university, templateKey, interestText } = params;
+  const { areaId, degreeLevel, interestText } = params;
   const interestTokens = getInterestTokens(interestText);
   const normalizedInterest = normalizeSearchText(interestText);
   const tones: TopicSuggestionTone[] = ["lilac", "gold", "mint", "blush"];

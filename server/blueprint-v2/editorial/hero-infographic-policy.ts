@@ -60,9 +60,9 @@ export const heroInfographicPolicy: HeroInfographicPolicy = {
   ],
   composition_guidance: [
     "Usar composicion limpia y vertical adecuada para portada de tesis o propuesta.",
-    "Representar el objeto central y un flujo de investigacion con 4 a 6 etapas conectadas.",
-    "Mostrar herramientas, componentes, contexto de aplicacion y salida academica esperada como modulos visuales breves.",
-    "Usar bloques conceptuales sutiles para problema, evidencia, enfoque, analisis, validacion pendiente y entrega academica.",
+    "Representar el objeto central y un flujo de investigacion con 3 a 5 etapas conectadas.",
+    "Mostrar herramientas, componentes, contexto de aplicacion y salida academica esperada con modulos visuales breves.",
+    "Usar bloques conceptuales sutiles para problema, enfoque, analisis y entrega academica, sin saturar la portada.",
     "Adaptar iconografia y tono al area de conocimiento sin convertirlo en publicidad.",
     "Mantener lectura profesional, sobria y academica.",
   ],
@@ -76,7 +76,7 @@ export const heroInfographicPolicy: HeroInfographicPolicy = {
     "No usar personas reconocibles ni marcas de agua.",
   ],
   fallback_rule:
-    "Si no hay generacion de imagen disponible, usar SVG deterministico con estructura de flujo metodologico, bloques academicos y caption; no usar geometria generica sin significado.",
+    "Si no hay generacion de imagen disponible, usar SVG deterministico con estructura de flujo metodologico y bloques academicos; no usar caption en la caratula ni geometria generica sin significado.",
 };
 
 function cleanText(value: string | null | undefined) {
@@ -129,12 +129,6 @@ export function buildHeroInfographicPlan(
     "metodologia academica propuesta";
   const knowledgeArea = cleanText(input.knowledgeArea) || "area academica declarada";
   const country = contextLabel(input.countryContext);
-  const evidenceSummary =
-    cleanText(input.evidenceSummary) ||
-    "evidencia, limitaciones y trazabilidad representadas de forma prudente";
-  const sourceHealthSummary =
-    cleanText(input.sourceHealthSummary) ||
-    "salud de fuentes representada solo como precaucion metodologica, sin exponer diagnosticos internos";
   const sectionPlanSummary =
     cleanText(input.sectionPlanSummary) ||
     "plan academico con problema, objetivos, metodologia, analisis, cronograma y presupuesto";
@@ -144,10 +138,10 @@ export function buildHeroInfographicPlan(
     "No representa resultados ejecutados.",
   ].join(" ");
   const prompt = [
-    "Crear una imagen vertical de alta calidad para portada de tesis/propuesta como infografia metodologica academica, no como portada generica ni cover decorativo.",
+    "Crear una imagen vertical de alta calidad para caratula de tesis/propuesta como infografia metodologica academica sobria y liviana, no como portada generica ni cover decorativo.",
     `Tipo de documento: ${documentType}.`,
-    `Titulo final: ${title}.`,
-    `Titulo corto metodologico: ${shortTitle}.`,
+    `Titulo final solo como contexto semantico, no como texto largo dentro de la imagen: ${title}.`,
+    `Titulo corto metodologico solo si se necesita una etiqueta breve: ${shortTitle}.`,
     `Objeto o tema central: ${objectContext}.`,
     `Area de conocimiento: ${knowledgeArea}.`,
     `Contexto de aplicacion: ${country}.`,
@@ -155,15 +149,14 @@ export function buildHeroInfographicPlan(
     `Metodologia o enfoque a comunicar visualmente con prudencia: ${methodology}.`,
     input.workflowSummary
       ? `Flujo o etapas de investigacion: ${cleanText(input.workflowSummary)}.`
-      : "Incluir flujo visual con 4 a 6 etapas conectadas: problema, revision de evidencia, diseno metodologico, analisis/evaluacion, validacion pendiente y entrega academica.",
-    `Herramientas, componentes o modulos visuales sugeridos: bloques pequenos para objeto de estudio, enfoque analitico, criterios/variables, contexto y producto academico esperado.`,
+      : "Incluir flujo visual con 3 a 5 etapas conectadas: problema, revision de evidencia, diseno metodologico, analisis/evaluacion y entrega academica.",
+    "Herramientas, componentes o modulos visuales sugeridos: pocos bloques pequenos para objeto de estudio, enfoque analitico, criterios/variables, contexto y producto academico esperado.",
     `Plan seccional a sintetizar visualmente: ${sectionPlanSummary}.`,
-    `Resumen de soporte/limitaciones de evidencia: ${evidenceSummary}.`,
-    `Senal interna de prudencia sobre fuentes: ${sourceHealthSummary}. Esta senal solo debe modular el tono visual; no debe aparecer como texto, conteo, quality gate ni diagnostico visible en la imagen.`,
-    "Composicion: sujeto central claro, 4 a 6 nodos o paneles conectados, flechas o ruta metodologica sutil, modulo de contexto/aplicacion y bloque final de salida academica.",
-    "Visual hierarchy: titulo conceptual corto, sujeto central, flujo metodologico, herramientas/componentes, contexto, salida. Usar etiquetas muy breves si aparecen; no parrafos dentro de la imagen.",
-    "Estilo: limpio, profesional, sobrio, legible, academico, con diagramas/iconos/callouts sutiles; adaptable a ingenieria, salud, educacion, negocios, gestion ambiental, psicologia o politicas publicas.",
-    "Evitar exceso de ornamento; usar iconografia conceptual y diagramacion de proceso; no crear graficos de datos falsos, citas falsas, logos, marcas, conteos de fuentes, quality gates, nombres de matrices/modelos no confirmados ni resultados inventados.",
+    "Tono visual prudente: comunicar que es una propuesta metodológica, sin resultados ni rankings. Los conteos de fuentes, quality gates, metadatos internos y cualquier diagnostico visible no debe aparecer como texto.",
+    "Composicion: sujeto central claro, 3 a 5 nodos conectados, flechas discretas, modulo de contexto/aplicacion y bloque final de salida academica.",
+    "Jerarquia visual: sujeto central, flujo metodologico, herramientas/componentes, contexto y salida. Usar etiquetas minimas de 1 a 3 palabras; no renderizar el titulo completo, no caption, no parrafos dentro de la imagen.",
+    "Estilo: limpio, profesional, sobrio, legible, academico, con diagramas/iconos/callouts sutiles; adaptable a cualquier area de conocimiento.",
+    "Evitar exceso de ornamento y texto; usar iconografia conceptual y diagramacion de proceso; no crear graficos de datos falsos, citas falsas, logos, marcas, conteos de fuentes, quality gates, trazabilidad visible, nombres de matrices/modelos no confirmados ni resultados inventados.",
   ]
     .filter(Boolean)
     .join(" ");
@@ -184,7 +177,6 @@ export function buildHeroInfographicPlan(
       `${shortTitle}; ${objectContext}; ${methodology}; ${knowledgeArea}; ${country}`,
       260,
     ),
-    hero_visual_caption:
-      "Infografia metodologica de portada basada en el titulo, el enfoque de investigacion y el contexto declarado.",
+    hero_visual_caption: "",
   };
 }

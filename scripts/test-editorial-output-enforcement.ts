@@ -1,5 +1,6 @@
 import {
   buildEnforcedAcademicMetadata,
+  buildThesisTitleContract,
   enforceEditorialWordBudget,
   inspectAcademicEditorialPolicy,
 } from "../server/blueprint-v2/editorial/academic-editorial-policy";
@@ -20,20 +21,37 @@ function words(value: string) {
 
 const richContext = {
   current_title:
-    "Evaluacion del uso de aisladores sismicos en edificios peruanos de mediana altura",
+    "Evaluacion de estrategias de mejora en organizaciones de servicios",
   method_or_technique:
-    "Revision sistematica aplicada de literatura tecnica, analisis comparativo de criterios tecnicos y diseno de una matriz de evaluacion multicriterio.",
+    "Revision sistematica aplicada de literatura especializada, analisis comparativo de criterios y diseno de una matriz de evaluacion multicriterio.",
   object_of_study:
-    "Uso y evaluacion de aisladores sismicos en edificios peruanos de mediana altura ubicados en zonas de alta amenaza sismica.",
+    "Estrategias de mejora de procesos en organizaciones de servicios con restricciones operativas.",
   scope_or_sample:
-    "Edificios peruanos de concreto armado de mediana altura, de uso residencial, educativo o administrativo.",
+    "Organizaciones de servicios medianas con procesos documentados y datos operativos disponibles.",
   problem_or_purpose:
-    "El Peru se ubica en un contexto de alta sismicidad y requiere reducir la demanda sismica en edificaciones urbanas.",
+    "Las organizaciones enfrentan brechas de implementacion y requieren criterios verificables para priorizar mejoras.",
   country_context: "PE",
-  knowledge_area_label: "ingenieria sismorresistente",
+  knowledge_area_label: "gestion aplicada",
 };
 
 const metadata = buildEnforcedAcademicMetadata(richContext);
+const overlapTitleMetadata = buildEnforcedAcademicMetadata({
+  current_title: "Sistema de control para mesa vibratoria",
+  method_or_technique: "Validacion de modelo y control",
+  object_of_study: "mesa vibratoria",
+  scope_or_sample: "mesas vibratorias de varios grados de libertad",
+  problem_or_purpose: "fidelidad de seguimiento dinamico",
+  country_context: "PE",
+  knowledge_area_label: "ingenieria",
+});
+const danglingScopeTitleContract = buildThesisTitleContract({
+  current_title: "Sistema de control para mesa vibratoria",
+  method_or_technique: "Validacion de modelo y control",
+  object_of_study: "mesa vibratoria",
+  scope_or_sample: "mesas vibratorias academicas o de laboratorio con dos",
+  problem_or_purpose: "fidelidad de seguimiento dinamico",
+  country_context: "PE",
+});
 const keywordItems = metadata.keywords_line
   .split(";")
   .map((item) => item.trim())
@@ -44,10 +62,10 @@ const genericKeywords = new Set([
   "analisis academico",
 ]);
 const longSection = [
-  "La evaluacion debe partir de criterios tecnicos verificables y de una delimitacion prudente del caso.",
+  "La evaluacion debe partir de criterios verificables y de una delimitacion prudente del caso.",
   "El analisis conserva el alcance de propuesta porque la evidencia disponible no permite afirmar resultados locales definitivos.",
-  "La matriz multicriterio organiza desempeno estructural, restricciones normativas, costos preliminares y condiciones de implementacion.",
-  "Las fuentes adyacentes solo se usan como antecedentes y no como demostracion directa del comportamiento de aisladores en edificios peruanos.",
+  "La matriz multicriterio organiza desempeno, restricciones operativas, costos preliminares y condiciones de implementacion.",
+  "Las fuentes adyacentes solo se usan como antecedentes y no como demostracion directa de desempeno en organizaciones especificas.",
 ].join(" ");
 const budgetResult = enforceEditorialWordBudget({
   content: longSection,
@@ -58,9 +76,9 @@ const duplicateObjectiveInspection = inspectAcademicEditorialPolicy({
   section_key: "specific_objectives",
   section_title: "Objetivos especificos",
   content: [
-    "- OE1 Analizar criterios tecnicos para evaluar aisladores sismicos en edificios peruanos.",
-    "- OE2 Comparar condiciones de aplicacion en edificios de mediana altura.",
-    "- OE1 Analizar criterios tecnicos para evaluar aisladores sismicos en edificios peruanos.",
+    "- OE1 Analizar criterios verificables para evaluar estrategias de mejora.",
+    "- OE2 Comparar condiciones de aplicacion en organizaciones de servicios.",
+    "- OE1 Analizar criterios verificables para evaluar estrategias de mejora.",
   ].join("\n"),
   word_budget: 120,
 });
@@ -76,8 +94,8 @@ const results: TestResult[] = [
     "final title is not copied unchanged when richer context exists",
     metadata.final_title !== richContext.current_title &&
       /revision sistematica|analisis comparativo/i.test(metadata.final_title) &&
-      /aisladores sismicos/i.test(metadata.final_title) &&
-      /alta amenaza sismica|demanda sismica/i.test(metadata.final_title),
+      /estrategias de mejora|organizaciones de servicios/i.test(metadata.final_title) &&
+      /brechas de implementacion|criterios verificables/i.test(metadata.final_title),
     metadata.final_title,
   ),
   test(
@@ -93,11 +111,33 @@ const results: TestResult[] = [
     metadata.short_method_title,
   ),
   test(
+    "title avoids duplicating overlapping object and scope phrases",
+    !/mesa vibratoria\s+para\s+mesas vibratorias/i.test(overlapTitleMetadata.final_title) &&
+      /mesas vibratorias de varios grados de libertad/i.test(overlapTitleMetadata.final_title),
+    overlapTitleMetadata.final_title,
+  ),
+  test(
+    "thesis title contract covers method, problem, and scope when available",
+    overlapTitleMetadata.thesis_title_contract.artifact_type === "thesis_title_contract" &&
+      overlapTitleMetadata.thesis_title_contract.validation.passed &&
+      overlapTitleMetadata.thesis_title_contract.validation.covered_component_count >= 3 &&
+      /validacion|control/i.test(overlapTitleMetadata.final_title) &&
+      /fidelidad/i.test(overlapTitleMetadata.final_title),
+    JSON.stringify(overlapTitleMetadata.thesis_title_contract.validation),
+  ),
+  test(
+    "thesis title contract removes dangling scope fragments",
+    danglingScopeTitleContract.validation.no_dangling_fragment &&
+      !/\bcon dos\b/i.test(danglingScopeTitleContract.final_title) &&
+      /mesas vibratorias academicas o de laboratorio/i.test(danglingScopeTitleContract.final_title),
+    danglingScopeTitleContract.final_title,
+  ),
+  test(
     "keywords are one line, specific, and not generic-only",
     !metadata.keywords_line.includes("\n") &&
       keywordItems.length >= 4 &&
       keywordItems.length <= 7 &&
-      keywordItems.some((item) => /aisladores sismicos/i.test(item)) &&
+      keywordItems.some((item) => /estrategias de mejora|organizaciones de servicios/i.test(item)) &&
       keywordItems.some((item) => /revision sistematica|analisis comparativo|multicriterio/i.test(item)) &&
       !keywordItems.every((item) => genericKeywords.has(item.toLowerCase())),
     metadata.keywords_line,
@@ -143,4 +183,3 @@ console.log(
 if (failed.length > 0) {
   process.exitCode = 1;
 }
-

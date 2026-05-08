@@ -1,7 +1,12 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { buildBrowserLikeFetchHeaders } from "@/server/retrieval/reference-access";
+import {
+  findUserProvidedPdfEntryForSource,
+  inspectUserProvidedPdfEntryFile,
+  type UserProvidedSourcePdfManifestV1,
+} from "@/server/blueprint-engine/quality/user-provided-source-pdfs";
 
 import type {
   BlueprintLaunchContentMaterializationItem,
@@ -158,6 +163,90 @@ async function writePdf(input: {
   };
 }
 
+async function materializeUserProvidedPdf(input: {
+  entry: NonNullable<ReturnType<typeof findUserProvidedPdfEntryForSource>>;
+  sourceId: string;
+  title: string;
+  accessKind: BlueprintLaunchContentMaterializationItem["accessKind"];
+  resolvedContentUrl: string | null;
+  runDir: string;
+  baseName: string;
+  languageDetected: string | null;
+  resolverFamily?: BlueprintLaunchContentMaterializationItem["resolverFamily"];
+  expectedKind?: BlueprintLaunchContentMaterializationItem["expectedKind"];
+}): Promise<BlueprintLaunchContentMaterializationItem> {
+  const inspection = await inspectUserProvidedPdfEntryFile(input.entry);
+  const warnings = [
+    "PDF local proporcionado por usuario; permitido para diagnostico y no apto para produccion sin revision explicita.",
+    ...inspection.warnings,
+  ];
+
+  if (!inspection.valid_for_import) {
+    return {
+      sourceId: input.sourceId,
+      title: input.title,
+      accessKind: input.accessKind,
+      resolvedContentUrl: input.resolvedContentUrl,
+      materializationStatus: "failed",
+      storedKind: "unknown",
+      localPrimaryPath: null,
+      localTextPath: null,
+      mimeType: inspection.mime_type,
+      byteSize: inspection.byte_size,
+      languageDetected: input.languageDetected,
+      resolverFamily: input.resolverFamily,
+      expectedKind: input.expectedKind,
+      validationChecks: inspection.validation_checks,
+      userProvidedPdfProvenance: {
+        local_pdf_path: input.entry.local_pdf_path,
+        filename: input.entry.filename,
+        sha256: input.entry.sha256,
+        acquisition_mode: input.entry.acquisition_mode,
+        provenance_status: input.entry.provenance_status,
+        allowed_for_diagnostic: input.entry.allowed_for_diagnostic,
+        allowed_for_production: input.entry.allowed_for_production,
+        reviewer_note: input.entry.reviewer_note,
+      },
+      warnings,
+    };
+  }
+
+  const localPrimaryPath = path.join(input.runDir, `${input.baseName}.pdf`);
+  await copyFile(input.entry.local_pdf_path, localPrimaryPath);
+
+  return {
+    sourceId: input.sourceId,
+    title: input.title,
+    accessKind: input.accessKind,
+    resolvedContentUrl: input.entry.original_source_url ?? input.resolvedContentUrl,
+    materializationStatus: "downloaded",
+    storedKind: "pdf",
+    localPrimaryPath,
+    localTextPath: null,
+    mimeType: "application/pdf",
+    byteSize: inspection.byte_size,
+    languageDetected: input.languageDetected,
+    resolverFamily: input.resolverFamily,
+    expectedKind: input.expectedKind,
+    validationChecks: [
+      "user_provided_pdf",
+      ...inspection.validation_checks,
+      inspection.sha256_matches_manifest ? "sha256_matches_manifest" : "sha256_mismatch",
+    ],
+    userProvidedPdfProvenance: {
+      local_pdf_path: input.entry.local_pdf_path,
+      filename: input.entry.filename,
+      sha256: input.entry.sha256,
+      acquisition_mode: input.entry.acquisition_mode,
+      provenance_status: input.entry.provenance_status,
+      allowed_for_diagnostic: input.entry.allowed_for_diagnostic,
+      allowed_for_production: input.entry.allowed_for_production,
+      reviewer_note: input.entry.reviewer_note,
+    },
+    warnings,
+  };
+}
+
 async function retryMaterializationFromHtml(input: {
   html: string;
   responseUrl: string;
@@ -220,12 +309,30 @@ async function materializeSingleSource(input: {
   planItem: BlueprintLaunchEvidencePlanningResult["materializationPlan"][number] | undefined;
   runDir: string;
   index: number;
+  userProvidedPdfManifest?: UserProvidedSourcePdfManifestV1 | null;
 }): Promise<BlueprintLaunchContentMaterializationItem> {
   const sourceId = input.bundleSource.reference.id;
   const title = input.bundleSource.reference.title;
   const warnings: string[] = [];
   const accessKind = input.accessResolution?.kind ?? "unknown";
   const resolvedContentUrl = input.planItem?.contentUrl ?? input.accessResolution?.resolvedContentUrl ?? null;
+  const baseName = `${String(input.index + 1).padStart(2, "0")}-${buildSafeKey(title) || "source"}`;
+  const userProvidedPdf = findUserProvidedPdfEntryForSource(input.userProvidedPdfManifest, sourceId);
+
+  if (userProvidedPdf) {
+    return materializeUserProvidedPdf({
+      entry: userProvidedPdf,
+      sourceId,
+      title,
+      accessKind,
+      resolvedContentUrl,
+      runDir: input.runDir,
+      baseName,
+      languageDetected: input.accessResolution?.languageDetected ?? null,
+      resolverFamily: input.planItem?.resolverFamily,
+      expectedKind: input.planItem?.expectedKind,
+    });
+  }
 
   if (!input.accessResolution?.hasCompletePublicContent || !resolvedContentUrl) {
     return {
@@ -268,8 +375,6 @@ async function materializeSingleSource(input: {
       response = await fetchContent({ url: resolvedContentUrl });
       contentType = response.headers.get("content-type");
     }
-    const baseName = `${String(input.index + 1).padStart(2, "0")}-${buildSafeKey(title) || "source"}`;
-
     if (!response.ok) {
       return {
         sourceId,
@@ -438,6 +543,7 @@ export async function materializeBlueprintLaunchSourceContent(input: {
   bundle: BlueprintLaunchSelectedSourceBundle;
   sourceAccessResolution: BlueprintLaunchSourceAccessResolutionResult;
   evidencePlanning?: BlueprintLaunchEvidencePlanningResult | null;
+  userProvidedPdfManifest?: UserProvidedSourcePdfManifestV1 | null;
 }): Promise<BlueprintLaunchContentMaterializationResult> {
   await ensureMaterializedDir();
   const savedAt = new Date().toISOString();
@@ -457,6 +563,7 @@ export async function materializeBlueprintLaunchSourceContent(input: {
         planItem: planBySourceId.get(source.reference.id),
         runDir,
         index,
+        userProvidedPdfManifest: input.userProvidedPdfManifest,
     }),
   );
 

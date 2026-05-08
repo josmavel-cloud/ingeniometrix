@@ -344,7 +344,7 @@ export function buildResearchBudgetPlan(input: {
   const rows: ResearchBudgetRow[] = [
     budgetRow({
       category: "software_datos",
-      item: "Gestion bibliografica, hojas de calculo y almacenamiento",
+      item: "Gestión bibliográfica, hojas de cálculo y almacenamiento",
       unit: "paquete mensual",
       quantity: 3,
       unitMin: currency === "PEN" ? 0 : 0,
@@ -469,7 +469,7 @@ export function buildPublicAppendixPlan(input: {
       ? {
           appendix_key: "source_selection_summary",
           title: "Resumen academico de fuentes seleccionadas",
-          purpose: "Explicar el uso academico de fuentes recuperadas, limitaciones y cautelas de trazabilidad.",
+          purpose: "Explicar el uso academico de fuentes recuperadas, limitaciones y cautelas de uso.",
           include_in_docx: true,
           source: "project_management_policy",
         }
@@ -494,7 +494,7 @@ export function buildPublicAppendixPlan(input: {
       ? {
           appendix_key: "schedule_budget_support",
           title: "Soporte de cronograma y presupuesto",
-          purpose: "Presentar supuestos operativos para la gestion academica del proyecto.",
+          purpose: "Presentar supuestos operativos para la gestión académica del proyecto.",
           include_in_docx: true,
           source: "project_management_policy",
         }

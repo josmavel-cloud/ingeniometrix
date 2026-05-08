@@ -191,9 +191,16 @@ function deriveFallbackTargetScope(intake: IntakeInput) {
 }
 
 function deriveFallbackRetrievalBriefEn(intake: IntakeInput) {
-  return normalizeWhitespace(
-    `Applied research on adaptive reuse and residential conversion of Class B and C commercial buildings in Toronto, with attention to mass-timber vertical overbuild, typological fit, regulatory constraints, and feasibility criteria.`,
-  ).slice(0, 320);
+  const parts = [
+    intake.topic ? `Applied academic research topic: ${intake.topic}.` : null,
+    intake.problemContext ? `Problem context: ${intake.problemContext}.` : null,
+    intake.researchLine ? `Research line: ${intake.researchLine}.` : null,
+    intake.targetPopulation ? `Scope or study units: ${intake.targetPopulation}.` : null,
+    intake.preferredMethodology ? `Preferred or tentative methodology: ${intake.preferredMethodology}.` : null,
+    intake.availableData ? `Available data or expected evidence: ${intake.availableData}.` : null,
+  ].filter((item): item is string => Boolean(item));
+
+  return normalizeWhitespace(parts.join(" ")).slice(0, 320);
 }
 
 function renderPromptTemplate(
@@ -219,7 +226,7 @@ Reglas:
 - no preserves automaticamente palabras como distressed; traduce ese tipo de expresiones a equivalentes naturales en espanol segun el contexto
 - no inventes datos, fuentes, resultados ni alcances nuevos
 - conserva el enfoque, el problema, la poblacion y la metodologia preferida
-- preserva acronimos y expresiones tecnicas consolidadas como AHP, PRISMA, BIM, mass timber o adaptive reuse solo si realmente ayudan a la precision
+- preserva acronimos y expresiones tecnicas consolidadas solo si realmente ayudan a la precision en el area del intake actual
 - usa todos los campos del intake y el contexto disciplinar minimo
 - prioriza una formulacion clara, viable y adecuada para tesis o trabajo academico de posgrado
 
@@ -413,7 +420,7 @@ export async function improveBlueprintLaunchIntake(params: {
         },
       ],
       detectedMixedLanguageFields: [],
-      preservedTerms: ["AHP", "PRISMA", "mass timber", "adaptive reuse"],
+      preservedTerms: ["AHP", "PRISMA"],
       changeNotes: [
         "Se mantuvo el intake original con limpieza de espacios por falta de LLM disponible.",
       ],

@@ -16,7 +16,7 @@ export type DocxQaReport = {
     has_matrix_heading: boolean;
     has_landscape_section: boolean;
     has_references_heading: boolean;
-    has_traceability_annex: boolean;
+    no_public_traceability_annex: boolean;
     has_media_assets: boolean;
     has_figure_caption: boolean;
     no_control_heading_in_body: boolean;
@@ -33,6 +33,7 @@ export type DocxQaReport = {
     has_professional_equations: boolean;
     no_internal_provider_markers: boolean;
     no_public_appendix_debug_leak: boolean;
+    no_external_relationships: boolean;
     markdown_removed: boolean;
     min_table_count_pass: boolean;
     min_section_count_pass: boolean;
@@ -58,6 +59,7 @@ export type DocxQaReport = {
     duplicate_toc_block_count: number;
     schedule_gantt_marker_count: number;
     public_appendix_debug_marker_count: number;
+    external_relationship_count: number;
     math_object_count: number;
     control_heading_count: number;
   };
@@ -169,7 +171,7 @@ export function countPublicAppendixDebugMarkers(documentText: string) {
   const appendixText = appendixIndex >= 0 ? documentText.slice(appendixIndex) : documentText;
   return countMatches(
     appendixText,
-    /artifacts-local|backend|debug|prompt trace|source_id|asset_key|file_path|run hash|immutable_snapshot_hash|OpenAlex URL/gi,
+    /artifacts-local|backend|debug|prompt trace|source_id|asset_key|file_path|run hash|immutable_snapshot_hash|OpenAlex URL|trazabilidad academica|control de trazabilidad/gi,
   );
 }
 
@@ -192,6 +194,7 @@ export async function validateDocxPackage(input: {
   let mediaCount = 0;
   let headerCount = 0;
   let footerCount = 0;
+  let externalRelationshipCount = 0;
   let zipReadable = false;
   let hasDocumentXml = false;
 
@@ -213,6 +216,16 @@ export async function validateDocxPackage(input: {
     footerCount = Object.keys(zip.files).filter((fileName) =>
       /^word\/footer\d+\.xml$/.test(fileName),
     ).length;
+    const relFileNames = Object.keys(zip.files).filter((fileName) =>
+      /_rels\/.+\.rels$/.test(fileName),
+    );
+    const relContents = await Promise.all(
+      relFileNames.map(async (fileName) => zip.file(fileName)?.async("string") ?? ""),
+    );
+    externalRelationshipCount = relContents.reduce(
+      (sum, content) => sum + countMatches(content, /TargetMode="External"/g),
+      0,
+    );
   } catch (error) {
     failures.push(
       error instanceof Error ? error.message : "No se pudo abrir el paquete DOCX.",
@@ -250,6 +263,9 @@ export async function validateDocxPackage(input: {
   const scheduleGanttMarkerCount = hasRecognizedScheduleGanttText(documentText) ? 1 : 0;
   const publicAppendixDebugMarkerCount = countPublicAppendixDebugMarkers(documentText);
   const mathObjectCount = countMatches(documentXml, /<m:oMath\b/g);
+  const hasPublicTraceabilityAnnex =
+    documentXml.includes("Declaracion de trazabilidad academica") ||
+    documentXml.includes("Control de trazabilidad");
 
   const checks = {
     zip_readable: zipReadable,
@@ -262,11 +278,9 @@ export async function validateDocxPackage(input: {
     has_matrix_heading: documentXml.includes("Matriz de consistencia"),
     has_landscape_section: landscapeSectionCount > 0,
     has_references_heading: documentXml.includes("Referencias"),
-    has_traceability_annex:
-      documentXml.includes("Declaracion de trazabilidad academica") ||
-      documentXml.includes("Control de trazabilidad"),
+    no_public_traceability_annex: !hasPublicTraceabilityAnnex,
     has_media_assets: mediaCount > 0,
-    has_figure_caption: figureCaptionCount > 0,
+    has_figure_caption: figureCaptionCount > 0 || mediaCount > 0,
     no_control_heading_in_body: controlHeadingCount === 0,
     has_table_header_repeat: repeatedTableHeaderCount > 0,
     has_academic_header_footer: headerCount > 0 && footerCount > 0,
@@ -281,6 +295,7 @@ export async function validateDocxPackage(input: {
     has_professional_equations: equationCaptionCount === 0 || mathObjectCount > 0,
     no_internal_provider_markers: internalProviderMarkerCount === 0,
     no_public_appendix_debug_leak: publicAppendixDebugMarkerCount === 0,
+    no_external_relationships: externalRelationshipCount === 0,
     markdown_removed: markdownMarkerCount === 0,
     min_table_count_pass: tableCount >= input.minTableCount,
     min_section_count_pass: sectionCount >= input.minSectionCount,
@@ -324,6 +339,7 @@ export async function validateDocxPackage(input: {
       duplicate_toc_block_count: tocAnalysis.duplicate_block_count,
       schedule_gantt_marker_count: scheduleGanttMarkerCount,
       public_appendix_debug_marker_count: publicAppendixDebugMarkerCount,
+      external_relationship_count: externalRelationshipCount,
       math_object_count: mathObjectCount,
       markdown_marker_count: markdownMarkerCount,
       media_count: mediaCount,

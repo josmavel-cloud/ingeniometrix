@@ -7,6 +7,7 @@ import {
   buildDeterministicFigureCaption,
   buildScheduleGanttTableRows,
 } from "../server/blueprint-v2/lab/docx-renderer";
+import { patchDocxPackage } from "../server/blueprint-v2/lab/docx-ooxml-patcher";
 import {
   countPublicAppendixDebugMarkers,
   detectDuplicateTableOfContents,
@@ -30,6 +31,7 @@ async function writeFakeDocx(docxPath: string, documentXml: string) {
   const zip = new JSZip();
   zip.file("word/document.xml", documentXml);
   zip.file("word/settings.xml", "<w:settings><w:updateFields w:val=\"true\"/></w:settings>");
+  zip.file("word/_rels/document.xml.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"/>");
   zip.file("word/header1.xml", "<w:hdr>Ingeniometrix</w:hdr>");
   zip.file("word/footer1.xml", "<w:ftr>1</w:ftr>");
   zip.file("word/media/cover.svg", "<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
@@ -92,7 +94,7 @@ async function main() {
       "Ecuacion 1. Razon de consistencia",
       "<m:oMath><m:r>CR</m:r></m:oMath>",
       "Referencias",
-      "Anexo A. Declaracion de trazabilidad academica",
+      "Anexo A. Gestion del proyecto",
       "<w:sectPr w:orient=\"landscape\"/>",
       "</w:body></w:document>",
     ].join(" "),
@@ -103,6 +105,9 @@ async function main() {
     minTableCount: 1,
     minSectionCount: 1,
   });
+  const patchReport = await patchDocxPackage({ docxPath: fakeDocxPath });
+  const patchedZip = await JSZip.loadAsync(fs.readFileSync(fakeDocxPath));
+  const patchedSettings = await patchedZip.file("word/settings.xml")?.async("string");
 
   const results: TestResult[] = [
     test(
@@ -119,7 +124,7 @@ async function main() {
     test(
       "missing asset caption gets deterministic fallback caption",
       fallbackCaption ===
-        "Figura 1. Infografia metodologica de Metodologia derivado de evidencia trazable.",
+        "Figura 1. Infograf\u00eda metodol\u00f3gica de Metodolog\u00eda derivado de evidencia trazable.",
       fallbackCaption,
     ),
     test(
@@ -150,6 +155,24 @@ async function main() {
       countPublicAppendixDebugMarkers(appendixLeakText) > 0 &&
         countPublicAppendixDebugMarkers(sanitizedAppendixText) === 0,
       sanitizedAppendixText,
+    ),
+    test(
+      "public DOCX QA rejects public traceability annex and external links",
+      qaReport.checks.no_public_traceability_annex &&
+        qaReport.checks.no_external_relationships &&
+        qaReport.metrics.external_relationship_count === 0,
+      JSON.stringify({
+        no_public_traceability_annex: qaReport.checks.no_public_traceability_annex,
+        no_external_relationships: qaReport.checks.no_external_relationships,
+        external_relationship_count: qaReport.metrics.external_relationship_count,
+      }),
+    ),
+    test(
+      "OOXML patch disables automatic field updates for standalone DOCX",
+      patchReport.patches_applied.includes("word/settings.xml:disableUpdateFields") &&
+        Boolean(patchedSettings?.includes('<w:updateFields w:val="false"/>')) &&
+        !Boolean(patchedSettings?.includes('w:val="true"')),
+      JSON.stringify({ patchReport, patchedSettings }),
     ),
   ];
 

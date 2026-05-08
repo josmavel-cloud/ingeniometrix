@@ -2,8 +2,13 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { getConfiguredLlmProvider } from "@/llm";
 import {
+  buildSourceHealthLookup,
   evaluateSectionEvidenceBinding,
 } from "@/server/blueprint-engine/quality/section-evidence-binding";
+import {
+  isCentralClaimSection,
+  semanticSourceRoleForSource,
+} from "@/server/blueprint-engine/quality/semantic-source-use-policy";
 import { resolveDomainGenerationProfile } from "@/server/blueprint-v2/lab/domain-generation-profile";
 import type { MasterTemplateImportContextArtifact } from "@/server/blueprint-v2/lab/template-import-context";
 import { deriveSectionWithoutLlm } from "@/server/blueprint-v2/sections/section-generation-fallback";
@@ -633,13 +638,27 @@ async function generateDraftForPlanItem(input: {
     generationStrategy: input.planItem.generation_strategy,
     executionProfile,
   });
-  const supportedSourceIds = canonicalizeSourceIds({
+  let supportedSourceIds = canonicalizeSourceIds({
     evidenceLedger: input.evidenceLedger,
     sourceIds:
       runtimePromptContext.used_source_ids.length > 0
         ? runtimePromptContext.used_source_ids
         : (manifestItem.source_ids ?? manifestItem.supporting_source_ids ?? []),
   });
+  if (isCentralClaimSection(input.planItem.section_key)) {
+    const sourceHealthLookup = buildSourceHealthLookup(
+      (input.templateImportContext?.source_priorities ?? []) as Array<Record<string, unknown>>,
+    );
+    const directSourceIds = supportedSourceIds.filter((sourceId) => {
+      const health = sourceHealthLookup.get(sourceId);
+      if (!health) return true;
+      const role = semanticSourceRoleForSource({ source: health }).role;
+      return role === "central_method_source" || role === "direct_topic_source";
+    });
+    if (directSourceIds.length > 0) {
+      supportedSourceIds = directSourceIds;
+    }
+  }
   const usedAssetKeys = runtimePromptContext.used_asset_keys;
   const fallbackContent = deriveSectionWithoutLlm({
     sectionKey: input.planItem.section_key,
