@@ -8,6 +8,7 @@ import type {
 import type { ProductionSafetyEvaluation } from "@/server/blueprint-engine/quality/production-safety";
 import type { RunTelemetryArtifact } from "@/server/blueprint-engine/quality/run-telemetry";
 import { summarizeSourceHealthFromHandoff } from "@/server/blueprint-engine/quality/source-health";
+import type { EvidenceGapActionPlanV1 } from "@/server/blueprint-engine/quality/evidence-gap-action-plan";
 
 export type QualityDashboard = {
   artifact_type: "quality_dashboard";
@@ -71,6 +72,17 @@ export type QualityDashboard = {
   };
   runtime_summary: {
     duration_ms: number | null;
+  };
+  evidence_gap_action_plan: {
+    present: boolean;
+    status: EvidenceGapActionPlanV1["status"] | null;
+    recommended_next_action_es: string | null;
+    can_continue_full_extraction: boolean | null;
+    should_return_to_source_selection: boolean | null;
+    should_upload_user_pdfs: boolean | null;
+    should_run_rapid_deep_research: boolean | null;
+    should_recover_secondary_references: boolean | null;
+    action_count: number;
   };
   remaining_blockers: string[];
   remaining_warnings: string[];
@@ -138,7 +150,12 @@ function nextAction(input: {
   productionEligible: boolean;
   blockers: string[];
   reducedPack?: ReducedEvidencePackV1 | null;
+  evidenceGapActionPlan?: EvidenceGapActionPlanV1 | null;
 }) {
+  if (input.evidenceGapActionPlan) {
+    return input.evidenceGapActionPlan.recommended_next_action_es;
+  }
+
   if (input.productionEligible) {
     return "Production gates pass; review final deliverables and run production-mode execution with immutable artifact refs.";
   }
@@ -172,6 +189,7 @@ export function buildQualityDashboard(input: {
   institutional_docx_qa?: unknown;
   fresh_run_isolation?: FreshRunIsolationReport | null;
   stale_content_scan?: StaleContentScanReport | null;
+  evidence_gap_action_plan?: EvidenceGapActionPlanV1 | null;
   warnings?: string[];
   blockers?: string[];
 }): QualityDashboard {
@@ -299,12 +317,24 @@ export function buildQualityDashboard(input: {
     runtime_summary: {
       duration_ms: input.run_telemetry?.duration_ms ?? null,
     },
+    evidence_gap_action_plan: {
+      present: Boolean(input.evidence_gap_action_plan),
+      status: input.evidence_gap_action_plan?.status ?? null,
+      recommended_next_action_es: input.evidence_gap_action_plan?.recommended_next_action_es ?? null,
+      can_continue_full_extraction: input.evidence_gap_action_plan?.can_continue_full_extraction ?? null,
+      should_return_to_source_selection: input.evidence_gap_action_plan?.should_return_to_source_selection ?? null,
+      should_upload_user_pdfs: input.evidence_gap_action_plan?.should_upload_user_pdfs ?? null,
+      should_run_rapid_deep_research: input.evidence_gap_action_plan?.should_run_rapid_deep_research ?? null,
+      should_recover_secondary_references: input.evidence_gap_action_plan?.should_recover_secondary_references ?? null,
+      action_count: input.evidence_gap_action_plan?.actions.length ?? 0,
+    },
     remaining_blockers: blockers,
     remaining_warnings: warnings,
     next_recommended_action: nextAction({
       productionEligible,
       blockers,
       reducedPack: input.reduced_evidence_pack,
+      evidenceGapActionPlan: input.evidence_gap_action_plan ?? null,
     }),
   };
 }
@@ -331,12 +361,27 @@ export function renderProductionReadinessReport(dashboard: QualityDashboard) {
     }`,
     `- evidence readiness: ${dashboard.source_health.usable_full_text_source_count} usable full-text source(s)`,
     `- cost readiness: ${dashboard.cost_summary.estimated_cost_cad.toFixed(6)} CAD estimated`,
+    `- evidence gap action status: ${dashboard.evidence_gap_action_plan.status ?? "not evaluated"}`,
     "",
     "## Evidence Budget",
     "",
     `- full evidence units: ${dashboard.evidence_health.evidence_unit_count}`,
     `- reduced evidence units: ${dashboard.evidence_health.reduced_evidence_unit_count ?? "not generated"}`,
     `- true source-backed direct quotes: ${dashboard.citation_health.true_source_backed_direct_quote_count}`,
+    "",
+    "## Evidence Gap Action Plan",
+    "",
+    dashboard.evidence_gap_action_plan.present
+      ? `- status: ${dashboard.evidence_gap_action_plan.status}`
+      : "- not generated for this run",
+    dashboard.evidence_gap_action_plan.recommended_next_action_es
+      ? `- recommended_next_action_es: ${dashboard.evidence_gap_action_plan.recommended_next_action_es}`
+      : "- recommended_next_action_es: n/a",
+    `- can_continue_full_extraction: ${dashboard.evidence_gap_action_plan.can_continue_full_extraction ?? "n/a"}`,
+    `- should_return_to_source_selection: ${dashboard.evidence_gap_action_plan.should_return_to_source_selection ?? "n/a"}`,
+    `- should_upload_user_pdfs: ${dashboard.evidence_gap_action_plan.should_upload_user_pdfs ?? "n/a"}`,
+    `- should_run_rapid_deep_research: ${dashboard.evidence_gap_action_plan.should_run_rapid_deep_research ?? "n/a"}`,
+    `- should_recover_secondary_references: ${dashboard.evidence_gap_action_plan.should_recover_secondary_references ?? "n/a"}`,
     "",
     "## Blockers",
     "",

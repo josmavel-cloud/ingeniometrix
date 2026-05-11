@@ -38,6 +38,11 @@ type Candidate = {
   provider?: string;
   reasons?: string[];
   warnings?: string[];
+  candidate_markers?: string[];
+  citable_status?: "candidate_only_not_citable_yet";
+  supplemental_source?: string;
+  evidence_need_id?: string;
+  confidence?: "high" | "medium" | "low";
 };
 
 type RunListItem = {
@@ -835,6 +840,16 @@ export function EvidenceSourceSelectionLab() {
                           {candidate.open_access_status}
                         </span>
                       ) : null}
+                      {candidate.citable_status === "candidate_only_not_citable_yet" ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-amber-700">
+                          No citable aun
+                        </span>
+                      ) : null}
+                      {candidate.supplemental_source ? (
+                        <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-violet-700">
+                          Suplementaria
+                        </span>
+                      ) : null}
                     </div>
 
                     {renderAuthors(candidate.authors) ? (
@@ -904,6 +919,8 @@ export function EvidenceSourceSelectionLab() {
                           <p>OpenAlex: {candidate.openalex_id ?? "No disponible"}</p>
                           <p>Crossref: {candidate.crossref_id ?? "No disponible"}</p>
                           <p>PDF: {candidate.pdf_url ? "Disponible en metadata" : "No disponible"}</p>
+                          <p>Estado citable: {candidate.citable_status ?? "Candidato bibliografico normal"}</p>
+                          <p>Necesidad cubierta: {candidate.evidence_need_id ?? "No aplica"}</p>
                           <div>
                             <p className="font-semibold text-slate-600">Razones</p>
                             <ul className="mt-1 list-disc space-y-1 pl-5">

@@ -2,11 +2,10 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import {
-  readJsonFile,
+  readCandidateSourcesForRun,
   readOptionalJsonFile,
   resolveRunDir,
   writeJsonAtomic,
-  type CandidateSourcesArtifact,
   type SourceSelectionPayload,
 } from "@/app/api/labs/evidence-source-selection/_shared";
 
@@ -53,9 +52,7 @@ export async function POST(request: Request) {
     }
 
     const runDir = resolveRunDir(caseId, runId);
-    const candidateArtifact = await readJsonFile<CandidateSourcesArtifact>(
-      path.join(runDir, "candidate-sources.json"),
-    );
+    const candidateArtifact = await readCandidateSourcesForRun(runDir);
     const candidates = candidateArtifact.candidates ?? [];
     const candidateIds = new Set(candidates.map((candidate) => candidate.candidate_id));
     const allSubmittedIds = [
@@ -158,4 +155,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

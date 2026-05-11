@@ -2,10 +2,9 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 
 import {
-  readJsonFile,
+  readCandidateSourcesForRun,
   readOptionalJsonFile,
   resolveRunDir,
-  type CandidateSourcesArtifact,
 } from "@/app/api/labs/evidence-source-selection/_shared";
 
 export async function GET(request: Request) {
@@ -16,7 +15,7 @@ export async function GET(request: Request) {
     const runDir = resolveRunDir(caseId, runId);
     const [candidateSources, runSummary, intakeFixture, selectionTemplate, sourceSelection] =
       await Promise.all([
-        readJsonFile<CandidateSourcesArtifact>(path.join(runDir, "candidate-sources.json")),
+        readCandidateSourcesForRun(runDir),
         readOptionalJsonFile<Record<string, unknown>>(path.join(runDir, "run-summary.json")),
         readOptionalJsonFile<Record<string, unknown>>(path.join(runDir, "intake-fixture.json")),
         readOptionalJsonFile<Record<string, unknown>>(
@@ -49,4 +48,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

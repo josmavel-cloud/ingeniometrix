@@ -86,6 +86,21 @@ import {
   renderRapidDeepResearchReport,
   runRapidDeepResearchFallback,
 } from "@/server/blueprint-engine/quality/rapid-deep-research-fallback";
+import {
+  buildRapidDeepResearchFallbackDecision,
+  renderRapidDeepResearchFallbackDecisionReport,
+} from "@/server/blueprint-engine/quality/rapid-deep-research-fallback-decision";
+import {
+  buildEvidenceGapActionPlan,
+  renderEvidenceGapActionPlanReport,
+  type EvidenceGapActionPlanV1,
+} from "@/server/blueprint-engine/quality/evidence-gap-action-plan";
+import {
+  buildDeepResearchCandidateSourceSupplement,
+  mergeCandidateSourcesWithSupplement,
+  publishDeepResearchCandidateSupplementRun,
+  type CandidateSourcesSupplementArtifactV1,
+} from "@/server/blueprint-engine/quality/deep-research-source-supplement";
 import { readLlmUsageRegistry, type LlmUsageRegistry } from "@/server/llm-usage-registry";
 import type { IntakeInput } from "@/server/projects/project-validation";
 import { resolveProjectStatusFromIntake } from "@/server/projects/project-validation";
@@ -142,7 +157,7 @@ type NormalizedIntakeContext = {
   target_scope_es?: string | null;
 };
 
-type CandidateSource = {
+export type CandidateSource = {
   candidate_id: string;
   title: string;
   authors?: string[];
@@ -160,6 +175,16 @@ type CandidateSource = {
   provider?: string;
   reasons?: string[];
   warnings?: string[];
+  candidate_markers?: string[];
+  citable_status?: "candidate_only_not_citable_yet";
+  supplemental_source?: "rapid_deep_research_fallback";
+  evidence_candidate_id?: string;
+  evidence_need_id?: string;
+  gap_addressed?: string;
+  confidence?: "high" | "medium" | "low";
+  must_pass_source_selection?: true;
+  must_pass_pdf_or_source_inspection?: true;
+  must_pass_evidence_engine?: true;
 };
 
 type CandidateSourcesArtifact = {
@@ -219,6 +244,17 @@ type RunSummary = {
   user_provided_pdf_manifest_path?: string | null;
   user_provided_pdf_count?: number;
   user_provided_pdf_production_review_required?: boolean;
+  supplemental_source_count?: number;
+  supplemental_source_ids?: string[];
+  supplemental_source_policy_warnings?: string[];
+  evidence_gap_action_status?: EvidenceGapActionPlanV1["status"] | null;
+  evidence_gap_recommended_next_action_es?: string | null;
+  evidence_gap_can_continue_full_extraction?: boolean | null;
+  evidence_gap_should_return_to_source_selection?: boolean | null;
+  evidence_gap_should_upload_user_pdfs?: boolean | null;
+  evidence_gap_should_run_rapid_deep_research?: boolean | null;
+  evidence_gap_should_recover_secondary_references?: boolean | null;
+  evidence_gap_action_count?: number;
 };
 
 type BlockedRunStep =
@@ -261,6 +297,36 @@ type SourceReplacementReport = {
   source_set_blockers: string[];
   source_set_warnings: string[];
   instructions_es: string[];
+};
+
+export type DeepResearchSupplementalSourceProvenance = {
+  source_origin: "rapid_deep_research_fallback";
+  citable_status: "candidate_only_not_citable_yet";
+  supplemental_source: "rapid_deep_research_fallback";
+  evidence_candidate_id: string | null;
+  evidence_need_id: string | null;
+  gap_addressed: string | null;
+  confidence: "high" | "medium" | "low" | null;
+  must_pass_source_selection: true;
+  must_pass_pdf_or_source_inspection: true;
+  must_pass_evidence_engine: true;
+  policy_warnings: string[];
+};
+
+export type SupplementalSelectedSourcePolicyReport = {
+  artifact_type: "supplemental_selected_source_policy_report";
+  artifact_version: "v1";
+  generated_at: string;
+  supplemental_source_count: number;
+  supplemental_source_ids: string[];
+  policy_warnings: string[];
+  sources: Array<{
+    source_id: string;
+    title: string;
+    doi: string | null;
+    landing_page_url: string | null;
+    provenance: DeepResearchSupplementalSourceProvenance;
+  }>;
 };
 
 function loadLocalEnv() {
@@ -415,7 +481,63 @@ function parseScoreLabel(candidate: CandidateSource): "ALTO" | "MEDIO" | "BAJO" 
   return "BAJO";
 }
 
-function buildReferenceListItem(input: {
+function buildSupplementalSourceProvenance(
+  candidate: CandidateSource,
+): DeepResearchSupplementalSourceProvenance | null {
+  if (
+    candidate.supplemental_source !== "rapid_deep_research_fallback" &&
+    candidate.citable_status !== "candidate_only_not_citable_yet"
+  ) {
+    return null;
+  }
+
+  return {
+    source_origin: "rapid_deep_research_fallback",
+    citable_status: "candidate_only_not_citable_yet",
+    supplemental_source: "rapid_deep_research_fallback",
+    evidence_candidate_id: candidate.evidence_candidate_id ?? null,
+    evidence_need_id: candidate.evidence_need_id ?? null,
+    gap_addressed: candidate.gap_addressed ?? null,
+    confidence: candidate.confidence ?? null,
+    must_pass_source_selection: true,
+    must_pass_pdf_or_source_inspection: true,
+    must_pass_evidence_engine: true,
+    policy_warnings: unique([
+      ...(candidate.warnings ?? []),
+      "Deep Research supplement source is discovery-only at selection time.",
+      "It must pass local source/PDF inspection and Evidence Engine before it can support citations.",
+      "Do not treat Deep Research summary text as citable evidence.",
+    ]),
+  };
+}
+
+function referenceWithSupplementalProvenance(
+  candidate: CandidateSource,
+): BlueprintLaunchReferenceListItem["reference"] {
+  const provenance = buildSupplementalSourceProvenance(candidate);
+  const reference = {
+    id: candidate.candidate_id,
+    title: candidate.title,
+    translatedTitle: null,
+    doi: candidate.doi ?? null,
+    year: candidate.year ?? null,
+    venue: candidate.venue ?? null,
+    abstract: candidate.abstract ?? null,
+    translatedAbstract: null,
+    landingPageUrl: candidate.landing_page_url ?? null,
+    authorsJson: candidate.authors ?? [],
+    sourceLanguage: null,
+    displayLanguage: "es",
+    hasAutoTranslation: false,
+    pdfUrl: candidate.pdf_url ?? null,
+    pdfAccessible: Boolean(candidate.pdf_url),
+    sourceProvenance: provenance,
+  };
+
+  return reference as BlueprintLaunchReferenceListItem["reference"];
+}
+
+export function buildReferenceListItem(input: {
   candidate: CandidateSource;
   index: number;
   searchQuery: string;
@@ -435,27 +557,32 @@ function buildReferenceListItem(input: {
       matchedQuery: input.searchQuery,
       matchedQueryStage: "necessary_only",
     },
-    reference: {
-      id: input.candidate.candidate_id,
-      title: input.candidate.title,
-      translatedTitle: null,
-      doi: input.candidate.doi ?? null,
-      year: input.candidate.year ?? null,
-      venue: input.candidate.venue ?? null,
-      abstract: input.candidate.abstract ?? null,
-      translatedAbstract: null,
-      landingPageUrl: input.candidate.landing_page_url ?? null,
-      authorsJson: input.candidate.authors ?? [],
-      sourceLanguage: null,
-      displayLanguage: "es",
-      hasAutoTranslation: false,
-      pdfUrl: input.candidate.pdf_url ?? null,
-      pdfAccessible: Boolean(input.candidate.pdf_url),
-    },
+    reference: referenceWithSupplementalProvenance(input.candidate),
   };
 }
 
-function buildSelectedSourceBundle(input: {
+function getSupplementalProvenanceFromReference(
+  reference: BlueprintLaunchReferenceListItem["reference"],
+): DeepResearchSupplementalSourceProvenance | null {
+  const provenance = (reference as { sourceProvenance?: unknown }).sourceProvenance;
+  if (!provenance || typeof provenance !== "object") return null;
+  const record = provenance as DeepResearchSupplementalSourceProvenance;
+  return record.source_origin === "rapid_deep_research_fallback" ? record : null;
+}
+
+function getSupplementalProvenanceFromBundleSource(
+  source: BlueprintLaunchSelectedSourceBundle["sources"][number],
+): DeepResearchSupplementalSourceProvenance | null {
+  const direct = (source as { sourceProvenance?: unknown }).sourceProvenance;
+  if (direct && typeof direct === "object") {
+    const record = direct as DeepResearchSupplementalSourceProvenance;
+    if (record.source_origin === "rapid_deep_research_fallback") return record;
+  }
+
+  return getSupplementalProvenanceFromReference(source.reference);
+}
+
+export function buildSelectedSourceBundle(input: {
   outputFolder: string;
   searchSnapshot: BlueprintLaunchSearchSnapshot;
   savedIntake: BlueprintLaunchSavedIntakeSnapshot;
@@ -463,12 +590,16 @@ function buildSelectedSourceBundle(input: {
   const sources = input.searchSnapshot.references
     .filter((item) => item.selected && item.selectedOrder !== null)
     .sort((left, right) => (left.selectedOrder ?? 999) - (right.selectedOrder ?? 999))
-    .map((item) => ({
-      selectedOrder: item.selectedOrder ?? 0,
-      relevanceScore: item.relevanceScore,
-      scoreLabel: item.scoreBreakdown?.label ?? null,
-      reference: item.reference,
-    }));
+    .map((item) => {
+      const sourceProvenance = getSupplementalProvenanceFromReference(item.reference);
+      return {
+        selectedOrder: item.selectedOrder ?? 0,
+        relevanceScore: item.relevanceScore,
+        scoreLabel: item.scoreBreakdown?.label ?? null,
+        reference: item.reference,
+        sourceProvenance,
+      };
+    });
 
   return {
     savedAt: new Date().toISOString(),
@@ -478,6 +609,69 @@ function buildSelectedSourceBundle(input: {
     searchQuery: input.searchSnapshot.searchQuery,
     intakeTopic: input.savedIntake.intake.topic,
     sources,
+  };
+}
+
+export function buildSupplementalSelectedSourcePolicyReport(
+  bundle: BlueprintLaunchSelectedSourceBundle,
+): SupplementalSelectedSourcePolicyReport {
+  const sources = bundle.sources
+    .map((source) => {
+      const provenance = getSupplementalProvenanceFromBundleSource(source);
+      if (!provenance) return null;
+      return {
+        source_id: source.reference.id,
+        title: source.reference.title,
+        doi: source.reference.doi,
+        landing_page_url: source.reference.landingPageUrl,
+        provenance,
+      };
+    })
+    .filter((source): source is NonNullable<typeof source> => Boolean(source));
+
+  return {
+    artifact_type: "supplemental_selected_source_policy_report",
+    artifact_version: "v1",
+    generated_at: new Date().toISOString(),
+    supplemental_source_count: sources.length,
+    supplemental_source_ids: sources.map((source) => source.source_id),
+    policy_warnings: unique(sources.flatMap((source) => source.provenance.policy_warnings)),
+    sources,
+  };
+}
+
+export function annotateSupplementalSourceAccessResolution(input: {
+  sourceAccessResolution: BlueprintLaunchSourceAccessResolutionResult;
+  bundle: BlueprintLaunchSelectedSourceBundle;
+}): BlueprintLaunchSourceAccessResolutionResult {
+  const provenanceBySourceId = new Map(
+    input.bundle.sources
+      .map((source) => [source.reference.id, getSupplementalProvenanceFromBundleSource(source)] as const)
+      .filter((entry): entry is readonly [string, DeepResearchSupplementalSourceProvenance] =>
+        Boolean(entry[1]),
+      ),
+  );
+
+  if (provenanceBySourceId.size === 0) {
+    return input.sourceAccessResolution;
+  }
+
+  return {
+    ...input.sourceAccessResolution,
+    items: input.sourceAccessResolution.items.map((item) => {
+      const provenance = provenanceBySourceId.get(item.sourceId);
+      if (!provenance) return item;
+
+      return {
+        ...item,
+        warnings: unique([
+          ...item.warnings,
+          ...provenance.policy_warnings,
+          "source_origin=rapid_deep_research_fallback",
+          "citable_status=candidate_only_not_citable_yet_until_local_inspection_and_evidence_engine",
+        ]),
+      };
+    }),
   };
 }
 
@@ -560,7 +754,35 @@ export function buildRunSummaryBase(input: {
     user_provided_pdf_manifest_path: null,
     user_provided_pdf_count: 0,
     user_provided_pdf_production_review_required: false,
+    supplemental_source_count: 0,
+    supplemental_source_ids: [],
+    supplemental_source_policy_warnings: [],
+    evidence_gap_action_status: null,
+    evidence_gap_recommended_next_action_es: null,
+    evidence_gap_can_continue_full_extraction: null,
+    evidence_gap_should_return_to_source_selection: null,
+    evidence_gap_should_upload_user_pdfs: null,
+    evidence_gap_should_run_rapid_deep_research: null,
+    evidence_gap_should_recover_secondary_references: null,
+    evidence_gap_action_count: 0,
   };
+}
+
+export function buildEvidenceGapRunSummaryFields(plan: EvidenceGapActionPlanV1) {
+  return {
+    evidence_gap_action_status: plan.status,
+    evidence_gap_recommended_next_action_es: plan.recommended_next_action_es,
+    evidence_gap_can_continue_full_extraction: plan.can_continue_full_extraction,
+    evidence_gap_should_return_to_source_selection: plan.should_return_to_source_selection,
+    evidence_gap_should_upload_user_pdfs: plan.should_upload_user_pdfs,
+    evidence_gap_should_run_rapid_deep_research: plan.should_run_rapid_deep_research,
+    evidence_gap_should_recover_secondary_references: plan.should_recover_secondary_references,
+    evidence_gap_action_count: plan.actions.length,
+  };
+}
+
+function applyEvidenceGapActionPlanToSummary(summary: RunSummary, plan: EvidenceGapActionPlanV1) {
+  Object.assign(summary, buildEvidenceGapRunSummaryFields(plan));
 }
 
 function isBlockDecision(value: unknown) {
@@ -839,6 +1061,7 @@ async function writeEvidenceRunAnalytics(input: {
   reducedEvidencePack?: ReducedEvidencePackV1 | null;
   userProvidedPdfManifest?: UserProvidedSourcePdfManifestV1 | null;
   stepSpans?: StepTelemetrySpan[] | null;
+  evidenceGapActionPlan?: EvidenceGapActionPlanV1 | null;
 }) {
   const completedAt = new Date().toISOString();
   const usageDelta = normalizeUsageDelta(input.summary.estimated_or_logged_token_usage);
@@ -932,6 +1155,7 @@ async function writeEvidenceRunAnalytics(input: {
     production_safety: productionSafety,
     reduced_evidence_pack: input.reducedEvidencePack ?? null,
     run_telemetry: runTelemetry,
+    evidence_gap_action_plan: input.evidenceGapActionPlan ?? null,
     warnings: input.summary.warnings,
     blockers: input.summary.blockers,
   });
@@ -958,6 +1182,7 @@ export async function writeBlockedGateArtifacts(input: {
   usageBefore?: LlmUsageRegistry | null;
   startedAt?: string | null;
   stepSpans?: StepTelemetrySpan[] | null;
+  evidenceGapActionPlan?: EvidenceGapActionPlanV1 | null;
 }) {
   const summary = input.summary;
   const report = buildSourceReplacementReport({
@@ -1017,6 +1242,7 @@ export async function writeBlockedGateArtifacts(input: {
       handoff: null,
       reducedEvidencePack: null,
       stepSpans: input.stepSpans,
+      evidenceGapActionPlan: input.evidenceGapActionPlan ?? null,
     });
   }
 
@@ -1081,17 +1307,29 @@ async function main() {
     const intakeFixturePath = path.join(sourceCandidateRunFolder, "intake-fixture.json");
     const normalizedIntakePath = path.join(sourceCandidateRunFolder, "normalized-intake-context.json");
     const candidateSourcesPath = path.join(sourceCandidateRunFolder, "candidate-sources.json");
+    const candidateSourcesSupplementPath = path.join(
+      sourceCandidateRunFolder,
+      "candidate-sources-supplement.json",
+    );
     const sourceSelectionPath = path.join(sourceCandidateRunFolder, "source-selection.json");
 
-    const [intakeFixture, normalizedIntake, candidateSources, sourceSelection] =
+    const [intakeFixture, normalizedIntake, baseCandidateSources, sourceSelection] =
       await Promise.all([
         readJson<IntakeFixture>(intakeFixturePath),
         readJson<NormalizedIntakeContext>(normalizedIntakePath),
         readJson<CandidateSourcesArtifact>(candidateSourcesPath),
         readJson<SourceSelection>(sourceSelectionPath),
       ]);
+    const candidateSourcesSupplement = existsSync(candidateSourcesSupplementPath)
+      ? await readJson<CandidateSourcesSupplementArtifactV1>(candidateSourcesSupplementPath)
+      : null;
+    const candidateSources = mergeCandidateSourcesWithSupplement({
+      base: baseCandidateSources,
+      supplement: candidateSourcesSupplement,
+    }) as CandidateSourcesArtifact;
 
     await copyIfExists(intakeFixturePath, path.join(outputFolder, "intake-fixture.json"));
+    await copyIfExists(candidateSourcesSupplementPath, path.join(outputFolder, "candidate-sources-supplement.json"));
     await copyIfExists(sourceSelectionPath, path.join(outputFolder, "source-selection.json"));
     if (userProvidedPdfManifest) {
       await writeJson(
@@ -1202,6 +1440,26 @@ async function main() {
       throw new Error("No se pudo construir selected-source-bundle.json desde source-selection.json.");
     }
 
+    const supplementalSourcePolicyReport =
+      buildSupplementalSelectedSourcePolicyReport(selectedSourceBundle);
+    summary.supplemental_source_count =
+      supplementalSourcePolicyReport.supplemental_source_count;
+    summary.supplemental_source_ids = supplementalSourcePolicyReport.supplemental_source_ids;
+    summary.supplemental_source_policy_warnings =
+      supplementalSourcePolicyReport.policy_warnings;
+    if (supplementalSourcePolicyReport.supplemental_source_count > 0) {
+      summary.production_valid = false;
+      summary.warnings = unique([
+        ...summary.warnings,
+        ...supplementalSourcePolicyReport.policy_warnings,
+        "Supplemental Deep Research sources selected; production requires local verification through Evidence Engine and human review.",
+      ]);
+      await writeJson(
+        path.join(outputFolder, "supplemental-selected-source-policy-report.json"),
+        supplementalSourcePolicyReport,
+      );
+    }
+
     await writeJson(path.join(outputFolder, "selected-source-bundle.json"), selectedSourceBundle);
 
     const usageBefore = await readLlmUsageRegistry();
@@ -1213,9 +1471,13 @@ async function main() {
       step_id: "step_2_source_access_resolution",
       step_name: "Step 2 source access resolution",
       fn: async () => {
-        const resolved = await resolveBlueprintLaunchSourceAccess({
+        const rawResolved = await resolveBlueprintLaunchSourceAccess({
           bundle: selectedSourceBundle,
           projectGlobalContext,
+        });
+        const resolved = annotateSupplementalSourceAccessResolution({
+          sourceAccessResolution: rawResolved,
+          bundle: selectedSourceBundle,
         });
         const gate = evaluateBlueprintLaunchSourceIntakeGate(
           searchSnapshot.references,
@@ -1369,6 +1631,8 @@ async function main() {
       markAllowBlockedDiagnostic(summary);
     }
 
+    let evidenceGapActionPlan: EvidenceGapActionPlanV1 | null = null;
+
     if (evidencePlanning.preMaterializationDecision === "PROCEED_TO_LIMITED_INSPECTION") {
       console.log(`[${new Date().toISOString()}] Step 4A: limited source inspection`);
       const limitedInspection = await measureEvidenceStep({
@@ -1446,12 +1710,14 @@ async function main() {
       summary.completed_steps.push("step_4c_source_sufficiency");
       summary.warnings = unique([...summary.warnings, ...postInspectionSufficiency.warnings]);
 
+      let deepResearchLight: ReturnType<typeof buildDeepResearchLightArtifacts> | null = null;
+
       if (shouldBuildDeepResearchLightArtifacts({ postInspectionSufficiency })) {
         const referenceCandidatePath = path.join(
           outputFolder,
           "deep-research-light-reference-candidates.json",
         );
-        const deepResearchLight = buildDeepResearchLightArtifacts({
+        deepResearchLight = buildDeepResearchLightArtifacts({
           caseId,
           intake: savedIntake.intake as unknown as Record<string, unknown>,
           bundle: selectedSourceBundle,
@@ -1478,59 +1744,147 @@ async function main() {
           ...summary.warnings,
           "Deep Research light fallback artifacts were prepared for source selection; no external search was executed by this runner.",
         ]);
-
-        if (rapidDeepResearchFallback) {
-          console.log(`[${new Date().toISOString()}] Step 4D: rapid Deep Research fallback`);
-          const rapidRequest = buildRapidDeepResearchRequest({
-            caseId,
-            bundle: selectedSourceBundle,
-            limitedInspection,
-            postInspectionSufficiency,
-            deepResearchLight,
-          });
-          const rapidFallback = await measureEvidenceStep({
-            timer: stepTimer,
-            step_id: "step_4d_rapid_deep_research_fallback",
-            step_name: "Step 4D rapid Deep Research fallback",
-            fn: async () =>
-              runRapidDeepResearchFallback({
-                request: rapidRequest,
-                selectedSources: selectedSourceBundle.sources,
-              }),
-          });
-          await writeJson(
-            path.join(outputFolder, "rapid-deep-research-request.json"),
-            rapidFallback.request,
-          );
-          await writeJson(
-            path.join(outputFolder, "rapid-deep-research-result.json"),
-            rapidFallback.result,
-          );
-          await writeJson(
-            path.join(outputFolder, "rapid-deep-research-candidate-sources.json"),
-            rapidFallback.candidateSources,
-          );
-          await writeJson(
-            path.join(outputFolder, "deep-research-evidence-candidates.json"),
-            rapidFallback.evidenceCandidates,
-          );
-          await writeJson(
-            path.join(outputFolder, "rapid-deep-research-validation-report.json"),
-            rapidFallback.validationReport,
-          );
-          await writeFile(
-            path.join(outputFolder, "rapid-deep-research-report.md"),
-            renderRapidDeepResearchReport(rapidFallback),
-            "utf8",
-          );
-          summary.completed_steps.push("step_4d_rapid_deep_research_fallback");
-          summary.warnings = unique([
-            ...summary.warnings,
-            ...rapidFallback.result.warnings,
-            `Rapid Deep Research fallback status: ${rapidFallback.result.status}.`,
-          ]);
-        }
       }
+
+      const rapidFallbackDecision = buildRapidDeepResearchFallbackDecision({
+        caseId,
+        requestedByCli: rapidDeepResearchFallback,
+        postInspectionSufficiency,
+        deepResearchLight,
+      });
+      await writeJson(
+        path.join(outputFolder, "rapid-deep-research-fallback-decision.json"),
+        rapidFallbackDecision,
+      );
+      await writeFile(
+        path.join(outputFolder, "rapid-deep-research-fallback-decision.md"),
+        renderRapidDeepResearchFallbackDecisionReport(rapidFallbackDecision),
+        "utf8",
+      );
+      let publishedSupplementRun:
+        | Awaited<ReturnType<typeof publishDeepResearchCandidateSupplementRun>>
+        | null = null;
+      let supplementCandidateCount: number | null = null;
+
+      if (rapidDeepResearchFallback && rapidFallbackDecision.decision !== "run") {
+        summary.warnings = unique([
+          ...summary.warnings,
+          `Rapid Deep Research fallback skipped: ${rapidFallbackDecision.reason_code}.`,
+          ...rapidFallbackDecision.skipped_reasons,
+        ]);
+      }
+
+      if (rapidFallbackDecision.decision === "run") {
+        console.log(`[${new Date().toISOString()}] Step 4D: rapid Deep Research fallback`);
+        const rapidRequest = buildRapidDeepResearchRequest({
+          caseId,
+          bundle: selectedSourceBundle,
+          limitedInspection,
+          postInspectionSufficiency,
+          deepResearchLight,
+        });
+        const rapidFallback = await measureEvidenceStep({
+          timer: stepTimer,
+          step_id: "step_4d_rapid_deep_research_fallback",
+          step_name: "Step 4D rapid Deep Research fallback",
+          fn: async () =>
+            runRapidDeepResearchFallback({
+              request: rapidRequest,
+              selectedSources: selectedSourceBundle.sources,
+            }),
+        });
+        await writeJson(
+          path.join(outputFolder, "rapid-deep-research-request.json"),
+          rapidFallback.request,
+        );
+        await writeJson(
+          path.join(outputFolder, "rapid-deep-research-result.json"),
+          rapidFallback.result,
+        );
+        await writeJson(
+          path.join(outputFolder, "rapid-deep-research-candidate-sources.json"),
+          rapidFallback.candidateSources,
+        );
+        await writeJson(
+          path.join(outputFolder, "deep-research-evidence-candidates.json"),
+          rapidFallback.evidenceCandidates,
+        );
+        const candidateSourcesSupplement = buildDeepResearchCandidateSourceSupplement({
+          caseId,
+          baseCandidateSources: candidateSources,
+          deepResearchEvidenceCandidates: rapidFallback.evidenceCandidates,
+          rapidCandidateSources: rapidFallback.candidateSources,
+          originatingEvidenceRunFolder: outputFolder,
+          sourceArtifactPaths: {
+            deepResearchEvidenceCandidates: path.join(
+              outputFolder,
+              "deep-research-evidence-candidates.json",
+            ),
+            rapidCandidateSources: path.join(
+              outputFolder,
+              "rapid-deep-research-candidate-sources.json",
+            ),
+          },
+        });
+        await writeJson(
+          path.join(outputFolder, "candidate-sources-supplement.json"),
+          candidateSourcesSupplement,
+        );
+        supplementCandidateCount = candidateSourcesSupplement.supplement_candidate_count;
+        publishedSupplementRun =
+          candidateSourcesSupplement.supplement_candidate_count > 0
+            ? await publishDeepResearchCandidateSupplementRun({
+                caseId,
+                baseCandidateRunFolder: sourceCandidateRunFolder,
+                evidenceRunFolder: outputFolder,
+                baseCandidateSources: candidateSources,
+                supplement: candidateSourcesSupplement,
+                rapidResult: rapidFallback.result,
+              })
+            : null;
+        await writeJson(
+          path.join(outputFolder, "deep-research-source-selection-run.json"),
+          publishedSupplementRun ?? {
+            status: "not_created",
+            reason: "No Deep Research supplement candidates were accepted.",
+          },
+        );
+        await writeJson(
+          path.join(outputFolder, "rapid-deep-research-validation-report.json"),
+          rapidFallback.validationReport,
+        );
+        await writeFile(
+          path.join(outputFolder, "rapid-deep-research-report.md"),
+          renderRapidDeepResearchReport(rapidFallback),
+          "utf8",
+        );
+        summary.completed_steps.push("step_4d_rapid_deep_research_fallback");
+        summary.warnings = unique([
+          ...summary.warnings,
+          ...rapidFallback.result.warnings,
+          `Rapid Deep Research fallback status: ${rapidFallback.result.status}.`,
+          publishedSupplementRun
+            ? `Deep Research supplement source-selection run: ${publishedSupplementRun.run_folder}.`
+            : "No Deep Research supplement source-selection run was created because no accepted supplement candidates were available.",
+        ]);
+      }
+
+      evidenceGapActionPlan = buildEvidenceGapActionPlan({
+        caseId,
+        postInspectionSufficiency,
+        rapidFallbackDecision,
+        deepResearchLight,
+        supplementRunFolder: publishedSupplementRun?.run_folder ?? null,
+        supplementCandidateCount,
+        sourceSelectionUiPath: "/lab/evidence-source-selection",
+      });
+      applyEvidenceGapActionPlanToSummary(summary, evidenceGapActionPlan);
+      await writeJson(path.join(outputFolder, "evidence-gap-action-plan.json"), evidenceGapActionPlan);
+      await writeFile(
+        path.join(outputFolder, "evidence-gap-action-plan.md"),
+        renderEvidenceGapActionPlanReport(evidenceGapActionPlan),
+        "utf8",
+      );
 
       if (
         shouldStopAfterPostInspectionSufficiency({
@@ -1559,6 +1913,7 @@ async function main() {
           usageBefore,
           startedAt: runStartedAt,
           stepSpans: stepTimer.getSpans(),
+          evidenceGapActionPlan,
         });
 
         console.log(
@@ -1784,6 +2139,7 @@ async function main() {
       reducedEvidencePack,
       userProvidedPdfManifest,
       stepSpans: stepTimer.getSpans(),
+      evidenceGapActionPlan,
     });
     await writeJson(path.join(outputFolder, "run-summary.json"), summary);
 
@@ -1798,6 +2154,8 @@ async function main() {
           quality_gate_status: summary.quality_gate_status,
           evidence_unit_count: summary.evidence_unit_count,
           direct_quote_count: summary.direct_quote_count,
+          evidence_gap_action_status: summary.evidence_gap_action_status,
+          evidence_gap_next_action: summary.evidence_gap_recommended_next_action_es,
           asset_reference_count: summary.asset_reference_count,
           warnings_count: summary.warnings.length,
           blockers_count: summary.blockers.length,

@@ -1,6 +1,11 @@
 import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  mergeCandidateSourcesWithSupplement,
+  type CandidateSourcesSupplementArtifactV1,
+} from "@/server/blueprint-engine/quality/deep-research-source-supplement";
+
 export const SOURCE_SELECTION_ROOT = path.join(
   process.cwd(),
   "artifacts-local",
@@ -25,12 +30,23 @@ export type CandidateSourceForSelection = {
   provider?: string;
   reasons?: string[];
   warnings?: string[];
+  candidate_markers?: string[];
+  citable_status?: "candidate_only_not_citable_yet";
+  supplemental_source?: "rapid_deep_research_fallback";
+  evidence_candidate_id?: string;
+  evidence_need_id?: string;
+  confidence?: "high" | "medium" | "low";
+  must_pass_source_selection?: true;
+  must_pass_pdf_or_source_inspection?: true;
+  must_pass_evidence_engine?: true;
 };
 
 export type CandidateSourcesArtifact = {
   case_id?: string;
   generated_at?: string;
+  candidate_sources_supplement?: unknown;
   candidates?: CandidateSourceForSelection[];
+  [key: string]: unknown;
 };
 
 export type SourceSelectionPayload = {
@@ -83,6 +99,20 @@ export async function writeJsonAtomic(filePath: string, value: unknown) {
   await rename(tempPath, filePath);
 }
 
+export async function readCandidateSourcesForRun(runDir: string) {
+  const candidateSources = await readJsonFile<CandidateSourcesArtifact>(
+    path.join(runDir, "candidate-sources.json"),
+  );
+  const supplement = await readOptionalJsonFile<CandidateSourcesSupplementArtifactV1>(
+    path.join(runDir, "candidate-sources-supplement.json"),
+  );
+
+  return mergeCandidateSourcesWithSupplement({
+    base: candidateSources,
+    supplement,
+  }) as CandidateSourcesArtifact;
+}
+
 export async function listCandidateRuns() {
   const cases = await readdir(SOURCE_SELECTION_ROOT, { withFileTypes: true }).catch(() => []);
   const result = [];
@@ -99,6 +129,7 @@ export async function listCandidateRuns() {
       const runSummary = await readOptionalJsonFile<Record<string, unknown>>(
         path.join(runDir, "run-summary.json"),
       );
+      const candidateSources = await readCandidateSourcesForRun(runDir).catch(() => null);
       const selection = await readOptionalJsonFile<Record<string, unknown>>(
         path.join(runDir, "source-selection.json"),
       );
@@ -110,7 +141,13 @@ export async function listCandidateRuns() {
         run_id: runId,
         run_folder: runDir,
         candidate_count:
-          typeof runSummary?.candidate_count === "number" ? runSummary.candidate_count : null,
+          typeof runSummary?.candidate_count === "number"
+            ? runSummary.candidate_count
+            : candidateSources?.candidates?.length ?? null,
+        supplement_candidate_count:
+          typeof runSummary?.supplement_candidate_count === "number"
+            ? runSummary.supplement_candidate_count
+            : null,
         status: typeof runSummary?.status === "string" ? runSummary.status : null,
         selection_status:
           typeof selection?.selection_status === "string" ? selection.selection_status : "pending",
@@ -125,4 +162,3 @@ export async function listCandidateRuns() {
       right.case_id.localeCompare(left.case_id),
   );
 }
-
