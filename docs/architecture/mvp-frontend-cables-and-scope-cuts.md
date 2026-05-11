@@ -169,26 +169,26 @@ type SourceSelectionDto = {
 Rules:
 
 - source discovery may use OpenAlex/Crossref first;
-- if discovery is weak, trigger Deep Research Light fallback;
+- if post-inspection evidence sufficiency finds real gaps, trigger Deep Research Light repair;
 - Deep Research results are candidates only, not citable evidence;
 - user must select/review sources before evidence acquisition.
 
-### 4. Deep Research Light cable
+### 4. Deep Research Light repair cable
 
-Keep this for MVP. It is the safety net when normal discovery/materialization underperforms.
+Keep this for MVP, but place it after source selection and post-inspection evidence sufficiency. It is not an initial discovery fallback.
 
 Endpoints:
 
 ```text
-POST /api/projects/:projectId/deep-research-light/runs
-GET /api/projects/:projectId/deep-research-light/runs/:runId
-POST /api/projects/:projectId/deep-research-light/promote-candidates
+POST /api/projects/:projectId/evidence/deep-research-light/runs
+GET /api/projects/:projectId/evidence/deep-research-light/runs/:runId
+POST /api/projects/:projectId/evidence/deep-research-light/promote-candidates
 ```
 
 Use cases:
 
-- OpenAlex/Crossref returns insufficient sources;
-- selected sources fail health/materialization;
+- selected/inspected sources leave evidence-category gaps;
+- selected sources pass enough inspection to reveal specific gaps but still need supplemental candidates;
 - pipeline needs secondary reference recovery;
 - user topic is too narrow or too local.
 
@@ -566,7 +566,7 @@ Ingeniometrix te entrega un plan inicial de investigación, trazable y editable,
 - OpenAlex/Crossref search adapter.
 - Candidate persistence.
 - Human selection endpoint.
-- Deep Research Light run endpoint as fallback.
+- Deep Research Light run endpoint as post-inspection repair.
 - UI shows fallback candidates separately.
 
 ### Day 3 — Minimal EvidencePackage + readiness
@@ -598,7 +598,7 @@ A paid user can:
 3. complete intake;
 4. run source discovery;
 5. select sources;
-6. use Deep Research Light if normal discovery is weak;
+6. use Deep Research Light if post-inspection evidence gaps remain;
 7. generate evidence/readiness;
 8. generate blueprint preview;
 9. pay or be manually entitled;

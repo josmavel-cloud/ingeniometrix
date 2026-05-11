@@ -91,6 +91,42 @@ Existing thread brief recommends:
 
 For this week, we can implement backend entitlement/payment gate minimally without coupling it to research pipeline logic.
 
+## Deep Research placement correction
+
+I originally placed Deep Research too early as a fallback for weak initial discovery. That is wrong for the clean backend.
+
+Correct placement:
+
+```text
+source discovery
+→ human source selection
+→ access/materialization or limited inspection
+→ post-inspection source sufficiency
+→ evidence gaps identified
+→ Deep Research Light repair, if eligible
+→ new candidates return to source selection/evidence processing
+```
+
+Incorrect placement:
+
+```text
+source discovery weak
+→ immediately call Deep Research
+```
+
+Why: initial weak discovery usually means query/intake/source-provider problems. Deep Research should not guess around that. It should only answer precise gaps discovered after real selected sources were inspected.
+
+Original policy evidence from the diagnostic code:
+
+- `rapid-deep-research-fallback-decision.ts` sets `based_on_post_inspection_only: true`.
+- It sets `does_not_use_step_3_pre_materialization_gate_as_trigger: true`.
+- It skips when `post_inspection_not_available`.
+- It skips when no sources were inspected.
+- It skips when no usable inspected source text exists.
+- It skips when manual PDF/document identity review is required first.
+
+So in the MVP backend, Deep Research is an **evidence repair action**, not a discovery-stage fallback.
+
 ## Simplification decisions
 
 ### Keep for MVP backend
@@ -98,7 +134,7 @@ For this week, we can implement backend entitlement/payment gate minimally witho
 1. Project/intake persistence.
 2. OpenAlex/Crossref source discovery.
 3. Human source selection persistence.
-4. Deep Research Light fallback as discovery-only rescue.
+4. Deep Research Light fallback as post-inspection evidence-gap rescue, not initial discovery.
 5. Minimal evidence package/readiness report.
 6. Blueprint generation from selected/verified source context.
 7. Coherence/citation/readiness validation.
@@ -136,12 +172,16 @@ For this week, we can implement backend entitlement/payment gate minimally witho
 
 #### Deep Research Light
 
-Keep because it can save weak retrieval cases.
+Keep because it can save cases where selected/inspected sources leave real evidence gaps.
 
-But constrain it strictly:
+Correct placement: **after source selection + limited inspection/source-health/evidence sufficiency**, not during initial OpenAlex/Crossref discovery. The original diagnostic code explicitly says Rapid Deep Research is based on post-inspection evidence only and must not use Step 3 pre-materialization gates as trigger.
+
+Constrain it strictly:
 
 ```text
-Deep Research Light result
+Selected sources inspected
+→ evidence gaps detected
+→ Deep Research Light result
 → candidate only
 → user selection
 → evidence/source verification
@@ -209,7 +249,7 @@ Use existing `ProjectStatus` where possible:
 | --- | --- |
 | `DRAFT` | intake/project incomplete |
 | `INTAKE_READY` | intake complete, source discovery available |
-| `SEARCHING` | source discovery or fallback running |
+| `SEARCHING` | normal source discovery running; Deep Research should not run here except as a later post-inspection repair action |
 | `SOURCES_REVIEW` | candidates ready for selection |
 | `SOURCES_SELECTED` | selected source set persisted |
 | `BLUEPRINT_GENERATING` | evidence/blueprint run active |
@@ -288,9 +328,10 @@ Reuse:
 
 Purpose:
 
-- trigger rescue discovery when normal discovery is weak;
+- evaluate whether post-inspection evidence gaps justify Deep Research;
+- refuse to run from initial discovery weakness alone;
 - persist only candidate metadata or audit payload;
-- mark every result as non-citable until verified.
+- mark every result as non-citable until selected and verified.
 
 Reuse/harvest:
 
@@ -484,13 +525,17 @@ POST /api/projects/:id/search
 GET/PUT /api/projects/:id/references
 ```
 
-### Deep Research Light
+### Deep Research Light repair action
+
+This API belongs under evidence repair, not initial source discovery.
 
 ```text
-POST /api/projects/:id/deep-research-light/runs
-GET /api/projects/:id/deep-research-light/latest
-POST /api/projects/:id/deep-research-light/promote-candidates
+POST /api/projects/:id/evidence/deep-research-light/runs
+GET /api/projects/:id/evidence/deep-research-light/latest
+POST /api/projects/:id/evidence/deep-research-light/promote-candidates
 ```
+
+Compatibility aliases can exist later, but the product/backend meaning should remain post-inspection repair.
 
 ### Evidence
 
@@ -571,13 +616,15 @@ Runner flow:
 3. create project;
 4. save/complete intake;
 5. run source discovery;
-6. if discovery weak, run Deep Research Light fallback;
-7. select/promote sources;
-8. build evidence package/readiness;
-9. generate blueprint version;
-10. generate export bundle;
-11. evaluate payment/delivery gate;
-12. print artifact paths/IDs and final status.
+6. select sources;
+7. perform limited source inspection/source-health/readiness;
+8. if post-inspection evidence gaps remain, run Deep Research Light repair;
+9. select/promote any repair candidates and re-inspect them;
+10. build evidence package/readiness;
+11. generate blueprint version;
+12. generate export bundle;
+13. evaluate payment/delivery gate;
+14. print artifact paths/IDs and final status.
 
 Pass condition:
 
@@ -609,35 +656,42 @@ Pass condition:
 - Add source selection helper.
 - Add source readiness summary.
 
-### Pass 3 — Deep Research Light fallback
+### Pass 3 — Limited inspection + evidence sufficiency
 
-- Add fallback decision after weak discovery or weak source health.
+- Add source-health/limited-inspection summary for selected sources.
+- Determine whether selected sources are usable, need manual review, need replacement, or have category gaps.
+- Do not call Deep Research before this post-inspection report exists.
+
+### Pass 4 — Deep Research Light repair
+
+- Add fallback decision only after post-inspection sufficiency says gaps remain.
+- Skip if no sources were inspected, no usable inspected text exists, or manual PDF/identity review is required first.
 - Persist candidate-only results.
 - Add promote-to-candidate/selection path.
 - Add tests to prove fallback candidates are not citable directly.
 
-### Pass 4 — Evidence package
+### Pass 5 — Evidence package
 
 - Add minimal `MvpEvidencePackageV1` builder.
 - Add citation eligibility classification.
 - Block if no sufficient selected sources.
 - Snapshot evidence package into audit/export logs.
 
-### Pass 5 — Blueprint orchestration
+### Pass 6 — Blueprint orchestration
 
 - Gate existing `generateBlueprintVersion` behind evidence readiness.
 - Ensure Spanish-only output direction.
 - Validate citations resolve to selected sources.
 - Keep Lab B runner out.
 
-### Pass 6 — Export bundle
+### Pass 7 — Export bundle
 
 - Reuse evidence log/BibTeX/RIS helpers.
 - Generate one DOCX using the simplest stable renderer.
 - Add public DOCX sanitizer/no-internal-path check.
 - Mark project `EXPORT_READY` only after bundle exists.
 
-### Pass 7 — Payment gate
+### Pass 8 — Payment gate
 
 - Add backend delivery gate.
 - Start with manual paid marker or fixed config.
@@ -751,7 +805,7 @@ Mitigation:
 - [ ] Backend E2E mock runner passes.
 - [ ] Backend E2E retrieval mode either passes or blocks with Spanish user-action message.
 - [ ] Source selection persists.
-- [ ] Deep Research Light fallback exists and is candidate-only.
+- [ ] Deep Research Light repair exists after post-inspection sufficiency and is candidate-only.
 - [ ] Evidence package/readiness exists.
 - [ ] Blueprint generation is gated by readiness.
 - [ ] Export bundle produces evidence log, BibTeX, RIS, and one DOCX or an explicit blocker.

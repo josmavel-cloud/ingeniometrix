@@ -457,14 +457,14 @@ Exit criteria:
 
 ### Pass 2 — Real source discovery
 
-Bring in OpenAlex/Crossref discovery behind clean adapters, with Deep Research Light as fallback.
+Bring in OpenAlex/Crossref discovery behind clean adapters, with Deep Research Light as post-inspection evidence repair.
 
 Exit criteria:
 
 - candidate search works;
 - candidates are persisted;
 - human selection state is persisted;
-- Deep Research Light can produce rescue candidates when normal discovery is weak;
+- Deep Research Light can produce repair candidates only after selected sources are inspected and real evidence gaps remain;
 - Deep Research Light candidates are never citable until selected and verified through Evidence Acquisition.
 
 ### Pass 3 — Minimal evidence package
