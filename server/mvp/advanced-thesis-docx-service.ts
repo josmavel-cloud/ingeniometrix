@@ -35,6 +35,10 @@ import {
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import { validateDocxPackage } from "@/server/blueprint-v2/lab/docx-qa-engine";
+import {
+  buildMvpApiUsageReport,
+  captureMvpApiUsageSnapshot,
+} from "@/server/mvp/api-usage-service";
 
 const PROMPT_VERSION = "ingeniometrix-mvp-advanced-thesis-plan-v1";
 const FONT = "Times New Roman";
@@ -597,6 +601,7 @@ function makeHeaderFooter(title: string) {
 }
 
 export async function runAdvancedThesisDocxPipeline(input: { userId: string; projectId: string; outputRoot?: string }) {
+  const usageBefore = await captureMvpApiUsageSnapshot();
   const project = await loadProject(input.userId, input.projectId);
   if (!project?.intake) {
     throw new Error("Proyecto no encontrado o sin intake.");
@@ -658,6 +663,12 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
   });
   const qaPath = path.join(outputDir, "docx-qa-report.json");
   fs.writeFileSync(qaPath, JSON.stringify(qa, null, 2));
+  const usageReport = await buildMvpApiUsageReport({
+    before: usageBefore,
+    label: "mvp_advanced_thesis_docx_pipeline",
+  });
+  const usagePath = path.join(outputDir, "api-usage-report.json");
+  fs.writeFileSync(usagePath, JSON.stringify(usageReport, null, 2));
 
   const versionNumber = (project.blueprintVersions[0]?.versionNumber ?? 0) + 1;
   const blueprintVersion = await prisma.blueprintVersion.create({
@@ -696,6 +707,7 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
         references_used: sources.map((source) => ({ reference_id: source.id, citation_id: source.code, title: source.title, doi: source.doi })),
         assets: [{ kind: "cover_hero", path: coverPath }, { kind: "native_equations", count: 3 }],
         qa: { passed: qa.passed, score_100: qa.score_100, failures: qa.failures },
+        api_usage_delta: usageReport.delta,
       } as Prisma.InputJsonValue,
       coherenceReportJson: {
         status: qa.passed ? "advanced_ready" : "advanced_ready_with_warnings",
@@ -703,6 +715,8 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
         qa_score_100: qa.score_100,
         failures: qa.failures,
         warnings: qa.warnings,
+        api_usage_report_path: usagePath,
+        api_usage_delta: usageReport.delta,
       } as Prisma.InputJsonValue,
       exportStatus: ExportStatus.READY,
     },
@@ -715,8 +729,25 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
     provider: Provider.SYSTEM,
     userId: input.userId,
     projectId: project.id,
-    payloadJson: { outputPath, qaPath, qaScore: qa.score_100, blueprintVersionId: blueprintVersion.id },
+    payloadJson: {
+      outputPath,
+      qaPath,
+      usagePath,
+      qaScore: qa.score_100,
+      blueprintVersionId: blueprintVersion.id,
+      apiUsageDelta: usageReport.delta,
+    },
   });
 
-  return { ok: true, projectId: project.id, blueprintVersionId: blueprintVersion.id, outputPath, coverPath, qaPath, qa };
+  return {
+    ok: true,
+    projectId: project.id,
+    blueprintVersionId: blueprintVersion.id,
+    outputPath,
+    coverPath,
+    qaPath,
+    usagePath,
+    apiUsage: usageReport,
+    qa,
+  };
 }

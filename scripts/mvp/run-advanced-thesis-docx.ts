@@ -21,6 +21,9 @@ async function main() {
     outputPath: result.outputPath,
     coverPath: result.coverPath,
     qaPath: result.qaPath,
+    usagePath: result.usagePath,
+    apiUsageDelta: result.apiUsage.delta,
+    apiUsageCumulative: result.apiUsage.cumulative,
     qa: {
       passed: result.qa.passed,
       score_100: result.qa.score_100,
