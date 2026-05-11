@@ -22,7 +22,10 @@ async function main() {
     coverPath: result.coverPath,
     qaPath: result.qaPath,
     usagePath: result.usagePath,
+    apiUsageRunId: result.apiUsageRunId,
     apiUsageDelta: result.apiUsage.delta,
+    apiUsageFilteredDelta: result.apiUsage.filtered_delta,
+    apiUsageByStage: result.apiUsage.filtered_by_stage,
     apiUsageCumulative: result.apiUsage.cumulative,
     qa: {
       passed: result.qa.passed,

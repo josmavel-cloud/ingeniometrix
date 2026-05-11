@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -39,6 +40,7 @@ import {
   buildMvpApiUsageReport,
   captureMvpApiUsageSnapshot,
 } from "@/server/mvp/api-usage-service";
+import { withLlmUsageContext } from "@/server/llm-usage-registry";
 
 const PROMPT_VERSION = "ingeniometrix-mvp-advanced-thesis-plan-v1";
 const FONT = "Times New Roman";
@@ -601,6 +603,7 @@ function makeHeaderFooter(title: string) {
 }
 
 export async function runAdvancedThesisDocxPipeline(input: { userId: string; projectId: string; outputRoot?: string }) {
+  const runId = `mvp-advanced-docx-${randomUUID()}`;
   const usageBefore = await captureMvpApiUsageSnapshot();
   const project = await loadProject(input.userId, input.projectId);
   if (!project?.intake) {
@@ -652,7 +655,16 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
   });
 
   const outputPath = path.join(outputDir, `${slug(title)}-plan-tesis-ingeniometrix-avanzado.docx`);
-  const buffer = await Packer.toBuffer(doc);
+  const buffer = await withLlmUsageContext(
+    {
+      projectId: project.id,
+      userId: input.userId,
+      runId,
+      stage: "docx_generation",
+      source: "runAdvancedThesisDocxPipeline",
+    },
+    () => Packer.toBuffer(doc),
+  );
   fs.writeFileSync(outputPath, buffer);
 
   const qa = await validateDocxPackage({
@@ -666,6 +678,7 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
   const usageReport = await buildMvpApiUsageReport({
     before: usageBefore,
     label: "mvp_advanced_thesis_docx_pipeline",
+    filter: { projectId: project.id, runId },
   });
   const usagePath = path.join(outputDir, "api-usage-report.json");
   fs.writeFileSync(usagePath, JSON.stringify(usageReport, null, 2));
@@ -708,6 +721,8 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
         assets: [{ kind: "cover_hero", path: coverPath }, { kind: "native_equations", count: 3 }],
         qa: { passed: qa.passed, score_100: qa.score_100, failures: qa.failures },
         api_usage_delta: usageReport.delta,
+        api_usage_filtered_delta: usageReport.filtered_delta,
+        api_usage_run_id: runId,
       } as Prisma.InputJsonValue,
       coherenceReportJson: {
         status: qa.passed ? "advanced_ready" : "advanced_ready_with_warnings",
@@ -717,6 +732,8 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
         warnings: qa.warnings,
         api_usage_report_path: usagePath,
         api_usage_delta: usageReport.delta,
+        api_usage_filtered_delta: usageReport.filtered_delta,
+        api_usage_run_id: runId,
       } as Prisma.InputJsonValue,
       exportStatus: ExportStatus.READY,
     },
@@ -736,6 +753,8 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
       qaScore: qa.score_100,
       blueprintVersionId: blueprintVersion.id,
       apiUsageDelta: usageReport.delta,
+      apiUsageFilteredDelta: usageReport.filtered_delta,
+      apiUsageRunId: runId,
     },
   });
 
@@ -747,6 +766,7 @@ export async function runAdvancedThesisDocxPipeline(input: { userId: string; pro
     coverPath,
     qaPath,
     usagePath,
+    apiUsageRunId: runId,
     apiUsage: usageReport,
     qa,
   };

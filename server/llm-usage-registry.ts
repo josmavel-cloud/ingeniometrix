@@ -1,5 +1,26 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+
+export type LlmUsageStage =
+  | "intake"
+  | "source_discovery"
+  | "source_translation"
+  | "source_inspection"
+  | "blueprint_generation"
+  | "section_generation"
+  | "docx_generation"
+  | "repair"
+  | "qa"
+  | "other";
+
+export type LlmUsageAttribution = {
+  projectId?: string | null;
+  runId?: string | null;
+  stage?: LlmUsageStage | string | null;
+  userId?: string | null;
+  source?: string | null;
+};
 
 type PricingRecord = {
   inputUsdPer1M: number;
@@ -19,6 +40,7 @@ export type LlmUsageCallRecord = {
   totalTokens: number;
   costUsd: number;
   costCad: number;
+  attribution?: LlmUsageAttribution;
 };
 
 export type LlmUsageTotals = {
@@ -29,6 +51,12 @@ export type LlmUsageTotals = {
   totalTokens: number;
   costUsd: number;
   costCad: number;
+};
+
+export type LlmUsageProjectTotals = {
+  totals: LlmUsageTotals;
+  byRun: Record<string, LlmUsageTotals>;
+  byStage: Record<string, LlmUsageTotals>;
 };
 
 export type LlmUsageRegistry = {
@@ -51,6 +79,7 @@ export type LlmUsageRegistry = {
   fxSourceUrl: string;
   cumulative: LlmUsageTotals;
   byDate: Record<string, LlmUsageTotals>;
+  byProject: Record<string, LlmUsageProjectTotals>;
   recentCalls: LlmUsageCallRecord[];
 };
 
@@ -61,7 +90,9 @@ const PRICING_SOURCE_URL = "https://openai.com/api/pricing/";
 const FX_SOURCE_URL = "https://www.bankofcanada.ca/rates/exchange/daily-exchange-rates-/";
 const FX_PUBLISHED_DATE = "2026-04-29";
 const FX_RATE_USD_TO_CAD = 1.3682;
-const MAX_RECENT_CALLS = 100;
+const MAX_RECENT_CALLS = 500;
+
+const usageContext = new AsyncLocalStorage<LlmUsageAttribution>();
 
 const MODEL_PRICING: Record<string, PricingRecord> = {
   "gpt-5.5": { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
@@ -99,6 +130,50 @@ function emptyTotals(): LlmUsageTotals {
   };
 }
 
+function normalizeTotals(input?: Partial<LlmUsageTotals>): LlmUsageTotals {
+  return { ...emptyTotals(), ...(input ?? {}) };
+}
+
+function emptyProjectTotals(): LlmUsageProjectTotals {
+  return { totals: emptyTotals(), byRun: {}, byStage: {} };
+}
+
+function normalizeProjectTotals(input?: Partial<LlmUsageProjectTotals>): LlmUsageProjectTotals {
+  const normalized = emptyProjectTotals();
+  normalized.totals = normalizeTotals(input?.totals);
+  normalized.byRun = Object.fromEntries(
+    Object.entries(input?.byRun ?? {}).map(([key, totals]) => [key, normalizeTotals(totals)]),
+  );
+  normalized.byStage = Object.fromEntries(
+    Object.entries(input?.byStage ?? {}).map(([key, totals]) => [key, normalizeTotals(totals)]),
+  );
+  return normalized;
+}
+
+function cleanAttribution(input?: LlmUsageAttribution | null): LlmUsageAttribution | undefined {
+  if (!input) return undefined;
+  const cleaned: LlmUsageAttribution = {};
+  if (input.projectId) cleaned.projectId = input.projectId;
+  if (input.runId) cleaned.runId = input.runId;
+  if (input.stage) cleaned.stage = input.stage;
+  if (input.userId) cleaned.userId = input.userId;
+  if (input.source) cleaned.source = input.source;
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
+}
+
+function mergeAttribution(input?: LlmUsageAttribution | null): LlmUsageAttribution | undefined {
+  return cleanAttribution({ ...(usageContext.getStore() ?? {}), ...(input ?? {}) });
+}
+
+export function getCurrentLlmUsageContext() {
+  return cleanAttribution(usageContext.getStore());
+}
+
+export async function withLlmUsageContext<T>(context: LlmUsageAttribution, work: () => Promise<T>) {
+  const parent = usageContext.getStore() ?? {};
+  return usageContext.run({ ...parent, ...context }, work);
+}
+
 function normalizeRegistry(registry: Partial<LlmUsageRegistry>): LlmUsageRegistry {
   const fallback = buildDefaultRegistry();
   return {
@@ -110,8 +185,7 @@ function normalizeRegistry(registry: Partial<LlmUsageRegistry>): LlmUsageRegistr
       endDate: registry.baselineHistorical?.endDate ?? fallback.baselineHistorical.endDate,
       costCad: registry.baselineHistorical?.costCad ?? fallback.baselineHistorical.costCad,
       costUsd: registry.baselineHistorical?.costUsd ?? fallback.baselineHistorical.costUsd,
-      totalTokens:
-        registry.baselineHistorical?.totalTokens ?? fallback.baselineHistorical.totalTokens,
+      totalTokens: registry.baselineHistorical?.totalTokens ?? fallback.baselineHistorical.totalTokens,
       notes: registry.baselineHistorical?.notes ?? fallback.baselineHistorical.notes,
       importedAt: registry.baselineHistorical?.importedAt ?? fallback.baselineHistorical.importedAt,
     },
@@ -120,12 +194,19 @@ function normalizeRegistry(registry: Partial<LlmUsageRegistry>): LlmUsageRegistr
     fxRateUsdToCad: registry.fxRateUsdToCad ?? fallback.fxRateUsdToCad,
     fxPublishedDate: registry.fxPublishedDate ?? fallback.fxPublishedDate,
     fxSourceUrl: registry.fxSourceUrl ?? fallback.fxSourceUrl,
-    cumulative: {
-      ...emptyTotals(),
-      ...(registry.cumulative ?? {}),
-    },
-    byDate: registry.byDate ?? fallback.byDate,
-    recentCalls: registry.recentCalls ?? fallback.recentCalls,
+    cumulative: normalizeTotals(registry.cumulative),
+    byDate: Object.fromEntries(
+      Object.entries(registry.byDate ?? fallback.byDate).map(([key, totals]) => [key, normalizeTotals(totals)]),
+    ),
+    byProject: Object.fromEntries(
+      Object.entries(registry.byProject ?? {}).map(([key, totals]) => [key, normalizeProjectTotals(totals)]),
+    ),
+    recentCalls: (registry.recentCalls ?? fallback.recentCalls).map((call) => ({
+      ...call,
+      cachedInputTokens: call.cachedInputTokens ?? 0,
+      totalTokens: call.totalTokens ?? call.inputTokens + call.outputTokens,
+      attribution: cleanAttribution(call.attribution),
+    })),
   };
 }
 
@@ -151,9 +232,8 @@ function buildDefaultRegistry(): LlmUsageRegistry {
     fxPublishedDate: FX_PUBLISHED_DATE,
     fxSourceUrl: FX_SOURCE_URL,
     cumulative: emptyTotals(),
-    byDate: {
-      [startedDate]: emptyTotals(),
-    },
+    byDate: { [startedDate]: emptyTotals() },
+    byProject: {},
     recentCalls: [],
   };
 }
@@ -196,6 +276,44 @@ function addTotals(target: LlmUsageTotals, delta: LlmUsageTotals) {
   target.costCad = roundMoney(target.costCad + delta.costCad);
 }
 
+function ensureProjectTotals(registry: LlmUsageRegistry, projectId: string) {
+  registry.byProject[projectId] = normalizeProjectTotals(registry.byProject[projectId]);
+  return registry.byProject[projectId];
+}
+
+export function sumLlmUsageCalls(calls: LlmUsageCallRecord[]): LlmUsageTotals {
+  return calls.reduce((totals, call) => {
+    addTotals(totals, {
+      calls: 1,
+      inputTokens: call.inputTokens,
+      cachedInputTokens: call.cachedInputTokens,
+      outputTokens: call.outputTokens,
+      totalTokens: call.totalTokens,
+      costUsd: call.costUsd,
+      costCad: call.costCad,
+    });
+    return totals;
+  }, emptyTotals());
+}
+
+export function filterLlmUsageCalls(input: {
+  calls: LlmUsageCallRecord[];
+  projectId?: string | null;
+  runId?: string | null;
+  stage?: string | null;
+  since?: string | null;
+  until?: string | null;
+}) {
+  return input.calls.filter((call) => {
+    if (input.projectId && call.attribution?.projectId !== input.projectId) return false;
+    if (input.runId && call.attribution?.runId !== input.runId) return false;
+    if (input.stage && call.attribution?.stage !== input.stage) return false;
+    if (input.since && call.recordedAt < input.since) return false;
+    if (input.until && call.recordedAt > input.until) return false;
+    return true;
+  });
+}
+
 export async function recordLlmUsage(input: {
   provider: string;
   model: string;
@@ -203,6 +321,7 @@ export async function recordLlmUsage(input: {
   inputTokens: number;
   cachedInputTokens?: number;
   outputTokens: number;
+  attribution?: LlmUsageAttribution | null;
 }) {
   const registry = await readLlmUsageRegistry();
   const date = getTodayToronto();
@@ -223,13 +342,25 @@ export async function recordLlmUsage(input: {
     costUsd: roundMoney(costUsd),
     costCad: roundMoney(costCad),
   };
+  const attribution = mergeAttribution(input.attribution);
 
-  if (!registry.byDate[date]) {
-    registry.byDate[date] = emptyTotals();
-  }
+  if (!registry.byDate[date]) registry.byDate[date] = emptyTotals();
 
   addTotals(registry.cumulative, delta);
   addTotals(registry.byDate[date], delta);
+
+  if (attribution?.projectId) {
+    const projectTotals = ensureProjectTotals(registry, attribution.projectId);
+    addTotals(projectTotals.totals, delta);
+    if (attribution.runId) {
+      projectTotals.byRun[attribution.runId] = normalizeTotals(projectTotals.byRun[attribution.runId]);
+      addTotals(projectTotals.byRun[attribution.runId], delta);
+    }
+    if (attribution.stage) {
+      projectTotals.byStage[attribution.stage] = normalizeTotals(projectTotals.byStage[attribution.stage]);
+      addTotals(projectTotals.byStage[attribution.stage], delta);
+    }
+  }
 
   const callRecord: LlmUsageCallRecord = {
     recordedAt: new Date().toISOString(),
@@ -243,16 +374,14 @@ export async function recordLlmUsage(input: {
     totalTokens: input.inputTokens + input.outputTokens,
     costUsd: roundMoney(costUsd),
     costCad: roundMoney(costCad),
+    attribution,
   };
 
   registry.recentCalls.unshift(callRecord);
   registry.recentCalls = registry.recentCalls.slice(0, MAX_RECENT_CALLS);
 
   await writeLlmUsageRegistry(registry);
-  return {
-    registry,
-    callRecord,
-  };
+  return { registry, callRecord };
 }
 
 export async function applyHistoricalBaseline(input: {

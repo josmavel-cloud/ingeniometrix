@@ -756,6 +756,7 @@ async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<Refere
         prompt: buildPrompt(intake),
         schemaName: "reference_search_v2_plan",
         schema: referenceSearchPlanSchema,
+        trackingAttribution: { stage: "source_discovery" },
       },
     );
 

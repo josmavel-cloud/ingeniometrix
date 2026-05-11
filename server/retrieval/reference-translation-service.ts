@@ -396,6 +396,7 @@ export async function ensureReferenceTranslationsForLanguage(input: {
           }),
           schemaName: "reference_language_detection_batch",
           schema: referenceLanguageDetectionBatchSchemaJson as Record<string, unknown>,
+          trackingAttribution: { stage: "source_translation" },
         });
       const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
 
@@ -472,6 +473,7 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       }),
       schemaName: "reference_translation_batch",
       schema: referenceTranslationBatchSchemaJson as Record<string, unknown>,
+      trackingAttribution: { stage: "source_translation" },
     });
   } catch {
     return {

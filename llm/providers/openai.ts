@@ -90,6 +90,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         inputTokens: response.usage?.input_tokens ?? 0,
         cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
+        attribution: input.trackingAttribution,
       });
 
       if (!response.output_text) {
@@ -120,6 +121,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         inputTokens: response.usage?.input_tokens ?? 0,
         cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
         outputTokens: response.usage?.output_tokens ?? 0,
+        attribution: input.trackingAttribution,
       });
 
       if (!response.output_text) {

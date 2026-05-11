@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { ProjectStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -9,6 +11,11 @@ import {
   searchProjectReferencesV2,
   type SearchProjectReferencesV2Result,
 } from "@/server/retrieval/reference-search-v2";
+import {
+  buildMvpApiUsageReport,
+  captureMvpApiUsageSnapshot,
+} from "@/server/mvp/api-usage-service";
+import { withLlmUsageContext } from "@/server/llm-usage-registry";
 
 export type MvpSourceDiscoveryResult = {
   project_id: string;
@@ -19,6 +26,10 @@ export type MvpSourceDiscoveryResult = {
   blockers: string[];
   warnings: string[];
   next_action_es: string;
+  api_usage: {
+    run_id: string | null;
+    report: Awaited<ReturnType<typeof buildMvpApiUsageReport>> | null;
+  };
 };
 
 function suggestedSelectionIds(result: SearchProjectReferencesV2Result) {
@@ -69,12 +80,31 @@ export async function runMvpSourceDiscovery(
       blockers: ["El proyecto no tiene intake guardado."],
       warnings: [],
       next_action_es: "Completa el intake antes de buscar fuentes.",
+      api_usage: { run_id: null, report: null },
     };
   }
 
+  const runId = `mvp-source-discovery-${randomUUID()}`;
+  const usageBefore = await captureMvpApiUsageSnapshot();
+
   try {
-    const search = await searchProjectReferencesV2(userId, projectId, {
-      desiredTotal: options?.desiredTotal ?? MIN_SELECTED_REFERENCES,
+    const search = await withLlmUsageContext(
+      {
+        projectId,
+        userId,
+        runId,
+        stage: "source_discovery",
+        source: "runMvpSourceDiscovery",
+      },
+      () =>
+        searchProjectReferencesV2(userId, projectId, {
+          desiredTotal: options?.desiredTotal ?? MIN_SELECTED_REFERENCES,
+        }),
+    );
+    const apiUsageReport = await buildMvpApiUsageReport({
+      before: usageBefore,
+      label: "mvp_source_discovery",
+      filter: { projectId, runId },
     });
     const candidateSourceCount = await prisma.projectReference.count({
       where: { projectId },
@@ -97,6 +127,7 @@ export async function runMvpSourceDiscovery(
       next_action_es: enoughCandidates
         ? "Revisa y selecciona fuentes. Deep Research aún no debe ejecutarse; primero va inspección/source health."
         : "Ajusta el intake/query o agrega fuentes manuales antes de inspección. No ejecutes Deep Research todavía.",
+      api_usage: { run_id: runId, report: apiUsageReport },
     };
   } catch (error) {
     await prisma.project.update({
@@ -118,6 +149,14 @@ export async function runMvpSourceDiscovery(
       warnings: ["Discovery real falló; este bloqueo no debe activar Deep Research todavía."],
       next_action_es:
         "Reintenta discovery normal o corrige el intake. Deep Research se reserva para gaps post-inspección.",
+      api_usage: {
+        run_id: runId,
+        report: await buildMvpApiUsageReport({
+          before: usageBefore,
+          label: "mvp_source_discovery_failed",
+          filter: { projectId, runId },
+        }),
+      },
     };
   }
 }

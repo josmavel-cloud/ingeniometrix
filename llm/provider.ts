@@ -1,15 +1,19 @@
+import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
+
 export type StructuredObjectInput = {
   prompt: string;
   schemaName: string;
   schema: Record<string, unknown>;
   model?: string;
   trackingLabel?: string;
+  trackingAttribution?: LlmUsageAttribution;
 };
 
 export type TextGenerationInput = {
   prompt: string;
   model?: string;
   trackingLabel?: string;
+  trackingAttribution?: LlmUsageAttribution;
 };
 
 export type TextGenerationResult = {

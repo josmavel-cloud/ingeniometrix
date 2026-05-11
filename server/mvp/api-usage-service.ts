@@ -1,8 +1,22 @@
-import { readLlmUsageRegistry, type LlmUsageTotals } from "@/server/llm-usage-registry";
+import {
+  filterLlmUsageCalls,
+  readLlmUsageRegistry,
+  sumLlmUsageCalls,
+  type LlmUsageCallRecord,
+  type LlmUsageTotals,
+} from "@/server/llm-usage-registry";
 
 export type MvpApiUsageSnapshot = {
   capturedAt: string;
   cumulative: LlmUsageTotals;
+};
+
+export type MvpApiUsageReportFilter = {
+  projectId?: string | null;
+  runId?: string | null;
+  stage?: string | null;
+  since?: string | null;
+  until?: string | null;
 };
 
 function emptyTotals(): LlmUsageTotals {
@@ -41,34 +55,68 @@ export async function captureMvpApiUsageSnapshot(): Promise<MvpApiUsageSnapshot>
   };
 }
 
+function dateToronto() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function callsByStage(calls: LlmUsageCallRecord[]) {
+  return calls.reduce<Record<string, LlmUsageTotals>>((accumulator, call) => {
+    const stage = call.attribution?.stage ?? "unattributed";
+    accumulator[stage] = accumulator[stage] ?? emptyTotals();
+    const totals = sumLlmUsageCalls([call]);
+    accumulator[stage] = {
+      calls: accumulator[stage].calls + totals.calls,
+      inputTokens: accumulator[stage].inputTokens + totals.inputTokens,
+      cachedInputTokens: accumulator[stage].cachedInputTokens + totals.cachedInputTokens,
+      outputTokens: accumulator[stage].outputTokens + totals.outputTokens,
+      totalTokens: accumulator[stage].totalTokens + totals.totalTokens,
+      costUsd: roundMoney(accumulator[stage].costUsd + totals.costUsd),
+      costCad: roundMoney(accumulator[stage].costCad + totals.costCad),
+    };
+    return accumulator;
+  }, {});
+}
+
 export async function buildMvpApiUsageReport(input?: {
   before?: MvpApiUsageSnapshot | null;
   label?: string;
+  filter?: MvpApiUsageReportFilter;
 }) {
   const registry = await readLlmUsageRegistry();
   const after: MvpApiUsageSnapshot = {
     capturedAt: new Date().toISOString(),
     cumulative: { ...registry.cumulative },
   };
-  const delta = input?.before
+  const globalDelta = input?.before
     ? diffApiUsageTotals(after.cumulative, input.before.cumulative)
     : emptyTotals();
+  const filteredCalls = input?.filter
+    ? filterLlmUsageCalls({ calls: registry.recentCalls, ...input.filter })
+    : [];
+  const filteredTotals = input?.filter ? sumLlmUsageCalls(filteredCalls) : null;
+  const projectTotals = input?.filter?.projectId
+    ? registry.byProject[input.filter.projectId] ?? null
+    : null;
 
   return {
     artifact_type: "mvp_api_usage_report",
-    artifact_version: "v1",
+    artifact_version: "v2",
     label: input?.label ?? null,
     generated_at: new Date().toISOString(),
+    filter: input?.filter ?? null,
     before: input?.before ?? null,
     after,
-    delta,
+    delta: globalDelta,
+    filtered_delta: filteredTotals,
+    filtered_by_stage: input?.filter ? callsByStage(filteredCalls) : null,
+    project_totals: projectTotals,
     cumulative: registry.cumulative,
-    today: registry.byDate[new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Toronto",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date())] ?? null,
+    today: registry.byDate[dateToronto()] ?? null,
     pricing: {
       version: registry.pricingVersion,
       source_url: registry.pricingSourceUrl,
@@ -76,6 +124,6 @@ export async function buildMvpApiUsageReport(input?: {
       fx_source_url: registry.fxSourceUrl,
       fx_published_date: registry.fxPublishedDate,
     },
-    recent_calls: registry.recentCalls.slice(0, 20),
+    recent_calls: (input?.filter ? filteredCalls : registry.recentCalls).slice(0, 50),
   };
 }

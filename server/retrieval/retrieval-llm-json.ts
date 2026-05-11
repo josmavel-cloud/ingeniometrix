@@ -1,4 +1,5 @@
 import type { LlmProvider } from "@/llm/provider";
+import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
 
 function describeError(error: unknown) {
   if (error instanceof Error) {
@@ -50,6 +51,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
   schemaName: string;
   schema: Record<string, unknown>;
   model?: string;
+  trackingAttribution?: LlmUsageAttribution;
 }) {
   try {
     return await params.provider.generateStructuredObject<T>({
@@ -58,6 +60,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       schema: params.schema,
       model: params.model,
       trackingLabel: `structured:${params.schemaName}`,
+      trackingAttribution: params.trackingAttribution,
     });
   } catch (structuredError) {
     const structuredReason = describeError(structuredError);
@@ -67,6 +70,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
         prompt: buildJsonOnlyPrompt(params.prompt),
         model: params.model,
         trackingLabel: `text_fallback:${params.schemaName}`,
+        trackingAttribution: params.trackingAttribution,
       });
 
       return JSON.parse(extractJsonObject(textResponse)) as T;
