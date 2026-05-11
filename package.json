@@ -87,7 +87,8 @@
     "mvp:e2e:mock": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=mock",
     "mvp:e2e:retrieval": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=retrieval",
     "mvp:simulate:frontend": "tsx scripts/mvp/simulate-frontend-flow.ts --fixture=structural-warren-bridge-peru",
-    "mvp:simulate:frontend:auto": "tsx scripts/mvp/simulate-frontend-flow.ts --fixture=structural-warren-bridge-peru --auto"
+    "mvp:simulate:frontend:auto": "tsx scripts/mvp/simulate-frontend-flow.ts --fixture=structural-warren-bridge-peru --auto",
+    "mvp:final:docx": "tsx scripts/mvp/run-final-docx.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
