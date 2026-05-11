@@ -34,12 +34,13 @@ type CliOptions = {
 };
 
 type ReferenceListItem = Awaited<ReturnType<typeof listProjectReferences>>[number];
+type CandidateRow = ReturnType<typeof candidateRows>[number];
 
 function parseCliOptions(): CliOptions {
   const desiredTotalArg = process.argv
     .find((arg) => arg.startsWith("--desired-total="))
     ?.split("=")[1];
-  const desiredTotal = Number(desiredTotalArg ?? REFERENCE_BATCH_SIZE);
+  const desiredTotal = Number(desiredTotalArg ?? MAX_SELECTED_REFERENCES);
   const fixtureId =
     process.argv.find((arg) => arg.startsWith("--fixture="))?.split("=")[1] ??
     structuralWarrenBridgeFixture.id;
@@ -99,37 +100,79 @@ function candidateRows(references: ReferenceListItem[]) {
   }));
 }
 
-function printStage(title: string, payload: unknown) {
-  console.log(`\n=== ${title} ===`);
-  console.log(JSON.stringify(payload, null, 2));
-}
+function printCandidateBatch(rows: CandidateRow[], batchNumber: 1 | 2) {
+  const startIndex = batchNumber === 1 ? 0 : REFERENCE_BATCH_SIZE;
+  const batchRows = rows.slice(startIndex, startIndex + REFERENCE_BATCH_SIZE);
 
-async function askSelection(references: ReferenceListItem[], suggestedIds: string[], auto: boolean) {
-  if (auto) {
-    return suggestedIds.slice(0, MIN_SELECTED_REFERENCES);
-  }
+  console.log(`\nFuentes candidatas — lote ${batchNumber} (${startIndex + 1}-${startIndex + batchRows.length}):`);
 
-  const rows = candidateRows(references);
-  console.log("\nFuentes candidatas para revisar:");
-  for (const row of rows) {
+  for (const row of batchRows) {
     const marker = row.suggested ? "*" : " ";
     console.log(
       `${marker} [${row.index}] ${row.title} (${row.year ?? "s/f"}) — ${row.venue ?? "sin venue"}`,
     );
     console.log(`    score=${row.score ?? "-"} ${row.score_label ?? ""} doi=${row.doi ?? "-"}`);
   }
+}
+
+function printStage(title: string, payload: unknown) {
+  console.log(`\n=== ${title} ===`);
+  console.log(JSON.stringify(payload, null, 2));
+}
+
+async function askSelection(references: ReferenceListItem[], suggestedIds: string[], auto: boolean) {
+  const rows = candidateRows(references);
+
+  if (auto) {
+    printCandidateBatch(rows, 1);
+    return {
+      selectedReferenceIds: suggestedIds.slice(0, MIN_SELECTED_REFERENCES),
+      batchFlow: {
+        mode: "auto",
+        shownBatches: [1],
+        action: "accepted_backend_suggestions_from_first_batch",
+      },
+    };
+  }
+
+  printCandidateBatch(rows, 1);
 
   console.log(
     `\nSelecciona entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} fuentes por índice, separadas por coma.`,
   );
-  console.log("Enter = aceptar sugeridas marcadas con *.");
+  console.log("Enter = aceptar sugeridas marcadas con * del lote visible.");
+  console.log("Escribe 'más' o 'next' para ver las siguientes 5 fuentes antes de elegir.");
 
   const rl = readline.createInterface({ input, output });
   try {
-    const answer = (await rl.question("Selección de fuentes: ")).trim();
+    const firstAnswer = (await rl.question("Selección de fuentes/lote 1: ")).trim();
+    const wantsNextBatch = ["mas", "más", "next", "siguiente", "5"].includes(
+      firstAnswer.toLowerCase(),
+    );
+    const shownBatches: Array<1 | 2> = [1];
+    const answer = wantsNextBatch
+      ? await (async () => {
+          shownBatches.push(2);
+          printCandidateBatch(rows, 2);
+          return (await rl.question("Selección de fuentes/lotes 1-2: ")).trim();
+        })()
+      : firstAnswer;
 
     if (!answer) {
-      return suggestedIds.slice(0, MIN_SELECTED_REFERENCES);
+      const visibleReferenceIds = rows
+        .slice(0, shownBatches.includes(2) ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE)
+        .map((row) => row.reference_id);
+
+      return {
+        selectedReferenceIds: suggestedIds
+          .filter((referenceId) => visibleReferenceIds.includes(referenceId))
+          .slice(0, MIN_SELECTED_REFERENCES),
+        batchFlow: {
+          mode: "interactive",
+          shownBatches,
+          action: "accepted_visible_backend_suggestions",
+        },
+      };
     }
 
     const selectedIndexes = answer
@@ -138,7 +181,14 @@ async function askSelection(references: ReferenceListItem[], suggestedIds: strin
       .filter((item) => Number.isInteger(item) && item >= 1 && item <= rows.length);
     const uniqueIndexes = Array.from(new Set(selectedIndexes));
 
-    return uniqueIndexes.map((index) => rows[index - 1]?.reference_id).filter(Boolean);
+    return {
+      selectedReferenceIds: uniqueIndexes.map((index) => rows[index - 1]?.reference_id).filter(Boolean),
+      batchFlow: {
+        mode: "interactive",
+        shownBatches,
+        action: wantsNextBatch ? "selected_after_second_batch" : "selected_from_first_batch",
+      },
+    };
   } finally {
     rl.close();
   }
@@ -203,6 +253,13 @@ async function main() {
           attemptedQueries: discovery.search.attemptedQueries,
           totalResults: discovery.search.totalResults,
           providerBreakdown: discovery.search.providerBreakdown,
+          metadata: {
+            planSource: discovery.search.searchSnapshot.metadata.planSource,
+            normalizedTopic: discovery.search.searchSnapshot.metadata.normalizedTopic,
+            necessary: discovery.search.searchSnapshot.metadata.keywordGroups.necessary,
+            complementary: discovery.search.searchSnapshot.metadata.keywordGroups.complementary,
+            optional: discovery.search.searchSnapshot.metadata.keywordGroups.optional,
+          },
         }
       : null,
   });
@@ -214,13 +271,26 @@ async function main() {
   const references = await listProjectReferences(user.id, project.id);
   const rows = candidateRows(references);
   events.push({ step: "GET /api/projects/:id/references", payload: rows });
-  printStage("GET references", rows);
+  events.push({
+    step: "UI cable: first 5 references visible; next 5 hidden until user asks",
+    payload: {
+      firstBatch: rows.slice(0, REFERENCE_BATCH_SIZE),
+      secondBatchAvailable: rows.length > REFERENCE_BATCH_SIZE,
+      secondBatch: rows.slice(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES),
+    },
+  });
+  printStage("GET references — lote 1 visible / lote 2 preparado", {
+    firstBatch: rows.slice(0, REFERENCE_BATCH_SIZE),
+    secondBatchAvailable: rows.length > REFERENCE_BATCH_SIZE,
+    secondBatchCount: rows.slice(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES).length,
+  });
 
-  const selectedReferenceIds = await askSelection(
+  const selection = await askSelection(
     references,
     discovery.suggested_selection_ids,
     options.auto,
   );
+  const selectedReferenceIds = selection.selectedReferenceIds;
 
   if (
     selectedReferenceIds.length < MIN_SELECTED_REFERENCES ||
@@ -238,7 +308,7 @@ async function main() {
   );
   events.push({
     step: "PUT /api/projects/:id/references",
-    payload: { selectedReferenceIds, selectedRows, status: afterSelection },
+    payload: { selectedReferenceIds, selectedRows, batchFlow: selection.batchFlow, status: afterSelection },
   });
   printStage("PUT references + status", { selectedRows, status: afterSelection });
 
@@ -253,6 +323,7 @@ async function main() {
     fixture_label: fixture.label,
     selection_criteria: fixture.selectionCriteria,
     desired_total: options.desiredTotal,
+    source_selection_batch_flow: selection.batchFlow,
     endpoint_sequence: events.map((event) => event.step),
     final_status: afterSelection,
     selected_reference_ids: selectedReferenceIds,

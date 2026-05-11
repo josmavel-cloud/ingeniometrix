@@ -42,7 +42,9 @@ PUT intake
 GET status
 POST search/discovery
 GET references
-[gate humano] seleccionar fuentes
+mostrar primeras 5 fuentes
+[gate humano] seleccionar fuentes o pedir siguientes 5
+mostrar siguientes 5 fuentes si el usuario lo pide
 PUT references
 GET status final
 ```
@@ -72,13 +74,20 @@ La validación automática puede confirmar wiring y persistencia, pero no reempl
 
 ## Gate humano
 
-Cuando se ejecuta sin `--auto`, el simulador muestra las fuentes candidatas y pide una selección por índice:
+Cuando se ejecuta sin `--auto`, el simulador muestra primero solo 5 fuentes candidatas y pide una selección por índice:
 
 ```text
-Selección de fuentes: 1,2,4
+Selección de fuentes/lote 1: 1,2,4
 ```
 
-Enter acepta las sugeridas por el backend. Esta es la primera intervención del usuario/product owner antes de inspección.
+Si el usuario no está conforme con las primeras 5, puede pedir el segundo lote:
+
+```text
+Selección de fuentes/lote 1: más
+Selección de fuentes/lotes 1-2: 1,4,7
+```
+
+Enter acepta las sugeridas visibles por el backend. Esta es la primera intervención del usuario/product owner antes de inspección.
 
 ## Regla Deep Research
 
@@ -99,3 +108,19 @@ fuentes seleccionadas → source health / inspección mínima → aceptar eviden
 ```
 
 Ese gate debe producir un `EvidencePackage` mínimo antes del blueprint.
+
+
+## Estrategia de keywords desde Lab original
+
+El discovery MVP usa `server/retrieval/reference-search-v2.ts`, portado del Lab original. El archivo actual se verificó idéntico al Lab original.
+
+La estrategia vigente usa LLM con fallback para producir:
+
+- `keyword_groups.necessary`
+- `keyword_groups.complementary`
+- `keyword_groups.optional`
+- `query_pack.necessary_only`
+- `query_pack.complementary_boosted`
+- `query_pack.optional_backups`
+
+El simulador imprime esta metadata para revisar si el planner generó keywords útiles antes de aceptar fuentes.
