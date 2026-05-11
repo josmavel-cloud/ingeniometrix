@@ -83,7 +83,8 @@
     "prisma:validate": "prisma validate",
     "db:push": "prisma db push",
     "db:up": "docker compose up -d",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "mvp:e2e:mock": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=mock"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
