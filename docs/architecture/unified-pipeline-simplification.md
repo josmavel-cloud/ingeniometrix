@@ -425,7 +425,8 @@ The following original ideas are useful but should not drive the first clean MVP
 - Deep Research fallback as citable source path;
 - image/hero generation;
 - equation image fallback;
-- complex institutional template reduction beyond the selected MVP templates.
+- second/institutional DOCX generation;
+- complex institutional template reduction beyond the selected MVP scope.
 
 ## What must remain non-negotiable
 
@@ -456,13 +457,15 @@ Exit criteria:
 
 ### Pass 2 — Real source discovery
 
-Bring in OpenAlex/Crossref discovery behind clean adapters.
+Bring in OpenAlex/Crossref discovery behind clean adapters, with Deep Research Light as fallback.
 
 Exit criteria:
 
 - candidate search works;
 - candidates are persisted;
-- human selection state is persisted.
+- human selection state is persisted;
+- Deep Research Light can produce rescue candidates when normal discovery is weak;
+- Deep Research Light candidates are never citable until selected and verified through Evidence Acquisition.
 
 ### Pass 3 — Minimal evidence package
 
@@ -486,12 +489,14 @@ Exit criteria:
 
 ### Pass 5 — Exports
 
-Implement evidence log, BibTeX, RIS, then DOCX.
+Implement evidence log, BibTeX, RIS, then one branded Ingeniometrix DOCX.
 
 Exit criteria:
 
 - exports are reproducible;
-- export generation never changes evidence/blueprint claims.
+- export generation never changes evidence/blueprint claims;
+- the MVP produces one DOCX only, not master + institutional variants;
+- the public DOCX excludes developer traces, internal paths, provider diagnostics, hashes, and debug appendices.
 
 ## Final recommendation
 
