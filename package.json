@@ -85,7 +85,9 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "mvp:e2e:mock": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=mock",
-    "mvp:e2e:retrieval": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=retrieval"
+    "mvp:e2e:retrieval": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=retrieval",
+    "mvp:simulate:frontend": "tsx scripts/mvp/simulate-frontend-flow.ts",
+    "mvp:simulate:frontend:auto": "tsx scripts/mvp/simulate-frontend-flow.ts --auto"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
