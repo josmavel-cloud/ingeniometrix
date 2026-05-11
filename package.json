@@ -88,7 +88,8 @@
     "mvp:e2e:retrieval": "tsx scripts/mvp/run-backend-core-e2e.ts --mode=retrieval",
     "mvp:simulate:frontend": "tsx scripts/mvp/simulate-frontend-flow.ts --fixture=structural-warren-bridge-peru",
     "mvp:simulate:frontend:auto": "tsx scripts/mvp/simulate-frontend-flow.ts --fixture=structural-warren-bridge-peru --auto",
-    "mvp:final:docx": "tsx scripts/mvp/run-final-docx.ts"
+    "mvp:final:docx": "tsx scripts/mvp/run-final-docx.ts",
+    "mvp:final:docx:advanced": "tsx scripts/mvp/run-advanced-thesis-docx.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
