@@ -58,6 +58,18 @@ Archivos:
 - `frontend-sim-events.json`: eventos tipo endpoint con request/response conceptual.
 - `frontend-sim-summary.json`: resumen final y próximo gate humano.
 
+## Fixture activo de prueba
+
+El simulador ahora usa por defecto el fixture aprobado por Pepe para ingeniería estructural:
+
+```text
+structural-warren-bridge-peru
+```
+
+Tema: puente vehicular esencial de armadura metálica tipo Warren en zona sísmica del Perú.
+
+La validación automática puede confirmar wiring y persistencia, pero no reemplaza el gate humano de selección: si discovery trae fuentes metodológicas demasiado generales o alejadas del sistema estructural, no se debe avanzar a inspección/blueprint hasta ajustar query, scoring o selección manual.
+
 ## Gate humano
 
 Cuando se ejecuta sin `--auto`, el simulador muestra las fuentes candidatas y pide una selección por índice:

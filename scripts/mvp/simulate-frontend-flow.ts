@@ -4,12 +4,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 import {
-  DegreeLevel,
   ProjectStatus,
-  TemplateKey,
-  TopicOriginType,
-  TopicSelectionStatus,
-  University,
 } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -26,6 +21,8 @@ import {
   updateSelectedProjectReferences,
 } from "@/server/retrieval/reference-service";
 
+import { structuralWarrenBridgeFixture } from "./fixtures/structural-warren-bridge-intake";
+
 const TEST_USER_EMAIL = "mvp-frontend-sim@ingeniometrix.local";
 const SIMULATOR_VERSION = "mvp.frontend-simulator.v1";
 
@@ -33,6 +30,7 @@ type CliOptions = {
   auto: boolean;
   keepDbRecords: boolean;
   desiredTotal: number;
+  fixtureId: string;
 };
 
 type ReferenceListItem = Awaited<ReturnType<typeof listProjectReferences>>[number];
@@ -42,10 +40,18 @@ function parseCliOptions(): CliOptions {
     .find((arg) => arg.startsWith("--desired-total="))
     ?.split("=")[1];
   const desiredTotal = Number(desiredTotalArg ?? REFERENCE_BATCH_SIZE);
+  const fixtureId =
+    process.argv.find((arg) => arg.startsWith("--fixture="))?.split("=")[1] ??
+    structuralWarrenBridgeFixture.id;
+
+  if (fixtureId !== structuralWarrenBridgeFixture.id) {
+    throw new Error(`Fixture no soportado: ${fixtureId}`);
+  }
 
   return {
     auto: process.argv.includes("--auto"),
     keepDbRecords: process.argv.includes("--keep-db-records"),
+    fixtureId,
     desiredTotal: Number.isFinite(desiredTotal)
       ? Math.min(Math.max(desiredTotal, MIN_SELECTED_REFERENCES), MAX_SELECTED_REFERENCES)
       : REFERENCE_BATCH_SIZE,
@@ -139,28 +145,21 @@ async function askSelection(references: ReferenceListItem[], suggestedIds: strin
 }
 
 async function createSimulatorProject(userId: string, runId: string) {
+  const fixture = structuralWarrenBridgeFixture;
+
   return prisma.project.create({
     data: {
       userId,
-      title: `MVP Frontend Simulator ${runId}`,
       status: ProjectStatus.DRAFT,
-      country: "PE",
-      language: "es",
-      degreeLevel: DegreeLevel.MAESTRIA,
-      university: University.OTHER,
-      program: "Maestría de prueba frontend-simulator",
-      templateKey: TemplateKey.GENERIC_POSGRADO_PE,
-      topicOriginType: TopicOriginType.CUSTOM,
-      topicSelectionStatus: TopicSelectionStatus.SELECTED,
-      topicSeedText:
-        "IA generativa y retroalimentación académica responsable en programas de posgrado",
-      topicAreaLabel: "Educación superior y tecnología educativa",
+      ...fixture.project,
+      title: `${fixture.project.title} (${runId})`,
     },
   });
 }
 
 async function main() {
   const options = parseCliOptions();
+  const fixture = structuralWarrenBridgeFixture;
   const runId = `frontend-sim-${nowStamp()}`;
   const artifactDir = path.join(process.cwd(), "artifacts-local", "mvp-frontend-sim", runId);
   const events: Array<{ step: string; payload: unknown }> = [];
@@ -180,20 +179,7 @@ async function main() {
   events.push({ step: "GET /api/projects/:id/status after create", payload: afterCreate });
   printStage("GET status inicial", afterCreate);
 
-  const intakePayload = {
-    topic:
-      "IA generativa y retroalimentación académica responsable en programas de posgrado",
-    problemContext:
-      "Los programas de posgrado exploran herramientas de IA para acelerar retroalimentación, pero necesitan criterios para mantener supervisión humana, trazabilidad y límites éticos.",
-    researchLine: "Tecnología educativa aplicada",
-    academicConstraints:
-      "El sistema debe apoyar planificación académica ética; no debe prometer generación automática de tesis.",
-    targetPopulation: "Docentes y estudiantes de posgrado en universidades peruanas",
-    availableData:
-      "Fuentes bibliográficas, entrevistas exploratorias futuras y registros de revisión académica si el usuario los aporta.",
-    preferredMethodology: "Exploratorio-descriptivo con enfoque mixto inicial",
-    advisorNotes: "Priorizar ética, trazabilidad, revisión humana y claridad de alcance.",
-  };
+  const intakePayload = fixture.intake;
 
   await saveIntakeForProject(user.id, project.id, intakePayload);
   const afterIntake = compactStatus(await getMvpProjectStatus(user.id, project.id));
@@ -263,6 +249,9 @@ async function main() {
     project_id: project.id,
     artifact_dir: artifactDir,
     auto: options.auto,
+    fixture_id: options.fixtureId,
+    fixture_label: fixture.label,
+    selection_criteria: fixture.selectionCriteria,
     desired_total: options.desiredTotal,
     endpoint_sequence: events.map((event) => event.step),
     final_status: afterSelection,
