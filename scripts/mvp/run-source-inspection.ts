@@ -46,6 +46,8 @@ async function main() {
       allowed_evidence_use: item.allowed_evidence_use,
       pdf_available_signal: item.pdf_available_signal,
       pdf_accessible: item.pdf_accessible,
+      resolved_pdf_url: item.resolved_pdf_url,
+      pdf_access_strategy: item.pdf_access_strategy,
       text_char_count: item.text_char_count,
       identity_status: item.identity_status,
       method_signal_count: item.method_signal_count,

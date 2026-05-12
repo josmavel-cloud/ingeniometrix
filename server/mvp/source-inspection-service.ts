@@ -53,6 +53,8 @@ export type MvpSourceInspectionItem = {
   venue: string | null;
   landing_page_url: string | null;
   pdf_url: string | null;
+  resolved_pdf_url: string | null;
+  pdf_access_strategy: string | null;
   pdf_available_signal: boolean;
   pdf_accessible: boolean;
   fetch_status: "downloaded" | "metadata_only" | "failed" | "skipped";
@@ -241,31 +243,149 @@ async function loadSelectedReferences(userId: string, projectId: string) {
   return project.projectReferences;
 }
 
-async function fetchPdf(input: { pdfUrl: string; referer: string | null; targetPath: string }) {
+function rawRecord(value: unknown) {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function rawString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function parseHtmlForPdfLinks(html: string, baseUrl: string) {
+  const candidates = new Set<string>();
+  const metaPatterns = [
+    /<meta[^>]+name=["']citation_pdf_url["'][^>]+content=["']([^"']+)["']/gi,
+    /<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+\.pdf[^"']*)["']/gi,
+    /<link[^>]+type=["']application\/pdf["'][^>]+href=["']([^"']+)["']/gi,
+  ];
+
+  for (const pattern of metaPatterns) {
+    let match: RegExpExecArray | null = null;
+    while ((match = pattern.exec(html))) {
+      try {
+        candidates.add(new URL(match[1], baseUrl).toString());
+      } catch {
+        // ignore malformed links
+      }
+    }
+  }
+
+  const linkPattern = /<(?:a|iframe|embed|object)[^>]+(?:href|src|data)=["']([^"']+)["'][^>]*>/gi;
+  let linkMatch: RegExpExecArray | null = null;
+  while ((linkMatch = linkPattern.exec(html))) {
+    const rawHref = linkMatch[1];
+    if (!/pdf|download|fulltext|full-text|view/i.test(rawHref) && !rawHref.toLowerCase().endsWith(".pdf")) {
+      continue;
+    }
+    try {
+      candidates.add(new URL(rawHref, baseUrl).toString());
+    } catch {
+      // ignore malformed links
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function sourceCandidateUrls(item: ProjectReferenceWithReference, directPdfUrl: string | null) {
+  const raw = rawRecord(item.reference.rawOpenAlexJson);
+  const openAccess = rawRecord(raw?.open_access);
+  const best = rawRecord(raw?.best_oa_location);
+  const primary = rawRecord(raw?.primary_location);
+  const urls = [
+    { url: directPdfUrl, strategy: "direct_pdf_url" },
+    { url: rawString(openAccess?.oa_url), strategy: "openalex_oa_url" },
+    { url: rawString(best?.landing_page_url), strategy: "openalex_best_landing" },
+    { url: rawString(primary?.landing_page_url), strategy: "openalex_primary_landing" },
+    { url: item.reference.landingPageUrl, strategy: "reference_landing_page" },
+    { url: item.reference.doi ? `https://doi.org/${item.reference.doi}` : null, strategy: "doi_resolution" },
+  ];
+  const seen = new Set<string>();
+  return urls
+    .filter((candidate): candidate is { url: string; strategy: string } => Boolean(candidate.url))
+    .filter((candidate) => {
+      if (seen.has(candidate.url)) return false;
+      seen.add(candidate.url);
+      return true;
+    });
+}
+
+async function fetchWithTimeout(url: string, referer: string | null) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(input.pdfUrl, {
+    return await fetch(url, {
       method: "GET",
       redirect: "follow",
-      headers: buildBrowserLikeFetchHeaders({ referer: input.referer ?? input.pdfUrl }),
+      headers: buildBrowserLikeFetchHeaders({
+        accept: "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        referer: referer ?? url,
+      }),
       signal: controller.signal,
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const contentType = response.headers.get("content-type") ?? "";
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    if (buffer.byteLength > MAX_PDF_BYTES) throw new Error(`PDF demasiado grande (${buffer.byteLength} bytes).`);
-    if (!contentType.toLowerCase().includes("pdf") && buffer.subarray(0, 5).toString("utf8") !== "%PDF-") {
-      throw new Error(`Respuesta no parece PDF (${contentType || "sin content-type"}).`);
-    }
-    await writeFile(input.targetPath, buffer);
-    return { ok: true as const };
-  } catch (error) {
-    return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function resolveAndFetchPdf(input: {
+  item: ProjectReferenceWithReference;
+  directPdfUrl: string | null;
+  targetPath: string;
+}) {
+  const queue = sourceCandidateUrls(input.item, input.directPdfUrl);
+  const visited = new Set<string>();
+  let lastError: string | null = null;
+
+  while (queue.length > 0) {
+    const candidate = queue.shift();
+    if (!candidate || visited.has(candidate.url)) continue;
+    visited.add(candidate.url);
+
+    try {
+      const response = await fetchWithTimeout(candidate.url, input.item.reference.landingPageUrl);
+      const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+      const finalUrl = response.url || candidate.url;
+
+      if (response.ok && (contentType.includes("pdf") || finalUrl.toLowerCase().includes(".pdf"))) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        if (buffer.byteLength > MAX_PDF_BYTES) {
+          lastError = `${candidate.strategy}: PDF demasiado grande (${buffer.byteLength} bytes).`;
+          continue;
+        }
+        if (buffer.subarray(0, 5).toString("utf8") !== "%PDF-" && !contentType.includes("pdf")) {
+          lastError = `${candidate.strategy}: respuesta no parece PDF (${contentType || "sin content-type"}).`;
+          continue;
+        }
+        await writeFile(input.targetPath, buffer);
+        return {
+          ok: true as const,
+          resolvedPdfUrl: finalUrl,
+          strategy: candidate.strategy,
+          httpStatus: response.status,
+        };
+      }
+
+      if (response.ok && contentType.includes("html")) {
+        const html = await response.text();
+        for (const discovered of parseHtmlForPdfLinks(html, finalUrl)) {
+          if (!visited.has(discovered)) {
+            queue.push({ url: discovered, strategy: `${candidate.strategy}:html_pdf_discovery` });
+          }
+        }
+        lastError = `${candidate.strategy}: HTML sin PDF descargable directo.`;
+        continue;
+      }
+
+      lastError = `${candidate.strategy}: HTTP ${response.status}`;
+    } catch (error) {
+      lastError = `${candidate.strategy}: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  return { ok: false as const, error: lastError ?? "No se encontró PDF público accesible." };
 }
 
 async function extractPdfText(pdfPath: string, txtPath: string) {
@@ -300,11 +420,15 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   let text = "";
   let downloadedPdfPath: string | null = null;
   let sampleTextPath: string | null = null;
+  let resolvedPdfUrl: string | null = null;
+  let pdfAccessStrategy: string | null = null;
 
-  if (pdfUrl && pdfPath) {
-    const fetched = await fetchPdf({ pdfUrl, referer: item.reference.landingPageUrl, targetPath: pdfPath });
+  if (pdfPath) {
+    const fetched = await resolveAndFetchPdf({ item, directPdfUrl: pdfUrl, targetPath: pdfPath });
     if (fetched.ok) {
       downloadedPdfPath = pdfPath;
+      resolvedPdfUrl = fetched.resolvedPdfUrl;
+      pdfAccessStrategy = fetched.strategy;
       fetchStatus = "downloaded";
       text = await extractPdfText(pdfPath, textPath);
       if (text.trim()) {
@@ -316,7 +440,7 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
       }
     } else {
       fetchStatus = "failed";
-      warnings.push(`PDF accesible en HEAD/GET corto, pero descarga fallo: ${fetched.error}`);
+      warnings.push(`No se pudo resolver/descargar PDF publico: ${fetched.error}`);
     }
   } else {
     fetchStatus = "metadata_only";
@@ -360,7 +484,9 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
     venue: item.reference.venue,
     landing_page_url: item.reference.landingPageUrl,
     pdf_url: pdfUrl,
-    pdf_available_signal: access.hasPdfUrl,
+    resolved_pdf_url: resolvedPdfUrl,
+    pdf_access_strategy: pdfAccessStrategy,
+    pdf_available_signal: access.hasPdfUrl || Boolean(resolvedPdfUrl),
     pdf_accessible: pdfAccessible || Boolean(downloadedPdfPath),
     fetch_status: fetchStatus,
     source_health: health,
