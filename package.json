@@ -92,7 +92,8 @@
     "mvp:final:docx:advanced": "tsx scripts/mvp/run-advanced-thesis-docx.ts",
     "mvp:api-usage": "tsx scripts/mvp/report-api-usage.ts",
     "mvp:api-usage:backfill": "tsx scripts/mvp/backfill-api-usage-attribution.ts",
-    "mvp:discovery:first-batch": "tsx scripts/mvp/run-normalized-intake-discovery-first-batch.ts"
+    "mvp:discovery:first-batch": "tsx scripts/mvp/run-normalized-intake-discovery-first-batch.ts",
+    "mvp:sources:inspect": "tsx scripts/mvp/run-source-inspection.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
