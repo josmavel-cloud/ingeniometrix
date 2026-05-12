@@ -15,6 +15,12 @@ export type CrossrefMessage = {
   }>;
   URL?: string;
   type?: string;
+  link?: Array<{
+    URL?: string;
+    "content-type"?: string;
+    "content-version"?: string;
+    "intended-application"?: string;
+  }>;
 };
 
 type CrossrefResponse = {

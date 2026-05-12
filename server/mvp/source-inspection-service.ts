@@ -17,6 +17,7 @@ import {
   extractAccessSignals,
   verifyPdfAccess,
 } from "@/server/retrieval/reference-access";
+import { fetchCrossrefWorkByDoi } from "@/server/retrieval/crossref-client";
 
 const execFileAsync = promisify(execFile);
 const FETCH_TIMEOUT_MS = 35_000;
@@ -289,7 +290,58 @@ function parseHtmlForPdfLinks(html: string, baseUrl: string) {
   return Array.from(candidates);
 }
 
-function sourceCandidateUrls(item: ProjectReferenceWithReference, directPdfUrl: string | null) {
+function openAlexLocationCandidates(raw: Record<string, unknown> | null) {
+  const locations = Array.isArray(raw?.locations) ? raw.locations : [];
+  return locations.flatMap((location, index) => {
+    const item = rawRecord(location);
+    return [
+      { url: rawString(item?.pdf_url), strategy: `openalex_location_${index + 1}_pdf` },
+      { url: rawString(item?.landing_page_url), strategy: `openalex_location_${index + 1}_landing` },
+    ];
+  });
+}
+
+async function unpaywallCandidateUrls(doi: string | null) {
+  if (!doi) return [] as Array<{ url: string | null; strategy: string }>;
+  const email = process.env.UNPAYWALL_EMAIL?.trim() || process.env.CROSSREF_MAILTO?.trim() || "mvp@ingeniometrix.local";
+  try {
+    const response = await fetch(
+      `https://api.unpaywall.org/v2/${encodeURIComponent(doi)}?email=${encodeURIComponent(email)}`,
+      { headers: { Accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(12_000) },
+    );
+    if (!response.ok) return [];
+    const payload = rawRecord(await response.json());
+    const best = rawRecord(payload?.best_oa_location);
+    const oaLocations = Array.isArray(payload?.oa_locations) ? payload.oa_locations : [];
+    return [
+      { url: rawString(best?.url_for_pdf), strategy: "unpaywall_best_pdf" },
+      { url: rawString(best?.url), strategy: "unpaywall_best_landing" },
+      ...oaLocations.flatMap((location, index) => {
+        const item = rawRecord(location);
+        return [
+          { url: rawString(item?.url_for_pdf), strategy: `unpaywall_location_${index + 1}_pdf` },
+          { url: rawString(item?.url), strategy: `unpaywall_location_${index + 1}_landing` },
+        ];
+      }),
+    ];
+  } catch {
+    return [];
+  }
+}
+
+async function crossrefCandidateUrls(doi: string | null) {
+  if (!doi) return [] as Array<{ url: string | null; strategy: string }>;
+  const work = await fetchCrossrefWorkByDoi(doi).catch(() => null);
+  const links = work?.link ?? [];
+  return links
+    .filter((link) => {
+      const haystack = `${link.URL ?? ""} ${link["content-type"] ?? ""} ${link["intended-application"] ?? ""}`.toLowerCase();
+      return haystack.includes("pdf") || haystack.includes("text-mining") || haystack.includes("similarity-checking");
+    })
+    .map((link, index) => ({ url: link.URL ?? null, strategy: `crossref_link_${index + 1}` }));
+}
+
+async function sourceCandidateUrls(item: ProjectReferenceWithReference, directPdfUrl: string | null) {
   const raw = rawRecord(item.reference.rawOpenAlexJson);
   const openAccess = rawRecord(raw?.open_access);
   const best = rawRecord(raw?.best_oa_location);
@@ -297,8 +349,13 @@ function sourceCandidateUrls(item: ProjectReferenceWithReference, directPdfUrl: 
   const urls = [
     { url: directPdfUrl, strategy: "direct_pdf_url" },
     { url: rawString(openAccess?.oa_url), strategy: "openalex_oa_url" },
+    { url: rawString(best?.pdf_url), strategy: "openalex_best_pdf" },
     { url: rawString(best?.landing_page_url), strategy: "openalex_best_landing" },
+    { url: rawString(primary?.pdf_url), strategy: "openalex_primary_pdf" },
     { url: rawString(primary?.landing_page_url), strategy: "openalex_primary_landing" },
+    ...openAlexLocationCandidates(raw),
+    ...(await unpaywallCandidateUrls(item.reference.doi)),
+    ...(await crossrefCandidateUrls(item.reference.doi)),
     { url: item.reference.landingPageUrl, strategy: "reference_landing_page" },
     { url: item.reference.doi ? `https://doi.org/${item.reference.doi}` : null, strategy: "doi_resolution" },
   ];
@@ -335,7 +392,7 @@ async function resolveAndFetchPdf(input: {
   directPdfUrl: string | null;
   targetPath: string;
 }) {
-  const queue = sourceCandidateUrls(input.item, input.directPdfUrl);
+  const queue = await sourceCandidateUrls(input.item, input.directPdfUrl);
   const visited = new Set<string>();
   let lastError: string | null = null;
 
