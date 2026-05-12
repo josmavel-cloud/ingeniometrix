@@ -39,6 +39,17 @@ export type OpenAlexWork = {
   } | null;
   primary_topic?: unknown;
   topics?: unknown[];
+  keywords?: unknown[];
+  concepts?: unknown[];
+  referenced_works?: string[];
+  referenced_works_count?: number | null;
+  related_works?: string[];
+  locations?: unknown[];
+  locations_count?: number | null;
+  has_fulltext?: boolean | null;
+  fulltext_origin?: string | null;
+  is_retracted?: boolean | null;
+  is_paratext?: boolean | null;
 };
 
 type OpenAlexResponse = {
@@ -61,6 +72,17 @@ const DEFAULT_SELECT_FIELDS = [
   "open_access",
   "primary_topic",
   "topics",
+  "keywords",
+  "concepts",
+  "referenced_works",
+  "referenced_works_count",
+  "related_works",
+  "locations",
+  "locations_count",
+  "has_fulltext",
+  "fulltext_origin",
+  "is_retracted",
+  "is_paratext",
 ];
 
 const DEFAULT_FILTERS = [
@@ -76,7 +98,7 @@ export const OPENALEX_QUALITY_FILTERS = [
   "cited_by_count:>5",
 ];
 
-function buildAbstract(invertedIndex?: Record<string, number[]>) {
+export function buildOpenAlexAbstract(invertedIndex?: Record<string, number[]>) {
   if (!invertedIndex) {
     return null;
   }
@@ -91,6 +113,21 @@ function buildAbstract(invertedIndex?: Record<string, number[]>) {
     .join(" ");
 }
 
+function buildOpenAlexHeaders() {
+  return { Accept: "application/json" };
+}
+
+function appendOpenAlexAuth(url: URL) {
+  const apiKey = process.env.OPENALEX_API_KEY?.trim();
+  if (apiKey) {
+    url.searchParams.set("api_key", apiKey);
+  }
+  const mailto = process.env.OPENALEX_MAILTO?.trim() || process.env.CROSSREF_MAILTO?.trim();
+  if (mailto) {
+    url.searchParams.set("mailto", mailto);
+  }
+}
+
 function buildOpenAlexUrl(query: string, options?: OpenAlexSearchOptions) {
   const url = new URL("/works", OPENALEX_BASE_URL);
   url.searchParams.set("search", query);
@@ -99,12 +136,48 @@ function buildOpenAlexUrl(query: string, options?: OpenAlexSearchOptions) {
   url.searchParams.set("sort", options?.sort ?? "relevance_score:desc,cited_by_count:desc");
   url.searchParams.set("select", (options?.select ?? DEFAULT_SELECT_FIELDS).join(","));
 
-  const apiKey = process.env.OPENALEX_API_KEY?.trim();
-  if (apiKey) {
-    url.searchParams.set("api_key", apiKey);
-  }
+  appendOpenAlexAuth(url);
 
   return url;
+}
+
+export async function fetchOpenAlexWork(openAlexIdOrUrl: string) {
+  const id = openAlexIdOrUrl.replace(/^https?:\/\/openalex\.org\//, "");
+  const url = new URL(`/works/${encodeURIComponent(id)}`, OPENALEX_BASE_URL);
+  appendOpenAlexAuth(url);
+  const response = await fetch(url, {
+    headers: buildOpenAlexHeaders(),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  return (await response.json()) as OpenAlexWork;
+}
+
+export async function fetchOpenAlexWorksCiting(openAlexIdOrUrl: string, options?: { perPage?: number }) {
+  const normalizedId = openAlexIdOrUrl.startsWith("http")
+    ? openAlexIdOrUrl
+    : `https://openalex.org/${openAlexIdOrUrl}`;
+  const url = new URL("/works", OPENALEX_BASE_URL);
+  url.searchParams.set("filter", `cites:${normalizedId},is_retracted:false,is_paratext:false`);
+  url.searchParams.set("per-page", String(options?.perPage ?? 8));
+  url.searchParams.set("sort", "cited_by_count:desc,publication_year:desc");
+  url.searchParams.set("select", DEFAULT_SELECT_FIELDS.join(","));
+  appendOpenAlexAuth(url);
+  const response = await fetch(url, {
+    headers: buildOpenAlexHeaders(),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const payload = (await response.json()) as OpenAlexResponse;
+  return payload.results;
 }
 
 export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearchOptions) {
@@ -130,7 +203,7 @@ export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearc
     authors: (work.authorships ?? [])
       .map((authorship) => authorship.author?.display_name?.trim())
       .filter((author): author is string => Boolean(author)),
-    abstract: buildAbstract(work.abstract_inverted_index),
+    abstract: buildOpenAlexAbstract(work.abstract_inverted_index),
     venue: work.primary_location?.source?.display_name ?? null,
     year: work.publication_year,
     workType: work.type,

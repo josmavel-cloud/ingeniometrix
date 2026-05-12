@@ -93,6 +93,7 @@
     "mvp:api-usage": "tsx scripts/mvp/report-api-usage.ts",
     "mvp:api-usage:backfill": "tsx scripts/mvp/backfill-api-usage-attribution.ts",
     "mvp:discovery:first-batch": "tsx scripts/mvp/run-normalized-intake-discovery-first-batch.ts",
+    "mvp:sources:enrich": "tsx scripts/mvp/run-source-enrichment.ts",
     "mvp:sources:inspect": "tsx scripts/mvp/run-source-inspection.ts"
   },
   "dependencies": {
