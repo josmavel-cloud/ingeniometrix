@@ -96,7 +96,8 @@
     "mvp:sources:enrich": "tsx scripts/mvp/run-source-enrichment.ts",
     "mvp:sources:inspect": "tsx scripts/mvp/run-source-inspection.ts",
     "mvp:thesis-plan:readiness": "tsx scripts/mvp/run-thesis-plan-readiness.ts",
-    "mvp:thesis-plan:blueprint": "tsx scripts/mvp/run-thesis-plan-blueprint.ts"
+    "mvp:thesis-plan:blueprint": "tsx scripts/mvp/run-thesis-plan-blueprint.ts",
+    "mvp:thesis-plan:docx": "tsx scripts/mvp/run-thesis-plan-docx.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
