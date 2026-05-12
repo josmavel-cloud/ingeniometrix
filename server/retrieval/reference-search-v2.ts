@@ -69,6 +69,7 @@ export type ReferenceScoreBreakdown = {
 
 export type ProjectReferenceSearchSnapshot = {
   referenceSearchVersion: "v2";
+  batchKind?: SourceDiscoveryBatchKind;
   savedAt: string;
   searchQuery: string;
   attemptedQueries: string[];
@@ -87,7 +88,10 @@ export type ProjectReferenceSearchSnapshot = {
   }>;
 };
 
+export type SourceDiscoveryBatchKind = "initial" | "more";
+
 export type SearchProjectReferencesV2Result = {
+  batchKind: SourceDiscoveryBatchKind;
   searchQuery: string;
   attemptedQueries: string[];
   totalResults: number;
@@ -756,6 +760,7 @@ async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<Refere
         prompt: buildPrompt(intake),
         schemaName: "reference_search_v2_plan",
         schema: referenceSearchPlanSchema,
+        model: process.env.SOURCE_DISCOVERY_PLAN_MODEL?.trim() || "gpt-5.4-nano",
         trackingAttribution: { stage: "source_discovery" },
       },
     );
@@ -1228,13 +1233,16 @@ export async function searchProjectReferencesV2(
   projectId: string,
   options?: {
     desiredTotal?: number;
+    batchKind?: SourceDiscoveryBatchKind;
   },
 ): Promise<SearchProjectReferencesV2Result> {
+  const batchKind = options?.batchKind ?? "initial";
+  const requestedTotal = options?.desiredTotal ?? (batchKind === "more" ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE);
   const desiredTotal = Math.min(
-    Math.max(options?.desiredTotal ?? REFERENCE_BATCH_SIZE, MIN_SELECTED_REFERENCES),
-    MAX_SELECTED_REFERENCES,
+    Math.max(requestedTotal, MIN_SELECTED_REFERENCES),
+    batchKind === "more" ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE,
   );
-  const aggregationTarget = Math.max(desiredTotal * 7, 40);
+  const aggregationTarget = batchKind === "more" ? Math.max(desiredTotal * 7, 40) : Math.max(desiredTotal * 4, 20);
   const [project, user, existingProjectReferences] = await Promise.all([
     prisma.project.findFirst({
       where: {
@@ -1280,7 +1288,7 @@ export async function searchProjectReferencesV2(
   const searchQuery = searchMetadata.normalizedTopic;
   const openAlexQueryPack = searchMetadata.openAlexQueryPack ??
     buildOpenAlexQueryPack(searchMetadata.keywordGroups, normalizeIntakeForSearch(project.intake));
-  const queryStages = [
+  const exhaustiveQueryStages = [
     {
       stage: "necessary_only" as const,
       queries: openAlexQueryPack.strictBoolean.length > 0
@@ -1311,6 +1319,12 @@ export async function searchProjectReferencesV2(
       ],
     },
   ];
+  const queryStages = batchKind === "more"
+    ? exhaustiveQueryStages
+    : exhaustiveQueryStages.slice(0, 1).map((stage) => ({
+        ...stage,
+        queries: stage.queries.slice(0, 3),
+      }));
   const attemptedQueries: string[] = [];
 
   if (!searchQuery || queryStages.every((entry) => entry.queries.length === 0)) {
@@ -1613,6 +1627,7 @@ export async function searchProjectReferencesV2(
 
   const searchSnapshot: ProjectReferenceSearchSnapshot = {
     referenceSearchVersion: "v2",
+    batchKind,
     savedAt: new Date().toISOString(),
     searchQuery,
     attemptedQueries,
@@ -1636,6 +1651,7 @@ export async function searchProjectReferencesV2(
     projectId: project.id,
     payloadJson: {
       referenceSearchVersion: "v2",
+      batchKind,
       searchQuery,
       searchIntent: searchMetadata.intentSummary,
       languageContext,
@@ -1652,6 +1668,7 @@ export async function searchProjectReferencesV2(
   });
 
   return {
+    batchKind,
     searchQuery,
     attemptedQueries,
     totalResults: persistedResults.length,

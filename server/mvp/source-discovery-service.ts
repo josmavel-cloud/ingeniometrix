@@ -10,6 +10,7 @@ import {
 import {
   searchProjectReferencesV2,
   type SearchProjectReferencesV2Result,
+  type SourceDiscoveryBatchKind,
 } from "@/server/retrieval/reference-search-v2";
 import {
   buildMvpApiUsageReport,
@@ -20,6 +21,7 @@ import { withLlmUsageContext } from "@/server/llm-usage-registry";
 export type MvpSourceDiscoveryResult = {
   project_id: string;
   status: "candidates_ready" | "blocked";
+  batch_kind: SourceDiscoveryBatchKind | null;
   search: SearchProjectReferencesV2Result | null;
   candidate_source_count: number;
   suggested_selection_ids: string[];
@@ -54,7 +56,7 @@ function suggestedSelectionIds(result: SearchProjectReferencesV2Result) {
 export async function runMvpSourceDiscovery(
   userId: string,
   projectId: string,
-  options?: { desiredTotal?: number },
+  options?: { desiredTotal?: number; batchKind?: SourceDiscoveryBatchKind },
 ): Promise<MvpSourceDiscoveryResult> {
   const project = await prisma.project.findFirst({
     where: {
@@ -74,6 +76,7 @@ export async function runMvpSourceDiscovery(
     return {
       project_id: projectId,
       status: "blocked",
+      batch_kind: null,
       search: null,
       candidate_source_count: 0,
       suggested_selection_ids: [],
@@ -84,7 +87,8 @@ export async function runMvpSourceDiscovery(
     };
   }
 
-  const runId = `mvp-source-discovery-${randomUUID()}`;
+  const batchKind = options?.batchKind ?? "initial";
+  const runId = `mvp-source-discovery-${batchKind}-${randomUUID()}`;
   const usageBefore = await captureMvpApiUsageSnapshot();
 
   try {
@@ -98,7 +102,8 @@ export async function runMvpSourceDiscovery(
       },
       () =>
         searchProjectReferencesV2(userId, projectId, {
-          desiredTotal: options?.desiredTotal ?? MIN_SELECTED_REFERENCES,
+          desiredTotal: options?.desiredTotal ?? (batchKind === "more" ? MAX_SELECTED_REFERENCES : 5),
+          batchKind,
         }),
     );
     const apiUsageReport = await buildMvpApiUsageReport({
@@ -115,6 +120,7 @@ export async function runMvpSourceDiscovery(
     return {
       project_id: projectId,
       status: enoughCandidates ? "candidates_ready" : "blocked",
+      batch_kind: batchKind,
       search,
       candidate_source_count: candidateSourceCount,
       suggested_selection_ids: suggestedIds,
@@ -138,6 +144,7 @@ export async function runMvpSourceDiscovery(
     return {
       project_id: projectId,
       status: "blocked",
+      batch_kind: batchKind,
       search: null,
       candidate_source_count: 0,
       suggested_selection_ids: [],
