@@ -2,6 +2,8 @@ import { Step8Reader } from "@/components/labs/master-blueprint/step-8-reader";
 import { loadMasterBlueprintLabFixtureSet } from "@/server/blueprint-v2/lab/fixture-loader";
 import { runMasterBlueprintLabThroughStep } from "@/server/blueprint-v2/lab/pipeline";
 
+export const dynamic = "force-dynamic";
+
 export default async function MasterBlueprintStep8Page() {
   const fixtures = await loadMasterBlueprintLabFixtureSet({
     caseName: "blueprint-launch-latest",

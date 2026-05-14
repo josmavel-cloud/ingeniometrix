@@ -5,6 +5,8 @@ import type { TemplateQualityContractArtifact } from "@/server/blueprint-v2/lab/
 import type { MasterBlueprintLabSyntheticOverview } from "@/lib/labs/master-blueprint/types";
 import type { TemplateRuntimeInspectionArtifact } from "@/server/blueprint-v2/lab/template-runtime-inspector";
 
+export const dynamic = "force-dynamic";
+
 export default async function MasterBlueprintStep7Page() {
   const fixtures = await loadMasterBlueprintLabFixtureSet({
     caseName: "blueprint-launch-latest",

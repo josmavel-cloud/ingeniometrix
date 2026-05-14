@@ -2,6 +2,8 @@ import { MasterBlueprintLab } from "@/components/labs/master-blueprint/master-bl
 import { loadMasterBlueprintLabFixtureSet } from "@/server/blueprint-v2/lab/fixture-loader";
 import { runMasterBlueprintLabThroughStep } from "@/server/blueprint-v2/lab/pipeline";
 
+export const dynamic = "force-dynamic";
+
 export default async function MasterBlueprintLabPage() {
   const fixtures = await loadMasterBlueprintLabFixtureSet({
     caseName: "blueprint-launch-latest",

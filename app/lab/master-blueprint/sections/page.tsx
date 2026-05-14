@@ -4,6 +4,8 @@ import path from "node:path";
 import { MasterBlueprintSectionReader } from "@/components/labs/master-blueprint/section-reader";
 import { loadMasterBlueprintLabFixtureSet } from "@/server/blueprint-v2/lab/fixture-loader";
 
+export const dynamic = "force-dynamic";
+
 async function readJson<T>(filePath: string): Promise<T> {
   const raw = await readFile(filePath, "utf8");
   return JSON.parse(raw) as T;
