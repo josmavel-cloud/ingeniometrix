@@ -27,7 +27,7 @@ const flowSteps = [
 const evidenceSteps = [
   "Modelos IA",
   "OpenAlex",
-  "CrossRef",
+  "Crossref",
   "Fuentes",
   "Evidencia",
   "Plan",
@@ -205,10 +205,23 @@ export function EvidenceTraceMap({ className = "" }: VisualProps) {
           {[
             ["/providers/openai.png", "OpenAI"],
             ["/providers/openalex.png", "OpenAlex"],
-            ["/providers/crossref.svg", "CrossRef"],
+            ["/providers/crossref.svg", "Crossref"],
           ].map(([src, label]) => (
-            <span className="inline-flex size-11 items-center justify-center rounded-full bg-white/92 p-2" key={label}>
-              <Image alt={label} className="h-auto w-7" height={96} src={src} width={96} />
+            <span
+              className={
+                label === "Crossref"
+                  ? "inline-flex h-11 w-24 items-center justify-center rounded-full bg-white/92 p-2"
+                  : "inline-flex size-11 items-center justify-center rounded-full bg-white/92 p-2"
+              }
+              key={label}
+            >
+              <Image
+                alt={label}
+                className={label === "Crossref" ? "h-auto w-20" : "h-auto w-7"}
+                height={96}
+                src={src}
+                width={128}
+              />
             </span>
           ))}
         </div>

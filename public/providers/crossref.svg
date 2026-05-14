@@ -1,267 +1,29 @@
-
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Crossref logos">
-       
-
-    <title>Crossref Logos</title>
-    <link href="/private/bootstrap-3.3.5/css/bootstrap.min.css" rel="stylesheet">
-
-    <link rel="apple-touch-icon" sizes="57x57" href="/favicon/apple-touch-icon-57x57.png">
-    <link rel="apple-touch-icon" sizes="60x60" href="/favicon/apple-touch-icon-60x60.png">
-    <link rel="apple-touch-icon" sizes="72x72" href="/favicon/apple-touch-icon-72x72.png">
-    <link rel="apple-touch-icon" sizes="76x76" href="/favicon/apple-touch-icon-76x76.png">
-    <link rel="apple-touch-icon" sizes="114x114" href="/favicon/apple-touch-icon-114x114.png">
-    <link rel="apple-touch-icon" sizes="120x120" href="/favicon/apple-touch-icon-120x120.png">
-    <link rel="apple-touch-icon" sizes="144x144" href="/favicon/apple-touch-icon-144x144.png">
-    <link rel="apple-touch-icon" sizes="152x152" href="/favicon/apple-touch-icon-152x152.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon-180x180.png">
-    <link rel="icon" type="image/png" href="/favicon/favicon-32x32.png" sizes="32x32">
-    <link rel="icon" type="image/png" href="/favicon/android-chrome-192x192.png" sizes="192x192">
-    <link rel="icon" type="image/png" href="/favicon/favicon-96x96.png" sizes="96x96">
-    <link rel="icon" type="image/png" href="/favicon/favicon-16x16.png" sizes="16x16">
-    <link rel="manifest" href="/favicon/manifest.json">
-    <link rel="mask-icon" href="/favicon/safari-pinned-tab.svg" color="#5bbad5">
-    <meta name="apple-mobile-web-app-title" content="Crossref">
-    <meta name="application-name" content="Crossref">
-    <meta name="msapplication-TileColor" content="#da532c">
-    <meta name="msapplication-TileImage" content="/favicon/mstile-144x144.png">
-    <meta name="theme-color" content="#ffffff">
-
-  </head>
-
-  <body>
-
-    <style>
-        @import url("https://fast.fonts.net/lt/1.css?apiType=css&c=e98f5793-4cb3-43cf-9c5a-90c30937c6bd&fontids=903184,903187,903190,903193,903196,903199,903202,903205");
-        @font-face{
-        font-family:"HelveticaNeueETW01-45Lt";
-        src:url("/private/fonts/903184/e0781a75-0ecb-464e-b6e9-85780ddc0921.eot?#iefix");
-        src:url("/private/fonts/903184/e0781a75-0ecb-464e-b6e9-85780ddc0921.eot?#iefix") format("eot"),url("/private/fonts/903184/b8765d4b-d9a3-48b9-ac65-560e7517cf0e.woff2") format("woff2"),url("/private/fonts/903184/d7d2e6c6-fc3a-41a5-9b52-648e12e215b2.woff") format("woff"),url("/private/fonts/903184/cb64744b-d0f7-4ef8-a790-b60d6e3e4f21.ttf") format("truetype"),url("/private/fonts/903184/ccde919e-a712-41ef-b90f-9efc47661659.svg#ccde919e-a712-41ef-b90f-9efc47661659") format("svg");
-        }
-
-        @font-face{
-        font-family:"HelveticaNeueETW01-65Md";
-        src:url("/private/fonts/903196/a747e1ea-ecdf-4f3d-ad47-3df9cfbee3cc.eot?#iefix");
-        src:url("/private/fonts/903196/a747e1ea-ecdf-4f3d-ad47-3df9cfbee3cc.eot?#iefix") format("eot"),url("/private/fonts/903196/3e8a8b56-3cb0-4347-b670-eaaf06b76e9b.woff2") format("woff2"),url("/private/fonts/903196/07173950-fa69-4b65-9c71-0cf2ec00b51d.woff") format("woff"),url("/private/fonts/903196/aac5a4b8-ffd3-4529-a098-21b91bc86f9a.ttf") format("truetype"),url("/private/fonts/903196/2379b081-2371-47d9-8be9-4e39d7892ebf.svg#2379b081-2371-47d9-8be9-4e39d7892ebf") format("svg");
-        }
-
-      body {
-        font-family:'HelveticaNeueETW01-45Lt';
-        font-style: normal !important;
-      }
-
-      h1, h2, h3 {
-        font-family:'HelveticaNeueETW01-65Md';
-      }
-
-      .logo-area {
-        padding: 20px;
-        background-color: #f0f0f0;
-      }
-
-      p {
-        font-size: 1.2em;
-      }
-
-      p.lead {
-
-      }
-
-   
-    </style>
-    <div class="container">
-
-      <div class="page-header">
-        <h1>Crossref Logos</h1>
-        <p class="lead">We’d like to help our members and partners to display the Crossref logo consistently, so we have used a Content Delivery Network (CDN) so you can always be sure you’re using the correct file. To incorporate our logo into your site, please copy and paste the HTML tags exactly. Our logo is available in formats suitable for print; please email member@crossref.org with your request.</p>
-
-        <p class="lead">Please do not download and alter the logo. We may perform audits to check that it is being used correctly.</p>
-        <p class="lead"><strong>Please <a href="/docs/Crossref_BrandGuides_Members_March2016.pdf">read our brand guidelines</a></strong> for guidance on how to use the logo.</p>
-      </div>
-
-      <h3>Crossref 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-logo-200.svg" width="200" height="130" alt="Crossref logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-logo-200.svg" width="200" height="130" alt="Crossref logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Crossref 200px Landscape SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-logo-landscape-200.svg" width="200" height="68" alt="Crossref logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-logo-landscape-200.svg" width="200" height="68" alt="Crossref logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Crossref Content Registration 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-content-registration-logo-200.svg" width="200" height="110" alt="Crossref Content Registration logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-content-registration-logo-200.svg" width="200" height="110" alt="Crossref Content Registration logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Crossref Reference Linking 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-reference-linking-logo-200.svg" width="200" height="110" alt="Crossref Reference Linking logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-reference-linking-logo-200.svg" width="200" height="110" alt="Crossref Reference Linking logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- <h3>Crossref Cited-by Linking 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-cited-by-linking-logo-200.svg" width="200" height="82" alt="Crossref Cited-by Linking logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-cited-by-linking-logo-200.svg" width="200" height="82" alt="Crossref Cited-by Linking logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div> -->
-      <h3>Crossref Cited-by 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-cited-by-logo-200.svg" width="200" height="82" alt="Crossref Cited-by logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-cited-by-logo-200.svg" width="200" height="82" alt="Crossref Cited-by logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Crossref Crossmark 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area"><img class="center-block" src="/logo/crossref-crossmark-logo-200.svg" width="200" height="82" alt="Crossref Crossmark logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-crossmark-logo-200.svg" width="200" height="82" alt="Crossref Crossmark logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- <h3>Crossref Metadata API 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-metadata-api-200.svg" width="200" height="83" alt="Crossref Similarity Check logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-metadata-api-200.svg" width="200" height="83" alt="Crossref Metadata API logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div> -->
-
-      <h3>Crossref Metadata APIs 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-metadata-apis-200.svg" width="200" height="83" alt="Crossref Metadata APIs logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-metadata-apis-200.svg" width="200" height="83" alt="Crossref Metadata APIs logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-
-      <h3>Crossref Metadata Search 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-metadata-search-logo-200.svg" width="200" height="106" alt="Crossref Metadata Search logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-metadata-search-logo-200.svg" width="200" height="106" alt="Crossref Metadata Search logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Crossref Similarity Check 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-similarity-check-logo-200.svg" width="200" height="98" alt="Crossref Similarity Check logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-similarity-check-logo-200.svg" width="200" height="98" alt="Crossref Similarity Check logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-<!--      <h3>Crossref Open Funder Registry 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-open-funder-registry-logo-200.svg" width="200" height="112" alt="Crossref Open Funder Registry logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-open-funder-registry-logo-200.svg" width="200" height="112" alt="Crossref Open Funder Registry logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div> -->
-     <h3>Crossref Funder Registry 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-funder-registry-logo-200.svg" width="200" height="112" alt="Crossref Funder Registry logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-funder-registry-logo-200.svg" width="200" height="112" alt="Crossref Funder Registry logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Crossref Event Data 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/crossref-event-data-logo-200.svg" width="200" height="83" alt="Crossref Event Data logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/crossref-event-data-logo-200.svg" width="200" height="83" alt="Crossref Event Data logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <h3>Metadata from Crossref 200px SVG</h3>
-      <div class="row">
-        <div class="col-md-4 logo-area "><img class="center-block" src="/logo/metadata-from-crossref-logo-200.svg" width="200" height="68" alt="Metadata from Crossref logo"></div>
-        <div class="col-md-8">
-          <div class="panel panel-default">
-            <div class="panel-body">
-              <code>&lt;img src="https://assets.crossref.org/logo/metadata-from-crossref-logo-200.svg" width="200" height="68" alt="Metadata from Crossref logo"&gt;</code>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </body>
-</html>
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" id="crossref-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 130.2" role="img" aria-labelledby="title desc">
+  <title id="title">Crossref logo</title>
+  <desc id="desc">Official Crossref wordmark with stacked geometric symbol.</desc>
+  <style>
+    .crossref-blue{fill:#3EB1C8;}
+    .crossref-stone{fill:#D8D2C4;}
+    .crossref-charcoal{fill:#4F5858;}
+    .crossref-yellow{fill:#FFC72C;}
+    .crossref-red{fill:#EF3340;}
+  </style>
+  <g>
+    <polygon class="crossref-blue" points="111.8,95.5 111.8,66.8 135.4,59 177.2,73.3"/>
+    <polygon class="crossref-stone" points="153.6,36.8 111.8,51.2 135.4,59 177.2,44.6"/>
+    <polygon class="crossref-charcoal" points="135.4,59 177.2,44.6 177.2,73.3"/>
+    <polygon class="crossref-yellow" points="177.2,0.3 177.2,29 153.6,36.8 111.8,22.5"/>
+    <polygon class="crossref-red" points="153.6,36.8 111.8,51.2 111.8,22.5"/>
+    <g>
+      <path class="crossref-charcoal" d="M26.3,104.8c-0.5-3.7-4.1-6.5-8.1-6.5c-7.3,0-10.1,6.2-10.1,12.7c0,6.2,2.8,12.4,10.1,12.4c5,0,7.8-3.4,8.4-8.3h7.9c-0.8,9.2-7.2,15.2-16.3,15.2C6.8,130.2,0,121.7,0,111c0-11,6.8-19.6,18.2-19.6c8.2,0,15,4.8,16,13.3H26.3z"/>
+      <path class="crossref-charcoal" d="M37.4,102.5h7v5h0.1c1.4-3.4,5-5.7,8.6-5.7c0.5,0,1.1,0.1,1.6,0.3v6.9c-0.7-0.2-1.8-0.3-2.6-0.3c-5.4,0-7.3,3.9-7.3,8.6v12.1h-7.4V102.5z"/>
+      <path class="crossref-charcoal" d="M68.7,101.8c8.5,0,13.9,5.6,13.9,14.2c0,8.5-5.5,14.1-13.9,14.1c-8.4,0-13.9-5.6-13.9-14.1C54.9,107.4,60.3,101.8,68.7,101.8z M68.7,124.5c5,0,6.5-4.3,6.5-8.6c0-4.3-1.5-8.6-6.5-8.6c-5,0-6.5,4.3-6.5,8.6C62.2,120.2,63.8,124.5,68.7,124.5z"/>
+      <path class="crossref-charcoal" d="M91.2,120.6c0.1,3.2,2.8,4.5,5.7,4.5c2.1,0,4.8-0.8,4.8-3.4c0-2.2-3.1-3-8.4-4.2c-4.3-0.9-8.5-2.4-8.5-7.2c0-6.9,5.9-8.6,11.7-8.6c5.9,0,11.3,2,11.8,8.6h-7c-0.2-2.9-2.4-3.6-5-3.6c-1.7,0-4.1,0.3-4.1,2.5c0,2.6,4.2,3,8.4,4c4.3,1,8.5,2.5,8.5,7.5c0,7.1-6.1,9.3-12.3,9.3c-6.2,0-12.3-2.3-12.6-9.5H91.2z"/>
+      <path class="crossref-charcoal" d="M118.1,120.6c0.1,3.2,2.8,4.5,5.7,4.5c2.1,0,4.8-0.8,4.8-3.4c0-2.2-3.1-3-8.4-4.2c-4.3-0.9-8.5-2.4-8.5-7.2c0-6.9,5.9-8.6,11.7-8.6c5.9,0,11.3,2,11.8,8.6h-7c-0.2-2.9-2.4-3.6-5-3.6c-1.7,0-4.1,0.3-4.1,2.5c0,2.6,4.2,3,8.4,4c4.3,1,8.5,2.5,8.5,7.5c0,7.1-6.1,9.3-12.3,9.3c-6.2,0-12.3-2.3-12.6-9.5H118.1z"/>
+      <path class="crossref-charcoal" d="M138.4,102.5h7v5h0.1c1.4-3.4,5-5.7,8.6-5.7c0.5,0,1.1,0.1,1.6,0.3v6.9c-0.7-0.2-1.8-0.3-2.6-0.3c-5.4,0-7.3,3.9-7.3,8.6v12.1h-7.4V102.5z"/>
+      <path class="crossref-charcoal" d="M163.7,117.7c0.2,4.7,2.5,6.8,6.6,6.8c3,0,5.3-1.8,5.8-3.5h6.5c-2.1,6.3-6.5,9-12.6,9c-8.5,0-13.7-5.8-13.7-14.1c0-8,5.6-14.2,13.7-14.2c9.1,0,13.6,7.7,13,15.9H163.7z M175.7,113.1c-0.7-3.7-2.3-5.7-5.9-5.7c-4.7,0-6,3.6-6.1,5.7H175.7z"/>
+      <path class="crossref-charcoal" d="M187.2,107.5h-4.4v-4.9h4.4v-2.1c0-4.7,3-8.2,9-8.2c1.3,0,2.6,0.2,3.9,0.2V98c-0.9-0.1-1.8-0.2-2.7-0.2c-2,0-2.8,0.8-2.8,3.1v1.6h5.1v4.9h-5.1v21.9h-7.4V107.5z"/>
+    </g>
+  </g>
+</svg>

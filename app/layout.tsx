@@ -2,22 +2,22 @@ import "./globals.css";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import { resolveHtmlLanguage } from "@/lib/language";
-import { getCurrentUser } from "@/server/auth/session";
+import { PUBLIC_SITE_NAME, PUBLIC_SITE_URL } from "@/lib/public-site";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://ingeniometrix.com"),
+  metadataBase: new URL(PUBLIC_SITE_URL),
   title: {
-    default: "Ingeniometrix | Investigación académica con más claridad",
-    template: "%s | Ingeniometrix",
+    default: `${PUBLIC_SITE_NAME} | Investigación asistida con claridad y trazabilidad`,
+    template: `%s | ${PUBLIC_SITE_NAME}`,
   },
   description:
-    "Ingeniometrix ayuda a estructurar, revisar y avanzar procesos de investigación académica con criterio, trazabilidad y apoyo de IA.",
-  applicationName: "Ingeniometrix",
-  authors: [{ name: "Ingeniometrix" }],
-  creator: "Ingeniometrix",
-  publisher: "Ingeniometrix",
+    "Ingeniometrix ayuda a convertir ideas iniciales en bases de investigación más claras, revisables y trazables con apoyo de IA.",
+  applicationName: PUBLIC_SITE_NAME,
+  authors: [{ name: PUBLIC_SITE_NAME }],
+  creator: PUBLIC_SITE_NAME,
+  publisher: PUBLIC_SITE_NAME,
   keywords: [
+    "investigación asistida",
     "investigación académica",
     "asistente de investigación",
     "tesis",
@@ -30,11 +30,11 @@ export const metadata: Metadata = {
     "recursos de investigación",
   ],
   openGraph: {
-    title: "Ingeniometrix | Investigación académica con más claridad",
+    title: `${PUBLIC_SITE_NAME} | Investigación asistida con claridad y trazabilidad`,
     description:
-      "Una experiencia para convertir ideas dispersas en bases de investigación más claras, trazables y listas para seguir avanzando.",
-    url: "https://ingeniometrix.com",
-    siteName: "Ingeniometrix",
+      "Una experiencia para convertir ideas iniciales en bases de investigación más claras, revisables y trazables.",
+    url: PUBLIC_SITE_URL,
+    siteName: PUBLIC_SITE_NAME,
     locale: "es",
     type: "website",
     images: [
@@ -48,9 +48,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Ingeniometrix | Investigación académica con más claridad",
+    title: `${PUBLIC_SITE_NAME} | Investigación asistida con claridad y trazabilidad`,
     description:
-      "Estructura, revisa y avanza procesos de investigación con criterio, trazabilidad y apoyo de IA.",
+      "Convierte ideas iniciales en bases de investigación más claras, revisables y trazables con apoyo de IA.",
     images: ["/opengraph-image"],
   },
   icons: {
@@ -63,11 +63,9 @@ type RootLayoutProps = {
   children: ReactNode;
 };
 
-export default async function RootLayout({ children }: RootLayoutProps) {
-  const currentUser = await getCurrentUser();
-
+export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang={resolveHtmlLanguage({ userLocale: currentUser?.locale })}>
+    <html lang="es">
       <body className="antialiased">{children}</body>
     </html>
   );

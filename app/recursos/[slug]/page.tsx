@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { BrandBadge } from "@/components/brand/brand-badge";
 import { ThesisPlanMockup } from "@/components/marketing/research-visuals";
 import { getResourceArticle, resourceArticles } from "@/lib/marketing/resources";
+import { getPublicUrl } from "@/lib/public-site";
 
 type ResourceArticlePageProps = {
   params: Promise<{
@@ -29,10 +30,13 @@ export async function generateMetadata({
   return {
     title: article.title,
     description: article.description,
+    alternates: {
+      canonical: `/recursos/${article.slug}`,
+    },
     openGraph: {
       title: `${article.title} | Ingeniometrix`,
       description: article.description,
-      url: `https://ingeniometrix.com/recursos/${article.slug}`,
+      url: getPublicUrl(`/recursos/${article.slug}`),
       type: "article",
       publishedTime: article.publishedAt,
     },
@@ -61,7 +65,7 @@ export default async function ResourceArticlePage({ params }: ResourceArticlePag
       "@type": "Organization",
       name: "Ingeniometrix",
     },
-    mainEntityOfPage: `https://ingeniometrix.com/recursos/${article.slug}`,
+    mainEntityOfPage: getPublicUrl(`/recursos/${article.slug}`),
   };
 
   return (

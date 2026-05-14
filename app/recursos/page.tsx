@@ -4,16 +4,20 @@ import Link from "next/link";
 import { BrandBadge } from "@/components/brand/brand-badge";
 import { ResearchFlowDiagram } from "@/components/marketing/research-visuals";
 import { resourceArticles } from "@/lib/marketing/resources";
+import { getPublicUrl } from "@/lib/public-site";
 
 export const metadata: Metadata = {
   title: "Recursos",
   description:
     "Guías prácticas de Ingeniometrix para plan de tesis, investigación académica, trazabilidad y uso responsable de IA.",
+  alternates: {
+    canonical: "/recursos",
+  },
   openGraph: {
     title: "Recursos | Ingeniometrix",
     description:
       "Guías para convertir una idea de investigación en una base de plan de tesis clara, revisable y trazable.",
-    url: "https://ingeniometrix.com/recursos",
+    url: getPublicUrl("/recursos"),
   },
 };
 

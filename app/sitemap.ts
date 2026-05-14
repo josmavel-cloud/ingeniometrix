@@ -1,31 +1,30 @@
 import type { MetadataRoute } from "next";
 
 import { resourceArticles } from "@/lib/marketing/resources";
-
-const baseUrl = "https://ingeniometrix.com";
+import { getPublicUrl } from "@/lib/public-site";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [
     {
-      url: baseUrl,
+      url: getPublicUrl(),
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 1,
     },
     {
-      url: `${baseUrl}/campana`,
+      url: getPublicUrl("/campana"),
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/recursos`,
+      url: getPublicUrl("/recursos"),
       lastModified: new Date(),
       changeFrequency: "weekly",
       priority: 0.8,
     },
     ...resourceArticles.map((article) => ({
-      url: `${baseUrl}/recursos/${article.slug}`,
+      url: getPublicUrl(`/recursos/${article.slug}`),
       lastModified: new Date(article.publishedAt),
       changeFrequency: "monthly" as const,
       priority: 0.7,
