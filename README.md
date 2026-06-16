@@ -1,6 +1,6 @@
 # Ingeniometrix
 
-Ingeniometrix is the company/workspace repo for building `Ingeniometrix`, an ethical thesis-planning MVP for maestria and posgrado users in Peru.
+Ingeniometrix is the company/workspace repo for building `Ingeniometrix`, an ethical thesis-planning.
 
 ## Current Product
 
