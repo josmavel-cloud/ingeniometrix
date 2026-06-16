@@ -8,6 +8,7 @@ dist
 .env.*.local
 artifacts
 artifacts-local
+backups
 *.log
 *.tsbuildinfo
 .codex-*
