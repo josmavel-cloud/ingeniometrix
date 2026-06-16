@@ -527,7 +527,8 @@ export function ReferenceSearchPanel({
                 <div className="mt-2 grid gap-2">
                   {searchSnapshot.metadata.keywordGroups.necessary.map((group) => (
                     <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
-                      <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                      <strong>{group.label}:</strong>{" "}
+                      {group.variants.join(` ${copy.variantJoiner} `)}
                     </p>
                   ))}
                 </div>
@@ -539,7 +540,8 @@ export function ReferenceSearchPanel({
                 <div className="mt-2 grid gap-2">
                   {searchSnapshot.metadata.keywordGroups.complementary.map((group) => (
                     <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
-                      <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                      <strong>{group.label}:</strong>{" "}
+                      {group.variants.join(` ${copy.variantJoiner} `)}
                     </p>
                   ))}
                 </div>
@@ -552,7 +554,8 @@ export function ReferenceSearchPanel({
                   {searchSnapshot.metadata.keywordGroups.optional.length > 0 ? (
                     searchSnapshot.metadata.keywordGroups.optional.map((group) => (
                       <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
-                        <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                        <strong>{group.label}:</strong>{" "}
+                        {group.variants.join(` ${copy.variantJoiner} `)}
                       </p>
                     ))
                   ) : (
@@ -582,7 +585,7 @@ export function ReferenceSearchPanel({
                   {copy.scoreRules}
                 </p>
                 <div className="mt-2 grid gap-2">
-                  {searchSnapshot.metadata.scoringRules.map((rule) => (
+                  {copy.scoreRuleItems.map((rule) => (
                     <p className="text-sm leading-6 text-[var(--color-muted)]" key={rule}>
                       {rule}
                     </p>
@@ -622,11 +625,9 @@ export function ReferenceSearchPanel({
                     {item.selectedOrder ? copy.selectedOrder(item.selectedOrder) : copy.notSelected}
                   </span>
                 </label>
-                <div className="relative inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-transparent">
-                  <span className="absolute inset-0 inline-flex items-center justify-center text-slate-500">
-                    {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)} - {item.relevanceScore?.toFixed(2) ?? "0.00"}
-                  </span>
-                  {item.scoreBreakdown?.label ?? "BAJO"} · {item.relevanceScore?.toFixed(2) ?? "0.00"}
+                <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
+                  {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)} -{" "}
+                  {item.relevanceScore?.toFixed(2) ?? "0.00"}
                 </div>
               </div>
 
@@ -640,7 +641,7 @@ export function ReferenceSearchPanel({
                   </span>
                   {item.reference.abstract ? (
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
-                      Abstract
+                      {copy.abstractLabel}
                     </span>
                   ) : null}
                   {item.reference.hasAutoTranslation ? (
@@ -670,7 +671,7 @@ export function ReferenceSearchPanel({
                       rel="noreferrer"
                       target="_blank"
                     >
-                      PDF
+                      {copy.pdfLabel}
                       <FileText className="ml-2 size-4" />
                     </a>
                   ) : null}
@@ -692,9 +693,16 @@ export function ReferenceSearchPanel({
                       {copy.details}
                     </summary>
                     <div className="mt-3 grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
-                      <p>DOI: {item.reference.doi ?? copy.unavailable}</p>
-                      <p>Score label: {renderScoreLabel(item.scoreBreakdown?.label, language) ?? copy.unavailable}</p>
-                      <p>Query: {item.scoreBreakdown?.matchedQuery ?? copy.unavailable}</p>
+                      <p>{copy.doiLabel}: {item.reference.doi ?? copy.unavailable}</p>
+                      <p>
+                        {copy.scoreLabel}:{" "}
+                        {renderScoreLabel(item.scoreBreakdown?.label, language) ??
+                          copy.unavailable}
+                      </p>
+                      <p>
+                        {copy.queryLabel}:{" "}
+                        {item.scoreBreakdown?.matchedQuery ?? copy.unavailable}
+                      </p>
                       <p>
                         {copy.stage}:{" "}
                         {item.scoreBreakdown?.matchedQueryStage === "necessary_only"

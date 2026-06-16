@@ -5,7 +5,7 @@ import {
   MIN_SELECTED_REFERENCES,
   REFERENCE_BATCH_SIZE,
 } from "@/lib/research-workflow";
-import { resolveLanguageContext } from "@/lib/language";
+import { normalizeLanguageCode, resolveLanguageContext } from "@/lib/language";
 import { buildSearchQuery, extractSearchTerms, normalizeTitle } from "@/lib/text";
 import { prisma } from "@/lib/prisma";
 import { getConfiguredLlmProvider } from "@/llm";
@@ -20,6 +20,7 @@ import {
   searchCrossrefWorks,
 } from "./crossref-client";
 import { extractAccessSignals, verifyPdfAccess } from "./reference-access";
+import { evaluateReferenceQuality } from "./reference-quality";
 import { searchOpenAlexWorks } from "./openalex-client";
 
 export type ReferenceKeywordGroup = {
@@ -406,7 +407,55 @@ function buildFallbackKeywordGroups(intake: IntakeInput): ReferenceSearchV2Metad
   };
 }
 
-function buildFallbackMetadata(intake: IntakeInput): ReferenceSearchV2Metadata {
+function isEnglishLanguage(language: string | null | undefined) {
+  return normalizeLanguageCode(language) === "en";
+}
+
+function buildScoringRules(language: string | null | undefined) {
+  return isEnglishLanguage(language)
+    ? [
+        "HIGH: matches necessary and complementary groups.",
+        "MEDIUM: matches necessary groups only.",
+        "MINIMUM: matches optional groups only.",
+        "Within HIGH, recency adds weight: last 3 years +6, last 6 years +3, last 9 years +1.",
+      ]
+    : [
+        "ALTO: coincide con grupos necesarios y complementarios.",
+        "MEDIO: coincide solo con grupos necesarios.",
+        "MINIMO: coincide solo con grupos opcionales.",
+        "Dentro del grupo ALTO, la recencia pesa mas: ultimos 3 anos +6, ultimos 6 anos +3, ultimos 9 anos +1.",
+      ];
+}
+
+function getSearchErrorMessage(language: string | null | undefined, key: "missing" | "none") {
+  if (isEnglishLanguage(language)) {
+    return key === "missing"
+      ? "There is not enough information to search for sources."
+      : "No sources could be recovered from OpenAlex or Crossref in this attempt.";
+  }
+
+  return key === "missing"
+    ? "No hay suficiente informacion para buscar fuentes."
+    : "No se pudieron recuperar fuentes desde OpenAlex ni Crossref en este intento.";
+}
+
+function formatProviderWarning(
+  provider: "OpenAlex" | "Crossref",
+  query: string,
+  error: unknown,
+  language: string | null | undefined,
+) {
+  const message = isEnglishLanguage(language)
+    ? "provider did not respond correctly"
+    : getErrorMessage(error);
+
+  return `${provider} (${query}): ${message}`;
+}
+
+function buildFallbackMetadata(
+  intake: IntakeInput,
+  language: string | null | undefined,
+): ReferenceSearchV2Metadata {
   const keywordGroups = buildFallbackKeywordGroups(intake);
   const queryPack = buildQueryPack(keywordGroups);
   const normalizedTopic =
@@ -427,25 +476,23 @@ function buildFallbackMetadata(intake: IntakeInput): ReferenceSearchV2Metadata {
     keywordGroups,
     queryPack,
     focusTerms,
-    scoringRules: [
-      "ALTO: coincide con grupos necesarios y complementarios.",
-      "MEDIO: coincide solo con grupos necesarios.",
-      "MINIMO: coincide solo con grupos opcionales.",
-      "Dentro del grupo ALTO, la recencia pesa mas: 2023-2026 +6, 2020-2022 +3, 2017-2019 +1.",
-    ],
+    scoringRules: buildScoringRules(language),
   };
 }
 
-function buildPrompt(intake: IntakeInput) {
+function buildPrompt(intake: IntakeInput, language: string | null | undefined) {
+  const selectedLanguage = isEnglishLanguage(language) ? "English" : "Spanish";
+
   return `
 You are a senior academic literature retrieval specialist for master's thesis planning.
-Your task is to read a structured intake written in Spanish and produce an English-first retrieval plan for OpenAlex.
+Your task is to read a structured intake and produce an English-first retrieval plan for OpenAlex.
 
 Context:
 - the user is preparing an academic research project
 - OpenAlex retrieval usually works better with concise English academic terminology
 - the output must remain tightly aligned to the intake
 - do not invent facts, methods, populations, devices, or results
+- user interface language selected for human-facing labels: ${selectedLanguage}
 
 Goal:
 - identify the highest-value keyword groups from the intake
@@ -458,7 +505,8 @@ Keyword group rules:
 - necessary: the core concepts that should dominate the first search pass
 - complementary: useful refiners that increase precision and quality
 - optional: non-essential terms that can be discarded if they add noise
-- labels can be in Spanish for readability, but variants must be in English
+- labels, normalized_topic, and intent_summary must be in the selected user interface language
+- variants must be concise English academic search terms
 
 Query pack rules:
 - necessary_only: queries using only the necessary groups
@@ -478,14 +526,14 @@ Return JSON with this exact structure:
 - focus_terms
 
 Intake:
-- topic_es: ${intake.topic}
-- problem_context_es: ${intake.problemContext}
-- target_population_es: ${intake.targetPopulation}
-- preferred_methodology_es: ${intake.preferredMethodology}
-- research_line_es: ${intake.researchLine}
-- available_data_es: ${intake.availableData}
-- academic_constraints_es: ${intake.academicConstraints}
-- advisor_notes_es: ${intake.advisorNotes}
+- topic: ${intake.topic}
+- problem_context: ${intake.problemContext}
+- target_population: ${intake.targetPopulation}
+- preferred_methodology: ${intake.preferredMethodology}
+- research_line: ${intake.researchLine}
+- available_data: ${intake.availableData}
+- academic_constraints: ${intake.academicConstraints}
+- advisor_notes: ${intake.advisorNotes}
 `.trim();
 }
 
@@ -501,15 +549,18 @@ function sanitizeKeywordGroups(
   };
 }
 
-async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<ReferenceSearchV2Metadata> {
-  const fallbackMetadata = buildFallbackMetadata(intake);
+async function buildReferenceSearchMetadata(
+  intake: IntakeInput,
+  language: string | null | undefined,
+): Promise<ReferenceSearchV2Metadata> {
+  const fallbackMetadata = buildFallbackMetadata(intake, language);
 
   try {
     const provider = getConfiguredLlmProvider();
     const generatedPlan = await generateStructuredObjectWithTextFallback<ReferenceSearchPlanSchema>(
       {
         provider,
-        prompt: buildPrompt(intake),
+        prompt: buildPrompt(intake, language),
         schemaName: "reference_search_v2_plan",
         schema: referenceSearchPlanSchema,
       },
@@ -591,22 +642,34 @@ function normalizeIntakeForSearch(intake: {
   };
 }
 
-function getRecencyBand(year: number | null) {
+function getRecencyBand(year: number | null, language: string | null | undefined) {
   const currentYear = new Date().getFullYear();
 
+  if (year && year > currentYear + 1) {
+    return {
+      label: isEnglishLanguage(language) ? "Future or invalid year" : "Ano futuro o invalido",
+      bonus: 0,
+    };
+  }
+
   if (year && year >= currentYear - 3) {
-    return { label: "2023-2026", bonus: 6 };
+    return { label: `${currentYear - 3}-${currentYear}`, bonus: 6 };
   }
 
   if (year && year >= currentYear - 6) {
-    return { label: "2020-2022", bonus: 3 };
+    return { label: `${currentYear - 6}-${currentYear - 4}`, bonus: 3 };
   }
 
   if (year && year >= currentYear - 9) {
-    return { label: "2017-2019", bonus: 1 };
+    return { label: `${currentYear - 9}-${currentYear - 7}`, bonus: 1 };
   }
 
-  return { label: "2016 o anterior", bonus: 0 };
+  return {
+    label: isEnglishLanguage(language)
+      ? `${currentYear - 10} or earlier`
+      : `${currentYear - 10} o anterior`,
+    bonus: 0,
+  };
 }
 
 function findMatchedLabels(
@@ -629,6 +692,7 @@ function buildRelevanceScore(input: {
   citationCount: number;
   year: number | null;
   hasPdfUrl: boolean;
+  language: string | null | undefined;
 }) {
   const normalizedText = normalizeTitle([input.title, input.abstract].filter(Boolean).join(" "));
   const necessaryMatches = findMatchedLabels(normalizedText, input.keywordGroups.necessary);
@@ -637,7 +701,7 @@ function buildRelevanceScore(input: {
     input.keywordGroups.complementary,
   );
   const optionalMatches = findMatchedLabels(normalizedText, input.keywordGroups.optional);
-  const recency = getRecencyBand(input.year);
+  const recency = getRecencyBand(input.year, input.language);
   const citationBonus = Math.min(input.citationCount / 80, 3);
   const abstractBonus = input.abstract?.trim() ? 2.5 : 0;
   const accessBonus = input.hasPdfUrl ? 1.5 : 0;
@@ -725,6 +789,7 @@ export async function searchProjectReferencesV2(
   projectId: string,
   options?: {
     desiredTotal?: number;
+    languageOverride?: string | null;
   },
 ): Promise<SearchProjectReferencesV2Result> {
   const desiredTotal = Math.min(
@@ -770,9 +835,11 @@ export async function searchProjectReferencesV2(
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,
     projectLanguage: project.language,
+    languageOverride: options?.languageOverride,
   });
   const searchMetadata = await buildReferenceSearchMetadata(
     normalizeIntakeForSearch(project.intake),
+    languageContext.activeLanguage,
   );
   const searchQuery = searchMetadata.normalizedTopic;
   const queryStages = [
@@ -792,7 +859,7 @@ export async function searchProjectReferencesV2(
   const attemptedQueries: string[] = [];
 
   if (!searchQuery || queryStages.every((entry) => entry.queries.length === 0)) {
-    throw new Error("No hay suficiente informacion para buscar fuentes.");
+    throw new Error(getSearchErrorMessage(languageContext.activeLanguage, "missing"));
   }
 
   await prisma.project.update({
@@ -824,7 +891,9 @@ export async function searchProjectReferencesV2(
       try {
         attemptResults = await searchOpenAlexWorks(attemptQuery);
       } catch (error) {
-        providerWarnings.push(`OpenAlex (${attemptQuery}): ${getErrorMessage(error)}`);
+        providerWarnings.push(
+          formatProviderWarning("OpenAlex", attemptQuery, error, languageContext.activeLanguage),
+        );
         openAlexUnavailable = true;
       }
 
@@ -879,7 +948,9 @@ export async function searchProjectReferencesV2(
         try {
           crossrefResults = await searchCrossrefWorks(attemptQuery);
         } catch (error) {
-          providerWarnings.push(`Crossref (${attemptQuery}): ${getErrorMessage(error)}`);
+          providerWarnings.push(
+            formatProviderWarning("Crossref", attemptQuery, error, languageContext.activeLanguage),
+          );
         }
 
         if (crossrefResults.length === 0) {
@@ -914,10 +985,22 @@ export async function searchProjectReferencesV2(
   }
 
   if (aggregatedResults.size === 0) {
+    await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        status:
+          previousProjectReferenceIds.size > 0
+            ? ProjectStatus.SOURCES_REVIEW
+            : ProjectStatus.INTAKE_READY,
+      },
+    });
+
     throw new Error(
       providerWarnings.length > 0
-        ? "No se pudieron recuperar fuentes desde OpenAlex ni Crossref en este intento."
-        : "No se encontraron fuentes para este intake.",
+        ? getSearchErrorMessage(languageContext.activeLanguage, "none")
+        : isEnglishLanguage(languageContext.activeLanguage)
+          ? "No sources were found for this intake."
+          : "No se encontraron fuentes para este intake.",
     );
   }
 
@@ -954,6 +1037,25 @@ export async function searchProjectReferencesV2(
       crossrefMetadata?.issued?.["date-parts"]?.[0]?.[0] ?? result.year;
     const resolvedWorkType = crossrefMetadata?.type ?? result.workType;
     const resolvedLandingPageUrl = crossrefMetadata?.URL ?? result.landingPageUrl;
+    const quality = evaluateReferenceQuality({
+      title: resolvedTitle,
+      sourceProvider: result.sourceProvider,
+      year: resolvedYear,
+      authors: resolvedAuthors,
+      abstract: resolvedAbstract,
+      venue: resolvedVenue,
+      doi: result.doi,
+      landingPageUrl: resolvedLandingPageUrl,
+      citationCount: result.citationCount,
+      rawOpenAlexJson: result.rawOpenAlexJson,
+      rawCrossrefJson: crossrefMetadata,
+    });
+
+    if (!quality.accepted) {
+      skippedCount += 1;
+      continue;
+    }
+
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: result.rawOpenAlexJson,
       rawCrossrefJson: crossrefMetadata,
@@ -970,6 +1072,7 @@ export async function searchProjectReferencesV2(
       citationCount: result.citationCount,
       year: resolvedYear,
       hasPdfUrl: pdfAccessible,
+      language: languageContext.activeLanguage,
     });
 
     rankedCandidates.push({
@@ -989,6 +1092,24 @@ export async function searchProjectReferencesV2(
       pdfUrl: pdfAccessible ? accessSignals.pdfUrl : null,
       pdfAccessible,
     });
+  }
+
+  if (rankedCandidates.length === 0) {
+    await prisma.project.update({
+      where: { id: project.id },
+      data: {
+        status:
+          previousProjectReferenceIds.size > 0
+            ? ProjectStatus.SOURCES_REVIEW
+            : ProjectStatus.INTAKE_READY,
+      },
+    });
+
+    throw new Error(
+      isEnglishLanguage(languageContext.activeLanguage)
+        ? "Recovered candidates did not pass the academic source quality checks."
+        : "Los candidatos recuperados no pasaron los controles de calidad academica.",
+    );
   }
 
   const selectedCandidates = rankedCandidates

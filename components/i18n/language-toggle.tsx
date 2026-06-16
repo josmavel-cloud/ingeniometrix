@@ -47,6 +47,11 @@ export function LanguageToggle({ initialLanguage }: LanguageToggleProps) {
   const router = useRouter();
   const [language, setLanguage] = useState<SupportedLanguage>(initialLanguage);
 
+  function refreshWithCookie() {
+    router.refresh();
+    window.location.reload();
+  }
+
   useEffect(() => {
     const hasCookie = document.cookie
       .split(";")
@@ -59,14 +64,18 @@ export function LanguageToggle({ initialLanguage }: LanguageToggleProps) {
     const detectedLanguage = detectBrowserLanguage();
     setLanguage(detectedLanguage);
     setLanguageCookie(detectedLanguage);
-    router.refresh();
+    refreshWithCookie();
   }, [router]);
 
   function switchLanguage(nextLanguage: SupportedLanguage) {
+    if (nextLanguage === language) {
+      return;
+    }
+
     setLanguage(nextLanguage);
     window.localStorage.setItem(LANGUAGE_COOKIE_NAME, nextLanguage);
     setLanguageCookie(nextLanguage);
-    router.refresh();
+    refreshWithCookie();
   }
 
   return (

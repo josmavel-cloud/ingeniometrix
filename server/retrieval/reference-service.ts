@@ -526,7 +526,11 @@ export async function searchProjectReferences(
   };
 }
 
-export async function listProjectReferences(userId: string, projectId: string) {
+export async function listProjectReferences(
+  userId: string,
+  projectId: string,
+  options?: { languageOverride?: string | null },
+) {
   const [project, user, references, searchSnapshot] = await Promise.all([
     prisma.project.findFirst({
       where: {
@@ -576,6 +580,7 @@ export async function listProjectReferences(userId: string, projectId: string) {
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,
     projectLanguage: project.language,
+    languageOverride: options?.languageOverride,
   });
   const translationResult = await ensureReferenceTranslationsForLanguage({
     references: visibleReferences.map((item) => ({
