@@ -150,6 +150,40 @@ npm run admin:user
 
 11. Trigger a `staging` deployment by pushing the branch or redeploying it in Vercel.
 
+## GitHub Staging Workflow
+
+This repo includes a manual workflow for the controlled Release 0 staging path:
+
+```text
+.github/workflows/release0-staging.yml
+```
+
+Configure these GitHub Actions secrets in the `staging` environment:
+
+- `STAGING_DATABASE_URL`
+- `STAGING_DATABASE_URL_UNPOOLED`
+- `STAGING_ADMIN_USER_EMAIL`
+- `STAGING_ADMIN_USER_PASSWORD`
+- `STAGING_ADMIN_USER_NAME`
+
+Run the workflow manually from GitHub Actions with:
+
+- `base_url`: the Vercel preview or staging URL to test
+- `run_migrations`: `true` for a fresh DB or pending migration
+- `provision_admin_user`: `true` when creating or rotating the backend-only user
+
+The workflow performs:
+
+1. `npm ci`
+2. `npm run prisma:validate`
+3. `npm run typecheck`
+4. `npm run db:migrate:deploy`
+5. `npm run admin:user`
+6. `npm run smoke:deployment`
+7. `npm run smoke:deployment:workspace`
+
+It does not create public user registration and it does not store secrets in the repository.
+
 ## Staging Smoke Test
 
 The repo includes `scripts/smoke-deployment.mjs`.

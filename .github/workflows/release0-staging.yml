@@ -1,0 +1,79 @@
+name: Release 0 staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Staging or preview URL to smoke test, for example https://ingeniometrix-git-staging.vercel.app"
+        required: true
+        type: string
+      run_migrations:
+        description: "Run Prisma migrations before smoke tests"
+        required: true
+        default: true
+        type: boolean
+      provision_admin_user:
+        description: "Create or refresh the backend-only admin user"
+        required: true
+        default: true
+        type: boolean
+
+jobs:
+  validate-and-smoke:
+    name: Validate, migrate, and smoke test
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      DATABASE_URL_UNPOOLED: ${{ secrets.STAGING_DATABASE_URL_UNPOOLED }}
+      LLM_PROVIDER: openai
+      IMX_AUTHLESS_WORKSPACE: "0"
+      SMOKE_USER_EMAIL: ${{ secrets.STAGING_ADMIN_USER_EMAIL }}
+      SMOKE_USER_PASSWORD: ${{ secrets.STAGING_ADMIN_USER_PASSWORD }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npm run prisma:validate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Ensure database secrets exist
+        if: ${{ inputs.run_migrations }}
+        shell: bash
+        run: |
+          test -n "$DATABASE_URL"
+          test -n "$DATABASE_URL_UNPOOLED"
+
+      - name: Apply Prisma migrations
+        if: ${{ inputs.run_migrations }}
+        run: npm run db:migrate:deploy
+
+      - name: Provision backend-only admin user
+        if: ${{ inputs.provision_admin_user }}
+        env:
+          ADMIN_USER_EMAIL: ${{ secrets.STAGING_ADMIN_USER_EMAIL }}
+          ADMIN_USER_PASSWORD: ${{ secrets.STAGING_ADMIN_USER_PASSWORD }}
+          ADMIN_USER_NAME: ${{ secrets.STAGING_ADMIN_USER_NAME }}
+          ADMIN_ASSIGN_ALL_PROJECTS: "0"
+        run: npm run admin:user
+
+      - name: Smoke test public pages
+        run: npm run smoke:deployment -- --base-url=${{ inputs.base_url }}
+
+      - name: Smoke test authenticated workspace
+        run: npm run smoke:deployment:workspace -- --base-url=${{ inputs.base_url }}

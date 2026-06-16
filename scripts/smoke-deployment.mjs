@@ -2,6 +2,22 @@ import process from "node:process";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3000";
 
+function getSmokeCredentials() {
+  const email =
+    process.env.SMOKE_USER_EMAIL?.trim() ??
+    process.env.ADMIN_USER_EMAIL?.trim() ??
+    "";
+  const password =
+    process.env.SMOKE_USER_PASSWORD?.trim() ??
+    process.env.ADMIN_USER_PASSWORD?.trim() ??
+    "";
+
+  return {
+    email,
+    password,
+  };
+}
+
 function parseCookieName(setCookieValue) {
   const [cookiePair] = setCookieValue.split(";", 1);
   const separatorIndex = cookiePair.indexOf("=");
@@ -98,12 +114,19 @@ async function fetchStep(state, baseUrl, label, input) {
     method: input.method ?? "GET",
     location: response.headers.get("location"),
     bodyPreview: text.slice(0, 300),
+    assertions: input.assertions
+      ? input.assertions.map((assertion) => ({
+          label: assertion.label,
+          ok: assertion.test({ response, text }),
+        }))
+      : [],
   };
 }
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const sessionState = createSessionState();
+  const smokeCredentials = getSmokeCredentials();
   const results = [];
 
   results.push(
@@ -119,14 +142,50 @@ async function main() {
     }),
   );
 
+  results.push(
+    await fetchStep(createSessionState(), options.baseUrl, "home_page_english_copy", {
+      path: "/",
+      headers: {
+        cookie: "imx_lang=en",
+      },
+      assertions: [
+        {
+          label: "renders_english_hero",
+          test: ({ text }) => text.includes("Research assistance for moving forward"),
+        },
+      ],
+    }),
+  );
+
+  results.push(
+    await fetchStep(createSessionState(), options.baseUrl, "campaign_page_english_copy", {
+      path: "/campana",
+      headers: {
+        cookie: "imx_lang=en",
+      },
+      assertions: [
+        {
+          label: "renders_english_campaign",
+          test: ({ text }) => text.includes("Turn a research idea into a clear foundation"),
+        },
+      ],
+    }),
+  );
+
   if (options.workspace) {
+    if (!smokeCredentials.email || !smokeCredentials.password) {
+      throw new Error(
+        "Workspace smoke requires SMOKE_USER_EMAIL and SMOKE_USER_PASSWORD, or ADMIN_USER_EMAIL and ADMIN_USER_PASSWORD.",
+      );
+    }
+
     results.push(
       await fetchStep(sessionState, options.baseUrl, "auth_session_create", {
         path: "/api/auth/session",
         method: "POST",
         body: {
-          email: "smoke.test@ingeniometrix.local",
-          name: "Smoke Test",
+          email: smokeCredentials.email,
+          password: smokeCredentials.password,
         },
       }),
     );
@@ -154,7 +213,11 @@ async function main() {
     );
   }
 
-  const failed = results.filter((result) => !result.ok);
+  const failed = results.filter(
+    (result) =>
+      !result.ok ||
+      result.assertions.some((assertion) => !assertion.ok),
+  );
 
   console.log(
     JSON.stringify(
