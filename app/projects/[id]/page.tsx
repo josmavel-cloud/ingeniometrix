@@ -43,7 +43,7 @@ export default async function ProjectDetailPage({
   }
 
   const [references, initialReferenceSearchSnapshot] = await Promise.all([
-    listProjectReferences(user.id, id),
+    listProjectReferences(user.id, id, { languageOverride: language }),
     getLatestProjectReferenceSearchSnapshot(id),
   ]);
   const blueprintVersions = await listBlueprintVersionsForUser(user.id, id);
