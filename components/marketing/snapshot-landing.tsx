@@ -2,12 +2,15 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { BrandBadge } from "@/components/brand/brand-badge";
+import { LanguageToggle } from "@/components/i18n/language-toggle";
 import { AiChatboxPreview } from "@/components/marketing/ai-chatbox-preview";
 import {
   ResearchFlowDiagram,
   SnapshotPoster,
   ThesisPlanMockup,
 } from "@/components/marketing/research-visuals";
+import { getCampaignCopy } from "@/lib/marketing/portal-copy";
+import { getRequestLanguage } from "@/server/i18n/request-language";
 
 import {
   ArrowRight,
@@ -20,160 +23,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
-const heroSignals = [
-  "Tema refinado",
-  "Ejes clave",
-  "Ruta inicial revisable",
-];
+const stepIcons = [FileText, Sparkles, ClipboardCheck, Route];
 
-const painSignals = [
-  {
-    title: "Tu idea existe, pero todavía no tiene forma",
-    description:
-      "Ingeniometrix ayuda a convertir una intuición amplia en un punto de partida más claro para investigación.",
-    iconSrc: "/marketing/icons/ai-lens.svg",
-  },
-  {
-    title: "Necesitas avanzar con criterio académico",
-    description:
-      "La salida declara supuestos, límites y decisiones pendientes para evitar conclusiones apresuradas.",
-    iconSrc: "/marketing/icons/method-compass.svg",
-  },
-  {
-    title: "Tu asesor necesita ver estructura",
-    description:
-      "Un snapshot visual facilita conversar sobre alcance, viabilidad, enfoque y siguientes pasos.",
-    iconSrc: "/marketing/icons/thesis-plan.svg",
-  },
-];
+export async function SnapshotLanding() {
+  const language = await getRequestLanguage();
+  const copy = getCampaignCopy(language);
 
-const providerLogos = [
-  {
-    name: "OpenAI",
-    src: "/providers/openai.png",
-    className: "w-9 rounded-[10px]",
-    description: "Asistencia para estructurar, sintetizar y explicar ideas complejas.",
-  },
-  {
-    name: "Claude",
-    src: "/providers/claude.png",
-    className: "w-8 rounded-[10px]",
-    description: "Apoyo conversacional para análisis guiado y revisión de enfoque.",
-  },
-  {
-    name: "OpenAlex",
-    src: "/providers/openalex.png",
-    className: "w-8 rounded-[10px]",
-    description: "Descubrimiento bibliográfico abierto para ubicar contexto académico.",
-  },
-  {
-    name: "Crossref",
-    src: "/providers/crossref.svg",
-    className: "w-28",
-    hideName: true,
-    description: "Metadatos DOI para fortalecer trazabilidad y verificación.",
-  },
-];
-
-const deliverables = [
-  "Tema refinado y mejor delimitado",
-  "Síntesis breve del problema",
-  "Ejes clave para orientar la investigación",
-  "Palabras clave para buscar literatura",
-  "Supuestos y decisiones pendientes",
-  "Ruta inicial hacia el plan de tesis",
-];
-
-const steps = [
-  {
-    title: "Escribe tu idea",
-    description:
-      "Comparte el tema como lo tienes hoy, aunque todavía esté incompleto o desordenado.",
-    icon: FileText,
-  },
-  {
-    title: "Recibe un snapshot",
-    description:
-      "Obtén una primera lectura con enfoque, ejes, palabras clave y una vista visual del problema.",
-    icon: Sparkles,
-  },
-  {
-    title: "Revisa el alcance",
-    description:
-      "Identifica supuestos, límites y decisiones que deben revisarse antes de avanzar.",
-    icon: ClipboardCheck,
-  },
-  {
-    title: "Define el siguiente paso",
-    description:
-      "Usa la base inicial para conversar mejor con tu asesor y continuar con más claridad.",
-    icon: Route,
-  },
-];
-
-const trustItems = [
-  "No es un generador automático de tesis.",
-  "No promete aprobación ni resultados académicos.",
-  "No inventa citas, datos ni resultados.",
-  "La información faltante se declara como supuesto o pendiente.",
-  "La salida está pensada para revisión humana.",
-];
-
-const faqItems = [
-  {
-    question: "¿Qué es el snapshot?",
-    answer:
-      "Es una primera lectura visual de tu idea: tema refinado, síntesis, ejes clave, palabras clave, supuestos y ruta inicial.",
-  },
-  {
-    question: "¿Reemplaza a mi asesor?",
-    answer:
-      "No. Ingeniometrix ayuda a preparar una base más clara para conversar, revisar y decidir con acompañamiento humano.",
-  },
-  {
-    question: "¿La herramienta hace mi tesis?",
-    answer:
-      "No. Ayuda a estructurar el punto de partida. No redacta una tesis completa ni promete aprobación académica.",
-  },
-  {
-    question: "¿Puedo usarlo si mi tema está muy amplio?",
-    answer:
-      "Sí. Ese es el caso ideal: ordenar una idea amplia y convertirla en una base inicial más clara.",
-  },
-  {
-    question: "¿Qué pasa con las fuentes?",
-    answer:
-      "La experiencia prioriza fuentes recuperables y trazabilidad. Si falta información, debe quedar indicada.",
-  },
-  {
-    question: "¿Cómo solicito acceso?",
-    answer:
-      "Por ahora la coordinación es manual por correo. La página prepara un mensaje dirigido a hola@simetrika.pe.",
-  },
-];
-
-const intakeFields = [
-  {
-    label: "Correo",
-    name: "correo",
-    placeholder: "tu.correo@email.com",
-    type: "email",
-  },
-  {
-    label: "Programa o carrera",
-    name: "programa",
-    placeholder: "Ej. Maestría en Educación",
-    type: "text",
-  },
-  {
-    label: "Tipo de trabajo",
-    name: "tipo",
-    placeholder: "Tesis, artículo, trabajo de investigación...",
-    type: "text",
-  },
-];
-
-export function SnapshotLanding() {
   return (
     <main className="min-h-screen overflow-x-hidden px-4 pb-14 pt-6 sm:px-6 lg:px-8">
       <header className="sticky top-4 z-30 mx-auto w-full max-w-6xl">
@@ -184,24 +39,25 @@ export function SnapshotLanding() {
 
           <nav className="hidden items-center gap-1 text-sm font-semibold text-[var(--color-muted)] lg:flex">
             <a className="rounded-full px-3 py-2 hover:bg-white hover:text-[var(--color-plum)]" href="#chatbox">
-              Chatbox
+              {copy.nav.chatbox}
             </a>
             <a className="rounded-full px-3 py-2 hover:bg-white hover:text-[var(--color-plum)]" href="#entrega">
-              Entrega
+              {copy.nav.delivery}
             </a>
             <a className="rounded-full px-3 py-2 hover:bg-white hover:text-[var(--color-plum)]" href="#faq">
-              FAQ
+              {copy.nav.faq}
             </a>
           </nav>
 
           <div className="flex min-w-0 items-center gap-2">
+            <LanguageToggle initialLanguage={language} />
             <span className="hidden sm:inline-flex">
               <Link className="brand-button-secondary px-4 py-2 text-sm font-semibold" href="/">
-                Ver portal
+                {copy.nav.portal}
               </Link>
             </span>
             <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/workspace">
-              Iniciar sesion
+              {copy.nav.login}
             </Link>
           </div>
         </div>
@@ -211,14 +67,12 @@ export function SnapshotLanding() {
         <section className="rounded-[40px] border border-[rgba(74,58,97,0.1)] bg-[rgba(255,255,255,0.72)] px-5 py-8 shadow-[0_24px_70px_rgba(23,19,31,0.08)] backdrop-blur sm:px-8 lg:px-10 lg:py-10">
           <div className="grid gap-9 lg:grid-cols-[0.9fr_1.1fr] lg:items-center">
             <div>
-              <div className="brand-pill">Ingeniometrix para investigación</div>
+              <div className="brand-pill">{copy.hero.eyebrow}</div>
               <h1 className="mt-7 max-w-3xl text-balance font-[var(--font-heading)] text-[2.8rem] font-semibold leading-[1.02] tracking-[-0.03em] text-[var(--color-ink)] sm:text-6xl">
-                Convierte una idea de investigación en una base clara para tu plan de tesis.
+                {copy.hero.title}
               </h1>
               <p className="mt-6 max-w-2xl text-base leading-8 text-[var(--color-muted)] sm:text-lg">
-                Ordena tu tema, identifica ejes clave, declara supuestos y
-                prepara una ruta inicial revisable antes de avanzar a una
-                estructura más completa.
+                {copy.hero.description}
               </p>
 
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -226,19 +80,19 @@ export function SnapshotLanding() {
                   className="inline-flex items-center justify-center rounded-full bg-[var(--color-plum)] px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(52,20,95,0.18)]"
                   href="#chatbox"
                 >
-                  Probar con mi tema
+                  {copy.hero.primaryCta}
                   <ArrowRight className="ml-2 size-4" />
                 </a>
                 <a
                   className="inline-flex items-center justify-center rounded-full border border-[rgba(74,58,97,0.12)] bg-white px-6 py-3 text-sm font-semibold text-[var(--color-ink)]"
                   href="#entrega"
                 >
-                  Ver qué recibo
+                  {copy.hero.secondaryCta}
                 </a>
               </div>
 
               <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                {heroSignals.map((item) => (
+                {copy.hero.signals.map((item) => (
                   <div className="rounded-2xl border border-[rgba(74,58,97,0.08)] bg-white/78 px-4 py-3" key={item}>
                     <div className="flex items-center gap-3">
                       <CheckCircle2 className="size-4 text-[var(--color-mint-strong)]" />
@@ -250,7 +104,7 @@ export function SnapshotLanding() {
 
               <div className="relative mt-7 min-h-[230px] overflow-hidden rounded-[32px] border border-[rgba(74,58,97,0.12)] bg-[var(--color-plum)] shadow-[0_24px_70px_rgba(23,19,31,0.1)] sm:min-h-[280px]">
                 <Image
-                  alt="Biblioteca académica asistida por inteligencia artificial"
+                  alt={copy.hero.imageAlt}
                   className="object-cover object-center"
                   fill
                   priority
@@ -260,13 +114,13 @@ export function SnapshotLanding() {
                 <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(23,12,42,0.82)_0%,rgba(23,12,42,0.42)_52%,rgba(23,12,42,0.1)_100%)]" />
                 <div className="absolute inset-x-4 bottom-4 rounded-[24px] border border-white/12 bg-white/12 p-4 text-white shadow-[0_18px_44px_rgba(0,0,0,0.18)] backdrop-blur-md sm:inset-x-5 sm:bottom-5 sm:p-5">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/62">
-                    Biblioteca inteligente
+                    {copy.hero.overlayEyebrow}
                   </p>
                   <h2 className="mt-2 max-w-lg font-[var(--font-heading)] text-2xl font-semibold leading-tight sm:text-3xl">
-                    Del tema inicial a una ruta de investigación más clara.
+                    {copy.hero.overlayTitle}
                   </h2>
                   <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-white/82">
-                    {["Fuentes", "Evidencia", "Plan"].map((item) => (
+                    {copy.hero.tags.map((item) => (
                       <span className="rounded-full border border-white/12 bg-white/12 px-3 py-1.5" key={item}>
                         {item}
                       </span>
@@ -277,13 +131,13 @@ export function SnapshotLanding() {
             </div>
 
             <div id="chatbox">
-              <AiChatboxPreview />
+              <AiChatboxPreview language={language} />
             </div>
           </div>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-3">
-          {painSignals.map((item) => (
+          {copy.painSignals.map((item) => (
             <article
               className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-6 shadow-[0_16px_38px_rgba(23,19,31,0.05)]"
               key={item.title}
@@ -307,49 +161,47 @@ export function SnapshotLanding() {
           ))}
         </section>
 
-        <ResearchFlowDiagram />
+        <ResearchFlowDiagram language={language} />
 
         <section className="grid gap-6 lg:grid-cols-[0.88fr_1.12fr] lg:items-start" id="entrega">
           <article className="rounded-[34px] border border-[rgba(74,58,97,0.1)] bg-white/88 p-6 shadow-[0_18px_50px_rgba(23,19,31,0.06)] sm:p-7">
-            <p className="brand-kicker">Qué recibes</p>
+            <p className="brand-kicker">{copy.deliverablesSection.eyebrow}</p>
             <h2 className="mt-4 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
-              Un snapshot visual para entender tu tema antes de escribir páginas.
+              {copy.deliverablesSection.title}
             </h2>
             <p className="mt-4 text-sm leading-7 text-[var(--color-muted)]">
-              La primera salida busca claridad: no resuelve todo el proyecto, pero
-              te ayuda a ver si el enfoque tiene forma, límites y una ruta razonable.
+              {copy.deliverablesSection.description}
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              {deliverables.map((item) => (
+              {copy.deliverablesSection.items.map((item) => (
                 <div className="flex items-start gap-3" key={item}>
                   <CheckCircle2 className="mt-1 size-4 shrink-0 text-[var(--color-mint-strong)]" />
                   <span className="text-sm leading-7 text-[var(--color-muted)]">{item}</span>
                 </div>
               ))}
             </div>
-            <ThesisPlanMockup className="mt-6" size="compact" />
+            <ThesisPlanMockup className="mt-6" language={language} size="compact" />
           </article>
 
-          <SnapshotPoster />
+          <SnapshotPoster language={language} />
         </section>
 
         <section className="rounded-[34px] border border-[rgba(74,58,97,0.1)] bg-white/86 px-6 py-7 shadow-[0_18px_50px_rgba(23,19,31,0.06)] sm:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="brand-pill">Cómo funciona</div>
+              <div className="brand-pill">{copy.how.eyebrow}</div>
               <h2 className="mt-5 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
-                Un recorrido corto para avanzar con más control.
+                {copy.how.title}
               </h2>
             </div>
             <p className="max-w-xl text-sm leading-7 text-[var(--color-muted)]">
-              La experiencia reduce fricción al inicio y deja claro qué debe
-              revisarse antes de continuar.
+              {copy.how.description}
             </p>
           </div>
 
           <div className="mt-7 grid gap-4 lg:grid-cols-4">
-            {steps.map((step, index) => {
-              const StepIcon = step.icon;
+            {copy.how.steps.map((step, index) => {
+              const StepIcon = stepIcons[index] ?? FileText;
 
               return (
                 <article
@@ -360,7 +212,7 @@ export function SnapshotLanding() {
                     <StepIcon className="size-5" />
                   </div>
                   <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-[rgba(100,94,115,0.64)]">
-                    Paso {index + 1}
+                    {copy.how.stepPrefix} {index + 1}
                   </p>
                   <h3 className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
                     {step.title}
@@ -377,19 +229,18 @@ export function SnapshotLanding() {
         <section className="rounded-[34px] border border-[rgba(74,58,97,0.1)] bg-white/86 px-6 py-7 shadow-[0_18px_50px_rgba(23,19,31,0.06)] sm:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="brand-pill">Trazabilidad</div>
+              <div className="brand-pill">{copy.traceability.eyebrow}</div>
               <h2 className="mt-5 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
-                IA para ordenar. Fuentes para sostener. Criterio para decidir.
+                {copy.traceability.title}
               </h2>
             </div>
             <p className="max-w-xl text-sm leading-7 text-[var(--color-muted)]">
-              Ingeniometrix separa asistencia, evidencia y decisiones humanas
-              para mantener una experiencia más clara y revisable.
+              {copy.traceability.description}
             </p>
           </div>
 
           <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {providerLogos.map((item) => (
+            {copy.traceability.providers.map((item) => (
               <article
                 className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white p-5"
                 key={item.name}
@@ -397,9 +248,9 @@ export function SnapshotLanding() {
                 <div className="flex items-center gap-3">
                   <Image
                     alt={item.name}
-                    className={`h-auto ${item.className}`}
+                    className={`h-auto ${item.logoClassName}`}
                     height={128}
-                    src={item.src}
+                    src={item.logoSrc}
                     width={128}
                   />
                   {"hideName" in item && item.hideName ? null : (
@@ -421,12 +272,12 @@ export function SnapshotLanding() {
             <div className="inline-flex size-12 items-center justify-center rounded-2xl bg-[#f5f1fb]">
               <ShieldCheck className="size-5 text-[var(--color-plum)]" />
             </div>
-            <p className="mt-5 brand-kicker">Uso responsable</p>
+            <p className="mt-5 brand-kicker">{copy.responsible.eyebrow}</p>
             <h2 className="mt-4 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
-              Diseñado para apoyar la investigación, no para reemplazarla.
+              {copy.responsible.title}
             </h2>
             <div className="mt-6 space-y-3">
-              {trustItems.map((item) => (
+              {copy.responsible.items.map((item) => (
                 <div className="flex items-start gap-3" key={item}>
                   <CheckCircle2 className="mt-1 size-4 shrink-0 text-[var(--color-mint-strong)]" />
                   <span className="text-sm leading-7 text-[var(--color-muted)]">{item}</span>
@@ -438,15 +289,13 @@ export function SnapshotLanding() {
           <article className="rounded-[34px] border border-[rgba(52,20,95,0.14)] bg-[var(--color-plum)] p-6 text-white shadow-[0_24px_60px_rgba(52,20,95,0.22)] sm:p-7">
             <Sparkles className="size-6 text-white" />
             <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/56">
-              Promesa
+              {copy.promise.eyebrow}
             </p>
             <h2 className="mt-4 font-[var(--font-heading)] text-3xl font-semibold">
-              Menos fricción al inicio. Más claridad para decidir.
+              {copy.promise.title}
             </h2>
             <p className="mt-4 text-sm leading-7 text-white/74">
-              El snapshot se enfoca en el primer bloqueo: saber si el tema
-              empieza a tener forma, dirección y una ruta razonable hacia el
-              requisito académico del plan de tesis.
+              {copy.promise.description}
             </p>
           </article>
         </section>
@@ -454,18 +303,18 @@ export function SnapshotLanding() {
         <section className="rounded-[34px] border border-[rgba(74,58,97,0.1)] bg-white/86 px-6 py-7 shadow-[0_18px_50px_rgba(23,19,31,0.06)] sm:px-8" id="faq">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-2xl">
-              <div className="brand-pill">Preguntas frecuentes</div>
+              <div className="brand-pill">{copy.faq.eyebrow}</div>
               <h2 className="mt-5 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
-                Lo esencial antes de avanzar.
+                {copy.faq.title}
               </h2>
             </div>
             <p className="max-w-xl text-sm leading-7 text-[var(--color-muted)]">
-              Respuestas breves sobre alcance, responsabilidad, fuentes y acceso.
+              {copy.faq.description}
             </p>
           </div>
 
           <div className="mt-7 grid gap-4 md:grid-cols-2">
-            {faqItems.map((item) => (
+            {copy.faq.items.map((item) => (
               <article
                 className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white p-5"
                 key={item.question}
@@ -489,14 +338,13 @@ export function SnapshotLanding() {
             <div>
               <Mail className="size-6 text-white" />
               <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/56">
-                Acceso al workspace
+                {copy.access.eyebrow}
               </p>
               <h2 className="mt-4 font-[var(--font-heading)] text-3xl font-semibold sm:text-4xl">
-                Inicia sesion para generar tu snapshot.
+                {copy.access.title}
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/74 sm:text-base">
-                El acceso al producto esta limitado por ahora a cuentas
-                habilitadas previamente en el backend.
+                {copy.access.description}
               </p>
             </div>
 
@@ -506,18 +354,17 @@ export function SnapshotLanding() {
               method="get"
             >
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/56">
-                Autenticacion
+                {copy.access.formEyebrow}
               </p>
               <h3 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold">
-                Entra con una cuenta habilitada
+                {copy.access.formTitle}
               </h3>
               <p className="mt-3 text-sm leading-7 text-white/74">
-                Desde el workspace podras crear proyectos, completar intake y
-                generar el blueprint con fuentes trazables.
+                {copy.access.formDescription}
               </p>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                {intakeFields.map((field) => (
+                {copy.access.fields.map((field) => (
                   <label className="block" key={field.name}>
                     <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/56">
                       {field.label}
@@ -533,12 +380,12 @@ export function SnapshotLanding() {
                 ))}
                 <label className="block sm:col-span-2">
                   <span className="text-xs font-semibold uppercase tracking-[0.2em] text-white/56">
-                    Tema o idea inicial
+                    {copy.access.ideaLabel}
                   </span>
                   <textarea
                     className="brand-textarea mt-2 w-full bg-white/96"
                     name="tema"
-                    placeholder="Escribe tu tema como lo tienes hoy, aunque todavía esté desordenado."
+                    placeholder={copy.access.ideaPlaceholder}
                     required
                   />
                 </label>
@@ -549,14 +396,14 @@ export function SnapshotLanding() {
                   className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-[var(--color-plum)] shadow-[0_18px_40px_rgba(255,255,255,0.14)]"
                   type="submit"
                 >
-                  Ir a autenticar
+                  {copy.access.submit}
                   <ArrowRight className="ml-2 size-4" />
                 </button>
                 <a
                   className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/10 px-6 py-3 text-sm font-semibold text-white"
                   href="#chatbox"
                 >
-                  Volver al chatbox
+                  {copy.access.secondary}
                 </a>
               </div>
             </form>
@@ -570,21 +417,21 @@ export function SnapshotLanding() {
                 Ingeniometrix
               </p>
               <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                Investigación asistida para empezar con más claridad, criterio y trazabilidad.
+                {copy.footer.description}
               </p>
               <p className="mt-3 text-xs uppercase tracking-[0.2em] text-[rgba(100,94,115,0.72)]">
-                © 2026 Ingeniometrix. Todos los derechos reservados.
+                (c) {copy.footer.rights}
               </p>
             </div>
             <div className="flex flex-wrap gap-3 text-sm">
               <Link className="brand-pill hover:text-[var(--color-plum)]" href="/">
-                Sitio principal
+                {copy.footer.portal}
               </Link>
               <a className="brand-pill hover:text-[var(--color-plum)]" href="mailto:hola@simetrika.pe">
                 hola@simetrika.pe
               </a>
               <a className="brand-pill hover:text-[var(--color-plum)]" href="#solicitar">
-                Solicitar snapshot
+                {copy.footer.snapshot}
               </a>
             </div>
           </div>
