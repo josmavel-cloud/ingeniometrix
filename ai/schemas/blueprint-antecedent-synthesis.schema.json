@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/blueprint-antecedent-synthesis.schema.json",
+  "title": "BlueprintAntecedentSynthesis",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summaries", "gap_overview", "objective_guidance"],
+  "properties": {
+    "summaries": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference_id",
+          "title",
+          "authors",
+          "year",
+          "download_url",
+          "summary",
+          "technical_solution",
+          "unresolved_gap"
+        ],
+        "properties": {
+          "reference_id": { "type": "string", "minLength": 1 },
+          "title": { "type": "string", "minLength": 1 },
+          "authors": { "type": "string", "minLength": 1 },
+          "year": { "type": ["integer", "null"] },
+          "download_url": { "type": ["string", "null"] },
+          "summary": { "type": "string", "minLength": 1 },
+          "technical_solution": { "type": "string", "minLength": 1 },
+          "unresolved_gap": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "gap_overview": { "type": "string", "minLength": 1 },
+    "objective_guidance": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

@@ -1,0 +1,67 @@
+<svg width="960" height="720" viewBox="0 0 960 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="84" y1="64" x2="836" y2="648" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F3EAFF" stop-opacity="0.34"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="1" stop-color="#9DE7D6" stop-opacity="0.22"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="192" y1="154" x2="709" y2="556" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="line" x1="284" y1="244" x2="661" y2="499" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#DBC1FF"/>
+      <stop offset="0.55" stop-color="#FF6F61"/>
+      <stop offset="1" stop-color="#9DE7D6"/>
+    </linearGradient>
+    <filter id="blurGlow" x="0" y="0" width="960" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="42"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#blurGlow)" opacity="0.48">
+    <circle cx="204" cy="126" r="78" fill="#DBC1FF"/>
+    <circle cx="747" cy="204" r="96" fill="#FF6F61"/>
+    <circle cx="721" cy="553" r="110" fill="#9DE7D6"/>
+  </g>
+
+  <rect x="102" y="88" width="756" height="544" rx="38" fill="url(#bg)" stroke="rgba(255,255,255,0.16)"/>
+
+  <path d="M163 522C233 462.667 296 420 352 394C411.333 366.667 478 349.333 552 342C624 334.667 710 339.333 810 356"
+    stroke="rgba(255,255,255,0.12)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M160 560C250.667 510 333 476 407 458C482.333 440 561.333 435.333 644 444C704 450.667 758 464.333 806 485"
+    stroke="rgba(255,255,255,0.1)" stroke-width="2.5" stroke-linecap="round"/>
+
+  <rect x="192" y="154" width="517" height="336" rx="30" fill="url(#panel)" stroke="rgba(255,255,255,0.18)"/>
+  <rect x="230" y="194" width="268" height="120" rx="22" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.16)"/>
+  <rect x="522" y="194" width="149" height="120" rx="22" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.14)"/>
+  <rect x="230" y="340" width="198" height="110" rx="22" fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.14)"/>
+  <rect x="447" y="340" width="224" height="110" rx="22" fill="rgba(255,255,255,0.14)" stroke="rgba(255,255,255,0.18)"/>
+
+  <path d="M274 419C310 394 348 378 388 371C428 364 476 365.333 532 375C581.333 383.667 624 399.333 660 422"
+    stroke="url(#line)" stroke-width="5" stroke-linecap="round"/>
+
+  <circle cx="274" cy="419" r="14" fill="#17131F" stroke="#F7F3FA" stroke-width="4"/>
+  <circle cx="388" cy="371" r="14" fill="#17131F" stroke="#DBC1FF" stroke-width="4"/>
+  <circle cx="532" cy="375" r="14" fill="#17131F" stroke="#FF6F61" stroke-width="4"/>
+  <circle cx="660" cy="422" r="14" fill="#17131F" stroke="#9DE7D6" stroke-width="4"/>
+
+  <circle cx="745" cy="208" r="58" stroke="rgba(255,255,255,0.18)" stroke-width="2"/>
+  <circle cx="745" cy="208" r="37" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+  <circle cx="745" cy="208" r="18" fill="rgba(255,255,255,0.18)"/>
+
+  <circle cx="796" cy="514" r="42" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+  <circle cx="796" cy="514" r="24" stroke="rgba(255,255,255,0.14)" stroke-width="2"/>
+  <circle cx="796" cy="514" r="10" fill="rgba(255,255,255,0.16)"/>
+
+  <path d="M582 236H622" stroke="rgba(255,255,255,0.42)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M562 260H642" stroke="rgba(255,255,255,0.18)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M558 284H630" stroke="rgba(157,231,214,0.38)" stroke-width="8" stroke-linecap="round"/>
+
+  <path d="M264 234H433" stroke="rgba(255,255,255,0.44)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M264 264H396" stroke="rgba(255,255,255,0.18)" stroke-width="10" stroke-linecap="round"/>
+  <path d="M264 294H349" stroke="rgba(255,111,97,0.28)" stroke-width="10" stroke-linecap="round"/>
+
+  <rect x="755" y="122" width="66" height="18" rx="9" fill="rgba(255,255,255,0.12)"/>
+  <rect x="754" y="588" width="92" height="18" rx="9" fill="rgba(255,255,255,0.12)"/>
+</svg>

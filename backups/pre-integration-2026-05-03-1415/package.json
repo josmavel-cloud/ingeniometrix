@@ -1,0 +1,63 @@
+{
+  "name": "ingeniometrix",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MVP de Ingeniometrix",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit",
+    "brand:generate": "powershell -ExecutionPolicy Bypass -File scripts/generate-brand-assets.ps1",
+    "debug:providers": "node scripts/debug-research-providers.mjs",
+    "debug:blueprint": "node scripts/debug-blueprint-package.mjs",
+    "debug:blueprint:reuse": "node scripts/debug-blueprint-package.mjs --reuse-server",
+    "debug:blueprint:report": "node scripts/debug-blueprint-report.mjs",
+    "debug:master-blueprint": "node scripts/debug-master-blueprint-engine.mjs",
+    "debug:master-blueprint:reuse": "node scripts/debug-master-blueprint-engine.mjs --reuse-server",
+    "lab:master-blueprint:steps-5-11": "tsx scripts/run-master-blueprint-lab-steps-5-11.ts",
+    "lab:master-blueprint:step-10": "tsx scripts/run-master-blueprint-step-10.ts",
+    "lab:master-blueprint:steps-11-13": "tsx scripts/run-master-blueprint-steps-11-13.ts",
+    "debug:workflow": "node scripts/debug-workflow-runner.mjs",
+    "debug:workflow:reuse": "node scripts/debug-workflow-runner.mjs --reuse-server",
+    "lab:benchmark": "tsx scripts/run-blueprint-launch-benchmarks.ts",
+    "smoke:deployment": "node scripts/smoke-deployment.mjs",
+    "smoke:deployment:workspace": "node scripts/smoke-deployment.mjs --workspace",
+    "taxonomy:fetch": "node scripts/fetch-taxonomy-assets.mjs",
+    "taxonomy:seed": "node scripts/seed-taxonomy-catalogs.mjs",
+    "taxonomy:backfill": "node scripts/backfill-reference-taxonomy.mjs",
+    "taxonomy:backfill:projects": "node scripts/backfill-project-knowledge-fields.mjs",
+    "taxonomy:backfill:keywords": "node scripts/backfill-reference-keywords.mjs",
+    "taxonomy:backfill:domains": "node scripts/backfill-applied-domain-mappings.mjs",
+    "taxonomy:refine:keywords": "node scripts/refine-reference-keywords.mjs",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "db:push": "prisma db push",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@tailwindcss/postcss": "^4.2.2",
+    "docx": "^9.6.1",
+    "framer-motion": "^12.38.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^1.8.0",
+    "next": "^16.2.4",
+    "openai": "^6.34.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "tailwindcss": "^4.2.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "prisma": "^6.19.3",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": "20.x"
+  }
+}

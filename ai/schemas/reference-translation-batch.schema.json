@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["translations"],
+  "properties": {
+    "translations": {
+      "type": "array",
+      "maxItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reference_id",
+          "source_language",
+          "translated_title",
+          "translated_abstract"
+        ],
+        "properties": {
+          "reference_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_language": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 10
+          },
+          "translated_title": {
+            "type": ["string", "null"],
+            "maxLength": 1000
+          },
+          "translated_abstract": {
+            "type": ["string", "null"],
+            "maxLength": 12000
+          }
+        }
+      }
+    }
+  }
+}

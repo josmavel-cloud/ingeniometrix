@@ -1,0 +1,89 @@
+{
+  "scheme": {
+    "code": "FORD-2015",
+    "name": "Fields of Research and Development (FORD)",
+    "version": "2015",
+    "uri": "https://unstats.un.org/unsd/classifications/Family/Detail/1039",
+    "description": "Curated local seed based on OECD Frascati Manual 2015 and UNSD classification detail."
+  },
+  "concepts": [
+    {
+      "conceptCode": "1",
+      "prefLabel": "Natural sciences",
+      "children": [
+        { "conceptCode": "1.1", "prefLabel": "Mathematics" },
+        { "conceptCode": "1.2", "prefLabel": "Computer and information sciences" },
+        { "conceptCode": "1.3", "prefLabel": "Physical sciences" },
+        { "conceptCode": "1.4", "prefLabel": "Chemical sciences" },
+        { "conceptCode": "1.5", "prefLabel": "Earth and related environmental sciences" },
+        { "conceptCode": "1.6", "prefLabel": "Biological sciences" },
+        { "conceptCode": "1.7", "prefLabel": "Other natural sciences" }
+      ]
+    },
+    {
+      "conceptCode": "2",
+      "prefLabel": "Engineering and technology",
+      "children": [
+        { "conceptCode": "2.1", "prefLabel": "Civil engineering" },
+        { "conceptCode": "2.2", "prefLabel": "Electrical engineering, electronic engineering, information engineering" },
+        { "conceptCode": "2.3", "prefLabel": "Mechanical engineering" },
+        { "conceptCode": "2.4", "prefLabel": "Chemical engineering" },
+        { "conceptCode": "2.5", "prefLabel": "Materials engineering" },
+        { "conceptCode": "2.6", "prefLabel": "Medical engineering" },
+        { "conceptCode": "2.7", "prefLabel": "Environmental engineering" },
+        { "conceptCode": "2.8", "prefLabel": "Environmental biotechnology" },
+        { "conceptCode": "2.9", "prefLabel": "Industrial biotechnology" },
+        { "conceptCode": "2.10", "prefLabel": "Nano-technology" },
+        { "conceptCode": "2.11", "prefLabel": "Other engineering and technologies" }
+      ]
+    },
+    {
+      "conceptCode": "3",
+      "prefLabel": "Medical and health sciences",
+      "children": [
+        { "conceptCode": "3.1", "prefLabel": "Basic medicine" },
+        { "conceptCode": "3.2", "prefLabel": "Clinical medicine" },
+        { "conceptCode": "3.3", "prefLabel": "Health sciences" },
+        { "conceptCode": "3.4", "prefLabel": "Medical biotechnology" },
+        { "conceptCode": "3.5", "prefLabel": "Other medical sciences" }
+      ]
+    },
+    {
+      "conceptCode": "4",
+      "prefLabel": "Agricultural and veterinary sciences",
+      "children": [
+        { "conceptCode": "4.1", "prefLabel": "Agriculture, forestry and fisheries" },
+        { "conceptCode": "4.2", "prefLabel": "Animal and dairy science" },
+        { "conceptCode": "4.3", "prefLabel": "Veterinary sciences" },
+        { "conceptCode": "4.4", "prefLabel": "Agricultural biotechnology" },
+        { "conceptCode": "4.5", "prefLabel": "Other agricultural sciences" }
+      ]
+    },
+    {
+      "conceptCode": "5",
+      "prefLabel": "Social sciences",
+      "children": [
+        { "conceptCode": "5.1", "prefLabel": "Psychology and cognitive sciences" },
+        { "conceptCode": "5.2", "prefLabel": "Economics and business" },
+        { "conceptCode": "5.3", "prefLabel": "Education" },
+        { "conceptCode": "5.4", "prefLabel": "Sociology" },
+        { "conceptCode": "5.5", "prefLabel": "Law" },
+        { "conceptCode": "5.6", "prefLabel": "Political science" },
+        { "conceptCode": "5.7", "prefLabel": "Social and economic geography" },
+        { "conceptCode": "5.8", "prefLabel": "Media and communications" },
+        { "conceptCode": "5.9", "prefLabel": "Other social sciences" }
+      ]
+    },
+    {
+      "conceptCode": "6",
+      "prefLabel": "Humanities and the arts",
+      "children": [
+        { "conceptCode": "6.1", "prefLabel": "History and archaeology" },
+        { "conceptCode": "6.2", "prefLabel": "Languages and literature" },
+        { "conceptCode": "6.3", "prefLabel": "Philosophy, ethics and religion" },
+        { "conceptCode": "6.4", "prefLabel": "Arts (arts, history of arts, performing arts, music)" },
+        { "conceptCode": "6.5", "prefLabel": "Other humanities" }
+      ]
+    }
+  ]
+}

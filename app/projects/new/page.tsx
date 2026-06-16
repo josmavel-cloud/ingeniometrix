@@ -1,42 +1,56 @@
 import { CreateProjectForm } from "@/components/projects/create-project-form";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { requireCurrentUser } from "@/server/auth/session";
+import { getRequestLanguage } from "@/server/i18n/request-language";
 
-export default async function NewProjectPage() {
+type NewProjectPageProps = {
+  searchParams?: Promise<{
+    idea?: string | string[];
+    tema_sugerido?: string | string[];
+    tema?: string | string[];
+    topic?: string | string[];
+  }>;
+};
+
+function getFirstSearchValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getFirstNonBlankSearchValue(
+  ...values: Array<string | string[] | undefined>
+) {
+  return (
+    values
+      .map((value) => getFirstSearchValue(value)?.trim() ?? "")
+      .find((value) => value.length > 0) ?? ""
+  );
+}
+
+export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
   await requireCurrentUser();
+  const language = await getRequestLanguage();
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const initialInterestText = getFirstNonBlankSearchValue(
+    resolvedSearchParams.tema,
+    resolvedSearchParams.idea,
+    resolvedSearchParams.tema_sugerido,
+    resolvedSearchParams.topic,
+  ).slice(0, 700);
 
   return (
     <ProjectShell
-      title="Crea un nuevo proyecto"
-      description="Empieza con un catalogo estructurado para tu tesis: carrera, titulo, universidad destacada, plantilla y 20 intakes relacionados por tema."
+      title={language === "en" ? "Create project" : "Crear proyecto"}
+      description={
+        language === "en"
+          ? "Complete the base context and continue to intake. Everything else is refined later."
+          : "Completa el contexto base y continua al intake. Todo lo demas se refina despues."
+      }
     >
-      <section className="grid gap-6 lg:grid-cols-[0.95fr_1.2fr]">
-        <aside className="surface-panel rounded-[32px] p-6 sm:p-8">
-          <p className="text-sm font-medium uppercase tracking-[0.22em] text-slate-400">
-            Paso 1
-          </p>
-          <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Define el marco base del proyecto.
-          </h2>
-          <p className="mt-4 text-sm leading-7 text-slate-600">
-            Aqui eliges el tema desde un catalogo organizado. El objetivo es que
-            Ingeniometrix entienda tu contexto academico antes de pasar al intake
-            estructurado.
-          </p>
-          <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
-            <p className="text-sm font-semibold text-slate-700">Incluye:</p>
-            <ul className="mt-3 grid gap-2 text-sm leading-6 text-slate-600">
-              <li>- 10 carreras comunes con 100 temas distribuidos uniformemente</li>
-              <li>- 20 intakes listos por cada titulo del catalogo</li>
-              <li>- 10 universidades destacadas en el combo del proyecto</li>
-              <li>- Relacion directa entre titulo elegido e intakes sugeridos</li>
-            </ul>
-          </div>
-        </aside>
-
-        <section className="surface-panel rounded-[32px] p-6 sm:p-8">
-          <CreateProjectForm />
-        </section>
+      <section className="surface-panel rounded-[34px] p-4 sm:p-8">
+        <CreateProjectForm
+          initialInterestText={initialInterestText}
+          language={language}
+        />
       </section>
     </ProjectShell>
   );

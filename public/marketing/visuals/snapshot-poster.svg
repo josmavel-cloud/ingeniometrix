@@ -1,0 +1,30 @@
+<svg width="760" height="520" viewBox="0 0 760 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="760" height="520" rx="44" fill="#170C2A"/>
+  <circle cx="640" cy="90" r="160" fill="#9DE7D6" fill-opacity=".18"/>
+  <circle cx="84" cy="446" r="180" fill="#DBC1FF" fill-opacity=".18"/>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <text x="54" y="78" fill="#FFFFFF" fill-opacity=".58" font-size="18" font-weight="700" letter-spacing="5">SNAPSHOT VISUAL</text>
+    <text x="54" y="145" fill="#FFFFFF" font-size="48" font-weight="750">Tema refinado</text>
+    <text x="54" y="196" fill="#FFFFFF" fill-opacity=".78" font-size="25">IA generativa y retroalimentación académica</text>
+    <text x="54" y="230" fill="#FFFFFF" fill-opacity=".78" font-size="25">en programas de posgrado</text>
+  </g>
+  <g>
+    <rect x="54" y="278" width="144" height="72" rx="24" fill="#FFFFFF" fill-opacity=".1" stroke="#FFFFFF" stroke-opacity=".14"/>
+    <rect x="216" y="278" width="144" height="72" rx="24" fill="#FFFFFF" fill-opacity=".1" stroke="#FFFFFF" stroke-opacity=".14"/>
+    <rect x="378" y="278" width="144" height="72" rx="24" fill="#FFFFFF" fill-opacity=".1" stroke="#FFFFFF" stroke-opacity=".14"/>
+    <rect x="540" y="278" width="144" height="72" rx="24" fill="#FFFFFF" fill-opacity=".1" stroke="#FFFFFF" stroke-opacity=".14"/>
+  </g>
+  <g font-family="Segoe UI, Arial, sans-serif" fill="#FFFFFF" font-size="21" font-weight="700">
+    <text x="82" y="323">Docencia</text>
+    <text x="249" y="323">Calidad</text>
+    <text x="407" y="323">Adopción</text>
+    <text x="573" y="323">Riesgos</text>
+  </g>
+  <rect x="54" y="390" width="630" height="72" rx="24" fill="#FFFFFF" fill-opacity=".1" stroke="#FFFFFF" stroke-opacity=".14"/>
+  <g font-family="Segoe UI, Arial, sans-serif" fill="#FFFFFF" fill-opacity=".84" font-size="20" font-weight="700">
+    <text x="84" y="435">retroalimentación</text>
+    <text x="284" y="435">IA</text>
+    <text x="350" y="435">posgrado</text>
+    <text x="468" y="435">método</text>
+  </g>
+</svg>

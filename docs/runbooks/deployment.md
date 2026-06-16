@@ -16,7 +16,7 @@ Use this order:
 4. connect the repo to Vercel
 5. provision a staging Postgres database reachable from Vercel
 6. set Preview environment variables in Vercel
-7. sync the Prisma schema to staging
+7. apply Prisma migrations to staging
 8. run smoke checks against the Vercel preview deployment
 9. only then consider production deployment or Linux server delegation
 
@@ -88,13 +88,21 @@ Reason:
 - Vercel cannot reach the local Docker Postgres running on the developer machine
 - a preview deployment without remote Postgres only validates the public shell, not the actual Ingeniometrix workflow
 
-Acceptable staging choices:
+Preferred staging choices:
 
-- Vercel Postgres
-- Neon
+- Prisma Postgres through the Vercel Marketplace
+- Neon or another managed Postgres provider with a standard Postgres URL
 - another managed Postgres provider with a standard connection string
 
 Do not move to Supabase just for staging unless you also need its other platform features.
+
+Connection variables:
+
+- `DATABASE_URL`: runtime pooled/serverless connection string used by the Next.js app and Prisma Client.
+- `DATABASE_URL_UNPOOLED`: direct or unpooled connection used by Prisma schema commands because `schema.prisma` sets `directUrl = env("DATABASE_URL_UNPOOLED")`.
+- If the provider only gives one URL, set both variables to the same URL for Release 0.
+- Local Docker keeps Postgres on host port `5433`; Vercel does not use local DB ports.
+- Local Next.js can run on `3004` for testing; Vercel serves over HTTPS and does not use `APP_PORT`.
 
 ## Vercel Staging Steps
 
@@ -106,6 +114,7 @@ Do not move to Supabase just for staging unless you also need its other platform
 6. Provision a managed Postgres database for staging.
 7. Add Preview environment variables in Vercel:
    - `DATABASE_URL`
+   - `DATABASE_URL_UNPOOLED`
    - `OPENAI_API_KEY`
    - `OPENALEX_API_KEY` if used
    - `CROSSREF_MAILTO`
@@ -116,15 +125,65 @@ Do not move to Supabase just for staging unless you also need its other platform
    - optional: `LLM_REQUEST_MAX_RETRIES`
 8. Do not set local-only values that Vercel already manages or does not need:
    - `APP_PORT`
+   - `POSTGRES_PORT`
    - `NODE_ENV`
    - `IMX_ARTIFACTS_DIR`
-9. From a machine with access to the staging database URL, sync the schema:
+9. From a machine with access to the staging database URL, apply committed migrations:
 
 ```bash
-DATABASE_URL="<staging-database-url>" npx prisma db push
+DATABASE_URL="<staging-database-url>" \
+DATABASE_URL_UNPOOLED="<staging-direct-or-same-url>" \
+npm run db:migrate:deploy
 ```
 
-10. Trigger a `staging` deployment by pushing the branch or redeploying it in Vercel.
+10. Create or refresh the backend-only user:
+
+```bash
+DATABASE_URL="<staging-database-url>" \
+DATABASE_URL_UNPOOLED="<staging-direct-or-same-url>" \
+ADMIN_USER_EMAIL="josmavel@gmail.com" \
+ADMIN_USER_PASSWORD="<strong-password>" \
+ADMIN_USER_NAME="Josmavel" \
+ADMIN_ASSIGN_ALL_PROJECTS=0 \
+npm run admin:user
+```
+
+11. Trigger a `staging` deployment by pushing the branch or redeploying it in Vercel.
+
+## GitHub Staging Workflow
+
+This repo includes a manual workflow for the controlled Release 0 staging path:
+
+```text
+.github/workflows/release0-staging.yml
+```
+
+Configure these GitHub Actions secrets in the `staging` environment:
+
+- `STAGING_DATABASE_URL`
+- `STAGING_DATABASE_URL_UNPOOLED`
+- `STAGING_ADMIN_USER_EMAIL`
+- `STAGING_ADMIN_USER_PASSWORD`
+- `STAGING_ADMIN_USER_NAME`
+- `STAGING_VERCEL_AUTOMATION_BYPASS_SECRET` if Vercel Deployment Protection is enabled for previews
+
+Run the workflow manually from GitHub Actions with:
+
+- `base_url`: the Vercel preview or staging URL to test
+- `run_migrations`: `true` for a fresh DB or pending migration
+- `provision_admin_user`: `true` when creating or rotating the backend-only user
+
+The workflow performs:
+
+1. `npm ci`
+2. `npm run prisma:validate`
+3. `npm run typecheck`
+4. `npm run db:migrate:deploy`
+5. `npm run admin:user`
+6. `npm run smoke:deployment`
+7. `npm run smoke:deployment:workspace`
+
+It does not create public user registration and it does not store secrets in the repository.
 
 ## Staging Smoke Test
 
@@ -144,6 +203,10 @@ npm run smoke:deployment -- --base-url=https://<staging-deployment-url>
 npm run smoke:deployment:workspace -- --base-url=https://<staging-deployment-url>
 ```
 
+If the preview is protected by Vercel Deployment Protection, set
+`VERCEL_AUTOMATION_BYPASS_SECRET` in the environment before running the smoke scripts.
+The script sends it as `x-vercel-protection-bypass` on every request and does not print it.
+
 The workspace smoke should confirm all of these:
 
 - `/` returns `200`
@@ -157,8 +220,31 @@ If the preview smoke fails:
 1. inspect the Vercel deployment logs
 2. verify Preview env vars
 3. verify the staging database connection
-4. rerun `npx prisma db push` against staging if schema drift is suspected
+4. rerun `npm run db:migrate:status` and `npm run db:migrate:deploy` against staging if schema drift is suspected
 5. rerun the smoke script against the fresh deployment URL
+
+## Migration Policy
+
+Release 0 now has a first committed migration:
+
+```text
+prisma/migrations/0001_release0_initial/migration.sql
+```
+
+Use this policy from here forward:
+
+- local schema experiments can use `npm run db:push` only on throwaway local databases
+- staging and production use `npm run db:migrate:deploy`
+- every Prisma schema change that should ship must create a new migration
+- never run `db push` against production
+- do not run migrations from Vercel serverless request handlers
+
+The current developer database may already have this schema because it was created with `db push`.
+Do not apply `0001_release0_initial` on top of that existing database unless it has first been
+baselined with Prisma Migrate. For Release 0 staging, the cleanest path is a fresh managed Postgres
+database and then `npm run db:migrate:deploy`.
+
+For Vercel, the deployment should build the app; database migrations should be run from a controlled machine or CI job with the right environment variables.
 
 ## Release Gate Before Production
 

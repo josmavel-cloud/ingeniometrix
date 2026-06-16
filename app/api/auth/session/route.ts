@@ -1,17 +1,18 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import { verifyPassword } from "@/server/auth/password";
 import { createSession, validateEmail } from "@/server/auth/session";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
       email?: string;
-      name?: string;
+      password?: string;
     };
 
-    const email = body.email?.trim().toLowerCase();
-    const name = body.name?.trim() || null;
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
 
     if (!email || !validateEmail(email)) {
       return NextResponse.json(
@@ -20,16 +21,16 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.upsert({
+    const user = await prisma.user.findUnique({
       where: { email },
-      update: {
-        name,
-      },
-      create: {
-        email,
-        name,
-      },
     });
+
+    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      return NextResponse.json(
+        { error: "Credenciales invalidas." },
+        { status: 401 },
+      );
+    }
 
     await createSession({ userId: user.id });
 
@@ -40,7 +41,9 @@ export async function POST(request: Request) {
         name: user.name,
       },
     });
-  } catch {
+  } catch (error) {
+    console.error("Unable to start Ingeniometrix session.", error);
+
     return NextResponse.json(
       { error: "No se pudo iniciar la sesion." },
       { status: 500 },

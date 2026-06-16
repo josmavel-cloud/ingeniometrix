@@ -1,0 +1,67 @@
+{
+  "case_id": "case-001-seismic-isolators-peruvian-buildings",
+  "case_name": "Aisladores sismicos en edificios peruanos",
+  "project_id": "fixture-case-001",
+  "user_id": "fixture-user-backend",
+  "project_context": {
+    "title": "Evaluacion del uso de aisladores sismicos en edificios peruanos de mediana altura",
+    "degree_level": "maestria",
+    "university": "Universidad Peruana de Ciencias Aplicadas",
+    "program": "Maestria en Ingenieria Civil",
+    "knowledge_area_label": "Ingenieria sismorresistente / ingenieria estructural",
+    "template_key": "UPC",
+    "country": "PE",
+    "language": "es"
+  },
+  "intake": {
+    "topic": "Uso y evaluacion de aisladores sismicos en edificios peruanos de mediana altura ubicados en zonas de alta amenaza sismica.",
+    "problemContext": "El Peru se encuentra en una zona de alta sismicidad y muchas edificaciones urbanas requieren estrategias de reduccion de demanda sismica. La investigacion busca analizar criterios tecnicos para evaluar la pertinencia de aisladores sismicos en edificios peruanos, considerando desempeno estructural, costos, normativa y condiciones locales.",
+    "researchLine": "Ingenieria sismorresistente, aislamiento sismico, desempeno estructural y gestion del riesgo urbano.",
+    "academicConstraints": "El estudio debe formularse como evaluacion tecnica preliminar y no como certificacion de seguridad estructural de un edificio real. No se usaran datos privados ni expedientes de obra.",
+    "targetPopulation": "Edificios peruanos de concreto armado de mediana altura con uso residencial, educativo o administrativo en zonas de alta amenaza sismica.",
+    "availableData": "Literatura tecnica sobre aislamiento sismico, normativa peruana aplicable, estudios de desempeno estructural publicados y criterios comparativos de seleccion de dispositivos.",
+    "preferredMethodology": "Revision sistematica aplicada, analisis comparativo de criterios tecnicos y propuesta de matriz de evaluacion multicriterio para seleccionar casos donde el aislamiento sismico podria ser pertinente.",
+    "advisorNotes": "Diferenciar evidencia internacional de condiciones peruanas y declarar vacios de informacion normativa, economica y constructiva."
+  },
+  "source_policy": {
+    "mode": "auto_search",
+    "max_selected_sources": 6,
+    "min_selected_sources": 4,
+    "providers": ["openalex", "crossref"],
+    "allow_public_pdf_download": true,
+    "allow_web_fulltext_capture": true,
+    "require_complete_public_content": true
+  },
+  "selected_reference_ids": [],
+  "execution_options": {
+    "run_steps": [1, 2, 3, 4, 5, 6],
+    "force_rerun": false,
+    "use_llm": false,
+    "persist_debug_prompts": true,
+    "persist_full_text": true,
+    "persist_pdfs": true,
+    "cache_namespace": "fixture-case-001-seismic-isolators",
+    "prompt_version": "evidence-engine-dry-run-v1"
+  },
+  "source_selection_checkpoint": {
+    "required": true,
+    "selection_mode": "manual_pending",
+    "future_options": ["frontend_basic", "codex_review", "fixture_selected_sources"],
+    "instructions_es": "Despues de la busqueda y ranking de fuentes candidatas, una persona debe revisar titulos, resumenes, acceso publico y pertinencia antes de permitir que los pasos 2-6 continuen.",
+    "selected_reference_ids": [],
+    "notes_es": "No hay fuentes seleccionadas en esta fase seca. La seleccion humana debera priorizar evidencia revisada por pares, normativa peruana verificable y estudios con contenido completo disponible."
+  },
+  "expected_focus": [
+    "criterios de seleccion de aisladores sismicos",
+    "desempeno estructural y reduccion de demanda",
+    "condiciones normativas y constructivas peruanas",
+    "matriz preliminar de evaluacion tecnica"
+  ],
+  "expected_risks": [
+    "transferir resultados internacionales al contexto peruano sin validacion",
+    "confundir evaluacion academica con diseno estructural certificado",
+    "afirmar viabilidad economica sin datos locales",
+    "usar normativa sin version o fuente verificable"
+  ]
+}
+

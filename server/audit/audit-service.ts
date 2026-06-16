@@ -11,6 +11,24 @@ type LogEventInput = {
   payloadJson: Prisma.InputJsonValue;
 };
 
+function stripNullBytes(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(/\u0000/g, "");
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => stripNullBytes(item));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nestedValue]) => [key, stripNullBytes(nestedValue)]),
+    );
+  }
+
+  return value;
+}
+
 export async function logAuditEvent(input: LogEventInput) {
   await prisma.auditLog.create({
     data: {
@@ -19,7 +37,7 @@ export async function logAuditEvent(input: LogEventInput) {
       provider: input.provider,
       userId: input.userId,
       projectId: input.projectId,
-      payloadJson: input.payloadJson,
+      payloadJson: stripNullBytes(input.payloadJson) as Prisma.InputJsonValue,
     },
   });
 }

@@ -1,0 +1,122 @@
+{
+  "required_sections_present": true,
+  "missing_required_section_keys": [],
+  "warnings": [
+    "El set sintetico mantiene una fuente web solo como apoyo contextual.",
+    "Las assumptions del laboratorio deben mostrarse de forma explicita en salidas de depuracion."
+  ],
+  "reference_traceability_ok": true,
+  "formal_reference_ids": [
+    "lab-selected-source-001",
+    "lab-provider-source-004",
+    "lab-selected-source-003",
+    "lab-selected-source-002"
+  ],
+  "quality_report": {
+    "threshold": 8,
+    "passed": true,
+    "deterministic_score_10": 8.74,
+    "semantic_score_10": null,
+    "score_10": 8.74,
+    "hard_failures": [],
+    "soft_warnings": [
+      "El set sintetico mantiene una fuente web solo como apoyo contextual.",
+      "Las assumptions del laboratorio deben mostrarse de forma explicita en salidas de depuracion.",
+      "La revision semantica con LLM no estuvo disponible: Proveedor LLM no soportado en Release 0: lab-disabled."
+    ],
+    "components": [
+      {
+        "key": "structure",
+        "label": "Cobertura estructural",
+        "score": 1.85,
+        "max_score": 2,
+        "notes": [
+          "Secciones obligatorias presentes: 11/11.",
+          "Secciones obligatorias con contenido util: 10/11.",
+          "Secciones obligatorias robustas: 10/11.",
+          "Senales debiles: 36%.",
+          "Placeholders visibles: 0%."
+        ]
+      },
+      {
+        "key": "coherence",
+        "label": "Coherencia academica",
+        "score": 1.9,
+        "max_score": 2,
+        "notes": [
+          "1. PASS: El objetivo general mantiene una relacion clara con el problema planteado.",
+          "2. PASS: Cada objetivo especifico tiene una pregunta de investigacion alineada y una matriz consistente.",
+          "3. PASS: La metodologia propuesta y la matriz de consistencia muestran alineacion basica.",
+          "4. PASS: La poblacion y muestra mantienen coherencia con el enfoque descrito.",
+          "5. PASS: Las tecnicas de recoleccion y el plan de analisis tienen una relacion razonable.",
+          "6. PASS: Todas las referencias usadas pueden trazarse al set seleccionado.",
+          "Solapamiento problema-objetivo: 71%.",
+          "Solapamiento objetivos-preguntas: 96%."
+        ]
+      },
+      {
+        "key": "traceability",
+        "label": "Trazabilidad formal",
+        "score": 1.94,
+        "max_score": 2,
+        "notes": [
+          "Referencias formales declaradas: 4.",
+          "Fuentes formales elegibles: 4.",
+          "Referencias usadas en secciones: 4/4.",
+          "No se detectaron referencias formales invalidas."
+        ]
+      },
+      {
+        "key": "evidence_support",
+        "label": "Soporte evidencial",
+        "score": 1.26,
+        "max_score": 2,
+        "notes": [
+          "Fuentes formales: 4.",
+          "Con abstract: 4.",
+          "PDF descargados: 2.",
+          "Packs con evidencia PDF usable: 2.",
+          "Assets estructurados: 2.",
+          "Provenance desde fuentes/PDF: 52.519999999999996%."
+        ]
+      },
+      {
+        "key": "objective_quality",
+        "label": "Calidad de objetivos y preguntas",
+        "score": 0.95,
+        "max_score": 1,
+        "notes": [
+          "Objetivo general presente: si.",
+          "Objetivos especificos: 4.",
+          "Preguntas: 4.",
+          "Filas de matriz: 4.",
+          "Unicidad promedio: 100%.",
+          "Especificidad promedio: 76%."
+        ]
+      },
+      {
+        "key": "methodology_clarity",
+        "label": "Claridad metodologica",
+        "score": 0.84,
+        "max_score": 1,
+        "notes": [
+          "Senal de diseno: si.",
+          "Senal de poblacion/muestra: no.",
+          "Senal de tecnicas/instrumentos: si.",
+          "Senal de analisis: si.",
+          "Senales debiles: 0."
+        ]
+      }
+    ],
+    "semantic_review": {
+      "model": "gpt-5.4",
+      "score_10": null,
+      "summary": null,
+      "recommendation": "skipped",
+      "criteria": [],
+      "warnings": [
+        "La revision semantica con LLM no estuvo disponible: Proveedor LLM no soportado en Release 0: lab-disabled."
+      ]
+    }
+  }
+}

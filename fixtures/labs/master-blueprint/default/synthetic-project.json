@@ -1,0 +1,154 @@
+{
+  "id": "lab-project-steps-5-11-001",
+  "userId": "lab-user-001",
+  "catalogTopicId": null,
+  "title": "Laboratorio sintetico para depurar pasos 5-11 del MasterBlueprintEngine en ingenieria civil",
+  "status": "SOURCES_SELECTED",
+  "country": "PE",
+  "language": "es",
+  "degreeLevel": "MAESTRIA",
+  "university": "UPC",
+  "program": "Maestria en Ingenieria Civil",
+  "templateKey": "UPC_POSGRADO",
+  "topicOriginType": "CUSTOM",
+  "topicSelectionStatus": "SELECTED",
+  "topicSeedText": "Practicas de seguridad y productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.",
+  "topicAreaId": null,
+  "topicAreaLabel": "Ingenieria civil y construccion",
+  "selectedTopicSuggestionId": null,
+  "createdAt": "2026-04-25T12:00:00.000Z",
+  "updatedAt": "2026-04-25T12:00:00.000Z",
+  "intake": {
+    "id": "lab-intake-steps-5-11-001",
+    "projectId": "lab-project-steps-5-11-001",
+    "topic": "Relacion entre la implementacion de practicas de seguridad y la productividad de cuadrillas en obras de edificacion multifamiliar en Lima Metropolitana.",
+    "problemContext": "En obras de edificacion multifamiliar en Lima Metropolitana persisten variaciones en la productividad de cuadrillas, retrabajos, tiempos improductivos e incidentes asociados a condiciones de seguridad, control operacional y cumplimiento irregular de procedimientos en obra.",
+    "researchLine": null,
+    "academicConstraints": "Delimitar el caso a obras de edificacion multifamiliar en Lima Metropolitana y evitar promesas causales no sustentadas.",
+    "targetPopulation": "Ingenieros residentes, prevencionistas, capataces y cuadrillas de obras de edificacion multifamiliar en Lima Metropolitana.",
+    "availableData": "Checklists de seguridad, partes diarios de obra, observaciones en campo, entrevistas semiestructuradas y antecedentes academicos comparables en construccion.",
+    "preferredMethodology": "Enfoque cuantitativo o mixto, diseno no experimental y correlacional, con apoyo de observacion estructurada y revision documental de registros de obra.",
+    "advisorNotes": "Usar la plantilla maestra LATAM, explicitar assumptions faltantes y mantener la matriz de consistencia para el final con foco en seguridad y productividad.",
+    "searchQuery": "seguridad en obra productividad cuadrillas edificacion multifamiliar lima",
+    "createdAt": "2026-04-25T12:00:00.000Z",
+    "updatedAt": "2026-04-25T12:00:00.000Z"
+  },
+  "projectReferences": [
+    {
+      "id": "lab-project-reference-001",
+      "projectId": "lab-project-steps-5-11-001",
+      "referenceId": "lab-selected-source-001",
+      "sourceProvider": "OPENALEX",
+      "relevanceScore": 0.92,
+      "selected": true,
+      "selectedOrder": 1,
+      "selectionReason": "Cobertura sintetica de practicas de produccion confiable y control operativo en construccion de concreto.",
+      "createdAt": "2026-04-25T12:00:00.000Z",
+      "updatedAt": "2026-04-25T12:00:00.000Z",
+      "reference": {
+        "id": "lab-selected-source-001",
+        "doi": null,
+        "openAlexId": null,
+        "crossrefId": null,
+        "title": "[SINTETICA] Practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+        "normalizedTitle": "sintetica practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+        "authorsJson": [
+          "Equipo de laboratorio A"
+        ],
+        "abstract": "Documento sintetico de laboratorio que describe secuenciacion de frentes de concreto, estandarizacion de tareas criticas y control operativo para reducir desperdicio y mantener seguridad en obra.",
+        "venue": "Repositorio de laboratorio civil",
+        "year": 2024,
+        "workType": "article",
+        "landingPageUrl": "https://lab.local/source-001",
+        "citationCount": 7,
+        "rawOpenAlexJson": {
+          "best_oa_location": {
+            "pdf_url": "https://lab.local/pdf/source-001.pdf"
+          }
+        },
+        "rawCrossrefJson": null,
+        "createdAt": "2026-04-25T12:00:00.000Z",
+        "updatedAt": "2026-04-25T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "lab-project-reference-002",
+      "projectId": "lab-project-steps-5-11-001",
+      "referenceId": "lab-selected-source-002",
+      "sourceProvider": "OPENALEX",
+      "relevanceScore": 0.88,
+      "selected": true,
+      "selectedOrder": 2,
+      "selectionReason": "Cobertura sintetica del diseno metodologico y de los instrumentos de seguridad y productividad en obra.",
+      "createdAt": "2026-04-25T12:00:00.000Z",
+      "updatedAt": "2026-04-25T12:00:00.000Z",
+      "reference": {
+        "id": "lab-selected-source-002",
+        "doi": null,
+        "openAlexId": null,
+        "crossrefId": null,
+        "title": "[SINTETICA] Disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+        "normalizedTitle": "sintetica disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+        "authorsJson": [
+          "Equipo de laboratorio B"
+        ],
+        "abstract": "Documento sintetico de laboratorio con enfasis en observacion estructurada, checklists de seguridad, tiempos improductivos y delimitacion prudente de unidades de analisis en obra.",
+        "venue": "Repositorio de laboratorio civil",
+        "year": 2023,
+        "workType": "article",
+        "landingPageUrl": "https://lab.local/source-002",
+        "citationCount": 5,
+        "rawOpenAlexJson": {
+          "best_oa_location": {
+            "pdf_url": null
+          }
+        },
+        "rawCrossrefJson": null,
+        "createdAt": "2026-04-25T12:00:00.000Z",
+        "updatedAt": "2026-04-25T12:00:00.000Z"
+      }
+    },
+    {
+      "id": "lab-project-reference-003",
+      "projectId": "lab-project-steps-5-11-001",
+      "referenceId": "lab-selected-source-003",
+      "sourceProvider": "CROSSREF",
+      "relevanceScore": 0.81,
+      "selected": true,
+      "selectedOrder": 3,
+      "selectionReason": "Cobertura sintetica de coherencia, matriz y trazabilidad entre seguridad, productividad y evidencia.",
+      "createdAt": "2026-04-25T12:00:00.000Z",
+      "updatedAt": "2026-04-25T12:00:00.000Z",
+      "reference": {
+        "id": "lab-selected-source-003",
+        "doi": null,
+        "openAlexId": null,
+        "crossrefId": null,
+        "title": "[SINTETICA] Lineamientos de consistencia entre seguridad, productividad y evidencia en proyectos de edificacion",
+        "normalizedTitle": "sintetica lineamientos de consistencia entre seguridad productividad y evidencia en proyectos de edificacion",
+        "authorsJson": [
+          "Equipo de laboratorio C"
+        ],
+        "abstract": "Documento sintetico de laboratorio orientado a consistencia vertical, construccion tardia de la matriz y uso responsable de assumptions cuando faltan detalles operativos del caso.",
+        "venue": "Repositorio de laboratorio civil",
+        "year": 2022,
+        "workType": "article",
+        "landingPageUrl": "https://lab.local/source-003",
+        "citationCount": 4,
+        "rawOpenAlexJson": {
+          "best_oa_location": {
+            "pdf_url": "https://lab.local/pdf/source-003.pdf"
+          }
+        },
+        "rawCrossrefJson": null,
+        "createdAt": "2026-04-25T12:00:00.000Z",
+        "updatedAt": "2026-04-25T12:00:00.000Z"
+      }
+    }
+  ],
+  "blueprintVersions": [
+    {
+      "versionNumber": 0
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "objective": "Revisar críticamente la literatura académica y los precedentes comparados sobre reutilización adaptativa, vacancia, subutilización y sobre-elevación en madera maciza estructural, para identificar enfoques, variables y límites transferibles al caso de edificios comerciales tipo B y C en Toronto.",
+    "question": "¿Qué criterios comparables permiten identificar, dentro de los edificios comerciales tipo B y C en Toronto, condiciones de obsolescencia, vacancia o subutilización relevantes para su reutilización adaptativa con fines habitacionales?",
+    "method": "Enfoque aplicado, cualitativo y comparado",
+    "technique": "Revisión sistemática y crítica de literatura; análisis comparado de precedentes"
+  },
+  {
+    "objective": "Identificar y sistematizar criterios de evaluación de alcance arquitectónico, regulatorio y de negocio aplicables a la reconversión habitacional y a la eventual sobre-elevación, distinguiendo entre evidencia directamente documentada y criterios que requieran contraste contextual local.",
+    "question": "¿Qué variables arquitectónicas, tipológicas y de intervención pueden extraerse de la literatura y de precedentes comparados para evaluar la reconversión habitacional de estos inmuebles, considerando que parte de la investigación previa asume vacancia total y no siempre desagrega sus procesos?",
+    "method": "Estudio aplicado de base cualitativa-comparada",
+    "technique": "Revisión crítica de literatura; análisis tipológico-comparado"
+  },
+  {
+    "objective": "Organizar dichos criterios en dimensiones y subcriterios comparables, mediante una estructura multicriterio que permita valorar de forma preliminar condiciones de obsolescencia, potencial de adaptación, restricciones y oportunidades de intervención.",
+    "question": "¿Qué criterios preliminares de factibilidad regulatoria y de negocio pueden integrarse, de manera prudente, en un marco multicriterio aplicable al caso de Toronto, sin presuponer cumplimiento normativo local?",
+    "method": "Diseño comparativo-aplicado",
+    "technique": "Síntesis cualitativa; construcción de matriz de criterios"
+  },
+  {
+    "objective": "Aplicar o contrastar preliminarmente el marco propuesto en casos tipológicos o en un conjunto acotado de edificios comerciales tipo B y C en Toronto, con el fin de examinar su utilidad analítica, su coherencia operativa y sus alcances como herramienta de apoyo a decisiones, sin afirmar viabilidad definitiva.",
+    "question": "¿En qué condiciones, y solo como hipótesis a contrastar con evidencia específica posterior, la sobre-elevación en madera maciza estructural podría incorporarse como estrategia complementaria de densificación sobre edificios existentes seleccionados?",
+    "method": "Estudio aplicado, cualitativo-comparado y proyectivo",
+    "technique": "Análisis comparado de precedentes; contraste preliminar del marco propuesto"
+  }
+]

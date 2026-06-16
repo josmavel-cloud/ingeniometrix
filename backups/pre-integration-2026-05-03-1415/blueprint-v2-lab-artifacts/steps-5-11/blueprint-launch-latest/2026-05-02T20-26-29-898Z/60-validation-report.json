@@ -1,0 +1,180 @@
+{
+  "required_sections_present": true,
+  "missing_required_section_keys": [],
+  "warnings": [
+    "Evidencia reconstruida desde el ultimo estado de blueprint-launch usando metadata, abstracts y contexto local.",
+    "Assets hidratados desde handoff read-only previo: 18.",
+    "Assets con archivo fisico resuelto: 8."
+  ],
+  "reference_traceability_ok": true,
+  "formal_reference_ids": [
+    "launch-selected-source-001",
+    "launch-selected-source-002",
+    "launch-selected-source-003"
+  ],
+  "quality_report": {
+    "threshold": 8,
+    "passed": true,
+    "deterministic_score_10": 8.49,
+    "semantic_score_10": 7.53,
+    "score_10": 8.25,
+    "hard_failures": [],
+    "soft_warnings": [
+      "Evidencia reconstruida desde el ultimo estado de blueprint-launch usando metadata, abstracts y contexto local.",
+      "Assets hidratados desde handoff read-only previo: 18.",
+      "Assets con archivo fisico resuelto: 8."
+    ],
+    "components": [
+      {
+        "key": "structure",
+        "label": "Cobertura estructural",
+        "score": 1.98,
+        "max_score": 2,
+        "notes": [
+          "Secciones obligatorias presentes: 11/11.",
+          "Secciones obligatorias con contenido util: 11/11.",
+          "Secciones obligatorias robustas: 11/11.",
+          "Senales debiles: 9%.",
+          "Placeholders visibles: 0%."
+        ]
+      },
+      {
+        "key": "coherence",
+        "label": "Coherencia academica",
+        "score": 1.5,
+        "max_score": 2,
+        "notes": [
+          "1. FAIL: El objetivo general no evidencia alineacion suficiente con el problema planteado.",
+          "2. PASS: Cada objetivo especifico tiene una pregunta de investigacion alineada y una matriz consistente.",
+          "3. PASS: La metodologia propuesta y la matriz de consistencia muestran alineacion basica.",
+          "4. PASS: La poblacion y muestra mantienen coherencia con el enfoque descrito.",
+          "5. PASS: Las tecnicas de recoleccion y el plan de analisis tienen una relacion razonable.",
+          "6. PASS: Todas las referencias usadas pueden trazarse al set seleccionado.",
+          "Solapamiento problema-objetivo: 77%.",
+          "Solapamiento objetivos-preguntas: 22%."
+        ]
+      },
+      {
+        "key": "traceability",
+        "label": "Trazabilidad formal",
+        "score": 1.55,
+        "max_score": 2,
+        "notes": [
+          "Referencias formales declaradas: 3.",
+          "Fuentes formales elegibles: 7.",
+          "Referencias usadas en secciones: 0/3.",
+          "No se detectaron referencias formales invalidas."
+        ]
+      },
+      {
+        "key": "evidence_support",
+        "label": "Soporte evidencial",
+        "score": 1.49,
+        "max_score": 2,
+        "notes": [
+          "Fuentes formales: 7.",
+          "Con abstract: 7.",
+          "PDF descargados: 1.",
+          "Packs con evidencia PDF usable: 5.",
+          "Assets estructurados: 18.",
+          "Provenance desde fuentes/PDF: 87.26%."
+        ]
+      },
+      {
+        "key": "objective_quality",
+        "label": "Calidad de objetivos y preguntas",
+        "score": 0.97,
+        "max_score": 1,
+        "notes": [
+          "Objetivo general presente: si.",
+          "Objetivos especificos: 4.",
+          "Preguntas: 4.",
+          "Filas de matriz: 4.",
+          "Unicidad promedio: 100%.",
+          "Especificidad promedio: 83%."
+        ]
+      },
+      {
+        "key": "methodology_clarity",
+        "label": "Claridad metodologica",
+        "score": 1,
+        "max_score": 1,
+        "notes": [
+          "Senal de diseno: si.",
+          "Senal de poblacion/muestra: si.",
+          "Senal de tecnicas/instrumentos: si.",
+          "Senal de analisis: si.",
+          "Senales debiles: 0."
+        ]
+      }
+    ],
+    "semantic_review": {
+      "model": "gpt-5.4",
+      "score_10": 7.53,
+      "summary": "El blueprint es semánticamente coherente en su núcleo: el problema conduce de manera lógica a un objetivo general de construcción de un marco preliminar de factibilidad, y además muestra una prudencia poco común al no prometer demostrar viabilidad total donde la evidencia no alcanza. Su mejor rasgo es justamente esa contención: delimita el aporte como herramienta analítica temprana y no como prueba definitiva de viabilidad normativa, estructural o económica. Sin embargo, la calidad global queda contenida por una debilidad metodológica importante: el estudio declara un marco multicriterio, pero",
+      "recommendation": "review",
+      "criteria": [
+        {
+          "key": "problem_objective_alignment",
+          "label": "Alineacion problema-objetivos",
+          "score_5": 4.4,
+          "notes": [
+            "Existe correspondencia clara entre el problema formulado y el objetivo general: se identifica la ausencia de un marco de evaluación aplicable al caso Toronto y el objetivo propone formular precisamente ese marco.",
+            "La delimitación del problema evita un salto injustificado hacia afirmar viabilidad universal; eso fortalece la consistencia lógica con un objetivo de alcance preliminar.",
+            "El problema incorpora bien la tensión entre crisis de vivienda, reutilización adaptativa y sobre-elevación en mass timber, pero el componente de 'ideas de negocio' del título queda parcialmente subordinado y no plenamente desarrollado en la"
+          ]
+        },
+        {
+          "key": "objective_specificity",
+          "label": "Especificidad de objetivos",
+          "score_5": 3.7,
+          "notes": [
+            "El objetivo general es claro en su producto principal: un marco de factibilidad multicriterio de alcance arquitectónico, regulatorio y de negocio.",
+            "Los objetivos específicos siguen una secuencia razonable: revisión, identificación de criterios, organización en estructura multicriterio y aplicación/contraste preliminar.",
+            "Aun así, varios verbos permanecen en nivel amplio ('identificar', 'sistematizar', 'organizar', 'contrastar') y no precisan con suficiente nitidez qué resultado verificable se obtendrá en cada fase ni con qué umbral de suficiencia metod"
+          ]
+        },
+        {
+          "key": "research_question_quality",
+          "label": "Calidad de preguntas",
+          "score_5": 4,
+          "notes": [
+            "Las preguntas son investigables en términos documentales y analítico-comparados; no exigen demostrar causalidades imposibles para el diseño propuesto.",
+            "La formulación es prudente al distinguir criterios preliminares de factibilidad y al no presuponer cumplimiento normativo local.",
+            "La cuarta pregunta sobre condiciones para incorporar la sobre-elevación en madera maciza está bien acotada como hipótesis a contrastar, no como afirmación anticipada de viabilidad, lo cual es correcto académicamente."
+          ]
+        },
+        {
+          "key": "methodology_design",
+          "label": "Claridad metodologica",
+          "score_5": 2.6,
+          "notes": [
+            "Aquí está la principal debilidad del blueprint. La metodología es entendible en términos generales, pero no está suficientemente operativizada para sostener con rigor el producto prometido.",
+            "Se declara 'revisión sistemática y crítica', pero no se describen criterios de búsqueda, selección, exclusión o evaluación de calidad de fuentes. Sin eso, el carácter sistemático queda solo enunciado.",
+            "La muestra de 'un conjunto acotado de casos o tipologías' es demasiado indeterminada: no se especifica cuántos casos, cómo se elegirán, ni qué atributos mínimos deben cumplir para entrar al análisis comparado."
+          ]
+        },
+        {
+          "key": "evidence_grounding",
+          "label": "Anclaje en evidencia",
+          "score_5": 3.1,
+          "notes": [
+            "El problema sí se apoya en hallazgos reconocibles de la evidencia disponible, especialmente en la revisión de 2023 sobre vacancy y adaptive reuse; ese uso no parece inventado y está bien integrado.",
+            "También hay una utilización razonable de literatura sobre sostenibilidad, reutilización y criterios multicriterio, aunque varios antecedentes son de contextos distintos y algunos son bastante periféricos respecto del caso Toronto y del foco"
+          ]
+        },
+        {
+          "key": "academic_prudence",
+          "label": "Prudencia academica",
+          "score_5": 4.8,
+          "notes": [
+            "El blueprint mantiene una prudencia académica alta: explicita varias veces que no puede afirmar cuántos edificios cumplen las condiciones en Toronto ni que la viabilidad normativa local esté resuelta.",
+            "Evita extrapolar mecánicamente evidencia internacional al caso local y convierte esas incertidumbres en dimensiones de evaluación, lo cual es una decisión metodológicamente sana.",
+            "También es correcto que presente la sobre-elevación en mass timber como estrategia eventual o complementaria, en vez de tratarla como solución ya validada para todos los casos."
+          ]
+        }
+      ],
+      "warnings": []
+    }
+  }
+}

@@ -2,6 +2,7 @@ import peruUniversitiesJson from "@/lib/assets/peru-universities.json";
 
 export type ProjectUniversityCode =
   | "PUCP"
+  | "UPT"
   | "UNMSM"
   | "UNI"
   | "UP"
@@ -56,15 +57,10 @@ export type ProjectUniversityOption = {
 
 const FEATURED_PROJECT_UNIVERSITY_CODES = [
   "PUCP",
-  "UNMSM",
-  "UNI",
-  "UP",
+  "UPT",
   "UPC",
-  "UPCH",
-  "ULIMA",
-  "UDEP",
+  "UNI",
   "USMP",
-  "UCV",
 ] as const satisfies readonly Exclude<ProjectUniversityCode, "OTHER">[];
 
 const FEATURED_PROJECT_UNIVERSITY_SHORT_NAMES: Record<
@@ -72,6 +68,7 @@ const FEATURED_PROJECT_UNIVERSITY_SHORT_NAMES: Record<
   string
 > = {
   PUCP: "PUCP",
+  UPT: "UPT",
   UNMSM: "UNMSM",
   UNI: "UNI",
   UP: "UP",
@@ -85,6 +82,7 @@ const FEATURED_PROJECT_UNIVERSITY_SHORT_NAMES: Record<
 
 const PROJECT_UNIVERSITY_FALLBACK_LABELS: Record<ProjectUniversityCode, string> = {
   PUCP: "Pontificia Universidad Catolica del Peru",
+  UPT: "Universidad Privada de Tacna",
   UNMSM: "Universidad Nacional Mayor de San Marcos",
   UNI: "Universidad Nacional de Ingenieria",
   UP: "Universidad del Pacifico",
@@ -99,6 +97,7 @@ const PROJECT_UNIVERSITY_FALLBACK_LABELS: Record<ProjectUniversityCode, string> 
 
 const PROJECT_UNIVERSITY_TEMPLATE_KEYS: Record<ProjectUniversityCode, ProjectTemplateKey> = {
   PUCP: "GENERIC_POSGRADO_PE",
+  UPT: "GENERIC_POSGRADO_PE",
   UNMSM: "GENERIC_POSGRADO_PE",
   UNI: "GENERIC_POSGRADO_PE",
   UP: "GENERIC_POSGRADO_PE",
@@ -118,6 +117,7 @@ const PROJECT_UNIVERSITY_NAME_HINTS: Record<
   readonly string[]
 > = {
   PUCP: ["pontificia universidad catolica del peru"],
+  UPT: ["universidad privada de tacna"],
   UNMSM: ["universidad nacional mayor de san marcos"],
   UNI: ["universidad nacional de ingenieria"],
   UP: ["universidad del pacifico"],
@@ -204,6 +204,34 @@ export function getUniversityRecordByProjectCode(code: ProjectUniversityCode) {
 
 export function getUniversityDisplayNameByCode(code: ProjectUniversityCode) {
   return getUniversityRecordByProjectCode(code)?.name ?? PROJECT_UNIVERSITY_FALLBACK_LABELS[code];
+}
+
+export function buildUniversityResearchContext(code: ProjectUniversityCode) {
+  const record = getUniversityRecordByProjectCode(code);
+  const displayName = getUniversityDisplayNameByCode(code);
+  const locationParts = [record?.district, record?.province, record?.department].filter(
+    (value): value is string => Boolean(value?.trim()),
+  );
+  const locationLabel =
+    locationParts.length > 0 ? `${locationParts.join(", ")}, Peru` : "Peru";
+  const managementLabel =
+    record?.managementType === "PUBLICA"
+      ? "universidad publica"
+      : record?.managementType === "PRIVADA"
+        ? "universidad privada"
+        : "universidad";
+  const territorialScope =
+    record?.department?.trim().toLowerCase() === "lima"
+      ? "entorno metropolitano y urbano con alta demanda de investigacion aplicada"
+      : "entorno regional donde conviene priorizar problemas aplicados y observables";
+
+  return {
+    universityName: displayName,
+    locationLabel,
+    managementLabel,
+    territorialScope,
+    contextSummary: `${displayName}, ${managementLabel}, ubicada en ${locationLabel}. Considera este dato solo como contexto academico y territorial para delimitar problemas, tendencias y lineas de investigacion plausibles.`,
+  };
 }
 
 export const PERU_UNIVERSITIES_SOURCE = {

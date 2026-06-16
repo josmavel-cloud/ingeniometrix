@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ingeniometrix.local/schemas/topic-area-normalization.schema.json",
+  "title": "TopicAreaNormalization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "normalizedLabel",
+    "canonicalAreaId",
+    "canonicalAreaLabel",
+    "confidence",
+    "rationale"
+  ],
+  "properties": {
+    "normalizedLabel": { "type": "string", "minLength": 1 },
+    "canonicalAreaId": { "type": ["string", "null"] },
+    "canonicalAreaLabel": { "type": ["string", "null"] },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    },
+    "rationale": { "type": "string", "minLength": 1 }
+  }
+}

@@ -1,0 +1,15 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="exportGradient" x1="20" y1="18" x2="106" y2="108" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EFC14D"/>
+      <stop offset="0.54" stop-color="#FF6F61"/>
+      <stop offset="1" stop-color="#DBC1FF"/>
+    </linearGradient>
+  </defs>
+  <path d="M40 20H77L98 41V92C98 101.94 89.94 110 80 110H40C30.06 110 22 101.94 22 92V38C22 28.06 30.06 20 40 20Z" fill="white" fill-opacity="0.84" stroke="url(#exportGradient)" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M77 20V41H98" stroke="#34145F" stroke-width="4" stroke-linejoin="round"/>
+  <path d="M45 56H76" stroke="#34145F" stroke-width="6" stroke-linecap="round"/>
+  <path d="M45 72H67" stroke="#34145F" stroke-width="6" stroke-linecap="round" opacity="0.7"/>
+  <path d="M84 64V88" stroke="#18A999" stroke-width="5" stroke-linecap="round"/>
+  <path d="M74 78L84 88L94 78" stroke="#18A999" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

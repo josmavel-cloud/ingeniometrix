@@ -1,0 +1,67 @@
+{
+  "case_id": "case-002-shaking-table-control-systems",
+  "case_name": "Control de mesas vibratorias de varios grados de libertad",
+  "project_id": "fixture-case-002",
+  "user_id": "fixture-user-backend",
+  "project_context": {
+    "title": "Diseno de sistemas de control para mesas vibratorias multiaxiales orientadas a simulacion sismica experimental",
+    "degree_level": "maestria",
+    "university": "Universidad Cesar Vallejo",
+    "program": "Maestria en Ingenieria Civil con mencion en Estructuras",
+    "knowledge_area_label": "Ingenieria estructural, control y dinamica experimental",
+    "template_key": "UCV",
+    "country": "PE",
+    "language": "es"
+  },
+  "intake": {
+    "topic": "Diseno de sistemas de control para mesas vibratorias de varios grados de libertad utilizadas en la simulacion experimental de sismos.",
+    "problemContext": "Los laboratorios de ingenieria estructural requieren equipos capaces de reproducir senales sismicas con fidelidad dinamica. Las mesas vibratorias multiaxiales presentan desafios de control por acoplamiento, saturacion, seguimiento de trayectoria y validacion experimental.",
+    "researchLine": "Dinamica estructural experimental, control de sistemas, simulacion sismica y validacion de plataformas de ensayo.",
+    "academicConstraints": "La investigacion sera de caracter conceptual y de diseno metodologico. No se afirmara rendimiento experimental sin datos de un prototipo o banco de pruebas.",
+    "targetPopulation": "Mesas vibratorias academicas o de laboratorio con dos o mas grados de libertad para ensayos de componentes o modelos estructurales.",
+    "availableData": "Literatura sobre control de mesas vibratorias, actuadores hidraulicos o electricos, control robusto, seguimiento de senales sismicas, dinamica multivariable y protocolos de validacion.",
+    "preferredMethodology": "Revision tecnica, comparacion de estrategias de control y formulacion de una arquitectura preliminar de control con criterios de desempeno, estabilidad y reproducibilidad.",
+    "advisorNotes": "Separar claramente el diseno propuesto de cualquier validacion experimental pendiente."
+  },
+  "source_policy": {
+    "mode": "auto_search",
+    "max_selected_sources": 6,
+    "min_selected_sources": 4,
+    "providers": ["openalex", "crossref"],
+    "allow_public_pdf_download": true,
+    "allow_web_fulltext_capture": true,
+    "require_complete_public_content": true
+  },
+  "selected_reference_ids": [],
+  "execution_options": {
+    "run_steps": [1, 2, 3, 4, 5, 6],
+    "force_rerun": false,
+    "use_llm": false,
+    "persist_debug_prompts": true,
+    "persist_full_text": true,
+    "persist_pdfs": true,
+    "cache_namespace": "fixture-case-002-shaking-table-control",
+    "prompt_version": "evidence-engine-dry-run-v1"
+  },
+  "source_selection_checkpoint": {
+    "required": true,
+    "selection_mode": "manual_pending",
+    "future_options": ["frontend_basic", "codex_review", "fixture_selected_sources"],
+    "instructions_es": "Las fuentes candidatas sobre mesas vibratorias y control multivariable deben ser revisadas por una persona antes de continuar con acceso, materializacion, extraccion y consolidacion.",
+    "selected_reference_ids": [],
+    "notes_es": "La revision humana debe filtrar fuentes puramente comerciales, seleccionar articulos tecnicos verificables y evitar claims de desempeno sin evidencia experimental."
+  },
+  "expected_focus": [
+    "arquitecturas de control multivariable",
+    "fidelidad de reproduccion de senales sismicas",
+    "criterios de estabilidad y seguimiento",
+    "validacion experimental pendiente"
+  ],
+  "expected_risks": [
+    "presentar simulaciones como resultados experimentales",
+    "omitir acoplamiento dinamico entre ejes",
+    "usar especificaciones comerciales sin fuente academica",
+    "no declarar limites de actuadores, sensores y adquisicion de datos"
+  ]
+}
+

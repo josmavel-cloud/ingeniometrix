@@ -1,0 +1,67 @@
+{
+  "records": [
+    {
+      "source_id": "lab-selected-source-001",
+      "title": "[SINTETICA] Practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "pdf_url": "https://lab.local/pdf/civil-source-001.pdf",
+      "resolved_pdf_url": "https://lab.local/pdf/civil-source-001.pdf",
+      "access_strategy": "direct_pdf_url",
+      "http_status": 200,
+      "status": "downloaded",
+      "reason": null,
+      "stored_file_path": "artifacts-local/blueprint-v2-lab/pdf/source-001.pdf",
+      "file_size_bytes": 184320
+    },
+    {
+      "source_id": "lab-selected-source-002",
+      "title": "[SINTETICA] Disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "pdf_url": null,
+      "resolved_pdf_url": null,
+      "access_strategy": null,
+      "http_status": null,
+      "status": "skipped",
+      "reason": "La fuente sintetica no expone PDF y queda solo con metadata, abstract y observaciones de campo reconstruidas.",
+      "stored_file_path": null,
+      "file_size_bytes": null
+    },
+    {
+      "source_id": "lab-selected-source-003",
+      "title": "[SINTETICA] Lineamientos de consistencia entre seguridad, productividad y evidencia en proyectos de edificacion",
+      "pdf_url": "https://lab.local/pdf/civil-source-003.pdf",
+      "resolved_pdf_url": "https://lab.local/pdf/civil-source-003.pdf",
+      "access_strategy": "direct_pdf_url",
+      "http_status": 200,
+      "status": "downloaded",
+      "reason": null,
+      "stored_file_path": "artifacts-local/blueprint-v2-lab/pdf/source-003.pdf",
+      "file_size_bytes": 163840
+    },
+    {
+      "source_id": "lab-provider-source-004",
+      "title": "[SINTETICA] Adopcion gradual de Lean Construction y rutinas de control en obra",
+      "pdf_url": null,
+      "resolved_pdf_url": null,
+      "access_strategy": null,
+      "http_status": null,
+      "status": "skipped",
+      "reason": "La fuente provider sintetica se usa sin PDF para probar mezcla de soportes metodologicos en obra.",
+      "stored_file_path": null,
+      "file_size_bytes": null
+    },
+    {
+      "source_id": "lab-web-source-005",
+      "title": "[SINTETICA] Nota contextual sobre seguridad en obra y productividad de cuadrillas en Lima Metropolitana",
+      "pdf_url": null,
+      "resolved_pdf_url": null,
+      "access_strategy": null,
+      "http_status": null,
+      "status": "skipped",
+      "reason": "La fuente web contextual no se trata como PDF formal en el caso civil.",
+      "stored_file_path": null,
+      "file_size_bytes": null
+    }
+  ],
+  "warnings": [
+    "Solo dos fuentes sinteticas tienen PDF para probar mezcla de soporte formal y soporte parcial en el caso civil."
+  ]
+}

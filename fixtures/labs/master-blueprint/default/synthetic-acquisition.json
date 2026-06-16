@@ -1,0 +1,199 @@
+{
+  "target_source_count": 5,
+  "source_registry": [
+    {
+      "source_id": "lab-selected-source-001",
+      "reference_id": "lab-selected-source-001",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "normalized_title": "sintetica practicas de produccion confiable y control operativo en construccion de concreto multifamiliar",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil A"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio que describe secuenciacion de frentes de concreto, estandarizacion de tareas criticas y control operativo para reducir desperdicio y mantener seguridad en obra.",
+      "landing_page_url": "https://lab.local/civil/source-001",
+      "pdf_url": "https://lab.local/pdf/civil-source-001.pdf",
+      "query": null,
+      "snippet": null,
+      "selected_order": 1,
+      "citation_count": 9,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-selected-source-002",
+      "reference_id": "lab-selected-source-002",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "normalized_title": "sintetica disenos de seguridad ocupacional y productividad de cuadrillas en edificacion urbana",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil B"
+      ],
+      "year": 2023,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio con enfasis en observacion estructurada, checklists de seguridad, tiempos improductivos y delimitacion prudente de unidades de analisis en obra.",
+      "landing_page_url": "https://lab.local/civil/source-002",
+      "pdf_url": null,
+      "query": null,
+      "snippet": null,
+      "selected_order": 2,
+      "citation_count": 6,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-selected-source-003",
+      "reference_id": "lab-selected-source-003",
+      "origin": "selected_source",
+      "label": "Fuente seleccionada por el usuario",
+      "title": "[SINTETICA] Lineamientos de consistencia entre seguridad, productividad y evidencia en proyectos de edificacion",
+      "normalized_title": "sintetica lineamientos de consistencia entre seguridad productividad y evidencia en proyectos de edificacion",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil C"
+      ],
+      "year": 2022,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio orientado a consistencia vertical, construccion tardia de la matriz y uso responsable de assumptions cuando faltan detalles operativos del caso.",
+      "landing_page_url": "https://lab.local/civil/source-003",
+      "pdf_url": "https://lab.local/pdf/civil-source-003.pdf",
+      "query": null,
+      "snippet": null,
+      "selected_order": 3,
+      "citation_count": 5,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-provider-source-004",
+      "reference_id": null,
+      "origin": "provider_expansion",
+      "label": "Fuente complementada por providers",
+      "title": "[SINTETICA] Adopcion gradual de Lean Construction y rutinas de control en obra",
+      "normalized_title": "sintetica adopcion gradual de lean construction y rutinas de control en obra",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil D"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio sobre adopcion gradual de Lean Construction, reuniones cortas de coordinacion y uso prudente de indicadores operativos en frentes de edificacion.",
+      "landing_page_url": "https://lab.local/civil/source-004",
+      "pdf_url": null,
+      "query": "lean construction seguridad productividad edificacion multifamiliar",
+      "snippet": null,
+      "selected_order": null,
+      "citation_count": 3,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    },
+    {
+      "source_id": "lab-web-source-005",
+      "reference_id": null,
+      "origin": "websearch_source",
+      "label": "Fuente complementada por web search",
+      "title": "[SINTETICA] Nota contextual sobre seguridad en obra y productividad de cuadrillas en Lima Metropolitana",
+      "normalized_title": "sintetica nota contextual sobre seguridad en obra y productividad de cuadrillas en lima metropolitana",
+      "doi": null,
+      "authors": [],
+      "year": null,
+      "venue": "Sitio contextual de laboratorio civil",
+      "abstract": null,
+      "landing_page_url": "https://lab.local/web/civil-source-005",
+      "pdf_url": null,
+      "query": "seguridad en obra productividad cuadrillas lima metropolitana",
+      "snippet": "La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.",
+      "selected_order": null,
+      "citation_count": null,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": false
+    }
+  ],
+  "provider_expansion_sources": [
+    {
+      "source_id": "lab-provider-source-004",
+      "reference_id": null,
+      "origin": "provider_expansion",
+      "label": "Fuente complementada por providers",
+      "title": "[SINTETICA] Adopcion gradual de Lean Construction y rutinas de control en obra",
+      "normalized_title": "sintetica adopcion gradual de lean construction y rutinas de control en obra",
+      "doi": null,
+      "authors": [
+        "Equipo de laboratorio civil D"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de laboratorio civil",
+      "abstract": "Documento sintetico de laboratorio sobre adopcion gradual de Lean Construction, reuniones cortas de coordinacion y uso prudente de indicadores operativos en frentes de edificacion.",
+      "landing_page_url": "https://lab.local/civil/source-004",
+      "pdf_url": null,
+      "query": "lean construction seguridad productividad edificacion multifamiliar",
+      "snippet": null,
+      "selected_order": null,
+      "citation_count": 3,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": true
+    }
+  ],
+  "websearch_sources": [
+    {
+      "source_id": "lab-web-source-005",
+      "reference_id": null,
+      "origin": "websearch_source",
+      "label": "Fuente complementada por web search",
+      "title": "[SINTETICA] Nota contextual sobre seguridad en obra y productividad de cuadrillas en Lima Metropolitana",
+      "normalized_title": "sintetica nota contextual sobre seguridad en obra y productividad de cuadrillas en lima metropolitana",
+      "doi": null,
+      "authors": [],
+      "year": null,
+      "venue": "Sitio contextual de laboratorio civil",
+      "abstract": null,
+      "landing_page_url": "https://lab.local/web/civil-source-005",
+      "pdf_url": null,
+      "query": "seguridad en obra productividad cuadrillas lima metropolitana",
+      "snippet": "La nota contextual sintetica sugiere que las obras multifamiliares combinan frentes simultaneos, restricciones de espacio y controles de seguridad con distinto nivel de madurez operativa.",
+      "selected_order": null,
+      "citation_count": null,
+      "is_open_access": true,
+      "raw_openalex_json": null,
+      "raw_crossref_json": null,
+      "eligible_for_formal_reference": false
+    }
+  ],
+  "decisions": [
+    {
+      "source_id": "lab-provider-source-004",
+      "accepted": true,
+      "reason": "La fuente sintetica provider completa el set para probar antecedentes de Lean Construction y coordinacion operativa en obra.",
+      "origin": "provider_expansion",
+      "query": "lean construction seguridad productividad edificacion multifamiliar"
+    },
+    {
+      "source_id": "lab-web-source-005",
+      "accepted": true,
+      "reason": "La fuente web sintetica aporta contexto prudente sobre frentes simultaneos, seguridad y productividad en obra.",
+      "origin": "websearch_source",
+      "query": "seguridad en obra productividad cuadrillas lima metropolitana"
+    }
+  ],
+  "warnings": [
+    "El set sintetico conserva una fuente web solo como apoyo contextual y no como referencia formal en el caso civil."
+  ]
+}

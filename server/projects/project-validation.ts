@@ -1,20 +1,31 @@
 import {
   DegreeLevel,
   ProjectStatus,
-  TemplateKey,
+  TopicOriginType,
   University,
 } from "@prisma/client";
 
 import { getProjectPresetById } from "@/lib/project-presets";
-import { getProjectTemplateKeyForUniversity } from "@/lib/peru-universities";
+import { resolveTemplateKeyForMvp } from "@/lib/system-master-template";
+import type { ProjectTemplateKey } from "@/lib/peru-universities";
+import {
+  APP_DEFAULT_LANGUAGE,
+  normalizeLanguageCode,
+  type SupportedLanguage,
+} from "@/lib/language";
 
 export type CreateProjectInput = {
   catalogTopicId?: string;
+  customIdeaText?: string;
   title: string;
   degreeLevel: DegreeLevel;
   university: University;
   program: string;
-  templateKey: TemplateKey;
+  language: SupportedLanguage;
+  templateKey: ProjectTemplateKey;
+  topicAreaId?: string;
+  topicAreaLabel?: string;
+  topicOriginType: TopicOriginType;
 };
 
 export type IntakeInput = {
@@ -30,23 +41,28 @@ export type IntakeInput = {
 
 const DEGREE_LEVEL_VALUES = new Set(Object.values(DegreeLevel));
 const UNIVERSITY_VALUES = new Set(Object.values(University));
-const TEMPLATE_KEY_VALUES = new Set(Object.values(TemplateKey));
 
 function normalizeOptionalText(value: unknown) {
   if (typeof value !== "string") {
     return undefined;
   }
 
-  const trimmed = value.trim();
+  const trimmed = value.replace(/\u0000/g, "").trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function normalizeRequiredText(value: unknown, fieldName: string) {
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (typeof value !== "string") {
     throw new Error(`El campo ${fieldName} es obligatorio.`);
   }
 
-  return value.trim();
+  const normalized = value.replace(/\u0000/g, "").trim();
+
+  if (normalized.length === 0) {
+    throw new Error(`El campo ${fieldName} es obligatorio.`);
+  }
+
+  return normalized;
 }
 
 export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
@@ -56,9 +72,15 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
 
   const payload = raw as Record<string, unknown>;
   const catalogTopicId = normalizeOptionalText(payload.catalogTopicId);
+  const customIdeaText = normalizeOptionalText(payload.customIdeaText);
+  const topicAreaId = normalizeOptionalText(payload.topicAreaId);
+  const topicAreaLabel = normalizeOptionalText(payload.topicAreaLabel);
   const degreeLevel = payload.degreeLevel;
   const university = payload.university;
-  const templateKey = payload.templateKey;
+  const templateKey = resolveTemplateKeyForMvp(payload.templateKey);
+  const language =
+    normalizeLanguageCode(normalizeOptionalText(payload.language)) ??
+    APP_DEFAULT_LANGUAGE;
 
   if (!DEGREE_LEVEL_VALUES.has(degreeLevel as DegreeLevel)) {
     throw new Error("degreeLevel invalido.");
@@ -68,19 +90,15 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
     throw new Error("university invalida.");
   }
 
-  if (!TEMPLATE_KEY_VALUES.has(templateKey as TemplateKey)) {
-    throw new Error("templateKey invalida.");
-  }
-
   const title = normalizeRequiredText(payload.title, "title");
   const program = normalizeRequiredText(payload.program, "program");
-  const expectedTemplateKey = getProjectTemplateKeyForUniversity(university as University);
+  const topicOriginType = customIdeaText
+    ? catalogTopicId
+      ? TopicOriginType.HYBRID
+      : TopicOriginType.CUSTOM
+    : TopicOriginType.CATALOG;
 
-  if (expectedTemplateKey !== (templateKey as TemplateKey)) {
-    throw new Error("templateKey no coincide con la universidad seleccionada.");
-  }
-
-  if (catalogTopicId) {
+  if (catalogTopicId && !customIdeaText) {
     const preset = getProjectPresetById(catalogTopicId);
 
     if (!preset) {
@@ -95,11 +113,16 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
 
   return {
     catalogTopicId: catalogTopicId ?? undefined,
+    customIdeaText: customIdeaText ?? undefined,
     title,
     degreeLevel: degreeLevel as DegreeLevel,
     university: university as University,
     program,
-    templateKey: templateKey as TemplateKey,
+    language,
+    templateKey,
+    topicAreaId: topicAreaId ?? undefined,
+    topicAreaLabel: topicAreaLabel ?? undefined,
+    topicOriginType,
   };
 }
 

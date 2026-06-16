@@ -1,14 +1,13 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 
 import { HomeHero } from "@/components/marketing/home-hero";
-import { getCurrentUser } from "@/server/auth/session";
 
-export default async function HomePage() {
-  const user = await getCurrentUser();
+export const metadata: Metadata = {
+  alternates: {
+    canonical: "/",
+  },
+};
 
-  if (user) {
-    redirect("/projects");
-  }
-
+export default function HomePage() {
   return <HomeHero />;
 }

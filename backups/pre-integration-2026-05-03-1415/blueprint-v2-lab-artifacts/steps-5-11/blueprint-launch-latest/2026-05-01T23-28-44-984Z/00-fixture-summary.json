@@ -1,0 +1,7 @@
+{
+  "caseName": "blueprint-launch-latest",
+  "fixtureDir": "C:\\projects\\ingeniometrix\\artifacts-local\\blueprint_launch",
+  "llmMode": "disabled",
+  "masterTemplateKey": "MASTER_TEMPLATE_LATAM",
+  "rebuiltLedgerMatchesFixture": true
+}

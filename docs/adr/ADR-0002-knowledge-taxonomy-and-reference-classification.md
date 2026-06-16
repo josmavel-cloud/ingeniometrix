@@ -6,7 +6,7 @@ Proposed
 
 ## Context
 
-Planimetrix already stores raw provider payloads for references, but it still treats document typing as a loose provider string via `Reference.workType`.
+Ingeniometrix already stores raw provider payloads for references, but it still treats document typing as a loose provider string via `Reference.workType`.
 
 That is too weak for the next product needs:
 
@@ -28,7 +28,7 @@ There is no single global standard that covers all of those dimensions at once. 
 
 ## Decision
 
-Planimetrix will classify knowledge and references using multiple explicit axes instead of one overloaded field.
+Ingeniometrix will classify knowledge and references using multiple explicit axes instead of one overloaded field.
 
 The canonical axes are:
 

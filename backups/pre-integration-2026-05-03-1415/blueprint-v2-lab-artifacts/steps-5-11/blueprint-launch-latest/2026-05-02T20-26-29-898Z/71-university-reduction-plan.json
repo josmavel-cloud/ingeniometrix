@@ -1,0 +1,80 @@
+{
+  "artifact_type": "university_blueprint_reduction_plan",
+  "artifact_version": "v1",
+  "generated_at": "2026-05-03T05:32:18.152Z",
+  "reducer": "llm_global_reducer",
+  "llm_used": true,
+  "llm_generation": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
+    "tracking_label": "step11_university_blueprint_reduction",
+    "input_tokens": 5469,
+    "cached_input_tokens": 0,
+    "output_tokens": 1200,
+    "total_tokens": 6669,
+    "cost_usd": 0.009502,
+    "cost_cad": 0.013,
+    "duration_ms": 6751
+  },
+  "master_section_count": 12,
+  "template_section_count": 4,
+  "generated_section_count": 4,
+  "section_mappings": [
+    {
+      "target_section_key": "general_data",
+      "target_title": "DATOS GENERALES",
+      "target_level": 1,
+      "matched_master_keys": [
+        "general_research_question",
+        "general_objective",
+        "analysis_plan"
+      ],
+      "strategy": "llm_reduced_merge",
+      "reason": "Se fusionan secciones Master relacionadas para ajustarlas al template institucional.",
+      "warnings": []
+    },
+    {
+      "target_section_key": "hypotheses",
+      "target_title": "HIPÓTESIS",
+      "target_level": 1,
+      "matched_master_keys": [
+        "hypotheses",
+        "general_hypothesis",
+        "specific_hypotheses"
+      ],
+      "strategy": "llm_reduced_merge",
+      "reason": "Se fusionan secciones Master relacionadas para ajustarlas al template institucional.",
+      "warnings": []
+    },
+    {
+      "target_section_key": "theoretical_framework",
+      "target_title": "MARCO TEÓRICO",
+      "target_level": 1,
+      "matched_master_keys": [
+        "theoretical_framework",
+        "research_antecedents",
+        "state_of_the_art",
+        "theoretical_bases",
+        "terms_definition"
+      ],
+      "strategy": "llm_reduced_merge",
+      "reason": "Se fusionan secciones Master relacionadas para ajustarlas al template institucional.",
+      "warnings": []
+    },
+    {
+      "target_section_key": "references",
+      "target_title": "REFERENCIAS",
+      "target_level": 1,
+      "matched_master_keys": [
+        "references"
+      ],
+      "strategy": "llm_reduced_exact",
+      "reason": "Coincidencia exacta por semantic_key; se limpia y adapta al formato institucional.",
+      "warnings": []
+    }
+  ],
+  "warnings": [
+    "El resolver institucional encontro solo MASTER_TEMPLATE_LATAM para UPC_POSGRADO/UPC; el lab buscara una plantilla institucional completa de ejemplo desde BD.",
+    "Se uso UPT - Maestria en Ingenieria Civil con Mencion en Estructuras (Plan de tesis) (UNIVERSIDAD_PRIVADA_DE_TACNA_MAESTRIA_INGENIERIA_CIVIL) como plantilla institucional completa de ejemplo desde BD para este lab."
+  ]
+}
