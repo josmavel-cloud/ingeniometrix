@@ -165,6 +165,7 @@ Configure these GitHub Actions secrets in the `staging` environment:
 - `STAGING_ADMIN_USER_EMAIL`
 - `STAGING_ADMIN_USER_PASSWORD`
 - `STAGING_ADMIN_USER_NAME`
+- `STAGING_VERCEL_AUTOMATION_BYPASS_SECRET` if Vercel Deployment Protection is enabled for previews
 
 Run the workflow manually from GitHub Actions with:
 
@@ -201,6 +202,10 @@ Preview usage against Vercel:
 npm run smoke:deployment -- --base-url=https://<staging-deployment-url>
 npm run smoke:deployment:workspace -- --base-url=https://<staging-deployment-url>
 ```
+
+If the preview is protected by Vercel Deployment Protection, set
+`VERCEL_AUTOMATION_BYPASS_SECRET` in the environment before running the smoke scripts.
+The script sends it as `x-vercel-protection-bypass` on every request and does not print it.
 
 The workspace smoke should confirm all of these:
 

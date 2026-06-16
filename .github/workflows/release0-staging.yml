@@ -32,6 +32,7 @@ jobs:
       IMX_AUTHLESS_WORKSPACE: "0"
       SMOKE_USER_EMAIL: ${{ secrets.STAGING_ADMIN_USER_EMAIL }}
       SMOKE_USER_PASSWORD: ${{ secrets.STAGING_ADMIN_USER_PASSWORD }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.STAGING_VERCEL_AUTOMATION_BYPASS_SECRET }}
 
     steps:
       - name: Check out repository

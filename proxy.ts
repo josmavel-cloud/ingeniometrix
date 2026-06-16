@@ -22,13 +22,10 @@ const PUBLIC_PREFIXES = [
   "/providers/",
 ];
 
-const INTERNAL_PREFIXES = [
-  "/api/",
+const LEGACY_INTERNAL_PREFIXES = [
   "/blueprint-launch",
   "/lab",
   "/preview",
-  "/projects",
-  "/workspace",
 ];
 
 function isProductionPublication() {
@@ -43,8 +40,8 @@ function isPublicMarketingPath(pathname: string) {
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
-function isInternalPath(pathname: string) {
-  return INTERNAL_PREFIXES.some(
+function isLegacyInternalPath(pathname: string) {
+  return LEGACY_INTERNAL_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }
@@ -70,11 +67,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (isInternalPath(pathname)) {
+  if (isLegacyInternalPath(pathname)) {
     return notFoundResponse();
   }
 
-  return notFoundResponse();
+  return NextResponse.next();
 }
 
 export const config = {

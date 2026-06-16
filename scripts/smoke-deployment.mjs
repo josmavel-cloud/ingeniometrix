@@ -18,6 +18,14 @@ function getSmokeCredentials() {
   };
 }
 
+function getVercelProtectionBypassSecret() {
+  return (
+    process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim() ??
+    process.env.SMOKE_VERCEL_PROTECTION_BYPASS_SECRET?.trim() ??
+    ""
+  );
+}
+
 function parseCookieName(setCookieValue) {
   const [cookiePair] = setCookieValue.split(";", 1);
   const separatorIndex = cookiePair.indexOf("=");
@@ -82,6 +90,11 @@ function parseArgs(argv) {
 
 async function fetchStep(state, baseUrl, label, input) {
   const headers = new Headers(input.headers);
+  const vercelBypassSecret = getVercelProtectionBypassSecret();
+
+  if (vercelBypassSecret) {
+    headers.set("x-vercel-protection-bypass", vercelBypassSecret);
+  }
 
   if (input.body) {
     headers.set("content-type", "application/json");
