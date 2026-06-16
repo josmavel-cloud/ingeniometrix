@@ -2,6 +2,7 @@ import { normalizeTitle } from "@/lib/text";
 import { buildReferenceSearchPlan } from "@/server/retrieval/search-query-planner";
 import { searchOpenAlexWorks } from "@/server/retrieval/openalex-client";
 import { searchCrossrefWorks } from "@/server/retrieval/crossref-client";
+import { extractAccessSignals } from "@/server/retrieval/reference-access";
 import type {
   BlueprintSourceRecord,
   EvidenceAcquisitionResult,
@@ -22,43 +23,6 @@ type RankedCandidate = {
   source: BlueprintSourceRecord;
   score: number;
 };
-
-function extractOpenAlexPdfUrl(raw: unknown) {
-  const record =
-    raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : null;
-  const bestOa =
-    record &&
-    typeof record.best_oa_location === "object" &&
-    record.best_oa_location !== null
-      ? (record.best_oa_location as Record<string, unknown>)
-      : null;
-  const primary =
-    record &&
-    typeof record.primary_location === "object" &&
-    record.primary_location !== null
-      ? (record.primary_location as Record<string, unknown>)
-      : null;
-  const openAccess =
-    record &&
-    typeof record.open_access === "object" &&
-    record.open_access !== null
-      ? (record.open_access as Record<string, unknown>)
-      : null;
-
-  return {
-    pdfUrl:
-      (typeof bestOa?.pdf_url === "string" && bestOa.pdf_url) ||
-      (typeof primary?.pdf_url === "string" && primary.pdf_url) ||
-      null,
-    isOpenAccess:
-      openAccess?.is_oa === true ||
-      Boolean(bestOa?.pdf_url) ||
-      Boolean(primary?.pdf_url) ||
-      Boolean(openAccess?.oa_url),
-  };
-}
 
 function createSourceRecord(input: {
   origin: "provider_expansion" | "websearch_source";
@@ -134,7 +98,12 @@ async function searchProviders(project: MasterBlueprintEngineProject) {
           continue;
         }
 
-        const access = extractOpenAlexPdfUrl(result.rawOpenAlexJson);
+        const access = extractAccessSignals({
+          rawOpenAlexJson: result.rawOpenAlexJson,
+          rawCrossrefJson: null,
+          landingPageUrl: result.landingPageUrl,
+          doi: result.doi,
+        });
         const source = createSourceRecord({
           origin: "provider_expansion",
           title: result.title,
@@ -148,6 +117,7 @@ async function searchProviders(project: MasterBlueprintEngineProject) {
           query,
           citationCount: result.citationCount ?? 0,
           rawOpenAlexJson: result.rawOpenAlexJson,
+          eligibleForFormalReference: false,
         });
         rankedCandidates.push({
           source,
@@ -175,6 +145,12 @@ async function searchProviders(project: MasterBlueprintEngineProject) {
           continue;
         }
 
+        const access = extractAccessSignals({
+          rawOpenAlexJson: result.rawOpenAlexJson,
+          rawCrossrefJson: result.rawCrossrefJson,
+          landingPageUrl: result.landingPageUrl,
+          doi: result.doi,
+        });
         const source = createSourceRecord({
           origin: "provider_expansion",
           title: result.title,
@@ -184,9 +160,11 @@ async function searchProviders(project: MasterBlueprintEngineProject) {
           venue: result.venue,
           abstract: result.abstract,
           landingPageUrl: result.landingPageUrl,
+          pdfUrl: access.pdfUrl,
           query,
           citationCount: result.citationCount ?? 0,
           rawCrossrefJson: result.rawCrossrefJson,
+          eligibleForFormalReference: false,
         });
         rankedCandidates.push({
           source,

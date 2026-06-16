@@ -200,9 +200,9 @@ export function SnapshotLanding() {
                 Ver portal
               </Link>
             </span>
-            <a className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="#solicitar">
-              Solicitar
-            </a>
+            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/workspace">
+              Iniciar sesion
+            </Link>
           </div>
         </div>
       </header>
@@ -489,33 +489,31 @@ export function SnapshotLanding() {
             <div>
               <Mail className="size-6 text-white" />
               <p className="mt-5 text-xs font-semibold uppercase tracking-[0.24em] text-white/56">
-                Solicitar acceso
+                Acceso al workspace
               </p>
               <h2 className="mt-4 font-[var(--font-heading)] text-3xl font-semibold sm:text-4xl">
-                Comparte tu tema y solicita tu snapshot.
+                Inicia sesion para generar tu snapshot.
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-white/74 sm:text-base">
-                No necesitas tenerlo perfecto. Esta experiencia existe para
-                ayudarte a ordenar una primera versión del enfoque y decidir si
-                vale la pena avanzar.
+                El acceso al producto esta limitado por ahora a cuentas
+                habilitadas previamente en el backend.
               </p>
             </div>
 
             <form
-              action="mailto:hola@simetrika.pe?subject=Quiero%20mi%20snapshot"
+              action="/workspace"
               className="rounded-[28px] border border-white/12 bg-white/10 p-6"
-              encType="text/plain"
-              method="post"
+              method="get"
             >
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/56">
-                Punto de partida
+                Autenticacion
               </p>
               <h3 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold">
-                Cuéntanos qué quieres validar
+                Entra con una cuenta habilitada
               </h3>
               <p className="mt-3 text-sm leading-7 text-white/74">
-                Con estos datos podemos entender tu caso y responderte con una
-                orientación inicial.
+                Desde el workspace podras crear proyectos, completar intake y
+                generar el blueprint con fuentes trazables.
               </p>
 
               <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -551,7 +549,7 @@ export function SnapshotLanding() {
                   className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-[var(--color-plum)] shadow-[0_18px_40px_rgba(255,255,255,0.14)]"
                   type="submit"
                 >
-                  Solicitar snapshot
+                  Ir a autenticar
                   <ArrowRight className="ml-2 size-4" />
                 </button>
                 <a

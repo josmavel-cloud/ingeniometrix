@@ -1,5 +1,6 @@
 import type { DegreeLevel } from "@prisma/client";
 
+import type { SupportedLanguage } from "@/lib/language";
 import type { ProjectPresetDegreeLevel } from "@/lib/project-presets";
 
 export const PROJECT_DEGREE_LEVEL_OPTIONS: Array<{
@@ -26,6 +27,29 @@ export function getDegreeLevelLabel(degreeLevel: DegreeLevel) {
     case "POSGRADO":
     default:
       return "Posgrado";
+  }
+}
+
+export function getDegreeLevelLabelForLanguage(
+  degreeLevel: DegreeLevel,
+  language: SupportedLanguage,
+) {
+  if (language !== "en") {
+    return getDegreeLevelLabel(degreeLevel);
+  }
+
+  switch (degreeLevel) {
+    case "PREGRADO":
+      return "Undergraduate";
+    case "ESPECIALIZACION":
+      return "Specialization";
+    case "MAESTRIA":
+      return "Master's";
+    case "DOCTORADO":
+      return "Doctorate";
+    case "POSGRADO":
+    default:
+      return "Graduate";
   }
 }
 

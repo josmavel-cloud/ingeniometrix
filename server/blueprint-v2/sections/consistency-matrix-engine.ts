@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 
 import type { LlmProvider, TextGenerationResult } from "@/llm/provider";
+import { getLanguageInstruction, normalizeLanguageCode } from "@/lib/language";
 import type { MethodGenerationContractV1 } from "@/server/blueprint-engine/quality/method-generation-contract";
 import { sentenceStyleCapitalizePublicText } from "@/server/blueprint-v2/editorial/capitalization-hygiene";
 import type { ConsistencyMatrixRow, MasterSectionDraft } from "@/server/blueprint-v2/types";
 import { clipText } from "@/server/blueprint-v2/utils";
 
 type MatrixStatus = "pass" | "warn" | "blocked";
+type MatrixLanguage = "es" | "en";
 type RowStatus = "complete" | "partial" | "blocked";
 type DerivationSource =
   | "draft"
@@ -205,6 +207,14 @@ type LlmHypothesisRepairResponse = {
 
 function createTextHash(value: string) {
   return createHash("sha1").update(value).digest("hex").slice(0, 16);
+}
+
+function matrixLanguage(value: string | null | undefined): MatrixLanguage {
+  return normalizeLanguageCode(value) === "en" ? "en" : "es";
+}
+
+function isEnglishMatrix(value: string | null | undefined) {
+  return matrixLanguage(value) === "en";
 }
 
 function normalizeForCompare(value: string | null | undefined) {
@@ -951,9 +961,16 @@ function buildTableModel(input: {
   rows: ConsistencyMatrixSpecificRow[];
   generalBlock: ConsistencyMatrixArtifact["general_block"];
   methodologyBlock: ConsistencyMatrixArtifact["methodology_block"];
+  language?: string | null;
 }): ConsistencyMatrixTableModel {
-  const publicCell = (value: string | null | undefined, fallback = "Por precisar") =>
-    sentenceStyleCapitalizePublicText(value ?? fallback, "table_cell");
+  const english = isEnglishMatrix(input.language);
+  const fallback = english ? "To be specified" : "Por precisar";
+  const notApplicable = english ? "Not applicable" : "No aplica";
+  const notApplicableFallback = english
+    ? "Not applicable / to be specified"
+    : "No aplica / por precisar";
+  const publicCell = (value: string | null | undefined, fallbackValue = fallback) =>
+    sentenceStyleCapitalizePublicText(value ?? fallbackValue, "table_cell");
   const columns = [
     { key: "codigo", label: "Código", width_pct: 6, align: "center" as const },
     { key: "interrogante", label: "Interrogante específica", width_pct: 22, align: "left" as const },
@@ -964,11 +981,27 @@ function buildTableModel(input: {
     { key: "tecnica", label: "Técnica/instrumento", width_pct: 9, align: "left" as const },
   ];
 
+  const localizedColumns = english
+    ? columns.map((column) => {
+        const labels: Record<string, string> = {
+          codigo: "Code",
+          interrogante: "Specific question",
+          objetivo: "Specific objective",
+          hipotesis: "Specific hypothesis",
+          variable: "Variable/category",
+          metodo: "Method",
+          tecnica: "Technique/instrument",
+        };
+
+        return { ...column, label: labels[column.key] ?? column.label };
+      })
+    : columns;
+
   return {
     orientation: "landscape",
-    caption: "Matriz de consistencia",
-    columns,
-    header_rows: [columns.map((column) => column.label)],
+    caption: english ? "Consistency matrix" : "Matriz de consistencia",
+    columns: localizedColumns,
+    header_rows: [localizedColumns.map((column) => column.label)],
     body_rows: [
       {
         row_id: "G",
@@ -976,13 +1009,13 @@ function buildTableModel(input: {
           "G",
           publicCell(input.generalBlock.problema_principal),
           publicCell(input.generalBlock.objetivo_general),
-          publicCell(input.generalBlock.hipotesis_general, "No aplica / por precisar"),
-          "No aplica",
+          publicCell(input.generalBlock.hipotesis_general, notApplicableFallback),
+          notApplicable,
           publicCell(input.methodologyBlock.tipo_investigacion),
           publicCell(
             input.methodologyBlock.tecnicas_recoleccion[0] ||
               input.methodologyBlock.instrumentos[0] ||
-              "Por precisar",
+              fallback,
           ),
         ],
         warnings: [],
@@ -993,13 +1026,13 @@ function buildTableModel(input: {
         row.row_id ?? `OE${index + 1}`,
         publicCell(row.interrogante_especifica),
         publicCell(row.objetivo_especifico),
-        publicCell(row.hipotesis_especifica, "No aplica / por precisar"),
+        publicCell(row.hipotesis_especifica, notApplicableFallback),
         publicCell(row.variable_o_categoria ?? row.dimension_o_criterio),
         publicCell(row.metodo_vinculado ?? input.methodologyBlock.tipo_investigacion),
         publicCell([row.tecnica, row.instrumento].filter(Boolean).join(" / ") ||
           input.methodologyBlock.tecnicas_recoleccion[0] ||
           input.methodologyBlock.instrumentos[0] ||
-          "Por precisar"),
+          fallback),
       ],
       warnings: row.warnings,
       })),
@@ -1037,7 +1070,9 @@ function buildLlmMatrixPrompt(input: {
   baseline: ConsistencyMatrixArtifact;
   drafts: MasterSectionDraft[];
   methodContract?: MethodGenerationContractV1 | null;
+  language?: string | null;
 }) {
+  const english = isEnglishMatrix(input.language);
   const methodContract = input.methodContract
     ? {
         route: input.methodContract.route,
@@ -1072,14 +1107,34 @@ function buildLlmMatrixPrompt(input: {
     method_generation_contract: methodContract,
     source_sections: buildLlmInputSections(input.drafts),
   };
+  const languageRule = english
+    ? "- write all narrative field values in clear academic English; keep the JSON property names exactly as shown"
+    : "- escribe todo en espanol academico claro";
+  const opening = english
+    ? "You are a senior academic methodologist. Your task is to write a consistency matrix for a master's research PROJECT."
+    : "Eres un metodologo academico senior. Tu tarea es redactar una matriz de consistencia para un PROYECTO de investigacion de maestria.";
+  const scopeRule = english
+    ? "Do not write a full thesis. Do not invent data, results, local validations, or citations."
+    : "No redactes una tesis completa. No inventes datos, resultados, validaciones locales ni citas.";
+  const sourceRule = english
+    ? "Use only the Step 9 content that appears in the input JSON."
+    : "Usa exclusivamente el contenido generado en Step 9 que aparece en el JSON de entrada.";
+  const alignmentRule = english
+    ? "Improve conceptual alignment between question, objective, and hypothesis."
+    : "Debes mejorar la correspondencia conceptual entre interrogante, objetivo e hipotesis.";
+  const outputRule = english
+    ? "Return ONLY valid JSON with this exact shape:"
+    : "Devuelve SOLO JSON valido con esta forma exacta:";
+  const inputLabel = english ? "Input JSON:" : "JSON de entrada:";
 
   return [
-    "Eres un metodologo academico senior. Tu tarea es redactar una matriz de consistencia para un PROYECTO de investigacion de maestria.",
-    "No redactes una tesis completa. No inventes datos, resultados, validaciones locales ni citas.",
-    "Usa exclusivamente el contenido generado en Step 9 que aparece en el JSON de entrada.",
-    "Debes mejorar la correspondencia conceptual entre interrogante, objetivo e hipotesis.",
+    opening,
+    scopeRule,
+    sourceRule,
+    alignmentRule,
+    english ? getLanguageInstruction("en") : getLanguageInstruction("es"),
     "Reglas:",
-    "- escribe todo en espanol academico claro",
+    languageRule,
     "- no incluyas Markdown, tablas Markdown, autores, anios, source_id, evidence_id ni titulos de fuentes",
     "- usa de 3 a 5 filas especificas, salvo que los drafts obliguen otra cantidad",
     "- cada fila debe tener el mismo nucleo conceptual en interrogante, objetivo e hipotesis",
@@ -1093,7 +1148,7 @@ function buildLlmMatrixPrompt(input: {
     "- si no puedes mantener concordancia uno-a-uno, declara el gap en unresolved_gaps y no inventes filas",
     "- si algo falta, usa null y registra el gap; no rellenes con fantasia",
     "",
-    "Devuelve SOLO JSON valido con esta forma exacta:",
+    outputRule,
     JSON.stringify(
       {
         general_block: {
@@ -1138,14 +1193,16 @@ function buildLlmMatrixPrompt(input: {
       2,
     ),
     "",
-    "JSON de entrada:",
+    inputLabel,
     JSON.stringify(payload, null, 2),
   ].join("\n");
 }
 
 function buildHypothesisRepairPrompt(input: {
   response: LlmConsistencyMatrixResponse;
+  language?: string | null;
 }) {
+  const english = isEnglishMatrix(input.language);
   const rows = input.response.specific_rows
     .filter((row) => !cleanMatrixField(row.hipotesis_especifica, 520))
     .map((row) => ({
@@ -1157,10 +1214,17 @@ function buildHypothesisRepairPrompt(input: {
     }));
 
   return [
-    "Completa SOLO las hipotesis faltantes de una matriz de consistencia para un proyecto de maestria.",
-    "No inventes datos, resultados, validaciones locales ni citas.",
-    "Redacta hipotesis de trabajo prudentes y preliminares, alineadas con la interrogante y el objetivo de la misma fila.",
-    "Devuelve SOLO JSON valido con esta forma exacta:",
+    english
+      ? "Complete ONLY the missing hypotheses in a consistency matrix for a master's research project."
+      : "Completa SOLO las hipotesis faltantes de una matriz de consistencia para un proyecto de maestria.",
+    english
+      ? "Do not invent data, results, local validations, or citations."
+      : "No inventes datos, resultados, validaciones locales ni citas.",
+    english
+      ? "Write prudent preliminary working hypotheses aligned with the question and objective in the same row."
+      : "Redacta hipotesis de trabajo prudentes y preliminares, alineadas con la interrogante y el objetivo de la misma fila.",
+    english ? getLanguageInstruction("en") : getLanguageInstruction("es"),
+    english ? "Return ONLY valid JSON with this exact shape:" : "Devuelve SOLO JSON valido con esta forma exacta:",
     JSON.stringify(
       {
         repairs: [
@@ -1174,7 +1238,7 @@ function buildHypothesisRepairPrompt(input: {
       2,
     ),
     "",
-    "Filas a reparar:",
+    english ? "Rows to repair:" : "Filas a reparar:",
     JSON.stringify(rows, null, 2),
   ].join("\n");
 }
@@ -1459,6 +1523,7 @@ function buildLlmArtifact(input: {
   prompt: string;
   model: string;
   methodContract?: MethodGenerationContractV1 | null;
+  language?: string | null;
 }) {
   const sanitizedRaw = sanitizeLlmResponse(input.response);
   const sanitized = {
@@ -1585,6 +1650,7 @@ function buildLlmArtifact(input: {
       rows: sanitized.specific_rows,
       generalBlock: sanitized.general_block,
       methodologyBlock: sanitized.methodology_block,
+      language: input.language,
     }),
     legacy_rows: legacyRows,
   } satisfies ConsistencyMatrixArtifact;
@@ -1592,6 +1658,7 @@ function buildLlmArtifact(input: {
 
 export function buildConsistencyMatrixArtifactFromSections(
   drafts: MasterSectionDraft[],
+  options?: { language?: string | null },
 ): ConsistencyMatrixArtifact {
   const generalBlock = extractGeneralBlock(drafts);
   const objectives = getSpecificObjectives(drafts);
@@ -1631,7 +1698,12 @@ export function buildConsistencyMatrixArtifactFromSections(
     variables_block: variablesBlock,
     methodology_block: methodologyBlock,
     validation,
-    table_model: buildTableModel({ rows, generalBlock, methodologyBlock }),
+    table_model: buildTableModel({
+      rows,
+      generalBlock,
+      methodologyBlock,
+      language: options?.language,
+    }),
     legacy_rows: legacyRows,
   };
 }
@@ -1641,13 +1713,17 @@ export async function buildConsistencyMatrixArtifactFromSectionsWithLlm(input: {
   provider: LlmProvider;
   model?: string | null;
   methodContract?: MethodGenerationContractV1 | null;
+  language?: string | null;
 }): Promise<ConsistencyMatrixArtifact> {
   const sourceDrafts = input.drafts.filter((draft) => draft.section_key !== "consistency_matrix");
-  const baseline = buildConsistencyMatrixArtifactFromSections(sourceDrafts);
+  const baseline = buildConsistencyMatrixArtifactFromSections(sourceDrafts, {
+    language: input.language,
+  });
   const prompt = buildLlmMatrixPrompt({
     baseline,
     drafts: sourceDrafts,
     methodContract: input.methodContract ?? null,
+    language: input.language,
   });
   const model = input.model?.trim() || process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini";
   let detailedResult = await input.provider.generateTextDetailed({
@@ -1659,7 +1735,10 @@ export async function buildConsistencyMatrixArtifactFromSectionsWithLlm(input: {
   const prompts = [prompt];
 
   if (response.specific_rows.some((row) => !cleanMatrixField(row.hipotesis_especifica, 520))) {
-    const repairPrompt = buildHypothesisRepairPrompt({ response });
+    const repairPrompt = buildHypothesisRepairPrompt({
+      response,
+      language: input.language,
+    });
     const repairResult = await input.provider.generateTextDetailed({
       prompt: repairPrompt,
       model,
@@ -1680,6 +1759,7 @@ export async function buildConsistencyMatrixArtifactFromSectionsWithLlm(input: {
     prompt: prompts.join("\n\n--- HYPOTHESIS_REPAIR ---\n\n"),
     model,
     methodContract: input.methodContract ?? null,
+    language: input.language,
   });
 }
 

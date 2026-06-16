@@ -20,7 +20,7 @@ import {
   resolveCrossrefTitle,
   searchCrossrefWorks,
 } from "./crossref-client";
-import { extractAccessSignals, verifyPdfAccess } from "./reference-access";
+import { extractAccessSignals } from "./reference-access";
 import {
   ensureReferenceTranslationsForLanguage,
   getCachedTranslation,
@@ -352,6 +352,7 @@ export async function searchProjectReferences(
     const resolvedLandingPageUrl = crossrefMetadata?.URL ?? result.landingPageUrl;
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: result.rawOpenAlexJson,
+      rawCrossrefJson: crossrefMetadata,
       landingPageUrl: resolvedLandingPageUrl,
       doi: result.doi,
     });
@@ -540,7 +541,7 @@ export async function listProjectReferences(userId: string, projectId: string) {
     prisma.projectReference.findMany({
       where: { projectId },
       orderBy: [{ relevanceScore: "desc" }, { createdAt: "desc" }],
-      take: MAX_SELECTED_REFERENCES,
+      take: MAX_SELECTED_REFERENCES * 5,
       include: {
         reference: true,
       },
@@ -570,13 +571,14 @@ export async function listProjectReferences(userId: string, projectId: string) {
           .map((item) => referencesById.get(item.referenceId))
           .filter((item): item is (typeof references)[number] => Boolean(item))
       : references;
+  const visibleReferences = orderedReferences.slice(0, MAX_SELECTED_REFERENCES);
 
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,
     projectLanguage: project.language,
   });
   const translationResult = await ensureReferenceTranslationsForLanguage({
-    references: orderedReferences.map((item) => ({
+    references: visibleReferences.map((item) => ({
       id: item.reference.id,
       title: item.reference.title,
       abstract: item.reference.abstract,
@@ -585,13 +587,13 @@ export async function listProjectReferences(userId: string, projectId: string) {
     targetLanguage: languageContext.activeLanguage,
   });
 
-  return Promise.all(orderedReferences.map(async (item) => {
+  return Promise.all(visibleReferences.map(async (item) => {
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: item.reference.rawOpenAlexJson,
+      rawCrossrefJson: item.reference.rawCrossrefJson,
       landingPageUrl: item.reference.landingPageUrl,
       doi: item.reference.doi,
     });
-    const pdfAccessible = await verifyPdfAccess(accessSignals.pdfUrl);
     const sourceLanguage =
       translationResult.sourceLanguages.get(item.reference.id) ??
       resolveReferenceSourceLanguage({
@@ -609,6 +611,8 @@ export async function listProjectReferences(userId: string, projectId: string) {
       : null;
     const effectiveSelected = item.selected || suggestedSelectedOrder !== null;
     const effectiveSelectedOrder = item.selected ? item.selectedOrder : suggestedSelectedOrder;
+    const pdfUrl = snapshotEntry?.pdfUrl ?? accessSignals.pdfUrl;
+    const pdfAccessible = snapshotEntry?.pdfAccessible ?? false;
 
     return {
       ...item,
@@ -625,7 +629,7 @@ export async function listProjectReferences(userId: string, projectId: string) {
         hasAutoTranslation: Boolean(
           cachedTranslation?.translatedTitle || cachedTranslation?.translatedAbstract,
         ),
-        pdfUrl: accessSignals.hasPdfUrl ? accessSignals.pdfUrl : null,
+        pdfUrl,
         pdfAccessible,
       },
     };
@@ -648,7 +652,7 @@ export async function updateSelectedProjectReferences(
     throw new Error("Proyecto no encontrado.");
   }
 
-  await prisma.$transaction(async (tx) => {
+  const selectedCount = await prisma.$transaction(async (tx) => {
     await tx.projectReference.updateMany({
       where: { projectId },
       data: {
@@ -661,7 +665,7 @@ export async function updateSelectedProjectReferences(
       await tx.projectReference.updateMany({
         where: {
           projectId,
-          referenceId,
+          OR: [{ referenceId }, { id: referenceId }],
         },
         data: {
           selected: true,
@@ -670,16 +674,24 @@ export async function updateSelectedProjectReferences(
       });
     }
 
+    const selectedCount = await tx.projectReference.count({
+      where: {
+        projectId,
+        selected: true,
+      },
+    });
+
     await tx.project.update({
       where: { id: projectId },
       data: {
         status:
-          selectedReferenceIds.length >= MIN_SELECTED_REFERENCES &&
-          selectedReferenceIds.length <= MAX_SELECTED_REFERENCES
+          selectedCount >= MIN_SELECTED_REFERENCES && selectedCount <= MAX_SELECTED_REFERENCES
             ? ProjectStatus.SOURCES_SELECTED
             : ProjectStatus.SOURCES_REVIEW,
       },
     });
+
+    return selectedCount;
   });
 
   await logAuditEvent({
@@ -690,7 +702,7 @@ export async function updateSelectedProjectReferences(
     projectId,
     payloadJson: {
       selectedReferenceIds,
-      selectedCount: selectedReferenceIds.length,
+      selectedCount,
       selectedReferences: (
         await prisma.projectReference.findMany({
           where: {
@@ -705,6 +717,7 @@ export async function updateSelectedProjectReferences(
       ).map((item) => {
         const accessSignals = extractAccessSignals({
           rawOpenAlexJson: item.reference.rawOpenAlexJson,
+          rawCrossrefJson: item.reference.rawCrossrefJson,
           landingPageUrl: item.reference.landingPageUrl,
           doi: item.reference.doi,
         });

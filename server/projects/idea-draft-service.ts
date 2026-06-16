@@ -1,6 +1,7 @@
 import { DegreeLevel } from "@prisma/client";
 
 import { getPresetDegreeLevelForProject } from "@/lib/degree-levels";
+import { APP_DEFAULT_LANGUAGE, normalizeLanguageCode } from "@/lib/language";
 import { buildProjectPresetSuggestionEntries, normalizeSearchText } from "@/lib/topic-suggestion-scoring";
 import {
   buildUniversityResearchContext,
@@ -16,6 +17,7 @@ type GenerateIdeaDraftsInput = {
   degreeLevel: DegreeLevel;
   university: ProjectUniversityCode;
   program: string;
+  language?: string | null;
   templateKey: ProjectTemplateKey;
   topicAreaId?: string | null;
   topicAreaLabel?: string | null;
@@ -33,7 +35,11 @@ function buildFallbackSeed(input: GenerateIdeaDraftsInput) {
     return input.seedText.trim();
   }
 
-  return `Idea general de investigacion aplicada en ${input.topicAreaLabel ?? "un area academica de posgrado"}`;
+  const language = normalizeLanguageCode(input.language) ?? APP_DEFAULT_LANGUAGE;
+
+  return language === "en"
+    ? `General applied research idea in ${input.topicAreaLabel ?? "an academic graduate area"}`
+    : `Idea general de investigacion aplicada en ${input.topicAreaLabel ?? "un area academica de posgrado"}`;
 }
 
 export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
@@ -47,6 +53,7 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
   });
   const areaLabel = resolvedArea.topicAreaLabel ?? input.topicAreaLabel ?? null;
   const universityContext = buildUniversityResearchContext(input.university);
+  const language = normalizeLanguageCode(input.language) ?? APP_DEFAULT_LANGUAGE;
   const existingTitles = Array.isArray(input.existingTitles)
     ? input.existingTitles
     : [];
@@ -57,6 +64,7 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
       universityContext: universityContext.contextSummary,
       degreeLevel: input.degreeLevel,
       program: input.program,
+      language,
       areaLabel,
       seedText,
       existingTitles,
@@ -79,7 +87,11 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
       (entry) =>
         ({
           title: entry.preset.title,
-          rationale: entry.reasons[0] ?? "Idea breve relacionada con tu area.",
+          rationale:
+            entry.reasons[0] ??
+            (language === "en"
+              ? "Brief idea related to your area."
+              : "Idea breve relacionada con tu area."),
         }) satisfies IdeaDraft,
     );
     const normalizedExistingTitles = new Set(
@@ -95,16 +107,22 @@ export async function generateIdeaDrafts(input: GenerateIdeaDraftsInput) {
         : [
             {
               title: areaLabel
-                ? `Propuesta general sobre ${areaLabel.toLowerCase()} en contexto peruano`
+                ? language === "en"
+                  ? `General proposal about ${areaLabel.toLowerCase()} in the Peruvian context`
+                  : `Propuesta general sobre ${areaLabel.toLowerCase()} en contexto peruano`
                 : seedText,
               rationale:
-                "Idea base generada como respaldo para que puedas arrancar y editarla manualmente.",
+                language === "en"
+                  ? "Fallback base idea so you can start and edit it manually."
+                  : "Idea base generada como respaldo para que puedas arrancar y editarla manualmente.",
             },
           ];
     const generatedIdea = allIdeas[0] ?? {
       title: seedText,
       rationale:
-        "Idea base generada como respaldo para que puedas arrancar y editarla manualmente.",
+        language === "en"
+          ? "Fallback base idea so you can start and edit it manually."
+          : "Idea base generada como respaldo para que puedas arrancar y editarla manualmente.",
     };
     const relatedIdeas = allIdeas.slice(1, 5);
 

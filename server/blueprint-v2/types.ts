@@ -1,6 +1,7 @@
 import type { Intake, Project, ProjectReference, Reference } from "@prisma/client";
 
 import type { ResearchBlueprintRecord } from "@/server/blueprint/blueprint-types";
+import type { ConsistencyMatrixArtifact } from "@/server/blueprint-v2/sections/consistency-matrix-engine";
 
 export type MasterBlueprintEngineProject = Project & {
   intake: Intake;
@@ -718,6 +719,7 @@ export type MasterBlueprintPackage = {
   section_prompt_plan: SectionPromptPlan;
   master_section_drafts: MasterSectionDraft[];
   consistency_matrix: ConsistencyMatrixRow[];
+  consistency_matrix_artifact: ConsistencyMatrixArtifact;
   provenance_report: DocumentProvenanceReport;
   validation_report: MasterBlueprintValidationReport;
   legacy_blueprint: ResearchBlueprintRecord;

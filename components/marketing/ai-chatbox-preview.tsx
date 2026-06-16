@@ -56,10 +56,9 @@ const settings = [
 export function AiChatboxPreview() {
   return (
     <form
-      action="mailto:hola@simetrika.pe?subject=Idea%20inicial%20para%20Ingeniometrix"
+      action="/workspace"
       className="rounded-[32px] border border-[rgba(74,58,97,0.12)] bg-white p-3 shadow-[0_24px_70px_rgba(23,19,31,0.08)]"
-      encType="text/plain"
-      method="post"
+      method="get"
     >
       <div className="overflow-hidden rounded-[26px] border border-[rgba(74,58,97,0.08)] bg-[#fdfcff]">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[rgba(74,58,97,0.08)] bg-white px-4 py-4 sm:px-5">
@@ -208,7 +207,7 @@ export function AiChatboxPreview() {
                   className="inline-flex items-center justify-center rounded-full bg-[var(--color-plum)] px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(52,20,95,0.18)]"
                   type="submit"
                 >
-                  Solicitar snapshot
+                  Iniciar sesion
                   <SendHorizontal className="ml-2 size-4" />
                 </button>
               </div>

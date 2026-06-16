@@ -31,6 +31,7 @@ export type ReferenceSearchV2Metadata = {
   planSource: "llm" | "fallback";
   normalizedTopic: string;
   intentSummary: string;
+  providerWarnings?: string[];
   keywordGroups: {
     necessary: ReferenceKeywordGroup[];
     complementary: ReferenceKeywordGroup[];
@@ -73,6 +74,8 @@ export type ProjectReferenceSearchSnapshot = {
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
     suggestedSelectedOrder: number | null;
+    pdfUrl?: string | null;
+    pdfAccessible?: boolean;
   }>;
 };
 
@@ -687,6 +690,10 @@ function buildDedupKey(result: SearchCandidate) {
     : `title:${normalizeTitle(result.title)}:${result.year ?? "na"}`;
 }
 
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Error desconocido.";
+}
+
 function buildSuggestedSelectionOrders(input: {
   baseSelectedReferenceIds: string[];
   previousProjectReferenceIds: Set<string>;
@@ -806,15 +813,33 @@ export async function searchProjectReferencesV2(
     openAlex: 0,
     crossref: 0,
   };
+  const providerWarnings: string[] = [];
+  let openAlexUnavailable = false;
 
   for (const queryStage of queryStages) {
     for (const attemptQuery of queryStage.queries) {
       attemptedQueries.push(attemptQuery);
-      const attemptResults = await searchOpenAlexWorks(attemptQuery);
+      let attemptResults: Awaited<ReturnType<typeof searchOpenAlexWorks>> = [];
+
+      try {
+        attemptResults = await searchOpenAlexWorks(attemptQuery);
+      } catch (error) {
+        providerWarnings.push(`OpenAlex (${attemptQuery}): ${getErrorMessage(error)}`);
+        openAlexUnavailable = true;
+      }
+
       attemptSummaries.push({
         query: attemptQuery,
         resultCount: attemptResults.length,
       });
+
+      if (attemptResults.length === 0) {
+        if (openAlexUnavailable) {
+          break;
+        }
+
+        continue;
+      }
 
       for (const result of attemptResults) {
         const candidate: SearchCandidate = {
@@ -835,9 +860,13 @@ export async function searchProjectReferencesV2(
       if (aggregatedResults.size >= aggregationTarget) {
         break;
       }
+
+      if (openAlexUnavailable) {
+        break;
+      }
     }
 
-    if (aggregatedResults.size >= aggregationTarget) {
+    if (aggregatedResults.size >= aggregationTarget || openAlexUnavailable) {
       break;
     }
   }
@@ -845,7 +874,17 @@ export async function searchProjectReferencesV2(
   if (aggregatedResults.size < desiredTotal) {
     for (const queryStage of [...queryStages].reverse()) {
       for (const attemptQuery of [...queryStage.queries].reverse()) {
-        const crossrefResults = await searchCrossrefWorks(attemptQuery);
+        let crossrefResults: Awaited<ReturnType<typeof searchCrossrefWorks>> = [];
+
+        try {
+          crossrefResults = await searchCrossrefWorks(attemptQuery);
+        } catch (error) {
+          providerWarnings.push(`Crossref (${attemptQuery}): ${getErrorMessage(error)}`);
+        }
+
+        if (crossrefResults.length === 0) {
+          continue;
+        }
 
         for (const result of crossrefResults) {
           const candidate: SearchCandidate = {
@@ -872,6 +911,14 @@ export async function searchProjectReferencesV2(
         break;
       }
     }
+  }
+
+  if (aggregatedResults.size === 0) {
+    throw new Error(
+      providerWarnings.length > 0
+        ? "No se pudieron recuperar fuentes desde OpenAlex ni Crossref en este intento."
+        : "No se encontraron fuentes para este intake.",
+    );
   }
 
   const candidatePool = Array.from(aggregatedResults.values()).slice(0, aggregationTarget);
@@ -909,6 +956,7 @@ export async function searchProjectReferencesV2(
     const resolvedLandingPageUrl = crossrefMetadata?.URL ?? result.landingPageUrl;
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: result.rawOpenAlexJson,
+      rawCrossrefJson: crossrefMetadata,
       landingPageUrl: resolvedLandingPageUrl,
       doi: result.doi,
     });
@@ -953,6 +1001,8 @@ export async function searchProjectReferencesV2(
     referenceId: string;
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
+    pdfUrl: string | null;
+    pdfAccessible: boolean;
   }> = [];
 
   for (const ranked of selectedCandidates) {
@@ -1049,6 +1099,8 @@ export async function searchProjectReferencesV2(
       referenceId: reference.id,
       relevanceScore: ranked.score,
       scoreBreakdown: ranked.scoreBreakdown,
+      pdfUrl: ranked.pdfUrl,
+      pdfAccessible: ranked.pdfAccessible,
     });
   }
 
@@ -1080,12 +1132,17 @@ export async function searchProjectReferencesV2(
     totalResults: persistedResults.length,
     providerBreakdown,
     baseSelectedReferenceIds,
-    metadata: searchMetadata,
+    metadata: {
+      ...searchMetadata,
+      providerWarnings: providerWarnings.slice(0, 8),
+    },
     references: persistedResults.map((item) => ({
       referenceId: item.referenceId,
       relevanceScore: item.relevanceScore,
       scoreBreakdown: item.scoreBreakdown,
       suggestedSelectedOrder: suggestedSelectionOrders.get(item.referenceId) ?? null,
+      pdfUrl: item.pdfUrl,
+      pdfAccessible: item.pdfAccessible,
     })),
   };
 
@@ -1108,6 +1165,7 @@ export async function searchProjectReferencesV2(
       updatedCount,
       skippedCount,
       providerBreakdown,
+      providerWarnings: providerWarnings.slice(0, 8),
       searchSnapshot,
     },
   });

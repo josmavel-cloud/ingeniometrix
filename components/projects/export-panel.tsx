@@ -1,5 +1,8 @@
 import { Download, FileArchive, FileBadge2 } from "lucide-react";
 
+import type { SupportedLanguage } from "@/lib/language";
+import { getProjectUiCopy } from "@/lib/project-ui-copy";
+
 type ExportPanelProps = {
   projectId: string;
   projectStatus: string;
@@ -10,38 +13,8 @@ type ExportPanelProps = {
   latestBlueprintVersionNumber: number | null;
   latestBlueprintCreatedAt: string | null;
   latestBlueprintReferenceCount: number;
+  language: SupportedLanguage;
 };
-
-const exportFormats = [
-  {
-    formatKey: "docx",
-    title: "DOCX",
-    description: "Plan editable para revision academica y siguientes iteraciones.",
-    toneClassName: "brand-card-lilac",
-    readyWhen: "Blueprint disponible",
-  },
-  {
-    formatKey: "bibtex",
-    title: "BibTeX",
-    description: "Salida bibliografica para flujos tecnicos y gestores de referencias.",
-    toneClassName: "brand-card-gold",
-    readyWhen: "Fuentes seleccionadas",
-  },
-  {
-    formatKey: "ris",
-    title: "RIS",
-    description: "Intercambio simple con gestores bibliograficos compatibles.",
-    toneClassName: "brand-card-mint",
-    readyWhen: "Fuentes seleccionadas",
-  },
-  {
-    formatKey: "evidence",
-    title: "evidence_log.json",
-    description: "Registro trazable de fuentes, decisiones y supuestos del proceso.",
-    toneClassName: "brand-card-blush",
-    readyWhen: "Trazabilidad consolidada",
-  },
-];
 
 export function ExportPanel({
   projectId,
@@ -53,7 +26,9 @@ export function ExportPanel({
   latestBlueprintVersionNumber,
   latestBlueprintCreatedAt,
   latestBlueprintReferenceCount,
+  language,
 }: ExportPanelProps) {
+  const copy = getProjectUiCopy(language).export;
   const exportReady = projectStatus === "EXPORT_READY";
   const canPrepare = hasBlueprint || exportReady;
   const baseExportUrl =
@@ -66,30 +41,62 @@ export function ExportPanel({
     ris: baseExportUrl ? `${baseExportUrl}/ris` : null,
     evidence: baseExportUrl ? `${baseExportUrl}/evidence-log` : null,
   };
+  const exportFormats = [
+    {
+      formatKey: "docx",
+      title: copy.formats.docx[0],
+      description: copy.formats.docx[1],
+      toneClassName: "brand-card-lilac",
+      readyWhen: copy.formats.docx[2],
+    },
+    {
+      formatKey: "bibtex",
+      title: copy.formats.bibtex[0],
+      description: copy.formats.bibtex[1],
+      toneClassName: "brand-card-gold",
+      readyWhen: copy.formats.bibtex[2],
+    },
+    {
+      formatKey: "ris",
+      title: copy.formats.ris[0],
+      description: copy.formats.ris[1],
+      toneClassName: "brand-card-mint",
+      readyWhen: copy.formats.ris[2],
+    },
+    {
+      formatKey: "evidence",
+      title: copy.formats.evidence[0],
+      description: copy.formats.evidence[1],
+      toneClassName: "brand-card-blush",
+      readyWhen: copy.formats.evidence[2],
+    },
+  ];
+  const blueprintReadiness = hasBlueprint
+    ? copy.readiness.blueprintReady(latestBlueprintVersionNumber, latestBlueprintCreatedAt)
+    : copy.readiness.blueprintMissing;
+  const downloadsReadiness = Object.values(exportDownloadUrls).every(Boolean)
+    ? copy.readiness.downloadsReady
+    : copy.readiness.downloadsMissing;
   const readinessItems = [
     {
-      label: "Base estructurada",
+      label: copy.readiness.intake[0],
       complete: hasIntakeMinimum,
-      description: "Tema, problema y poblacion ya dejan al proyecto en una base utilizable.",
+      description: copy.readiness.intake[1],
     },
     {
-      label: "Fuentes seleccionadas",
+      label: copy.readiness.sources(selectedReferenceCount)[0],
       complete: selectedReferenceCount > 0,
-      description: `Actualmente hay ${selectedReferenceCount} fuentes marcadas dentro del proyecto.`,
+      description: copy.readiness.sources(selectedReferenceCount)[1],
     },
     {
-      label: "Blueprint disponible",
+      label: blueprintReadiness[0],
       complete: hasBlueprint,
-      description: hasBlueprint
-        ? `Version ${latestBlueprintVersionNumber ?? "-"} generada${latestBlueprintCreatedAt ? ` el ${latestBlueprintCreatedAt}` : ""}.`
-        : "Todavia no existe una version generada para preparar las salidas.",
+      description: blueprintReadiness[1],
     },
     {
-      label: "Descarga conectada",
+      label: downloadsReadiness[0],
       complete: Object.values(exportDownloadUrls).every(Boolean),
-      description: Object.values(exportDownloadUrls).every(Boolean)
-        ? "DOCX, BibTeX, RIS y evidence_log ya pueden descargarse desde esta misma etapa."
-        : "Las salidas documentales aun no estan listas para descargarse.",
+      description: downloadsReadiness[1],
     },
   ];
 
@@ -99,13 +106,13 @@ export function ExportPanel({
         <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
             <FileArchive className="size-3.5 text-[var(--color-coral)]" />
-            Exportacion
+            {copy.kicker}
           </div>
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Descarga tus archivos.
+            {copy.title}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Cuando el blueprint esta listo, puedes exportar el documento y los archivos de soporte.
+            {copy.body}
           </p>
         </div>
 
@@ -115,7 +122,7 @@ export function ExportPanel({
             href={exportDownloadUrls.docx}
           >
             <Download className="mr-2 inline size-4" />
-            Descargar DOCX
+            {copy.downloadDocx}
           </a>
         ) : (
           <button
@@ -124,7 +131,7 @@ export function ExportPanel({
             type="button"
           >
             <Download className="mr-2 size-4" />
-            Proximamente
+            {copy.soon}
           </button>
         )}
       </div>
@@ -137,44 +144,44 @@ export function ExportPanel({
         }`}
       >
         {canPrepare
-          ? "El blueprint ya esta listo para exportar."
-          : "Primero necesitas una version de blueprint para activar las descargas."}
+          ? copy.ready
+          : copy.notReady}
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <article className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.72)]">
-            Fuentes elegidas
+            {copy.selectedSources}
           </p>
           <p className="mt-2 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
             {selectedReferenceCount}
           </p>
           <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-            Referencias seleccionadas para sostener el flujo de salida.
+            {copy.selectedSourcesBody}
           </p>
         </article>
 
         <article className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.72)]">
-            Version activa
+            {copy.activeVersion}
           </p>
           <p className="mt-2 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
             {latestBlueprintVersionNumber ?? "-"}
           </p>
           <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-            Ultimo blueprint listo para convertirse en salida documental.
+            {copy.activeVersionBody}
           </p>
         </article>
 
         <article className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-5">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.72)]">
-            Trazabilidad visible
+            {copy.traceability}
           </p>
           <p className="mt-2 font-[var(--font-heading)] text-3xl font-semibold text-[var(--color-ink)]">
             {latestBlueprintReferenceCount}
           </p>
           <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-            Referencias usadas en la version mas reciente del blueprint.
+            {copy.traceabilityBody}
           </p>
         </article>
       </div>
@@ -195,7 +202,7 @@ export function ExportPanel({
                   {format.description}
                 </p>
                 <p className="mt-3 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.48)]">
-                  Se habilita cuando: {format.readyWhen}
+                  {copy.enabledWhen}: {format.readyWhen}
                 </p>
               </div>
               <div className="rounded-full bg-white/58 p-3">
@@ -209,11 +216,11 @@ export function ExportPanel({
                   className="inline-flex rounded-full border border-[rgba(24,169,153,0.18)] bg-[rgba(213,247,239,0.86)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#127b6f]"
                   href={downloadUrl}
                 >
-                  Descargar ahora
+                  {getProjectUiCopy(language).action.downloadNow}
                 </a>
               ) : (
                 <span className="inline-flex rounded-full border border-[rgba(74,58,97,0.12)] bg-white/72 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
-                  Esperando blueprint
+                  {copy.waiting}
                 </span>
               )}
             </div>
@@ -224,7 +231,7 @@ export function ExportPanel({
 
       <details className="mt-6 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-          Ver estado de exportacion
+          {copy.status}
         </summary>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {readinessItems.map((item) => (
@@ -241,7 +248,7 @@ export function ExportPanel({
                       : "border-[rgba(74,58,97,0.12)] bg-[rgba(244,241,248,0.9)] text-[var(--color-muted)]"
                   }`}
                 >
-                  {item.complete ? "Listo" : "Pendiente"}
+                  {item.complete ? copy.complete : copy.pending}
                 </span>
               </div>
               <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">

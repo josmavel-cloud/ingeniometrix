@@ -1,6 +1,7 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
 import blueprintAntecedentSynthesisSchema from "@/ai/schemas/blueprint-antecedent-synthesis.schema.json";
+import { getLanguageInstruction } from "@/lib/language";
 import type { LlmProvider } from "@/llm/provider";
 
 import { generateStructuredObjectWithTextFallback } from "./blueprint-llm-json";
@@ -18,7 +19,7 @@ function truncate(value: string | null | undefined, maxLength: number) {
 }
 
 function buildAntecedentPrompt(input: {
-  project: Pick<Project, "title" | "degreeLevel" | "university" | "program">;
+  project: Pick<Project, "title" | "degreeLevel" | "university" | "program" | "language">;
   intake: Pick<
     Intake,
     | "topic"
@@ -33,6 +34,7 @@ function buildAntecedentPrompt(input: {
   }>;
   referenceInsights: BlueprintReferenceInsight[];
 }) {
+  const languageInstruction = getLanguageInstruction(input.project.language);
   const referencesBlock = input.selectedReferences
     .slice(0, 7)
     .map((item, index) => {
@@ -67,7 +69,9 @@ function buildAntecedentPrompt(input: {
     .join("\n\n");
 
   return `
-Eres Ingeniometrix. Debes sintetizar antecedentes recientes para fortalecer un blueprint de investigacion en espanol.
+Eres Ingeniometrix. Debes sintetizar antecedentes recientes para fortalecer un blueprint de investigacion.
+${languageInstruction}
+Mantén titulos de referencias, DOI y nombres propios tal como fueron recuperados.
 
 Objetivo:
 - identificar hasta 5 antecedentes utiles dentro de las referencias seleccionadas
@@ -81,7 +85,7 @@ Reglas:
 - si hay soluciones tecnicas descritas, resumela sin exagerar
 - si una referencia no deja claro el vacio pendiente, formula una inferencia prudente basada en limitation_signal y future_line_signal
 - no inventes resultados ni citas nuevas
-- responde en espanol
+- responde en el idioma solicitado arriba
 
 Proyecto:
 - title: ${input.project.title}
@@ -116,7 +120,7 @@ Devuelve:
 
 export async function generateBlueprintAntecedentSynthesis(params: {
   provider: LlmProvider;
-  project: Pick<Project, "title" | "degreeLevel" | "university" | "program">;
+  project: Pick<Project, "title" | "degreeLevel" | "university" | "program" | "language">;
   intake: Pick<
     Intake,
     | "topic"

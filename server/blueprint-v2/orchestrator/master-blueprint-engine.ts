@@ -1,4 +1,5 @@
 import { loadBlueprintTemplateContext } from "@/server/blueprint/blueprint-engine";
+import { getConfiguredLlmProvider } from "@/llm";
 import { pushBlueprintRunStage } from "@/server/blueprint-v2/orchestrator/blueprint-run-manager";
 import { buildLegacyBlueprintFromMaster } from "@/server/blueprint-v2/compose/blueprint-composition-engine";
 import { deriveUniversityBlueprint } from "@/server/blueprint-v2/derivation/university-blueprint-derivation-engine";
@@ -6,7 +7,10 @@ import { buildEvidenceLedger } from "@/server/blueprint-v2/evidence/evidence-led
 import { runEvidenceExtractionEngine } from "@/server/blueprint-v2/evidence/evidence-extraction-engine";
 import { runPdfAvailabilityAndDownloadEngine } from "@/server/blueprint-v2/evidence/pdf-availability-and-download-engine";
 import { planMasterTemplateSectionPrompts } from "@/server/blueprint-v2/prompts/section-prompt-planner";
-import { buildConsistencyMatrixFromSections } from "@/server/blueprint-v2/sections/consistency-matrix-engine";
+import {
+  buildConsistencyMatrixArtifactFromSections,
+  buildConsistencyMatrixArtifactFromSectionsWithLlm,
+} from "@/server/blueprint-v2/sections/consistency-matrix-engine";
 import { runSectionGenerationEngine } from "@/server/blueprint-v2/sections/section-generation-engine";
 import { runEvidenceAcquisitionEngine } from "@/server/blueprint-v2/source/evidence-acquisition-engine";
 import { runSourceIntakeGate } from "@/server/blueprint-v2/source/source-intake-gate";
@@ -157,15 +161,59 @@ export async function runMasterBlueprintEngine(input: {
     label: "Construyendo matriz de consistencia",
     progress: 76,
   });
-  const consistencyMatrix = buildConsistencyMatrixFromSections(drafts);
+  const consistencyMatrixArtifact =
+    await buildConsistencyMatrixArtifactFromSectionsWithLlm({
+      drafts,
+      provider: getConfiguredLlmProvider(),
+      language: input.project.language,
+    }).catch(() =>
+      buildConsistencyMatrixArtifactFromSections(drafts, {
+        language: input.project.language,
+      }),
+    );
+  const consistencyMatrix = consistencyMatrixArtifact.legacy_rows;
+  const matrixIsEnglish = input.project.language === "en";
+  const matrixLabels = matrixIsEnglish
+    ? {
+        title: "Consistency matrix",
+        question: "Question",
+        objective: "Objective",
+        hypothesis: "Hypothesis",
+        method: "Method",
+        technique: "Technique",
+        missing: "To be specified",
+        prompt:
+          "Generated at the end of the run from the already consolidated objectives, questions, methodology, variables/categories, and techniques.",
+      }
+    : {
+        title: "Matriz de consistencia",
+        question: "Interrogante",
+        objective: "Objetivo",
+        hypothesis: "Hipotesis",
+        method: "Metodo",
+        technique: "Tecnica",
+        missing: "Por precisar",
+        prompt:
+          "Generada al final del run a partir de objetivos, preguntas, metodologia, variables/categorias y tecnicas ya consolidadas.",
+      };
   const matrixDraft: MasterSectionDraft = {
     section_key: "consistency_matrix",
-    title: "Matriz de consistencia",
+    title: matrixLabels.title,
     phase: "matrix",
-    content: consistencyMatrix
+    content: consistencyMatrixArtifact.specific_rows
       .map(
-        (row, index) =>
-          `${index + 1}. Objetivo: ${row.objective} | Pregunta: ${row.question} | Metodo: ${row.method} | Tecnica: ${row.technique}`,
+        (row) =>
+          `${row.row_id ?? `OE${row.index}`}. ${matrixLabels.question}: ${
+            row.interrogante_especifica ?? matrixLabels.missing
+          } | ${matrixLabels.objective}: ${
+            row.objetivo_especifico ?? matrixLabels.missing
+          } | ${matrixLabels.hypothesis}: ${
+            row.hipotesis_especifica ?? matrixLabels.missing
+          } | ${matrixLabels.method}: ${
+            row.metodo_vinculado ?? matrixLabels.missing
+          } | ${matrixLabels.technique}: ${
+            row.tecnica ?? matrixLabels.missing
+          }`,
       )
       .join("\n"),
     content_kind: "table",
@@ -185,9 +233,8 @@ export async function runMasterBlueprintEngine(input: {
     evidence_snippet_ids: Array.from(
       new Set(drafts.flatMap((draft) => draft.evidence_snippet_ids)),
     ),
-    warnings: [],
-    prompt:
-      "Generada al final del run a partir de objetivos, preguntas, metodologia y tecnicas ya consolidadas.",
+    warnings: consistencyMatrixArtifact.validation.warnings,
+    prompt: matrixLabels.prompt,
   };
   const draftsWithMatrix = [
     ...drafts,
@@ -256,6 +303,7 @@ export async function runMasterBlueprintEngine(input: {
       section_prompt_plan: promptPlan,
       master_section_drafts: draftsWithMatrix,
       consistency_matrix: consistencyMatrix,
+      consistency_matrix_artifact: consistencyMatrixArtifact,
       provenance_report: provenanceReport,
       validation_report: validationReport,
       legacy_blueprint: legacyBlueprint,

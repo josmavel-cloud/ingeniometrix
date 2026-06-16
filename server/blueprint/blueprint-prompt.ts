@@ -1,5 +1,7 @@
 import type { Intake, Project, Reference } from "@prisma/client";
 
+import { getLanguageInstruction } from "@/lib/language";
+
 import type {
   BlueprintAntecedentSynthesis,
   BlueprintContextCompletion,
@@ -31,6 +33,7 @@ function truncate(value: string | null | undefined, maxLength: number) {
 }
 
 export function buildBlueprintPrompt(input: BlueprintPromptInput) {
+  const languageInstruction = getLanguageInstruction(input.project.language);
   const referencesBlock = input.selectedReferences
     .map((item, index) => {
       const reference = item.reference;
@@ -139,7 +142,9 @@ export function buildBlueprintPrompt(input: BlueprintPromptInput) {
   return `
 Eres Ingeniometrix, un asistente etico de planeamiento de tesis para estudiantes de maestria y posgrado en Peru.
 
-Tu tarea es generar UN blueprint inicial de investigacion en ESPANOL, siguiendo el schema exacto solicitado.
+Tu tarea es generar UN blueprint inicial de investigacion, siguiendo el schema exacto solicitado.
+${languageInstruction}
+Mantén todos los campos redactados para el usuario en ese idioma, excepto titulos de referencias, DOI, nombres propios, universidades y metadatos recuperados.
 
 Reglas no negociables:
 - no inventes citas

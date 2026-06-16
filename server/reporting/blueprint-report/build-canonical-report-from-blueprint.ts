@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { normalizeLanguageCode } from "@/lib/language";
 import type { ResearchBlueprintRecord } from "@/server/blueprint/blueprint-types";
 import type { CanonicalReportDocument } from "@/server/reporting/canonical-report-types";
 import { loadTemplateVersionRuntime } from "@/server/reporting/template-runtime/load-template-version";
@@ -15,6 +16,7 @@ export async function buildCanonicalReportFromBlueprint(input: {
   blueprintVersionId: string;
   templateVersionId?: string;
   templateKey?: string;
+  languageOverride?: string | null;
 }) {
   const blueprintVersion = await prisma.blueprintVersion.findFirst({
     where: {
@@ -86,7 +88,11 @@ export async function buildCanonicalReportFromBlueprint(input: {
       source_kind: "blueprint",
       synthetic: false,
     },
-    language: runtime.language,
+    language:
+      normalizeLanguageCode(input.languageOverride) ??
+      normalizeLanguageCode(blueprintVersion.project.language) ??
+      normalizeLanguageCode(runtime.language) ??
+      runtime.language,
     institution: {
       university_name:
         runtime.templateCandidate.institution.university_name ?? blueprint.university,

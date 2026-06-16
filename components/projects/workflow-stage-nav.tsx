@@ -1,3 +1,6 @@
+import type { SupportedLanguage } from "@/lib/language";
+import { getProjectUiCopy } from "@/lib/project-ui-copy";
+
 type WorkflowStageItem = {
   href: string;
   step: string;
@@ -8,9 +11,12 @@ type WorkflowStageItem = {
 
 type WorkflowStageNavProps = {
   items: WorkflowStageItem[];
+  language: SupportedLanguage;
 };
 
-export function WorkflowStageNav({ items }: WorkflowStageNavProps) {
+export function WorkflowStageNav({ items, language }: WorkflowStageNavProps) {
+  const copy = getProjectUiCopy(language).workflow;
+
   return (
     <nav className="surface-panel rounded-[28px] p-3 lg:sticky lg:top-24 lg:z-20">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
@@ -25,7 +31,7 @@ export function WorkflowStageNav({ items }: WorkflowStageNavProps) {
             key={item.step}
           >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.72)]">
-              Paso {item.step}
+              {copy.stepPrefix} {item.step}
             </p>
             <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
               {item.title}

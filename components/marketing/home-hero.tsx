@@ -2,12 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { BrandBadge } from "@/components/brand/brand-badge";
+import { LanguageToggle } from "@/components/i18n/language-toggle";
 import {
   EvidenceTraceMap,
   ResearchFlowDiagram,
   SnapshotPoster,
   ThesisPlanMockup,
 } from "@/components/marketing/research-visuals";
+import { getRequestLanguage } from "@/server/i18n/request-language";
 
 import {
   ArrowRight,
@@ -237,7 +239,9 @@ const socialItems = [
   { icon: Globe2, label: "Facebook" },
 ];
 
-export function HomeHero() {
+export async function HomeHero() {
+  const language = await getRequestLanguage();
+
   return (
     <main className="min-h-screen overflow-x-hidden px-4 pb-14 pt-6 sm:px-6 lg:px-8">
       <header className="sticky top-4 z-30 mx-auto w-full max-w-6xl">
@@ -262,13 +266,14 @@ export function HomeHero() {
           </nav>
 
           <div className="flex min-w-0 items-center gap-2">
+            <LanguageToggle initialLanguage={language} />
             <span className="hidden sm:inline-flex">
-              <Link className="brand-button-secondary px-4 py-2 text-sm font-semibold" href="/campana">
-                Ver landing
+              <Link className="brand-button-secondary px-4 py-2 text-sm font-semibold" href="/workspace">
+                Iniciar sesion
               </Link>
             </span>
-            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/campana">
-              Solicitar snapshot
+            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/workspace">
+              Ir al workspace
             </Link>
           </div>
         </div>
@@ -294,9 +299,9 @@ export function HomeHero() {
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Link
                   className="inline-flex items-center justify-center rounded-full bg-[var(--color-plum)] px-6 py-3 text-sm font-semibold text-white shadow-[0_16px_36px_rgba(52,20,95,0.18)]"
-                  href="/campana"
+                  href="/workspace"
                 >
-                  Probar con mi tema
+                  Iniciar sesion
                   <ArrowRight className="ml-2 size-4" />
                 </Link>
                 <a
@@ -388,9 +393,9 @@ export function HomeHero() {
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Link
                 className="inline-flex items-center justify-center rounded-full bg-[var(--color-plum)] px-6 py-3 text-sm font-semibold text-white"
-                href="/campana"
+                href="/workspace"
               >
-                Solicitar snapshot
+                Ir al workspace
                 <ArrowRight className="ml-2 size-4" />
               </Link>
               <Link
@@ -680,9 +685,9 @@ export function HomeHero() {
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link
                   className="inline-flex items-center justify-center rounded-full bg-white px-6 py-3 text-sm font-semibold text-[var(--color-plum)] shadow-[0_18px_40px_rgba(255,255,255,0.14)]"
-                  href="/campana"
+                  href="/workspace"
                 >
-                  Solicitar snapshot
+                  Iniciar sesion
                   <ArrowRight className="ml-2 size-4" />
                 </Link>
                 <a
@@ -789,8 +794,8 @@ export function HomeHero() {
             </div>
             <div className="flex flex-wrap gap-3 text-sm">
               <span className="brand-pill">ingeniometrix.com</span>
-              <Link className="brand-pill hover:text-[var(--color-plum)]" href="/campana">
-                Landing
+              <Link className="brand-pill hover:text-[var(--color-plum)]" href="/workspace">
+                Workspace
               </Link>
               <Link className="brand-pill hover:text-[var(--color-plum)]" href="/recursos">
                 Recursos

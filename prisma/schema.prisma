@@ -179,6 +179,7 @@ enum TemplateAssetSourceStrategy {
 model User {
   id        String     @id @default(uuid())
   email     String     @unique
+  passwordHash String?    @db.Text
   name      String?
   locale    String     @default("es-PE")
   createdAt DateTime   @default(now())

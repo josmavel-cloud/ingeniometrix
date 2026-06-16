@@ -41,6 +41,154 @@ import type {
 } from "./blueprint-types";
 
 const BLUEPRINT_PROMPT_VERSION = "ingeniometrix-blueprint-v3";
+const DEFAULT_BLUEPRINT_AUX_TIMEOUT_MS = 6_000;
+const DEFAULT_BLUEPRINT_DRAFT_TIMEOUT_MS = 12_000;
+
+function getConfiguredTimeoutMs(envName: string, fallback: number) {
+  const value = Number(process.env[envName]);
+
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string) {
+  let timeout: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => {
+      reject(new Error(`${label} excedio ${timeoutMs}ms.`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  });
+}
+
+function isEnglishProject(project: Pick<{ language: string | null }, "language">) {
+  return project.language?.trim().toLowerCase().startsWith("en") ?? false;
+}
+
+function buildFallbackBlueprintDraft(input: {
+  project: {
+    title: string;
+    templateKey: string;
+    degreeLevel: ResearchBlueprintCoreDraft["degree_level"];
+    university: string;
+    program: string;
+    language: string | null;
+    projectReferences: Array<{
+      selectedOrder: number | null;
+      reference: {
+        id: string;
+        title: string;
+        doi: string | null;
+      };
+    }>;
+  };
+  intake: {
+    topic: string;
+    problemContext: string | null;
+    researchLine: string | null;
+    academicConstraints: string | null;
+    targetPopulation: string | null;
+    availableData: string | null;
+    preferredMethodology: string | null;
+  };
+}): ResearchBlueprintCoreDraft {
+  const english = isEnglishProject(input.project);
+  const topic = input.intake.topic;
+  const problemContext =
+    input.intake.problemContext ??
+    (english
+      ? "The problem requires further delimitation with the advisor."
+      : "El problema requiere mayor delimitacion con el asesor.");
+  const population =
+    input.intake.targetPopulation ??
+    (english
+      ? "Population or unit of analysis to validate."
+      : "Poblacion o unidad de analisis por validar.");
+  const methodology =
+    input.intake.preferredMethodology ??
+    (english
+      ? "Initial methodological approach to refine."
+      : "Enfoque metodologico inicial por afinar.");
+
+  return {
+    project_title: input.project.title,
+    template_key: input.project.templateKey,
+    degree_level: input.project.degreeLevel,
+    university: input.project.university,
+    program: input.project.program,
+    research_line:
+      input.intake.researchLine ??
+      (english
+        ? "Research line to confirm with the institution."
+        : "Linea de investigacion por confirmar con la institucion."),
+    problem_statement: problemContext,
+    problem_delimitation: [problemContext, population, input.intake.academicConstraints]
+      .filter(Boolean)
+      .join(" "),
+    justification: english
+      ? "This initial blueprint organizes the intake and selected traceable sources into a reviewable academic plan."
+      : "Este blueprint inicial organiza el intake y las fuentes trazables seleccionadas en un plan academico revisable.",
+    general_objective: english
+      ? `Develop a traceable initial research plan for ${topic}.`
+      : `Desarrollar un plan inicial de investigacion trazable sobre ${topic}.`,
+    specific_objectives: english
+      ? [
+          `Delimit the problem and population related to ${topic}.`,
+          "Identify methodological decisions that need advisor validation.",
+          "Align the selected sources with objectives, questions, and assumptions.",
+        ]
+      : [
+          `Delimitar el problema y la poblacion vinculados con ${topic}.`,
+          "Identificar decisiones metodologicas que requieren validacion del asesor.",
+          "Alinear las fuentes seleccionadas con objetivos, preguntas y supuestos.",
+        ],
+    research_questions: english
+      ? [
+          `How should the problem and population related to ${topic} be delimited?`,
+          "Which methodological decisions require advisor validation?",
+          "How do the selected sources support the initial objectives and assumptions?",
+        ]
+      : [
+          `Como debe delimitarse el problema y la poblacion vinculados con ${topic}?`,
+          "Que decisiones metodologicas requieren validacion del asesor?",
+          "Como sostienen las fuentes seleccionadas los objetivos y supuestos iniciales?",
+        ],
+    proposed_methodology: methodology,
+    population_and_sample: population,
+    analysis_plan:
+      input.intake.availableData ??
+      (english
+        ? "Analysis plan to refine once the available data and method are confirmed."
+        : "Plan de analisis por afinar cuando se confirmen datos disponibles y metodo."),
+    assumptions: english
+      ? [
+          "This fallback blueprint was generated because the LLM step did not finish within the configured timeout.",
+          "No empirical results are asserted; selected sources are used only as traceable support for planning.",
+          "Advisor review is required before treating the scope, method, or population as final.",
+        ]
+      : [
+          "Este blueprint fallback se genero porque el paso LLM no termino dentro del timeout configurado.",
+          "No se afirman resultados empiricos; las fuentes seleccionadas solo se usan como soporte trazable para planificacion.",
+          "Se requiere revision del asesor antes de tratar alcance, metodo o poblacion como definitivos.",
+        ],
+    references_used: input.project.projectReferences.map((item) => ({
+      reference_id: item.reference.id,
+      title: item.reference.title,
+      doi: item.reference.doi,
+    })),
+    limitations: english
+      ? [
+          "The output is a stable MVP fallback and should be refined with a full LLM pass when available.",
+        ]
+      : [
+          "La salida es un fallback estable de MVP y debe refinarse con una corrida LLM completa cuando este disponible.",
+        ],
+  };
+}
 
 async function logBlueprintStage(input: {
   userId: string;
@@ -213,6 +361,15 @@ export async function generateBlueprintVersion(userId: string, projectId: string
   });
 
   try {
+    const auxiliaryTimeoutMs = getConfiguredTimeoutMs(
+      "BLUEPRINT_AUX_TIMEOUT_MS",
+      DEFAULT_BLUEPRINT_AUX_TIMEOUT_MS,
+    );
+    const draftTimeoutMs = getConfiguredTimeoutMs(
+      "BLUEPRINT_DRAFT_TIMEOUT_MS",
+      DEFAULT_BLUEPRINT_DRAFT_TIMEOUT_MS,
+    );
+
     await logBlueprintStage({
       userId,
       projectId: project.id,
@@ -231,13 +388,17 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         label: "Sintetizando antecedentes",
         progress: 28,
       });
-      antecedentSynthesis = await generateBlueprintAntecedentSynthesis({
-        provider,
-        project,
-        intake,
-        selectedReferences: project.projectReferences,
-        referenceInsights,
-      });
+      antecedentSynthesis = await withTimeout(
+        generateBlueprintAntecedentSynthesis({
+          provider,
+          project,
+          intake,
+          selectedReferences: project.projectReferences,
+          referenceInsights,
+        }),
+        auxiliaryTimeoutMs,
+        "Sintesis de antecedentes",
+      );
     } catch {
       antecedentSynthesis = null;
     }
@@ -262,18 +423,22 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         label: "Completando vacios del intake",
         progress: 42,
       });
-      return generateBlueprintContextCompletion({
-        provider,
-        project,
-        intake,
-        referenceInsights,
-        readinessSnapshot,
-      });
+      return withTimeout(
+        generateBlueprintContextCompletion({
+          provider,
+          project,
+          intake,
+          referenceInsights,
+          readinessSnapshot,
+        }),
+        auxiliaryTimeoutMs,
+        "Completado de contexto",
+      );
     };
 
     let assistedContext: BlueprintContextCompletion | null =
       readinessSnapshot.readiness_status === "assisted"
-        ? await generateAssistedContextIfNeeded()
+        ? await generateAssistedContextIfNeeded().catch(() => null)
         : null;
     let rawBlueprint: ResearchBlueprintCoreDraft;
 
@@ -285,19 +450,38 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         label: "Redactando blueprint",
         progress: 64,
       });
-      rawBlueprint = await generateBlueprintDraftAttempt({
-        provider,
-        prompt: buildAttemptPrompt(assistedContext),
-      });
-    } catch (firstAttemptError) {
-      if (!assistedContext) {
-        assistedContext = await generateAssistedContextIfNeeded();
-        rawBlueprint = await generateBlueprintDraftAttempt({
+      rawBlueprint = await withTimeout(
+        generateBlueprintDraftAttempt({
           provider,
           prompt: buildAttemptPrompt(assistedContext),
-        });
+        }),
+        draftTimeoutMs,
+        "Redaccion del blueprint",
+      );
+    } catch {
+      if (!assistedContext) {
+        assistedContext = await generateAssistedContextIfNeeded().catch(() => null);
+
+        try {
+          rawBlueprint = await withTimeout(
+            generateBlueprintDraftAttempt({
+              provider,
+              prompt: buildAttemptPrompt(assistedContext),
+            }),
+            draftTimeoutMs,
+            "Redaccion del blueprint con contexto asistido",
+          );
+        } catch {
+          rawBlueprint = buildFallbackBlueprintDraft({
+            project,
+            intake,
+          });
+        }
       } else {
-        throw firstAttemptError;
+        rawBlueprint = buildFallbackBlueprintDraft({
+          project,
+          intake,
+        });
       }
     }
 
@@ -390,6 +574,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         model: process.env.LLM_DEFAULT_MODEL?.trim() || "gpt-5.4",
         promptVersion: BLUEPRINT_PROMPT_VERSION,
         intakeSnapshotJson: {
+          language: project.language,
           topic: intake.topic,
           problemContext: intake.problemContext,
           researchLine: intake.researchLine,

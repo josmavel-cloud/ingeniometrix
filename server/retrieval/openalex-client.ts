@@ -1,4 +1,5 @@
 const OPENALEX_BASE_URL = "https://api.openalex.org";
+const DEFAULT_OPENALEX_TIMEOUT_MS = 4_000;
 
 export type OpenAlexWork = {
   id: string;
@@ -63,12 +64,26 @@ function buildOpenAlexUrl(query: string) {
   return url;
 }
 
+function getOpenAlexTimeoutMs() {
+  const configuredTimeout = Number(process.env.OPENALEX_REQUEST_TIMEOUT_MS);
+
+  return Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : DEFAULT_OPENALEX_TIMEOUT_MS;
+}
+
 export async function searchOpenAlexWorks(query: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getOpenAlexTimeoutMs());
+
   const response = await fetch(buildOpenAlexUrl(query), {
     headers: {
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: controller.signal,
+  }).finally(() => {
+    clearTimeout(timeout);
   });
 
   if (!response.ok) {

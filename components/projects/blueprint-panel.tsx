@@ -4,7 +4,11 @@ import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
 
-import { getProjectStatusMeta } from "@/lib/project-status";
+import { getLocaleForLanguage, type SupportedLanguage } from "@/lib/language";
+import {
+  getProjectStatusMetaForLanguage,
+  getProjectUiCopy,
+} from "@/lib/project-ui-copy";
 import {
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
@@ -30,6 +34,7 @@ type BlueprintPanelProps = {
   hasIntakeMinimum: boolean;
   selectedReferenceCount: number;
   versions: BlueprintVersionListItem[];
+  language: SupportedLanguage;
 };
 
 type CoherenceCheck = {
@@ -120,8 +125,11 @@ export function BlueprintPanel({
   hasIntakeMinimum,
   selectedReferenceCount,
   versions,
+  language,
 }: BlueprintPanelProps) {
   const router = useRouter();
+  const copy = getProjectUiCopy(language).blueprint;
+  const locale = getLocaleForLanguage(language);
   const [error, setError] = useState<BlueprintUiError | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
@@ -171,12 +179,30 @@ export function BlueprintPanel({
 
   const coherenceItems: CoherencePanelItem[] = coherence
     ? [
-        { label: "Problema vs objetivo", check: coherence.problem_objective_alignment },
-        { label: "Objetivos vs preguntas", check: coherence.objective_question_alignment },
-        { label: "Objetivos vs metodo", check: coherence.objective_method_alignment },
-        { label: "Poblacion vs metodo", check: coherence.population_method_alignment },
-        { label: "Tecnicas vs analisis", check: coherence.technique_analysis_alignment },
-        { label: "Trazabilidad de citas", check: coherence.citation_traceability },
+        {
+          label: copy.coherenceLabels.problemObjective,
+          check: coherence.problem_objective_alignment,
+        },
+        {
+          label: copy.coherenceLabels.objectiveQuestion,
+          check: coherence.objective_question_alignment,
+        },
+        {
+          label: copy.coherenceLabels.objectiveMethod,
+          check: coherence.objective_method_alignment,
+        },
+        {
+          label: copy.coherenceLabels.populationMethod,
+          check: coherence.population_method_alignment,
+        },
+        {
+          label: copy.coherenceLabels.techniqueAnalysis,
+          check: coherence.technique_analysis_alignment,
+        },
+        {
+          label: copy.coherenceLabels.citationTraceability,
+          check: coherence.citation_traceability,
+        },
       ]
     : [];
   const keyConstructs = blueprint?.key_constructs_or_variables ?? [];
@@ -195,32 +221,39 @@ export function BlueprintPanel({
     [blueprint?.research_questions, keyConstructs],
   );
 
+  const canRetryInterruptedGeneration =
+    projectStatus === "BLUEPRINT_GENERATING" && versions.length === 0;
   const canGenerate =
     projectStatus === "SOURCES_SELECTED" ||
     projectStatus === "BLUEPRINT_READY" ||
-    projectStatus === "EXPORT_READY";
-  const statusMeta = getProjectStatusMeta(projectStatus);
+    projectStatus === "EXPORT_READY" ||
+    canRetryInterruptedGeneration;
+  const statusMeta = getProjectStatusMetaForLanguage(projectStatus, language);
   const preparationChecklist = [
     {
-      label: "Base minima del intake",
+      label: copy.intakeBase,
       ready: hasIntakeMinimum,
       detail: hasIntakeMinimum
-        ? "Tema, problema y poblacion ya estan definidos."
-        : "Completa el intake minimo antes de generar.",
+        ? copy.intakeBaseReady
+        : copy.intakeBaseMissing,
     },
     {
-      label: "Fuentes seleccionadas",
+      label: copy.sourcesSelected,
       ready:
         selectedReferenceCount >= MIN_SELECTED_REFERENCES &&
         selectedReferenceCount <= MAX_SELECTED_REFERENCES,
-      detail: `${selectedReferenceCount} seleccionadas de ${MIN_SELECTED_REFERENCES}-${MAX_SELECTED_REFERENCES} necesarias.`,
+      detail: copy.sourcesDetail(
+        selectedReferenceCount,
+        MIN_SELECTED_REFERENCES,
+        MAX_SELECTED_REFERENCES,
+      ),
     },
     {
-      label: "Blueprint listo para validacion",
+      label: copy.blueprintValidation,
       ready: canGenerate,
       detail: canGenerate
-        ? "El proyecto ya puede pasar a estructura y coherencia."
-        : "Todavia falta cerrar la etapa de fuentes.",
+        ? copy.blueprintReadyDetail
+        : copy.blueprintMissingDetail,
     },
   ];
   const readyCount = preparationChecklist.filter((item) => item.ready).length;
@@ -256,7 +289,7 @@ export function BlueprintPanel({
     setProgress({
       projectStatus,
       stageKey: "queued",
-      label: "Iniciando generacion",
+      label: copy.queued,
       progress: 6,
       updatedAt: null,
     });
@@ -275,7 +308,7 @@ export function BlueprintPanel({
       if (!response.ok) {
         setError({
           code: payload.code,
-          message: payload.error ?? "No se pudo generar el blueprint.",
+          message: payload.error ?? copy.generateError,
           nextAction: payload.nextAction,
         });
         return;
@@ -284,11 +317,11 @@ export function BlueprintPanel({
       setProgress({
         projectStatus: "BLUEPRINT_READY",
         stageKey: "completed",
-        label: "Blueprint listo",
+        label: copy.completed,
         progress: 100,
         updatedAt: new Date().toISOString(),
       });
-      setMessage("Blueprint generado correctamente.");
+      setMessage(copy.generated);
       router.refresh();
     });
   }
@@ -299,13 +332,13 @@ export function BlueprintPanel({
         <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
             <FileStack className="size-3.5 text-lime-500" />
-            Blueprint de investigacion
+            {copy.kicker}
           </div>
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Genera el blueprint.
+            {copy.title}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Usa tu intake y las fuentes elegidas para construir una primera version trazable.
+            {copy.body}
           </p>
         </div>
 
@@ -316,7 +349,11 @@ export function BlueprintPanel({
           type="button"
         >
           <Sparkles className="mr-2 size-4" />
-          {isPending ? "Generando..." : "Generar blueprint"}
+          {isPending
+            ? copy.generating
+            : canRetryInterruptedGeneration
+              ? copy.retry
+              : copy.generate}
         </button>
       </div>
 
@@ -327,7 +364,7 @@ export function BlueprintPanel({
             href={latestBlueprintDocxUrl}
           >
             <Download className="mr-2 size-4" />
-            Descargar Word completo (Master Template)
+            {copy.downloadWord}
           </a>
         </div>
       ) : null}
@@ -340,13 +377,15 @@ export function BlueprintPanel({
         }`}
       >
         {canGenerate
-          ? `Listo para generar. Tienes ${selectedReferenceCount} fuente(s) seleccionada(s).`
-          : "Completa intake minimo y guarda fuentes antes de generar el blueprint."}
+          ? canRetryInterruptedGeneration
+            ? copy.interrupted(selectedReferenceCount)
+            : copy.readyToGenerate(selectedReferenceCount)
+          : copy.missingSources}
       </div>
 
       <details className="mt-4 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-          Ver preparacion
+          {copy.preparation}
         </summary>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {preparationChecklist.map((item) => (
@@ -364,15 +403,17 @@ export function BlueprintPanel({
           ))}
         </div>
         <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">
-          Estado actual: <strong>{statusMeta.label}</strong>. Checklist {readyCount}/3.
+          {copy.currentStatus}: <strong>{statusMeta.label}</strong>. {copy.checklist} {readyCount}/3.
         </p>
       </details>
 
       {!canGenerate ? (
         <p className="mt-5 text-sm leading-6 text-slate-500">
-          El proyecto aun esta en "{statusMeta.label}". Primero debes guardar entre{" "}
-          {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} fuentes para
-          habilitar la generacion.
+          {copy.projectStill(
+            statusMeta.label,
+            MIN_SELECTED_REFERENCES,
+            MAX_SELECTED_REFERENCES,
+          )}
         </p>
       ) : null}
 
@@ -394,7 +435,7 @@ export function BlueprintPanel({
         <div className="mt-5 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[var(--color-ink)]">
-              {progress.label ?? "Generando blueprint"}
+              {progress.label ?? copy.progressDefault}
             </p>
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
               {progress.progress ?? 0}%
@@ -407,7 +448,7 @@ export function BlueprintPanel({
             />
           </div>
           <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
-            Etapas reales del motor: contexto, antecedentes, redaccion, validacion y cierre.
+            {copy.progressBody}
           </p>
         </div>
       ) : null}
@@ -415,30 +456,30 @@ export function BlueprintPanel({
       {!latestVersion ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
           <p className="font-[var(--font-heading)] text-xl font-semibold text-slate-950">
-            Aun no hay versiones generadas.
+            {copy.noVersionsTitle}
           </p>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Cuando generes el primer blueprint, aqui veras el objetivo general, la coherencia basica y la lista de referencias usadas.
+            {copy.noVersionsBody}
           </p>
         </div>
       ) : (
         <div className="mt-8 grid gap-6">
           <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Version actual
+              {copy.currentVersion}
             </p>
             <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-slate-950">
-              Version {latestVersion.versionNumber}
+              {copy.version} {latestVersion.versionNumber}
             </p>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Generada el {new Date(latestVersion.createdAt).toLocaleString("es-PE")}
+              {copy.generatedAt} {new Date(latestVersion.createdAt).toLocaleString(locale)}
             </p>
           </div>
 
           {(blueprint?.general_objective || (blueprint?.specific_objectives ?? []).length > 0) ? (
             <div className="rounded-[24px] border border-slate-200 bg-white p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                Vista ejecutiva
+                {copy.executiveView}
               </p>
               {blueprint?.general_objective ? (
                 <p className="mt-3 text-sm leading-7 text-slate-700">
@@ -449,7 +490,7 @@ export function BlueprintPanel({
               <div className="mt-5 grid gap-6 xl:grid-cols-2">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Objetivos especificos
+                    {copy.specificObjectives}
                   </p>
                   <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
                     {(blueprint?.specific_objectives ?? []).map((item, index) => (
@@ -462,7 +503,7 @@ export function BlueprintPanel({
 
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Preguntas
+                    {copy.questions}
                   </p>
                   <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
                     {(blueprint?.research_questions ?? []).map((item, index) => (
@@ -478,13 +519,13 @@ export function BlueprintPanel({
 
           <div className="rounded-[24px] border border-slate-200 bg-white p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-              Supuestos
+              {copy.assumptions}
             </p>
             <ul className="mt-3 grid gap-2 text-sm leading-7 text-slate-700">
               {(blueprint?.assumptions ?? []).length > 0 ? (
                 blueprint?.assumptions?.map((item) => <li key={item}>* {item}</li>)
               ) : (
-                <li>No se registraron supuestos en esta version.</li>
+                <li>{copy.noAssumptions}</li>
               )}
             </ul>
           </div>
@@ -492,7 +533,7 @@ export function BlueprintPanel({
           {(blueprint?.engine_warnings ?? []).length > 0 ? (
             <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
-                Alertas del motor
+                {copy.engineAlerts}
               </p>
               <ul className="mt-3 grid gap-2 text-sm leading-7 text-amber-900">
                 {blueprint?.engine_warnings?.map((item) => <li key={item}>* {item}</li>)}
@@ -503,7 +544,7 @@ export function BlueprintPanel({
           {(blueprint?.antecedent_synthesis?.summaries ?? []).length > 0 ? (
             <details className="rounded-[24px] border border-slate-200 bg-white p-5">
               <summary className="cursor-pointer text-sm font-semibold text-slate-900">
-                Ver antecedentes clave
+                {copy.keyAntecedents}
               </summary>
               <p className="mt-4 text-sm leading-7 text-slate-600">
                 {blueprint?.antecedent_synthesis?.gap_overview}
@@ -528,10 +569,10 @@ export function BlueprintPanel({
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-700">{item.summary}</p>
                     <p className="mt-3 text-sm leading-6 text-slate-700">
-                      <strong>Solucion tecnica:</strong> {item.technical_solution}
+                      <strong>{copy.technicalSolution}:</strong> {item.technical_solution}
                     </p>
                     <p className="mt-2 text-sm leading-6 text-slate-700">
-                      <strong>Vacio pendiente:</strong> {item.unresolved_gap}
+                      <strong>{copy.unresolvedGap}:</strong> {item.unresolved_gap}
                     </p>
                   </article>
                 ))}
@@ -540,7 +581,7 @@ export function BlueprintPanel({
               {(blueprint?.antecedent_synthesis?.objective_guidance ?? []).length > 0 ? (
                 <div className="mt-5 rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.7)] p-4">
                   <p className="text-sm font-semibold text-slate-900">
-                    Guia para mejorar objetivos
+                    {copy.objectiveGuidance}
                   </p>
                   <ul className="mt-3 grid gap-2 text-sm leading-6 text-slate-700">
                     {blueprint?.antecedent_synthesis?.objective_guidance?.map((item) => (
@@ -554,13 +595,13 @@ export function BlueprintPanel({
 
           <details className="rounded-[24px] border border-slate-200 bg-white p-5">
             <summary className="cursor-pointer text-sm font-semibold text-slate-900">
-              Ver referencias y coherencia
+              {copy.referencesAndCoherence}
             </summary>
 
             <div className="mt-5 grid gap-6">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Referencias usadas
+                  {copy.referencesUsed}
                 </p>
                 <ul className="mt-3 grid gap-3 text-sm leading-7 text-slate-700">
                   {(blueprint?.references_used ?? []).map((reference) => (
@@ -574,7 +615,7 @@ export function BlueprintPanel({
               {coherence ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                    Reporte de coherencia
+                    {copy.coherenceReport}
                   </p>
 
                   <div className="mt-4 grid gap-3">
@@ -601,7 +642,7 @@ export function BlueprintPanel({
                   <div className="mt-5 grid gap-4 xl:grid-cols-2">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">
-                        Faltantes detectados
+                        {copy.missingInfo}
                       </p>
                       <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
                         {(coherence.missing_information_flags ?? []).length > 0 ? (
@@ -609,18 +650,18 @@ export function BlueprintPanel({
                             <li key={item}>* {item}</li>
                           ))
                         ) : (
-                          <li>No se detectaron faltantes relevantes.</li>
+                          <li>{copy.noMissing}</li>
                         )}
                       </ul>
                     </div>
 
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Riesgos</p>
+                      <p className="text-sm font-semibold text-slate-900">{copy.risks}</p>
                       <ul className="mt-2 grid gap-2 text-sm leading-6 text-slate-600">
                         {(coherence.risk_flags ?? []).length > 0 ? (
                           coherence.risk_flags?.map((item) => <li key={item}>* {item}</li>)
                         ) : (
-                          <li>No se detectaron riesgos mayores en esta version.</li>
+                          <li>{copy.noRisks}</li>
                         )}
                       </ul>
                     </div>

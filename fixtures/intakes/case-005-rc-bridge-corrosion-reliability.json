@@ -1,0 +1,68 @@
+{
+  "case_id": "case-005-rc-bridge-corrosion-reliability",
+  "case_name": "Confiabilidad estructural de puentes de concreto armado afectados por corrosion",
+  "project_id": "fixture-case-005",
+  "user_id": "fixture-user-backend",
+  "project_context": {
+    "title": "Evaluacion probabilistica de la capacidad residual de puentes de concreto armado expuestos a corrosion por cloruros en zonas costeras del Peru",
+    "degree_level": "maestria",
+    "university": "Universidad Peruana de Ciencias Aplicadas",
+    "program": "Maestria en Ingenieria Civil con mencion en Estructuras",
+    "knowledge_area_label": "Ingenieria estructural, durabilidad y confiabilidad de infraestructura",
+    "template_key": "UPC",
+    "country": "PE",
+    "language": "es"
+  },
+  "intake": {
+    "topic": "Evaluacion de la capacidad residual y confiabilidad estructural de puentes vehiculares de concreto armado expuestos a corrosion por cloruros en zonas costeras del Peru.",
+    "problemContext": "Los puentes de concreto armado ubicados en ambientes costeros pueden presentar deterioro por ingreso de cloruros, corrosion de armaduras, perdida de seccion, fisuracion y reduccion progresiva de capacidad resistente. En muchos contextos locales, las decisiones de mantenimiento se toman con informacion incompleta, inspecciones no uniformes y baja integracion entre durabilidad, evaluacion estructural y priorizacion de intervenciones.",
+    "researchLine": "Durabilidad del concreto armado, evaluacion estructural de infraestructura existente, corrosion de armaduras, confiabilidad estructural y gestion de mantenimiento de puentes.",
+    "academicConstraints": "La investigacion sera de caracter metodologico y aplicado. No se afirmara el estado real de un puente especifico sin inspeccion, ensayos, planos, datos de carga y autorizacion de la entidad responsable. Las estimaciones deberan declararse como escenarios, supuestos o criterios preliminares.",
+    "targetPopulation": "Puentes vehiculares de concreto armado en ambientes costeros o con exposicion a cloruros, especialmente infraestructura existente que requiera evaluacion de condicion, capacidad residual y priorizacion de mantenimiento.",
+    "availableData": "Literatura academica y normas tecnicas sobre corrosion de armaduras, ingreso de cloruros, modelos de deterioro, evaluacion de capacidad residual, inspeccion de puentes, confiabilidad estructural, indices de condicion y estrategias de mantenimiento.",
+    "preferredMethodology": "Revision tecnica de modelos de deterioro y confiabilidad, seleccion de variables criticas, construccion de una matriz de evaluacion de condicion y formulacion de un procedimiento preliminar para estimar capacidad residual y priorizar intervenciones.",
+    "advisorNotes": "Distinguir claramente entre evidencia bibliografica, supuestos de modelado y aplicacion a casos reales. Evitar recomendar intervenciones estructurales especificas sin diagnostico tecnico completo."
+  },
+  "source_policy": {
+    "mode": "auto_search",
+    "max_selected_sources": 6,
+    "min_selected_sources": 4,
+    "providers": ["openalex", "crossref"],
+    "allow_public_pdf_download": true,
+    "allow_web_fulltext_capture": true,
+    "require_complete_public_content": true
+  },
+  "selected_reference_ids": [],
+  "execution_options": {
+    "run_steps": [1, 2, 3, 4, 5, 6],
+    "force_rerun": false,
+    "use_llm": false,
+    "persist_debug_prompts": true,
+    "persist_full_text": true,
+    "persist_pdfs": true,
+    "cache_namespace": "fixture-case-005-rc-bridge-corrosion-reliability",
+    "prompt_version": "evidence-engine-dry-run-v1"
+  },
+  "source_selection_checkpoint": {
+    "required": true,
+    "selection_mode": "manual_pending",
+    "future_options": ["frontend_basic", "codex_review", "fixture_selected_sources"],
+    "instructions_es": "Un revisor humano debe seleccionar fuentes academicas sobre corrosion de armaduras, durabilidad, capacidad residual, inspeccion de puentes y confiabilidad estructural antes de continuar con acceso, materializacion, extraccion y consolidacion.",
+    "selected_reference_ids": [],
+    "notes_es": "Priorizar articulos con modelos verificables, variables tecnicas, ecuaciones o criterios de evaluacion. Evitar fuentes puramente comerciales, notas de mantenimiento sin metodologia o estudios que no permitan trazabilidad."
+  },
+  "expected_focus": [
+    "modelos de ingreso de cloruros y corrosion de armaduras",
+    "capacidad residual de elementos de concreto armado",
+    "variables de condicion estructural y durabilidad",
+    "confiabilidad estructural y priorizacion de mantenimiento",
+    "supuestos y limites para aplicacion a infraestructura existente"
+  ],
+  "expected_risks": [
+    "diagnosticar un puente real sin datos de inspeccion o ensayos",
+    "confundir indices de condicion con capacidad resistente verificada",
+    "usar modelos de corrosion fuera de su dominio de aplicacion",
+    "presentar intervenciones de reforzamiento como recomendacion final sin analisis completo",
+    "ignorar incertidumbre en cargas, propiedades de materiales, geometria y ambiente de exposicion"
+  ]
+}

@@ -8,6 +8,11 @@ import {
 import { getProjectPresetById } from "@/lib/project-presets";
 import { resolveTemplateKeyForMvp } from "@/lib/system-master-template";
 import type { ProjectTemplateKey } from "@/lib/peru-universities";
+import {
+  APP_DEFAULT_LANGUAGE,
+  normalizeLanguageCode,
+  type SupportedLanguage,
+} from "@/lib/language";
 
 export type CreateProjectInput = {
   catalogTopicId?: string;
@@ -16,6 +21,7 @@ export type CreateProjectInput = {
   degreeLevel: DegreeLevel;
   university: University;
   program: string;
+  language: SupportedLanguage;
   templateKey: ProjectTemplateKey;
   topicAreaId?: string;
   topicAreaLabel?: string;
@@ -72,6 +78,9 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
   const degreeLevel = payload.degreeLevel;
   const university = payload.university;
   const templateKey = resolveTemplateKeyForMvp(payload.templateKey);
+  const language =
+    normalizeLanguageCode(normalizeOptionalText(payload.language)) ??
+    APP_DEFAULT_LANGUAGE;
 
   if (!DEGREE_LEVEL_VALUES.has(degreeLevel as DegreeLevel)) {
     throw new Error("degreeLevel invalido.");
@@ -109,6 +118,7 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
     degreeLevel: degreeLevel as DegreeLevel,
     university: university as University,
     program,
+    language,
     templateKey,
     topicAreaId: topicAreaId ?? undefined,
     topicAreaLabel: topicAreaLabel ?? undefined,

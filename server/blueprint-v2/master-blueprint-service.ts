@@ -3,7 +3,12 @@ import path from "node:path";
 
 import { ExportStatus, Prisma, ProjectStatus, Provider } from "@prisma/client";
 
+import { normalizeLanguageCode } from "@/lib/language";
 import { prisma } from "@/lib/prisma";
+import {
+  MAX_SELECTED_REFERENCES,
+  MIN_SELECTED_REFERENCES,
+} from "@/lib/research-workflow";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import { BlueprintGenerationError } from "@/server/blueprint/blueprint-errors";
 import {
@@ -44,7 +49,13 @@ async function writeFatalRunArtifact(input: {
   );
 }
 
-export async function generateBlueprintVersion(userId: string, projectId: string) {
+export async function generateBlueprintVersion(
+  userId: string,
+  projectId: string,
+  options?: {
+    languageOverride?: string | null;
+  },
+) {
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
@@ -80,10 +91,27 @@ export async function generateBlueprintVersion(userId: string, projectId: string
     });
   }
 
+  const effectiveLanguage =
+    normalizeLanguageCode(options?.languageOverride) ??
+    normalizeLanguageCode(project.language) ??
+    "es";
   const readyProject = {
     ...project,
+    language: effectiveLanguage,
     intake: project.intake,
   };
+
+  if (
+    project.projectReferences.length < MIN_SELECTED_REFERENCES ||
+    project.projectReferences.length > MAX_SELECTED_REFERENCES
+  ) {
+    throw new BlueprintGenerationError({
+      code: "REFERENCES_OUT_OF_RANGE",
+      message: `Debes seleccionar entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} fuentes antes de generar el blueprint.`,
+      nextAction:
+        "Ajusta tu set de fuentes seleccionadas para que el blueprint tenga soporte suficiente sin volverse pesado.",
+    });
+  }
 
   const manifest = createBlueprintRunManifest({
     userId,
@@ -125,6 +153,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
 
     const blueprintJson = {
       ...blueprintPackage.legacy_blueprint,
+      language: effectiveLanguage,
       master_blueprint_engine: blueprintPackage,
       provenance_report: blueprintPackage.provenance_report,
       university_blueprint: blueprintPackage.university_blueprint,
@@ -136,6 +165,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
         model: process.env.LLM_DEFAULT_MODEL?.trim() || "gpt-5.4",
         promptVersion: BLUEPRINT_PROMPT_VERSION,
         intakeSnapshotJson: {
+          language: effectiveLanguage,
           topic: project.intake.topic,
           problemContext: project.intake.problemContext,
           researchLine: project.intake.researchLine,
@@ -194,6 +224,7 @@ export async function generateBlueprintVersion(userId: string, projectId: string
       payloadJson: {
         versionNumber,
         promptVersion: BLUEPRINT_PROMPT_VERSION,
+        language: effectiveLanguage,
         runId: manifest.run_id,
         engineName: manifest.engine_name,
         engineVersion: manifest.engine_version,

@@ -3,9 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 
-export function LogoutButton() {
+import type { SupportedLanguage } from "@/lib/language";
+import { getProjectUiCopy } from "@/lib/project-ui-copy";
+
+type LogoutButtonProps = {
+  language?: SupportedLanguage;
+};
+
+export function LogoutButton({ language = "es" }: LogoutButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const copy = getProjectUiCopy(language).action;
 
   return (
     <button
@@ -20,7 +28,7 @@ export function LogoutButton() {
       }}
       type="button"
     >
-      {isPending ? "Saliendo..." : "Salir"}
+      {isPending ? copy.closingSession : copy.closeSession}
     </button>
   );
 }

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { PUBLIC_SITE_NAME, PUBLIC_SITE_URL } from "@/lib/public-site";
+import { getRequestLanguage } from "@/server/i18n/request-language";
 
 export const metadata: Metadata = {
   metadataBase: new URL(PUBLIC_SITE_URL),
@@ -63,9 +64,11 @@ type RootLayoutProps = {
   children: ReactNode;
 };
 
-export default function RootLayout({ children }: RootLayoutProps) {
+export default async function RootLayout({ children }: RootLayoutProps) {
+  const language = await getRequestLanguage();
+
   return (
-    <html lang="es">
+    <html lang={language}>
       <body className="antialiased">{children}</body>
     </html>
   );

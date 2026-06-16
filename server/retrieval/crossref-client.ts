@@ -1,4 +1,5 @@
 const CROSSREF_BASE_URL = "https://api.crossref.org";
+const DEFAULT_CROSSREF_TIMEOUT_MS = 15_000;
 
 export type CrossrefMessage = {
   DOI?: string;
@@ -12,6 +13,12 @@ export type CrossrefMessage = {
   author?: Array<{
     given?: string;
     family?: string;
+  }>;
+  link?: Array<{
+    URL?: string;
+    "content-type"?: string;
+    "content-version"?: string;
+    "intended-application"?: string;
   }>;
   URL?: string;
   type?: string;
@@ -40,11 +47,24 @@ function buildCrossrefHeaders() {
   return headers;
 }
 
+function getCrossrefTimeoutMs() {
+  const configuredTimeout = Number(process.env.CROSSREF_REQUEST_TIMEOUT_MS);
+
+  return Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : DEFAULT_CROSSREF_TIMEOUT_MS;
+}
+
 export async function fetchCrossrefWorkByDoi(doi: string) {
   const encodedDoi = encodeURIComponent(doi);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getCrossrefTimeoutMs());
   const response = await fetch(`${CROSSREF_BASE_URL}/works/${encodedDoi}`, {
     headers: buildCrossrefHeaders(),
     cache: "no-store",
+    signal: controller.signal,
+  }).finally(() => {
+    clearTimeout(timeout);
   });
 
   if (!response.ok) {
@@ -72,9 +92,14 @@ function stripAbstractTags(value: string | undefined) {
 }
 
 export async function searchCrossrefWorks(query: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getCrossrefTimeoutMs());
   const response = await fetch(buildCrossrefSearchUrl(query), {
     headers: buildCrossrefHeaders(),
     cache: "no-store",
+    signal: controller.signal,
+  }).finally(() => {
+    clearTimeout(timeout);
   });
 
   if (!response.ok) {

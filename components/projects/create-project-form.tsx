@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 
 import {
-  getDegreeLevelLabel,
+  getDegreeLevelLabelForLanguage,
   getGenericProgramDefault,
   getPresetDegreeLevelForProject,
   PROJECT_DEGREE_LEVEL_OPTIONS,
@@ -39,6 +39,7 @@ import {
   SYSTEM_MASTER_TEMPLATE_ALIAS,
   SYSTEM_MASTER_TEMPLATE_KEY,
 } from "@/lib/system-master-template";
+import type { SupportedLanguage } from "@/lib/language";
 import {
   buildProjectPresetSuggestionEntries,
   getTopicAreaLabel,
@@ -48,6 +49,186 @@ import {
 
 const FEATURED_UNIVERSITIES = getFeaturedProjectUniversityOptions();
 const fieldClassName = "brand-input";
+
+const createProjectCopy = {
+  es: {
+    intro:
+      "Primero define el tema base, luego generamos ideas y finalmente eliges una variante final.",
+    step: "Paso 1 de 3",
+    restart: "Empezar otra vez",
+    degree: "Nivel",
+    university: "Universidad",
+    area: "Carrera o area base",
+    areaPlaceholder: "Selecciona una opcion o escribe tu propia area",
+    showAreas: "Mostrar areas sugeridas",
+    useNewArea: (value: string) => `Usar "${value}" como area nueva`,
+    areaHelp:
+      "Puedes elegir una opcion sugerida o escribir un area propia. La normalizaremos y registraremos en tiempo real.",
+    customAreaRegistered: (label: string) =>
+      `Registramos "${label}" como area personalizada.`,
+    areaNormalized: (label: string) => `Normalizamos el area como "${label}".`,
+    adjusting: " Ajustando...",
+    validatingArea: "Validando semanticamente el area...",
+    generateIdea: "Generar idea",
+    ideaPlaceholder: "Escribe el tema que quieres investigar.",
+    ideaHelp:
+      "Escribe el tema y confirma la base. Mientras escribes, veras sugerencias relacionadas como en un buscador.",
+    confirmTopic: "Confirmar tema base",
+    confirmTopicBody:
+      "Si este es el nombre correcto, lo usaremos para establecer el contexto de generacion de ideas.",
+    useTopic: "Usar este tema",
+    keepEditing: "Seguir editando",
+    confirmedTopic: "Tema confirmado",
+    confirmedTopicBody:
+      "Este tema fija el contexto. A partir de aqui generamos ideas y luego variantes.",
+    generating: "Generando...",
+    limitReached: "Limite alcanzado",
+    newIdea: "Nueva idea",
+    previousIdea: "Idea anterior",
+    nextIdea: "Idea siguiente",
+    flowTopic: "Primero confirma el tema.",
+    flowConfirmed: "Genera hasta 5 ideas y luego elige una.",
+    flowVariant:
+      "Ya elegiste una idea principal. Ahora define una variante o continua con esa base.",
+    currentIdea: "Idea generada actual",
+    ideas: "ideas",
+    chooseIdea: "Elegir esta idea",
+    fixedIdea: "Idea fijada",
+    optionalSettings: "Ajustes opcionales",
+    program: "Programa",
+    hide: "Ocultar",
+    edit: "Editar",
+    programPlaceholder: "Ej. Maestria en Gestion Empresarial",
+    template: "Plantilla",
+    areaSummary: "Area",
+    notSpecified: "No especificada",
+    finalVariant: "Elegir una variante final",
+    relatedVariants: "Variantes e ideas relacionadas",
+    variantReadyBody:
+      "Ahora ya no editamos lo anterior. Si eliges una variante, esa sera la base final; si no, se usara la idea principal que fijaste.",
+    variantWaitingBody:
+      "Este bloque se activa despues de elegir una idea principal. Antes de eso, debes confirmar el tema y generar ideas.",
+    selectedMainIdea: "Idea principal elegida",
+    relatedVariantLabel: "Variantes relacionadas",
+    chosenVariant: "Variante elegida",
+    variant: "Variante",
+    noVariantHint:
+      "Si no eliges una variante, continuaremos con la idea principal seleccionada.",
+    variantsAppearHint:
+      "Aqui apareceran las variantes y temas relacionados cuando fijes una idea principal.",
+    creating: "Creando...",
+    continue: "Continuar",
+    continueReady:
+      "Guardaremos la variante elegida o, si no elegiste una, la idea principal seleccionada.",
+    continueMissing: "Confirma el tema y luego fija una idea para poder continuar.",
+    missingTopic: "Escribe o elige un tema base antes de continuar.",
+    topicConfirmedMessage:
+      "Tema confirmado. Ahora ya puedes generar ideas relacionadas a partir de esta base.",
+    viewingIdea: (index: number, total: number) => `Estas viendo la idea ${index} de ${total}.`,
+    ideaLocked:
+      "Idea principal elegida. Ahora puedes escoger una variante o continuar con esta idea.",
+    missingSeed: "Escribe un area o una idea para poder sugerir variantes.",
+    relatedError: "No se pudieron preparar ideas relacionadas.",
+    generatedCount: (count: number, max: number) =>
+      `Generamos ${count} de ${max} ideas disponibles para esta base.`,
+    ideaError:
+      "No pudimos generar ideas ahora. Revisa la configuracion LLM o intenta de nuevo.",
+    submitMissing:
+      "Confirma el tema, elige una idea principal y luego decide si usaras una variante.",
+    createError: "No se pudo crear el proyecto.",
+    exactTopicRationale: "Usar exactamente el tema que acabas de escribir como base.",
+    relatedTopicRationale: "Tema relacionado con tu area.",
+  },
+  en: {
+    intro:
+      "First define the base topic, then generate ideas, and finally choose a final variant.",
+    step: "Step 1 of 3",
+    restart: "Start over",
+    degree: "Degree",
+    university: "University",
+    area: "Career or base area",
+    areaPlaceholder: "Select an option or write your own area",
+    showAreas: "Show suggested areas",
+    useNewArea: (value: string) => `Use "${value}" as a new area`,
+    areaHelp:
+      "You can choose a suggested option or write your own area. We will normalize and register it in real time.",
+    customAreaRegistered: (label: string) =>
+      `Registered "${label}" as a custom area.`,
+    areaNormalized: (label: string) => `Normalized the area as "${label}".`,
+    adjusting: " Adjusting...",
+    validatingArea: "Semantically validating the area...",
+    generateIdea: "Generate idea",
+    ideaPlaceholder: "Write the topic you want to research.",
+    ideaHelp:
+      "Write the topic and confirm the base. Related suggestions will appear as you type.",
+    confirmTopic: "Confirm base topic",
+    confirmTopicBody:
+      "If this is the correct name, we will use it to set the idea generation context.",
+    useTopic: "Use this topic",
+    keepEditing: "Keep editing",
+    confirmedTopic: "Topic confirmed",
+    confirmedTopicBody:
+      "This topic sets the context. From here, we generate ideas and then variants.",
+    generating: "Generating...",
+    limitReached: "Limit reached",
+    newIdea: "New idea",
+    previousIdea: "Previous idea",
+    nextIdea: "Next idea",
+    flowTopic: "Confirm the topic first.",
+    flowConfirmed: "Generate up to 5 ideas, then choose one.",
+    flowVariant:
+      "You chose a main idea. Now define a variant or continue with that base.",
+    currentIdea: "Current generated idea",
+    ideas: "ideas",
+    chooseIdea: "Choose this idea",
+    fixedIdea: "Idea fixed",
+    optionalSettings: "Optional settings",
+    program: "Program",
+    hide: "Hide",
+    edit: "Edit",
+    programPlaceholder: "E.g. Master in Business Management",
+    template: "Template",
+    areaSummary: "Area",
+    notSpecified: "Not specified",
+    finalVariant: "Choose a final variant",
+    relatedVariants: "Variants and related ideas",
+    variantReadyBody:
+      "Previous fields are now locked. If you choose a variant, it becomes the final base; otherwise, the selected main idea is used.",
+    variantWaitingBody:
+      "This block opens after you choose a main idea. Before that, confirm the topic and generate ideas.",
+    selectedMainIdea: "Selected main idea",
+    relatedVariantLabel: "Related variants",
+    chosenVariant: "Chosen variant",
+    variant: "Variant",
+    noVariantHint:
+      "If you do not choose a variant, we will continue with the selected main idea.",
+    variantsAppearHint:
+      "Variants and related topics will appear here once you fix a main idea.",
+    creating: "Creating...",
+    continue: "Continue",
+    continueReady:
+      "We will save the chosen variant or, if none is selected, the selected main idea.",
+    continueMissing: "Confirm the topic and then fix an idea to continue.",
+    missingTopic: "Write or choose a base topic before continuing.",
+    topicConfirmedMessage:
+      "Topic confirmed. You can now generate related ideas from this base.",
+    viewingIdea: (index: number, total: number) =>
+      `You are viewing idea ${index} of ${total}.`,
+    ideaLocked:
+      "Main idea selected. Now choose a variant or continue with this idea.",
+    missingSeed: "Write an area or an idea to suggest variants.",
+    relatedError: "Could not prepare related ideas.",
+    generatedCount: (count: number, max: number) =>
+      `Generated ${count} of ${max} available ideas for this base.`,
+    ideaError:
+      "Could not generate ideas right now. Check the LLM configuration or try again.",
+    submitMissing:
+      "Confirm the topic, choose a main idea, and then decide whether to use a variant.",
+    createError: "Could not create the project.",
+    exactTopicRationale: "Use exactly the topic you just typed as the base.",
+    relatedTopicRationale: "Topic related to your area.",
+  },
+};
 
 type TopicAreaOption = {
   label: string;
@@ -146,15 +327,24 @@ function mergeTopicAreaOptions(...groups: TopicAreaOption[][]) {
   return Array.from(merged.values());
 }
 
-export function CreateProjectForm() {
+type CreateProjectFormProps = {
+  initialInterestText?: string;
+  language?: SupportedLanguage;
+};
+
+export function CreateProjectForm({
+  initialInterestText = "",
+  language = "es",
+}: CreateProjectFormProps) {
   const router = useRouter();
+  const copy = createProjectCopy[language];
   const [degreeLevel, setDegreeLevel] = useState<DegreeLevel>("POSGRADO");
   const [university, setUniversity] = useState<ProjectUniversityCode>("PUCP");
   const [areaQuery, setAreaQuery] = useState(PROJECT_CAREERS[0]?.label ?? "");
   const [program, setProgram] = useState(
     getProgramDefault(PROJECT_CAREERS[0]?.id ?? null, "POSGRADO"),
   );
-  const [interestText, setInterestText] = useState("");
+  const [interestText, setInterestText] = useState(initialInterestText.trim());
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
   const [areaOptions, setAreaOptions] = useState<TopicAreaOption[]>(
     buildDefaultAreaOptions(),
@@ -252,7 +442,7 @@ export function CreateProjectForm() {
     if (typedTitle) {
       suggestions.push({
         title: typedTitle,
-        rationale: "Usar exactamente el tema que acabas de escribir como base.",
+        rationale: copy.exactTopicRationale,
       });
     }
 
@@ -263,7 +453,7 @@ export function CreateProjectForm() {
       if (key && key !== typedKey) {
         suggestions.push({
           title,
-          rationale: entry.reasons[0] ?? "Tema relacionado con tu area.",
+          rationale: entry.reasons[0] ?? copy.relatedTopicRationale,
         });
       }
     }
@@ -328,7 +518,7 @@ export function CreateProjectForm() {
     const confirmedTitle = candidateTitle?.trim() || interestText.trim();
 
     if (!confirmedTitle) {
-      setError("Escribe o elige un tema base antes de continuar.");
+      setError(copy.missingTopic);
       return;
     }
 
@@ -338,9 +528,7 @@ export function CreateProjectForm() {
     setSelectedSuggestionId("");
     resetIdeaFlowState();
     setFlowStage("topic_confirmed");
-    setIdeaDraftMessage(
-      "Tema confirmado. Ahora ya puedes generar ideas relacionadas a partir de esta base.",
-    );
+    setIdeaDraftMessage(copy.topicConfirmedMessage);
   }
 
   function applyGeneratedIdea(index: number) {
@@ -352,7 +540,7 @@ export function CreateProjectForm() {
 
     setActiveGeneratedIdeaIndex(index);
     setInterestText(idea.title);
-    setIdeaDraftMessage(`Estas viendo la idea ${index + 1} de ${generatedIdeas.length}.`);
+    setIdeaDraftMessage(copy.viewingIdea(index + 1, generatedIdeas.length));
   }
 
   function handleIdeaTextChange(nextValue: string) {
@@ -385,9 +573,7 @@ export function CreateProjectForm() {
     setSelectedIdeaTitle(currentIdea.title);
     setSelectedVariantTitle(null);
     setFlowStage("variant_selection");
-    setIdeaDraftMessage(
-      "Idea principal elegida. Ahora puedes escoger una variante o continuar con esta idea.",
-    );
+    setIdeaDraftMessage(copy.ideaLocked);
   }
 
   useEffect(() => {
@@ -471,8 +657,8 @@ export function CreateProjectForm() {
 
           setNormalizedAreaMessage(
             normalizedArea.confidence === "low"
-              ? `Registramos "${normalizedArea.label}" como area personalizada.`
-              : `Normalizamos el area como "${normalizedArea.label}".`,
+              ? copy.customAreaRegistered(normalizedArea.label)
+              : copy.areaNormalized(normalizedArea.label),
           );
         } catch {
           // Evita romper el formulario si la normalizacion falla.
@@ -510,7 +696,7 @@ export function CreateProjectForm() {
       "";
 
     if (!topicAreaLabel && normalizedSeedText.length === 0) {
-      setIdeaDraftError("Escribe un area o una idea para poder sugerir variantes.");
+      setIdeaDraftError(copy.missingSeed);
       return;
     }
 
@@ -528,6 +714,7 @@ export function CreateProjectForm() {
             degreeLevel,
             university,
             program,
+            language,
             topicAreaId: topicAreaId ?? undefined,
             topicAreaLabel: topicAreaLabel ?? undefined,
             seedText: normalizedSeedText || undefined,
@@ -545,9 +732,7 @@ export function CreateProjectForm() {
         }>(response);
 
         if (!response.ok || !payload?.generatedIdea) {
-          setIdeaDraftError(
-            payload?.error ?? "No se pudieron preparar ideas relacionadas.",
-          );
+          setIdeaDraftError(payload?.error ?? copy.relatedError);
           return;
         }
 
@@ -583,13 +768,9 @@ export function CreateProjectForm() {
           setAreaQuery(payload.resolvedArea.topicAreaLabel);
         }
 
-        setIdeaDraftMessage(
-          `Generamos ${nextIdeas.length} de ${MAX_GENERATED_IDEAS} ideas disponibles para esta base.`,
-        );
+        setIdeaDraftMessage(copy.generatedCount(nextIdeas.length, MAX_GENERATED_IDEAS));
       } catch {
-        setIdeaDraftError(
-          "No pudimos generar ideas ahora. Revisa la configuracion LLM o intenta de nuevo.",
-        );
+        setIdeaDraftError(copy.ideaError);
       }
     });
   }
@@ -599,7 +780,7 @@ export function CreateProjectForm() {
     setError(null);
 
     if (!finalTopicTitle || !hasFinalIdeaSelection || flowStage !== "variant_selection") {
-      setError("Confirma el tema, elige una idea principal y luego decide si usaras una variante.");
+      setError(copy.submitMissing);
       return;
     }
 
@@ -623,6 +804,7 @@ export function CreateProjectForm() {
           degreeLevel,
           university,
           program,
+          language,
           topicAreaId: topicAreaId ?? undefined,
           topicAreaLabel: topicAreaLabel ?? undefined,
         }),
@@ -634,11 +816,11 @@ export function CreateProjectForm() {
       };
 
       if (!response.ok || !payload.project) {
-        setError(payload.error ?? "No se pudo crear el proyecto.");
+        setError(payload.error ?? copy.createError);
         return;
       }
 
-      router.push(`/projects/${payload.project.id}/topic`);
+      router.push(`/projects/${payload.project.id}#intake`);
       router.refresh();
     });
   }
@@ -648,10 +830,10 @@ export function CreateProjectForm() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="grid gap-2">
           <p className="text-sm leading-6 text-[var(--color-muted)]">
-            Primero define el tema base, luego generamos ideas y finalmente eliges una variante final.
+            {copy.intro}
           </p>
           <div className="inline-flex w-fit rounded-full border border-[rgba(74,58,97,0.1)] bg-[rgba(244,241,248,0.8)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
-            Paso 1 de 3
+            {copy.step}
           </div>
         </div>
         {flowStage !== "topic_input" ? (
@@ -661,14 +843,14 @@ export function CreateProjectForm() {
             type="button"
           >
             <RotateCcw className="mr-2 size-4" />
-            Empezar otra vez
+            {copy.restart}
           </button>
         ) : null}
       </div>
 
       <section className="grid gap-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4 md:col-span-2">
+        <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+          <div className="grid gap-3 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4 sm:p-5">
             <div className="flex items-center gap-3">
               <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(219,193,255,0.3)] text-[var(--color-plum)]">
                 <GraduationCap className="size-4" />
@@ -677,7 +859,7 @@ export function CreateProjectForm() {
                 className="text-sm font-semibold text-[var(--color-muted)]"
                 htmlFor="project-degree"
               >
-                Nivel
+                {copy.degree}
               </label>
             </div>
             <select
@@ -689,7 +871,7 @@ export function CreateProjectForm() {
             >
               {PROJECT_DEGREE_LEVEL_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {getDegreeLevelLabelForLanguage(option.value, language)}
                 </option>
               ))}
             </select>
@@ -701,7 +883,7 @@ export function CreateProjectForm() {
                 <Building2 className="size-4" />
               </span>
               <label className="text-sm font-semibold text-[var(--color-muted)]">
-                Universidad
+                {copy.university}
               </label>
             </div>
             <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
@@ -735,7 +917,7 @@ export function CreateProjectForm() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4">
           <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
             <div className="flex items-center gap-3">
               <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(255,190,201,0.28)] text-[var(--color-coral)]">
@@ -745,7 +927,7 @@ export function CreateProjectForm() {
                 className="text-sm font-semibold text-[var(--color-muted)]"
                 htmlFor="project-career"
               >
-                Carrera o area base
+                {copy.area}
               </label>
             </div>
             <div className="relative">
@@ -770,11 +952,11 @@ export function CreateProjectForm() {
                   }
                 }}
                 onFocus={() => setIsAreaDropdownOpen(true)}
-                placeholder="Selecciona una opcion o escribe tu propia area"
+                placeholder={copy.areaPlaceholder}
                 value={areaQuery}
               />
               <button
-                aria-label="Mostrar areas sugeridas"
+                aria-label={copy.showAreas}
                 className="absolute inset-y-0 right-3 my-auto inline-flex size-8 items-center justify-center rounded-full text-[var(--color-muted)] hover:bg-[rgba(74,58,97,0.06)]"
                 disabled={flowStage !== "topic_input"}
                 onClick={() => setIsAreaDropdownOpen((current) => !current)}
@@ -822,7 +1004,7 @@ export function CreateProjectForm() {
                       }}
                       type="button"
                     >
-                      <span>Usar "{areaQuery.trim()}" como area nueva</span>
+                      <span>{copy.useNewArea(areaQuery.trim())}</span>
                       <Sparkles className="size-4 text-[var(--color-plum)]" />
                     </button>
                   ) : null}
@@ -830,21 +1012,21 @@ export function CreateProjectForm() {
               ) : null}
             </div>
             <p className="text-sm leading-6 text-[var(--color-muted)]">
-              Puedes elegir una opcion sugerida o escribir un area propia. La normalizaremos y registraremos en tiempo real.
+              {copy.areaHelp}
             </p>
             {normalizedAreaMessage ? (
               <p className="text-sm text-emerald-700">
                 {normalizedAreaMessage}
-                {isNormalizingArea ? " Ajustando..." : ""}
+                {isNormalizingArea ? copy.adjusting : ""}
               </p>
             ) : isNormalizingArea ? (
               <p className="text-sm text-[var(--color-muted)]">
-                Validando semanticamente el area...
+                {copy.validatingArea}
               </p>
             ) : null}
           </div>
 
-          <div className="grid gap-2 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+          <div className="grid gap-3 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4 sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(239,193,77,0.24)] text-[var(--color-gold)]">
@@ -854,36 +1036,36 @@ export function CreateProjectForm() {
                   className="text-sm font-semibold text-[var(--color-muted)]"
                   htmlFor="project-interest"
                 >
-                  Genear idea
+                  {copy.generateIdea}
                 </label>
               </div>
             </div>
             <div className="relative">
               <textarea
-                className="brand-textarea"
+                className="brand-textarea min-h-[180px] text-base"
                 disabled={flowStage === "variant_selection"}
                 id="project-interest"
                 onChange={(event) => {
                   handleIdeaTextChange(event.target.value);
                 }}
-                placeholder="Escribe el tema que quieres investigar."
-                rows={3}
+                placeholder={copy.ideaPlaceholder}
+                rows={7}
                 value={interestText}
               />
             </div>
             <p className="text-sm leading-6 text-[var(--color-muted)]">
-              Escribe el tema y pulsa `Enter` para confirmarlo. Mientras escribes, veras sugerencias relacionadas como en un buscador.
+              {copy.ideaHelp}
             </p>
             {pendingTopicConfirmation && flowStage === "topic_input" ? (
               <div className="rounded-[22px] border border-[rgba(52,20,95,0.14)] bg-[rgba(250,247,253,0.95)] p-4">
                 <p className="text-sm font-semibold text-[var(--color-ink)]">
-                  Confirmar tema base
+                  {copy.confirmTopic}
                 </p>
                 <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
                   {pendingTopicConfirmation}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-                  Si este es el nombre correcto, lo usaremos para establecer el contexto de generacion de ideas.
+                  {copy.confirmTopicBody}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-3">
                   <button
@@ -891,14 +1073,14 @@ export function CreateProjectForm() {
                     onClick={() => confirmTopicSelection(pendingTopicConfirmation)}
                     type="button"
                   >
-                    Usar este tema
+                    {copy.useTopic}
                   </button>
                   <button
                     className="brand-button-secondary px-4 py-2 text-sm font-semibold"
                     onClick={() => setPendingTopicConfirmation(null)}
                     type="button"
                   >
-                    Seguir editando
+                    {copy.keepEditing}
                   </button>
                 </div>
               </div>
@@ -906,13 +1088,13 @@ export function CreateProjectForm() {
             {confirmedTopic ? (
               <div className="rounded-[22px] border border-[rgba(74,58,97,0.08)] bg-[rgba(250,247,253,0.9)] p-4">
                 <p className="text-sm font-semibold text-[var(--color-ink)]">
-                  Tema confirmado
+                  {copy.confirmedTopic}
                 </p>
                 <p className="mt-2 font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
                   {confirmedTopic}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-                  Este tema fija el contexto. A partir de aqui generamos ideas y luego variantes.
+                  {copy.confirmedTopicBody}
                 </p>
               </div>
             ) : null}
@@ -926,16 +1108,16 @@ export function CreateProjectForm() {
                 >
                   <WandSparkles className="mr-2 size-4" />
                   {isGeneratingIdeas
-                    ? "Generando..."
+                    ? copy.generating
                     : generatedIdeas.length >= MAX_GENERATED_IDEAS
-                      ? "Limite alcanzado"
+                      ? copy.limitReached
                       : generatedIdeas.length > 0
-                        ? "Nueva idea"
-                        : "Genear idea"}
+                        ? copy.newIdea
+                        : copy.generateIdea}
                 </button>
                 <div className="flex items-center gap-2">
                   <button
-                    aria-label="Idea anterior"
+                    aria-label={copy.previousIdea}
                     className="inline-flex size-8 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
                     disabled={activeGeneratedIdeaIndex === 0 || flowStage === "variant_selection"}
                     onClick={() => applyGeneratedIdea(activeGeneratedIdeaIndex - 1)}
@@ -944,7 +1126,7 @@ export function CreateProjectForm() {
                     <ChevronLeft className="size-4" />
                   </button>
                   <button
-                    aria-label="Idea siguiente"
+                    aria-label={copy.nextIdea}
                     className="inline-flex size-8 items-center justify-center rounded-full border border-[rgba(74,58,97,0.1)] text-[var(--color-muted)] disabled:opacity-40"
                     disabled={
                       activeGeneratedIdeaIndex >= generatedIdeas.length - 1 ||
@@ -959,10 +1141,10 @@ export function CreateProjectForm() {
               </div>
               <p className="text-sm leading-6 text-[var(--color-muted)]">
                 {flowStage === "topic_input"
-                  ? "Primero confirma el tema."
+                  ? copy.flowTopic
                   : flowStage === "topic_confirmed"
-                    ? "Genera hasta 5 ideas y luego elige una."
-                    : "Ya elegiste una idea principal. Ahora define una variante o continua con esa base."}
+                    ? copy.flowConfirmed
+                    : copy.flowVariant}
               </p>
             </div>
             {ideaDraftError ? (
@@ -975,10 +1157,10 @@ export function CreateProjectForm() {
               <div className="rounded-[22px] border border-[rgba(74,58,97,0.08)] bg-[rgba(250,247,253,0.9)] p-4">
                 <div>
                   <p className="text-sm font-semibold text-[var(--color-ink)]">
-                    Idea generada actual
+                    {copy.currentIdea}
                   </p>
                   <p className="text-xs uppercase tracking-[0.18em] text-[var(--color-muted)]">
-                    {activeGeneratedIdeaIndex + 1}/{generatedIdeas.length} ideas
+                    {activeGeneratedIdeaIndex + 1}/{generatedIdeas.length} {copy.ideas}
                   </p>
                 </div>
                 {activeGeneratedIdea ? (
@@ -998,13 +1180,13 @@ export function CreateProjectForm() {
                         onClick={lockIdeaSelection}
                         type="button"
                       >
-                        Elegir esta idea
+                        {copy.chooseIdea}
                       </button>
                       {selectedIdea &&
                       normalizeSearchText(selectedIdea.title) ===
                         normalizeSearchText(activeGeneratedIdea.title) ? (
                         <span className="inline-flex rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
-                          Idea fijada
+                          {copy.fixedIdea}
                         </span>
                       ) : null}
                     </div>
@@ -1018,13 +1200,13 @@ export function CreateProjectForm() {
 
       <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-          Ajustes opcionales
+          {copy.optionalSettings}
         </summary>
         <div className="mt-4 grid gap-4">
           <div className="grid gap-2">
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
-                Programa
+                {copy.program}
               </p>
               <button
                 className="brand-button-secondary px-4 py-2 text-sm font-semibold"
@@ -1032,7 +1214,7 @@ export function CreateProjectForm() {
                 onClick={() => setIsProgramEditable((current) => !current)}
                 type="button"
               >
-                {isProgramEditable ? "Ocultar" : "Editar"}
+                {isProgramEditable ? copy.hide : copy.edit}
               </button>
             </div>
 
@@ -1044,7 +1226,7 @@ export function CreateProjectForm() {
                   setProgram(event.target.value);
                   setHasManualProgram(true);
                 }}
-                placeholder="Ej. Maestria en Gestion Empresarial"
+                placeholder={copy.programPlaceholder}
                 required
                 value={program}
               />
@@ -1057,16 +1239,16 @@ export function CreateProjectForm() {
 
           <div className="grid gap-2 text-sm leading-6 text-[var(--color-muted)] sm:grid-cols-2">
             <p>
-              <strong>Plantilla:</strong> {SYSTEM_MASTER_TEMPLATE_ALIAS}
+              <strong>{copy.template}:</strong> {SYSTEM_MASTER_TEMPLATE_ALIAS}
             </p>
             <p>
-              <strong>Area:</strong> {topicAreaLabel || "No especificada"}
+              <strong>{copy.areaSummary}:</strong> {topicAreaLabel || copy.notSpecified}
             </p>
             <p>
-              <strong>Nivel:</strong> {getDegreeLevelLabel(degreeLevel)}
+              <strong>{copy.degree}:</strong> {getDegreeLevelLabelForLanguage(degreeLevel, language)}
             </p>
             <p>
-              <strong>Universidad:</strong>{" "}
+              <strong>{copy.university}:</strong>{" "}
               {FEATURED_UNIVERSITIES.find((option) => option.code === university)?.shortName ??
                 university}
             </p>
@@ -1084,20 +1266,20 @@ export function CreateProjectForm() {
       >
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
           {flowStage === "variant_selection"
-            ? "Elegir una variante final"
-            : "Variantes e ideas relacionadas"}
+            ? copy.finalVariant
+            : copy.relatedVariants}
         </summary>
         <div className="mt-4 grid gap-4">
           <p className="text-sm leading-6 text-[var(--color-muted)]">
             {flowStage === "variant_selection"
-              ? "Ahora ya no editamos lo anterior. Si eliges una variante, esa sera la base final; si no, se usara la idea principal que fijaste."
-              : "Este bloque se activa despues de elegir una idea principal. Antes de eso, debes confirmar el tema y generar ideas."}
+              ? copy.variantReadyBody
+              : copy.variantWaitingBody}
           </p>
 
           {flowStage === "variant_selection" && selectedIdea ? (
             <div className="grid gap-3">
               <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
-                Idea principal elegida
+                {copy.selectedMainIdea}
               </p>
               <div className="rounded-[22px] border border-[rgba(74,58,97,0.08)] bg-[rgba(250,247,253,0.9)] p-4">
                 <p className="font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
@@ -1113,7 +1295,7 @@ export function CreateProjectForm() {
           {flowStage === "variant_selection" && selectedIdeaVariants.length > 0 ? (
             <div className="grid gap-3">
               <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
-                Variantes relacionadas
+                {copy.relatedVariantLabel}
               </p>
               {selectedIdeaVariants.map((idea, index) => (
                 <button
@@ -1140,8 +1322,8 @@ export function CreateProjectForm() {
                     <span className="inline-flex rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.64)]">
                       {normalizeSearchText(selectedVariantTitle ?? "") ===
                       normalizeSearchText(idea.title)
-                        ? "Variante elegida"
-                        : "Variante"}
+                        ? copy.chosenVariant
+                        : copy.variant}
                     </span>
                   </div>
                 </button>
@@ -1151,11 +1333,11 @@ export function CreateProjectForm() {
 
           {flowStage === "variant_selection" ? (
             <div className="rounded-[22px] border border-dashed border-[rgba(74,58,97,0.12)] px-4 py-4 text-sm leading-6 text-[var(--color-muted)]">
-              Si no eliges una variante, continuaremos con la idea principal seleccionada.
+              {copy.noVariantHint}
             </div>
           ) : (
             <div className="rounded-[22px] border border-dashed border-[rgba(74,58,97,0.12)] px-4 py-4 text-sm leading-6 text-[var(--color-muted)]">
-              Aqui apareceran las variantes y temas relacionados cuando fijes una idea principal.
+              {copy.variantsAppearHint}
             </div>
           )}
         </div>
@@ -1169,12 +1351,12 @@ export function CreateProjectForm() {
           disabled={!canContinue}
           type="submit"
         >
-          {isPending ? "Creando..." : "Continuar"}
+          {isPending ? copy.creating : copy.continue}
         </button>
         <p className="text-sm leading-6 text-[var(--color-muted)]">
           {flowStage === "variant_selection"
-            ? "Guardaremos la variante elegida o, si no elegiste una, la idea principal seleccionada."
-            : "Confirma el tema y luego fija una idea para poder continuar."}
+            ? copy.continueReady
+            : copy.continueMissing}
         </p>
       </div>
     </form>

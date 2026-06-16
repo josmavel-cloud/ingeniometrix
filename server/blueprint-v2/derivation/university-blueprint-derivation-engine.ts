@@ -1,5 +1,6 @@
 import { getConfiguredLlmProvider } from "@/llm";
 import type { TextGenerationResult } from "@/llm/provider";
+import { normalizeLanguageCode } from "@/lib/language";
 import type {
   MasterBlueprintEngineProject,
   MasterSectionDraft,
@@ -172,6 +173,10 @@ const INSTITUTIONAL_METADATA_SECTION_KEYS = new Set([
   "mention",
   "project_title",
 ]);
+
+function isEnglishProject(project: MasterBlueprintEngineProject) {
+  return normalizeLanguageCode(project.language) === "en";
+}
 
 function uniqueItems(items: string[]) {
   return Array.from(new Set(items.map((item) => item.trim()).filter(Boolean)));
@@ -396,6 +401,10 @@ function buildReductionPrompt(input: {
   templateName: string;
   mappings: SectionMapping[];
 }) {
+  const english = isEnglishProject(input.project);
+  const outputLanguageRule = english
+    ? "- OUTPUT LANGUAGE LOCK: write every section content, reduction_summary, and warning in English. Spanish template titles are identifiers/context and must not define the output language."
+    : "- BLOQUEO DE IDIOMA: redacta todo el contenido, reduction_summary y warnings en espanol academico.";
   const selectedKeys = new Set(input.mappings.flatMap((mapping) => mapping.selectedMasterKeys));
   const selectedDrafts = input.mappings
     .flatMap((mapping) => mapping.selectedDrafts)
@@ -423,7 +432,8 @@ Tarea:
 - No insertar referencias bibliograficas inline por titulo; las citas formales se insertaran despues en DOCX.
 - Si una seccion padre tiene subsecciones hijas en la plantilla, redacta solo un encuadre breve y deja el detalle para las hijas.
 - Si una seccion institucional tiene menos granularidad que el Master, fusiona las secciones Master relacionadas en una narrativa compacta.
-- Redacta siempre en espanol academico, claro y defendible para nivel maestria.
+${outputLanguageRule}
+- ${english ? "Use clear, defensible academic English for master's level." : "Redacta siempre en espanol academico, claro y defendible para nivel maestria."}
 
 Proyecto:
 ${JSON.stringify(
@@ -444,7 +454,7 @@ ${JSON.stringify(targetSections, null, 2)}
 Paquetes Master disponibles:
 ${JSON.stringify(selectedDrafts.map(makeMasterPacket), null, 2)}
 
-Devuelve exclusivamente JSON valido con esta forma:
+${english ? "Return exclusively valid JSON with this shape:" : "Devuelve exclusivamente JSON valido con esta forma:"}
 {
   "sections": [
     {
@@ -479,17 +489,27 @@ function safeJsonParse<T>(text: string): T | null {
   }
 }
 
-function deterministicContentForMapping(mapping: SectionMapping) {
+function deterministicContentForMapping(
+  mapping: SectionMapping,
+  project: MasterBlueprintEngineProject,
+) {
+  const english = isEnglishProject(project);
   if (mapping.selectedDrafts.length === 0) {
-    return `La plantilla institucional solicita la seccion "${mapping.entry.title}", pero el contenido maestro disponible no contiene soporte suficiente para desarrollarla sin supuestos adicionales. Debe completarse durante la revision academica.`;
+    return english
+      ? `The institutional template requests the section "${mapping.entry.title}", but the available master content does not provide enough support to develop it without additional assumptions. It must be completed during academic review.`
+      : `La plantilla institucional solicita la seccion "${mapping.entry.title}", pero el contenido maestro disponible no contiene soporte suficiente para desarrollarla sin supuestos adicionales. Debe completarse durante la revision academica.`;
   }
 
   if (mapping.entry.semanticKey === "references") {
-    return "Las referencias formales se consolidan en la seccion bibliografica del documento y se renderizan a partir del registro de fuentes recuperadas.";
+    return english
+      ? "Formal references are consolidated in the bibliography section and rendered from the recovered source registry."
+      : "Las referencias formales se consolidan en la seccion bibliografica del documento y se renderizan a partir del registro de fuentes recuperadas.";
   }
 
   if (mapping.entry.semanticKey === "consistency_matrix") {
-    return "La matriz de consistencia se presenta como tabla horizontal con correspondencia entre interrogantes, objetivos, hipotesis, variables y componentes metodologicos.";
+    return english
+      ? "The consistency matrix is presented as a horizontal table aligning questions, objectives, hypotheses, variables, and methodological components."
+      : "La matriz de consistencia se presenta como tabla horizontal con correspondencia entre interrogantes, objetivos, hipotesis, variables y componentes metodologicos.";
   }
 
   const parts = mapping.selectedDrafts.map((draft) => {
@@ -502,13 +522,14 @@ function deterministicContentForMapping(mapping: SectionMapping) {
 
 function buildSectionFromMapping(input: {
   mapping: SectionMapping;
+  project: MasterBlueprintEngineProject;
   llmSection?: LlmReducedSection | null;
   forceDeterministic?: boolean;
 }): UniversityBlueprintSection {
   const llmContent = input.forceDeterministic
     ? null
     : cleanDerivedContent(input.llmSection?.content);
-  const content = llmContent || deterministicContentForMapping(input.mapping);
+  const content = llmContent || deterministicContentForMapping(input.mapping, input.project);
   const derivedKeys = uniqueItems(
     input.llmSection?.derived_from_master_keys?.length
       ? input.llmSection.derived_from_master_keys
@@ -706,6 +727,7 @@ export async function deriveUniversityBlueprint(input: {
 
       return buildSectionFromMapping({
         mapping,
+        project: input.project,
         llmSection,
         forceDeterministic: !llmSection,
       });
@@ -748,6 +770,7 @@ export async function deriveUniversityBlueprint(input: {
     const sections = mappings.map((mapping) =>
       buildSectionFromMapping({
         mapping,
+        project: input.project,
         forceDeterministic: true,
       }),
     );

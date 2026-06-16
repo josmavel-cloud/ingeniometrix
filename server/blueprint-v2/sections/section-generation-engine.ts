@@ -753,10 +753,11 @@ async function generateDraftForPlanItem(input: {
         attemptPrompt = buildRetryPrompt({
           originalPrompt: prompt,
           previousContent: content,
-          failures: ["La respuesta anterior quedo vacia o no fue usable."],
-          planItem: input.planItem,
-          executionProfile,
-        });
+        failures: ["La respuesta anterior quedo vacia o no fue usable."],
+        planItem: input.planItem,
+        executionProfile,
+        targetLanguage: input.project.language,
+      });
         finalPrompt = attemptPrompt;
         continue;
       }
@@ -780,6 +781,7 @@ async function generateDraftForPlanItem(input: {
         executionProfile,
         usedReferenceIds,
         sourceTitles: sourceTitlesForGuards,
+        targetLanguage: input.project.language,
       });
 
       content = budgetCandidate.content;
@@ -820,6 +822,7 @@ async function generateDraftForPlanItem(input: {
         failures: quality.failures,
         planItem: input.planItem,
         executionProfile,
+        targetLanguage: input.project.language,
       });
       finalPrompt = attemptPrompt;
     }
@@ -858,6 +861,7 @@ async function generateDraftForPlanItem(input: {
       executionProfile,
       usedReferenceIds,
       sourceTitles: sourceTitlesForGuards,
+      targetLanguage: input.project.language,
     });
     qualityChecks = {
       ...fallbackQuality.qualityChecks,
