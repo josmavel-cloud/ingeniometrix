@@ -83,6 +83,9 @@
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "db:push": "prisma db push",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:migrate:status": "prisma migrate status",
+    "db:migrate:dev": "prisma migrate dev",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"
   },
