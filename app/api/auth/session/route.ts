@@ -4,12 +4,21 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/server/auth/password";
 import { createSession, validateEmail } from "@/server/auth/session";
 
+function sanitizeRuntimeMessage(value: string) {
+  return value
+    .replace(/postgres(?:ql)?:\/\/[^\s"'<>]+/gi, "postgresql://[redacted]")
+    .replace(/(DATABASE_URL(?:_UNPOOLED)?=)[^\s"'<>]+/gi, "$1[redacted]")
+    .slice(0, 700);
+}
+
 function toAuthRuntimeErrorPayload(stage: string, error: unknown) {
   return {
     error: "No se pudo iniciar la sesion.",
     diagnostic: {
       stage,
       name: error instanceof Error ? error.name : "UnknownError",
+      message:
+        error instanceof Error ? sanitizeRuntimeMessage(error.message) : null,
       code:
         error &&
         typeof error === "object" &&
