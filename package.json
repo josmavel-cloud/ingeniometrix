@@ -80,6 +80,7 @@
     "taxonomy:backfill:domains": "node scripts/backfill-applied-domain-mappings.mjs",
     "taxonomy:refine:keywords": "node scripts/refine-reference-keywords.mjs",
     "admin:user": "tsx scripts/admin-upsert-user.ts",
+    "cleanup:projects:no-artifacts": "tsx scripts/cleanup-projects-without-artifacts.ts",
     "prisma:generate": "prisma generate",
     "prisma:validate": "prisma validate",
     "db:push": "prisma db push",

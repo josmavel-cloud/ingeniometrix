@@ -4,6 +4,7 @@ import type { IntakeDraft } from "@/server/projects/intake-draft-service";
 import { requireCurrentUser } from "@/server/auth/session";
 import { generateIntakeDrafts } from "@/server/projects/intake-draft-service";
 import { getProjectForUser } from "@/server/projects/project-service";
+import { resolveProjectContentLanguage } from "@/server/projects/project-language-service";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -49,10 +50,12 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Proyecto no encontrado." }, { status: 404 });
     }
 
+    const language = resolveProjectContentLanguage(project.language);
     const result = await generateIntakeDrafts({
       project,
       variantSeed: normalizeOptionalText(payload.variantSeed),
       existingDrafts: normalizeExistingDrafts(payload.existingDrafts),
+      languageOverride: language,
     });
 
     return NextResponse.json(result);

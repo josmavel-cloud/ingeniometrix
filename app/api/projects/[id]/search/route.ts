@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
-import { getRequestLanguage } from "@/server/i18n/request-language";
+import { getProjectContentLanguageForUser } from "@/server/projects/project-language-service";
 import { searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
 
 type RouteContext = {
@@ -13,8 +13,8 @@ export async function POST(_request: Request, context: RouteContext) {
 
   try {
     const user = await requireCurrentUser();
-    language = await getRequestLanguage();
     const { id } = await context.params;
+    language = await getProjectContentLanguageForUser(user.id, id);
     const body = (await _request.json().catch(() => ({}))) as {
       desiredTotal?: number;
     };

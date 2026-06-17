@@ -143,7 +143,40 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     setDraftError(null);
   }
 
-  async function requestGeneratedDrafts(options?: { variantSeed?: string }) {
+  function toIntakeState(draft: IntakeState): IntakeState {
+    return {
+      topic: draft.topic,
+      problemContext: draft.problemContext,
+      researchLine: draft.researchLine,
+      academicConstraints: draft.academicConstraints,
+      targetPopulation: draft.targetPopulation,
+      availableData: draft.availableData,
+      preferredMethodology: draft.preferredMethodology,
+      advisorNotes: draft.advisorNotes,
+    };
+  }
+
+  async function saveIntakePayload(nextForm: IntakeState) {
+    const response = await fetch(`/api/projects/${project.id}/intake`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(toIntakeState(nextForm)),
+    });
+    const payload = (await response.json()) as { error?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.error ?? copy.saveError);
+    }
+
+    return payload;
+  }
+
+  async function requestGeneratedDrafts(options?: {
+    variantSeed?: string;
+    autoSaveFirstDraft?: boolean;
+  }) {
     setDraftError(null);
     setDraftMessage(null);
 
@@ -172,6 +205,11 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
         const nextDrafts = payload.drafts.slice(0, 3);
         setGeneratedDrafts(nextDrafts);
         applyGeneratedDraft(nextDrafts[0], 0);
+        if (options?.autoSaveFirstDraft) {
+          await saveIntakePayload(nextDrafts[0]);
+          setSuccess(copy.saved);
+          router.refresh();
+        }
         setDraftMessage(copy.draftsGenerated(nextDrafts.length));
       } catch {
         setDraftError(copy.draftUnavailable);
@@ -206,6 +244,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     setHasRequestedInitialDraft(true);
     void requestGeneratedDrafts({
       variantSeed: "Complete every missing intake field for the selected topic.",
+      autoSaveFirstDraft: true,
     });
   }, [form.topic, hasRequestedInitialDraft, isGeneratingDrafts, needsGeneratedIntake]);
 
@@ -268,23 +307,13 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     setSuccess(null);
 
     startTransition(async () => {
-      const response = await fetch(`/api/projects/${project.id}/intake`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(form),
-      });
-
-      const payload = (await response.json()) as { error?: string };
-
-      if (!response.ok) {
-        setError(payload.error ?? copy.saveError);
-        return;
+      try {
+        await saveIntakePayload(form);
+        setSuccess(copy.saved);
+        router.refresh();
+      } catch (saveError) {
+        setError(saveError instanceof Error ? saveError.message : copy.saveError);
       }
-
-      setSuccess(copy.saved);
-      router.refresh();
     });
   }
 
