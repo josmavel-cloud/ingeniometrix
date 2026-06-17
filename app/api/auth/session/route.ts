@@ -4,8 +4,28 @@ import { prisma } from "@/lib/prisma";
 import { verifyPassword } from "@/server/auth/password";
 import { createSession, validateEmail } from "@/server/auth/session";
 
+function toAuthRuntimeErrorPayload(stage: string, error: unknown) {
+  return {
+    error: "No se pudo iniciar la sesion.",
+    diagnostic: {
+      stage,
+      name: error instanceof Error ? error.name : "UnknownError",
+      code:
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof error.code === "string"
+          ? error.code
+          : null,
+    },
+  };
+}
+
 export async function POST(request: Request) {
+  let stage = "READ_BODY";
+
   try {
+    stage = "READ_BODY";
     const body = (await request.json()) as {
       email?: string;
       password?: string;
@@ -21,10 +41,12 @@ export async function POST(request: Request) {
       );
     }
 
+    stage = "USER_LOOKUP";
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
+    stage = "VERIFY_PASSWORD";
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       return NextResponse.json(
         { error: "Credenciales invalidas." },
@@ -32,6 +54,7 @@ export async function POST(request: Request) {
       );
     }
 
+    stage = "CREATE_SESSION";
     await createSession({ userId: user.id });
 
     return NextResponse.json({
@@ -42,10 +65,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Unable to start Ingeniometrix session.", error);
+    console.error(`Unable to start Ingeniometrix session at ${stage}.`, error);
 
     return NextResponse.json(
-      { error: "No se pudo iniciar la sesion." },
+      toAuthRuntimeErrorPayload(stage, error),
       { status: 500 },
     );
   }
