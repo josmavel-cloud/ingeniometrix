@@ -80,6 +80,24 @@ export async function listProjectsForUser(userId: string) {
     orderBy: { updatedAt: "desc" },
     include: {
       intake: true,
+      blueprintJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      blueprintVersions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      generatedArtifacts: {
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          kind: true,
+          fileName: true,
+          byteSize: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 }

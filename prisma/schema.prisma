@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
@@ -104,6 +104,17 @@ enum BlueprintJobStageStatus {
   SKIPPED
 }
 
+enum GeneratedArtifactKind {
+  BLUEPRINT_DOCX
+  BLUEPRINT_PDF
+  BIBTEX
+  RIS
+  EVIDENCE_LOG
+  REPORT_PREVIEW
+  SOURCE_PDF
+  OTHER
+}
+
 enum PeerReviewStatus {
   PEER_REVIEWED
   NOT_PEER_REVIEWED
@@ -194,48 +205,50 @@ enum TemplateAssetSourceStrategy {
 }
 
 model User {
-  id        String     @id @default(uuid())
-  email     String     @unique
-  passwordHash String?    @db.Text
-  name      String?
-  locale    String     @default("es-PE")
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  projects  Project[]
-  auditLogs AuditLog[]
-  templates Template[]
-  blueprintJobs BlueprintJob[]
+  id                 String              @id @default(uuid())
+  email              String              @unique
+  passwordHash       String?             @db.Text
+  name               String?
+  locale             String              @default("es-PE")
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  projects           Project[]
+  auditLogs          AuditLog[]
+  templates          Template[]
+  blueprintJobs      BlueprintJob[]
+  generatedArtifacts GeneratedArtifact[]
 }
 
 model Project {
-  id                String             @id @default(uuid())
-  userId            String
-  catalogTopicId    String?
-  title             String
-  status            ProjectStatus      @default(DRAFT)
-  country           String             @default("PE")
-  language          String             @default("es")
-  degreeLevel       DegreeLevel
-  university        University
-  program           String
-  templateKey       TemplateKey        @default(GENERIC_POSGRADO_PE)
-  topicOriginType   TopicOriginType    @default(CATALOG)
-  topicSelectionStatus TopicSelectionStatus @default(PENDING)
-  topicSeedText     String?            @db.Text
-  topicAreaId       String?
-  topicAreaLabel    String?            @db.Text
+  id                        String                   @id @default(uuid())
+  userId                    String
+  catalogTopicId            String?
+  title                     String
+  status                    ProjectStatus            @default(DRAFT)
+  country                   String                   @default("PE")
+  language                  String                   @default("es")
+  degreeLevel               DegreeLevel
+  university                University
+  program                   String
+  templateKey               TemplateKey              @default(GENERIC_POSGRADO_PE)
+  topicOriginType           TopicOriginType          @default(CATALOG)
+  topicSelectionStatus      TopicSelectionStatus     @default(PENDING)
+  topicSeedText             String?                  @db.Text
+  topicAreaId               String?
+  topicAreaLabel            String?                  @db.Text
   selectedTopicSuggestionId String?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  intake            Intake?
-  projectReferences ProjectReference[]
-  blueprintVersions BlueprintVersion[]
-  blueprintJobs     BlueprintJob[]
-  auditLogs         AuditLog[]
-  knowledgeFields   ProjectKnowledgeField[]
-  topicSuggestions  ProjectTopicSuggestion[] @relation("ProjectTopicSuggestions")
-  selectedTopicSuggestion ProjectTopicSuggestion? @relation("ProjectSelectedTopicSuggestion", fields: [selectedTopicSuggestionId], references: [id], onDelete: SetNull)
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+  user                      User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  intake                    Intake?
+  projectReferences         ProjectReference[]
+  blueprintVersions         BlueprintVersion[]
+  blueprintJobs             BlueprintJob[]
+  generatedArtifacts        GeneratedArtifact[]
+  auditLogs                 AuditLog[]
+  knowledgeFields           ProjectKnowledgeField[]
+  topicSuggestions          ProjectTopicSuggestion[] @relation("ProjectTopicSuggestions")
+  selectedTopicSuggestion   ProjectTopicSuggestion?  @relation("ProjectSelectedTopicSuggestion", fields: [selectedTopicSuggestionId], references: [id], onDelete: SetNull)
 }
 
 model TopicAreaCatalogEntry {
@@ -269,27 +282,27 @@ model Intake {
 }
 
 model Reference {
-  id              String              @id @default(uuid())
-  doi             String?
-  openAlexId      String?             @unique
-  crossrefId      String?
-  title           String              @db.Text
-  normalizedTitle String              @db.Text
-  authorsJson     Json
-  abstract        String?             @db.Text
-  venue           String?
-  year            Int?
-  workType        String?
-  landingPageUrl  String?             @db.Text
-  citationCount   Int?
-  rawOpenAlexJson Json?
-  rawCrossrefJson Json?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  projectLinks    ProjectReference[]
-  classification  ReferenceClassification?
+  id               String                     @id @default(uuid())
+  doi              String?
+  openAlexId       String?                    @unique
+  crossrefId       String?
+  title            String                     @db.Text
+  normalizedTitle  String                     @db.Text
+  authorsJson      Json
+  abstract         String?                    @db.Text
+  venue            String?
+  year             Int?
+  workType         String?
+  landingPageUrl   String?                    @db.Text
+  citationCount    Int?
+  rawOpenAlexJson  Json?
+  rawCrossrefJson  Json?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  projectLinks     ProjectReference[]
+  classification   ReferenceClassification?
   indexMemberships ReferenceIndexMembership[]
-  keywords        ReferenceKeyword[]
+  keywords         ReferenceKeyword[]
 
   @@index([doi])
   @@index([normalizedTitle, year])
@@ -313,45 +326,47 @@ model ProjectReference {
 }
 
 model BlueprintVersion {
-  id                            String       @id @default(uuid())
-  projectId                     String
-  versionNumber                 Int
-  model                         String
-  promptVersion                 String
-  intakeSnapshotJson            Json
+  id                             String              @id @default(uuid())
+  projectId                      String
+  versionNumber                  Int
+  model                          String
+  promptVersion                  String
+  intakeSnapshotJson             Json
   selectedReferencesSnapshotJson Json
-  blueprintJson                 Json
-  coherenceReportJson           Json
-  exportStatus                  ExportStatus @default(PENDING)
-  createdAt                     DateTime     @default(now())
-  project                       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blueprintJson                  Json
+  coherenceReportJson            Json
+  exportStatus                   ExportStatus        @default(PENDING)
+  createdAt                      DateTime            @default(now())
+  project                        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  generatedArtifacts             GeneratedArtifact[]
 
   @@unique([projectId, versionNumber])
 }
 
 model BlueprintJob {
-  id              String             @id @default(uuid())
-  projectId       String
-  userId          String
-  status          BlueprintJobStatus @default(QUEUED)
-  currentStage    String?
-  progress        Int                @default(0)
-  language        String             @default("es")
-  runnerKind      String             @default("vercel")
-  attempts        Int                @default(0)
-  lockedAt        DateTime?
-  lastHeartbeatAt DateTime?
-  startedAt       DateTime?
-  completedAt     DateTime?
-  errorMessage    String?            @db.Text
-  errorJson       Json?
-  metadataJson    Json?
-  stageDataJson   Json?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stages          BlueprintJobStage[]
+  id                 String              @id @default(uuid())
+  projectId          String
+  userId             String
+  status             BlueprintJobStatus  @default(QUEUED)
+  currentStage       String?
+  progress           Int                 @default(0)
+  language           String              @default("es")
+  runnerKind         String              @default("vercel")
+  attempts           Int                 @default(0)
+  lockedAt           DateTime?
+  lastHeartbeatAt    DateTime?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  errorMessage       String?             @db.Text
+  errorJson          Json?
+  metadataJson       Json?
+  stageDataJson      Json?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stages             BlueprintJobStage[]
+  generatedArtifacts GeneratedArtifact[]
 
   @@index([projectId, status])
   @@index([userId, status])
@@ -372,23 +387,50 @@ model BlueprintJobStage {
   errorJson   Json?
   createdAt   DateTime                @default(now())
   updatedAt   DateTime                @updatedAt
-  job         BlueprintJob             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job         BlueprintJob            @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   @@unique([jobId, stageKey])
   @@index([jobId, status])
 }
 
+model GeneratedArtifact {
+  id                 String                @id @default(uuid())
+  userId             String
+  projectId          String
+  blueprintVersionId String?
+  jobId              String?
+  kind               GeneratedArtifactKind
+  fileName           String
+  mimeType           String
+  byteSize           Int
+  sha256             String
+  content            Bytes
+  metadataJson       Json?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blueprintVersion   BlueprintVersion?     @relation(fields: [blueprintVersionId], references: [id], onDelete: Cascade)
+  job                BlueprintJob?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+
+  @@unique([blueprintVersionId, kind, fileName])
+  @@index([projectId, kind, createdAt])
+  @@index([userId, kind, createdAt])
+  @@index([jobId, kind])
+  @@index([sha256])
+}
+
 model AuditLog {
-  id         String    @id @default(uuid())
-  projectId  String?
-  userId     String?
-  eventType  String
-  actorType  ActorType
-  provider   Provider?
+  id          String    @id @default(uuid())
+  projectId   String?
+  userId      String?
+  eventType   String
+  actorType   ActorType
+  provider    Provider?
   payloadJson Json
-  createdAt  DateTime  @default(now())
-  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
   @@index([userId, createdAt])
@@ -407,24 +449,24 @@ model TaxonomyScheme {
 }
 
 model TaxonomyConcept {
-  id                          String                     @id @default(uuid())
+  id                          String                    @id @default(uuid())
   schemeId                    String
   parentId                    String?
   conceptCode                 String
   conceptUri                  String?
   prefLabel                   String
   altLabelsJson               Json?
-  definition                  String?                    @db.Text
-  lang                        String                     @default("es")
-  createdAt                   DateTime                   @default(now())
-  updatedAt                   DateTime                   @updatedAt
-  scheme                      TaxonomyScheme             @relation(fields: [schemeId], references: [id], onDelete: Cascade)
-  parent                      TaxonomyConcept?           @relation("TaxonomyConceptTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children                    TaxonomyConcept[]          @relation("TaxonomyConceptTree")
+  definition                  String?                   @db.Text
+  lang                        String                    @default("es")
+  createdAt                   DateTime                  @default(now())
+  updatedAt                   DateTime                  @updatedAt
+  scheme                      TaxonomyScheme            @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  parent                      TaxonomyConcept?          @relation("TaxonomyConceptTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children                    TaxonomyConcept[]         @relation("TaxonomyConceptTree")
   projectKnowledgeFields      ProjectKnowledgeField[]
   resourceTypeClassifications ReferenceClassification[]
   referenceKeywords           ReferenceKeyword[]
-  primaryTopicSuggestions     ProjectTopicSuggestion[]     @relation("TopicSuggestionPrimaryConcept")
+  primaryTopicSuggestions     ProjectTopicSuggestion[]  @relation("TopicSuggestionPrimaryConcept")
 
   @@unique([schemeId, conceptCode])
 }
@@ -442,31 +484,31 @@ model ProjectKnowledgeField {
   project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   concept      TaxonomyConcept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
 
-  @@index([projectId, isPrimary])
   @@unique([projectId, conceptId])
+  @@index([projectId, isPrimary])
 }
 
 model ProjectTopicSuggestion {
-  id               String                   @id @default(uuid())
-  projectId        String
-  sourceType       TopicSuggestionSourceType
-  catalogTopicId   String?
-  seedText         String?                  @db.Text
-  title            String                   @db.Text
-  researchLine     String?                  @db.Text
-  rationale        String?                  @db.Text
-  metadataJson     Json?
-  primaryConceptId String?
-  selected         Boolean                  @default(false)
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
-  project          Project                  @relation("ProjectTopicSuggestions", fields: [projectId], references: [id], onDelete: Cascade)
-  primaryConcept   TaxonomyConcept?         @relation("TopicSuggestionPrimaryConcept", fields: [primaryConceptId], references: [id], onDelete: SetNull)
-  selectedByProjects Project[]              @relation("ProjectSelectedTopicSuggestion")
+  id                 String                    @id @default(uuid())
+  projectId          String
+  sourceType         TopicSuggestionSourceType
+  catalogTopicId     String?
+  seedText           String?                   @db.Text
+  title              String                    @db.Text
+  researchLine       String?                   @db.Text
+  rationale          String?                   @db.Text
+  metadataJson       Json?
+  primaryConceptId   String?
+  selected           Boolean                   @default(false)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  project            Project                   @relation("ProjectTopicSuggestions", fields: [projectId], references: [id], onDelete: Cascade)
+  primaryConcept     TaxonomyConcept?          @relation("TopicSuggestionPrimaryConcept", fields: [primaryConceptId], references: [id], onDelete: SetNull)
+  selectedByProjects Project[]                 @relation("ProjectSelectedTopicSuggestion")
 
+  @@unique([projectId, sourceType, title])
   @@index([projectId, selected])
   @@index([primaryConceptId])
-  @@unique([projectId, sourceType, title])
 }
 
 model ReferenceClassification {
@@ -522,12 +564,12 @@ model ReferenceKeyword {
 }
 
 model Template {
-  id             String           @id @default(uuid())
-  key            String           @unique
+  id             String            @id @default(uuid())
+  key            String            @unique
   name           String
   ownerType      TemplateOwnerType
   ownerUserId    String?
-  status         TemplateStatus   @default(DRAFT)
+  status         TemplateStatus    @default(DRAFT)
   universityName String?
   schoolName     String?
   programName    String?
@@ -535,9 +577,9 @@ model Template {
   degreeLevel    String?
   disciplineArea String?
   templateFamily String?
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  ownerUser      User?            @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  ownerUser      User?             @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   versions       TemplateVersion[]
 
   @@index([ownerType, status])
@@ -576,42 +618,42 @@ model TemplateVersion {
 }
 
 model TemplateSource {
-  id               String               @id @default(uuid())
+  id                String               @id @default(uuid())
   templateVersionId String
-  sourceId         String
-  sourceType       TemplateSourceType
-  documentKind     TemplateDocumentKind
-  originalFilePath String?              @db.Text
-  storedFilePath   String?              @db.Text
-  fileName         String?
-  mimeType         String?
-  fileHash         String?
-  fileData         Bytes?
-  metadataJson     Json?
-  createdAt        DateTime             @default(now())
-  templateVersion  TemplateVersion      @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
+  sourceId          String
+  sourceType        TemplateSourceType
+  documentKind      TemplateDocumentKind
+  originalFilePath  String?              @db.Text
+  storedFilePath    String?              @db.Text
+  fileName          String?
+  mimeType          String?
+  fileHash          String?
+  fileData          Bytes?
+  metadataJson      Json?
+  createdAt         DateTime             @default(now())
+  templateVersion   TemplateVersion      @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
 
   @@index([templateVersionId, sourceType])
 }
 
 model TemplateAsset {
-  id               String                      @id @default(uuid())
+  id                String                      @id @default(uuid())
   templateVersionId String
-  assetKey         String
-  kind             TemplateAssetKind
-  sourceStrategy   TemplateAssetSourceStrategy
-  originalFilePath String?                     @db.Text
-  storedFilePath   String?                     @db.Text
-  fileName         String?
-  mimeType         String?
-  fileHash         String?
-  fileData         Bytes?
-  widthPx          Int?
-  heightPx         Int?
-  hasTransparency  Boolean?
-  metadataJson     Json?
-  createdAt        DateTime                    @default(now())
-  templateVersion  TemplateVersion             @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
+  assetKey          String
+  kind              TemplateAssetKind
+  sourceStrategy    TemplateAssetSourceStrategy
+  originalFilePath  String?                     @db.Text
+  storedFilePath    String?                     @db.Text
+  fileName          String?
+  mimeType          String?
+  fileHash          String?
+  fileData          Bytes?
+  widthPx           Int?
+  heightPx          Int?
+  hasTransparency   Boolean?
+  metadataJson      Json?
+  createdAt         DateTime                    @default(now())
+  templateVersion   TemplateVersion             @relation(fields: [templateVersionId], references: [id], onDelete: Cascade)
 
   @@unique([templateVersionId, assetKey])
 }

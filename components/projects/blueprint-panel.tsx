@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
 
@@ -147,6 +147,7 @@ export function BlueprintPanel({
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const resumeInFlightRef = useRef(false);
 
   const latestVersion = versions[0] ?? null;
   const latestBlueprintDocxUrl = latestVersion
@@ -302,6 +303,20 @@ export function BlueprintPanel({
 
       if (payload.progress.jobId) {
         setActiveJobId(payload.progress.jobId);
+      }
+
+      if (
+        payload.progress.shouldNudge &&
+        payload.progress.jobId &&
+        !resumeInFlightRef.current
+      ) {
+        resumeInFlightRef.current = true;
+        fetch(`/api/projects/${projectId}/blueprints/resume`, {
+          method: "POST",
+          cache: "no-store",
+        }).finally(() => {
+          resumeInFlightRef.current = false;
+        });
       }
 
       if (

@@ -1,10 +1,11 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
   BlueprintJobStageStatus,
   BlueprintJobStatus,
   ExportStatus,
+  GeneratedArtifactKind,
   Prisma,
   ProjectStatus,
   Provider,
@@ -18,6 +19,7 @@ import {
   MIN_SELECTED_REFERENCES,
 } from "@/lib/research-workflow";
 import { getConfiguredLlmProvider } from "@/llm";
+import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import { loadBlueprintTemplateContext } from "@/server/blueprint/blueprint-engine";
 import { BlueprintGenerationError } from "@/server/blueprint/blueprint-errors";
@@ -351,6 +353,61 @@ async function writeFatalRunArtifact(input: {
     )}\n`,
     "utf8",
   );
+}
+
+function sanitizeArtifactFileName(value: string) {
+  const sanitized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  return sanitized || "artifact";
+}
+
+async function persistDownloadedPdfArtifacts(input: {
+  userId: string;
+  projectId: string;
+  jobId: string;
+  pdfDownloads: PdfDownloadResult;
+}) {
+  for (const record of input.pdfDownloads.records) {
+    if (record.status !== "downloaded" || !record.stored_file_path) {
+      continue;
+    }
+
+    try {
+      const content = await readFile(record.stored_file_path);
+      const fileName = `${sanitizeArtifactFileName(record.source_id)}.pdf`;
+
+      await upsertGeneratedArtifact({
+        userId: input.userId,
+        projectId: input.projectId,
+        jobId: input.jobId,
+        kind: GeneratedArtifactKind.SOURCE_PDF,
+        fileName,
+        mimeType: "application/pdf",
+        content,
+        metadataJson: {
+          sourceId: record.source_id,
+          title: record.title,
+          pdfUrl: record.pdf_url,
+          resolvedPdfUrl: record.resolved_pdf_url,
+          accessStrategy: record.access_strategy,
+          httpStatus: record.http_status,
+          storedFilePath: record.stored_file_path,
+          reportedFileSizeBytes: record.file_size_bytes,
+        },
+      });
+    } catch (error) {
+      console.warn("[blueprint-job] could not persist downloaded PDF artifact", {
+        jobId: input.jobId,
+        sourceId: record.source_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }
 
 async function loadProjectForBlueprint(userId: string, projectId: string) {
@@ -830,6 +887,12 @@ export async function runNextBlueprintJobStage(jobId: string) {
       data.pdfDownloads = await runPdfAvailabilityAndDownloadEngine({
         manifest: data.manifest,
         sourceRegistry: data.acquisition.source_registry,
+      });
+      await persistDownloadedPdfArtifacts({
+        userId: readyProject.userId,
+        projectId: readyProject.id,
+        jobId: job.id,
+        pdfDownloads: data.pdfDownloads,
       });
       await updateJobStage({
         jobId: job.id,
@@ -1375,6 +1438,30 @@ export async function runNextBlueprintJobStage(jobId: string) {
       state: "failed" as const,
     };
   }
+}
+
+export async function resumeLatestBlueprintJobForUser(
+  userId: string,
+  projectId: string,
+) {
+  const latestJob = await prisma.blueprintJob.findFirst({
+    where: {
+      userId,
+      projectId,
+      status: {
+        in: [...ACTIVE_JOB_STATUSES],
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (!latestJob) {
+    throw new Error("No hay un job activo para reanudar en este proyecto.");
+  }
+
+  return runNextBlueprintJobStage(latestJob.id);
 }
 
 export async function getBlueprintProgressForUserV2(

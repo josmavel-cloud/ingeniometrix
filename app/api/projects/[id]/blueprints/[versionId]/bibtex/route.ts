@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { GeneratedArtifactKind } from "@prisma/client";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { extractExportReferences, renderBibtex } from "@/server/blueprint/blueprint-export";
 import { getBlueprintVersionForUser } from "@/server/blueprint/blueprint-service";
 
@@ -25,6 +27,19 @@ export async function GET(_request: Request, context: RouteContext) {
     const references = extractExportReferences(blueprintVersion);
     const body = renderBibtex(references);
     const filename = `${slugify(blueprintVersion.id)}-ingeniometrix-referencias.bib`;
+    await upsertGeneratedArtifact({
+      userId: user.id,
+      projectId: id,
+      blueprintVersionId: versionId,
+      kind: GeneratedArtifactKind.BIBTEX,
+      fileName: filename,
+      mimeType: "application/x-bibtex; charset=utf-8",
+      content: body,
+      metadataJson: {
+        exportRoute: "blueprint-bibtex",
+        referenceCount: references.length,
+      },
+    });
 
     return new NextResponse(body, {
       status: 200,
