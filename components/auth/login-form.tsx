@@ -3,6 +3,29 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState, useTransition } from "react";
 
+type LoginErrorPayload = {
+  error?: string;
+  diagnostic?: {
+    message?: string | null;
+    name?: string | null;
+    stage?: string | null;
+  };
+};
+
+function getLoginErrorMessage(payload: LoginErrorPayload) {
+  const diagnosticMessage = payload.diagnostic?.message ?? "";
+
+  if (/exceeded the data transfer quota/i.test(diagnosticMessage)) {
+    return "La base de datos de Ingeniometrix alcanzo su cuota de transferencia en Neon. Hay que ampliar el plan o liberar la cuota para entrar al workspace.";
+  }
+
+  if (/can't reach database server/i.test(diagnosticMessage)) {
+    return "No se pudo conectar con la base de datos cloud. Revisa que el proyecto Neon este activo y que las variables de Vercel apunten al endpoint correcto.";
+  }
+
+  return payload.error ?? "No se pudo iniciar la sesion.";
+}
+
 export function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -24,8 +47,8 @@ export function LoginForm() {
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        setError(payload.error ?? "No se pudo iniciar la sesion.");
+        const payload = (await response.json()) as LoginErrorPayload;
+        setError(getLoginErrorMessage(payload));
         return;
       }
 

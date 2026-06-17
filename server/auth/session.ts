@@ -51,9 +51,14 @@ export async function getCurrentUser() {
     return null;
   }
 
-  return prisma.user.findUnique({
-    where: { id: userId },
-  });
+  try {
+    return await prisma.user.findUnique({
+      where: { id: userId },
+    });
+  } catch (error) {
+    console.error("Unable to resolve Ingeniometrix session user.", error);
+    return null;
+  }
 }
 
 function isAuthlessWorkspaceEnabled() {
