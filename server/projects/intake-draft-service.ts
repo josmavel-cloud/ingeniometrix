@@ -43,10 +43,14 @@ type GenerateIntakeDraftsInput = {
   project: ProjectForIntakeDraft;
   variantSeed?: string | null;
   existingDrafts?: IntakeDraft[];
+  languageOverride?: string | null;
 };
 
 function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
-  const language = normalizeLanguageCode(input.project.language) ?? APP_DEFAULT_LANGUAGE;
+  const language =
+    normalizeLanguageCode(input.languageOverride) ??
+    normalizeLanguageCode(input.project.language) ??
+    APP_DEFAULT_LANGUAGE;
   const topic = input.project.intake?.topic?.trim() || input.project.title;
   const area =
     input.project.topicAreaLabel?.trim() ||
@@ -130,7 +134,10 @@ function formatExistingDrafts(drafts: IntakeDraft[] | undefined) {
 }
 
 export async function generateIntakeDrafts(input: GenerateIntakeDraftsInput) {
-  const language = normalizeLanguageCode(input.project.language) ?? APP_DEFAULT_LANGUAGE;
+  const language =
+    normalizeLanguageCode(input.languageOverride) ??
+    normalizeLanguageCode(input.project.language) ??
+    APP_DEFAULT_LANGUAGE;
   const topic = input.project.intake?.topic?.trim() || input.project.title;
   const currentIntake = input.project.intake;
   const existingDrafts = formatExistingDrafts(input.existingDrafts);

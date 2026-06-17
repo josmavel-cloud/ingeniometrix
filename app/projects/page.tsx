@@ -1,9 +1,7 @@
 import Link from "next/link";
 
+import { ProjectList, type ProjectListItem } from "@/components/projects/project-list";
 import { ProjectShell } from "@/components/projects/project-shell";
-import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
-import { getProjectStatusToneClasses } from "@/lib/project-status";
-import { getProjectStatusMetaForLanguage } from "@/lib/project-ui-copy";
 import { requireCurrentUser } from "@/server/auth/session";
 import { getRequestLanguage } from "@/server/i18n/request-language";
 import { listProjectsForUser } from "@/server/projects/project-service";
@@ -50,6 +48,37 @@ export default async function ProjectsPage() {
   const language = await getRequestLanguage();
   const t = copy[language];
   const projects = await listProjectsForUser(user.id);
+  const projectListItems: ProjectListItem[] = projects.map((project) => {
+    const latestJob = project.blueprintJobs[0] ?? null;
+
+    return {
+      id: project.id,
+      title: project.title,
+      university: project.university,
+      program: project.program,
+      status: project.status,
+      updatedAt: project.updatedAt.toISOString(),
+      latestJob: latestJob
+        ? {
+            id: latestJob.id,
+            status: latestJob.status,
+            currentStage: latestJob.currentStage,
+            progress: latestJob.progress,
+            errorMessage: latestJob.errorMessage,
+            updatedAt: latestJob.updatedAt.toISOString(),
+            shouldNudge: false,
+          }
+        : null,
+      artifactCount: project.generatedArtifacts.length,
+      hasDocx: project.generatedArtifacts.some(
+        (artifact) => artifact.kind === "BLUEPRINT_DOCX",
+      ),
+      hasPdf: project.generatedArtifacts.some(
+        (artifact) =>
+          artifact.kind === "BLUEPRINT_PDF" || artifact.kind === "SOURCE_PDF",
+      ),
+    };
+  });
 
   return (
     <ProjectShell
@@ -135,42 +164,7 @@ export default async function ProjectsPage() {
             </div>
           </div>
         ) : (
-          <div className="mt-8 grid gap-4">
-            {projects.map((project) => {
-              const statusMeta = getProjectStatusMetaForLanguage(project.status, language);
-
-              return (
-                <Link
-                  className="group surface-panel grid gap-5 rounded-[30px] p-5 lg:grid-cols-[1.2fr_0.8fr]"
-                  href={`/projects/${project.id}`}
-                  key={project.id}
-                >
-                  <div>
-                    <p className="font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)] group-hover:text-[var(--color-plum)]">
-                      {project.title}
-                    </p>
-                    <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                      {getUniversityDisplayNameByCode(project.university)} | {project.program}
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-                      {statusMeta.summary}
-                    </p>
-                  </div>
-
-                  <div className="grid gap-3 lg:justify-items-end">
-                    <div
-                      className={`inline-flex rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] ${getProjectStatusToneClasses(project.status)}`}
-                    >
-                      {statusMeta.label}
-                    </div>
-                    <p className="max-w-sm text-sm leading-6 text-[var(--color-muted)] lg:text-right">
-                      {t.nextStep}: {statusMeta.nextStep}
-                    </p>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
+          <ProjectList initialProjects={projectListItems} language={language} />
         )}
       </section>
     </ProjectShell>

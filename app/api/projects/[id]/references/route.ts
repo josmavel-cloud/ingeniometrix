@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
-import { getRequestLanguage } from "@/server/i18n/request-language";
+import { getProjectContentLanguageForUser } from "@/server/projects/project-language-service";
 import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import {
   listProjectReferences,
@@ -17,8 +17,8 @@ export async function GET(_request: Request, context: RouteContext) {
 
   try {
     const user = await requireCurrentUser();
-    language = await getRequestLanguage();
     const { id } = await context.params;
+    language = await getProjectContentLanguageForUser(user.id, id);
     const [references, searchSnapshot] = await Promise.all([
       listProjectReferences(user.id, id, { languageOverride: language }),
       getLatestProjectReferenceSearchSnapshot(id),
@@ -42,8 +42,8 @@ export async function PUT(request: Request, context: RouteContext) {
 
   try {
     const user = await requireCurrentUser();
-    language = await getRequestLanguage();
     const { id } = await context.params;
+    language = await getProjectContentLanguageForUser(user.id, id);
     const body = (await request.json()) as { selectedReferenceIds?: string[] };
     const selectedReferenceIds = Array.isArray(body.selectedReferenceIds)
       ? body.selectedReferenceIds

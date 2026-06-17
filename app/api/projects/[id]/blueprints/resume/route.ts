@@ -2,29 +2,32 @@ import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
 import { scheduleBlueprintJobRun } from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
-import { getBlueprintProgressForUserV2 } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { resumeLatestBlueprintJobDrainForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(request: Request, context: RouteContext) {
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
+export async function POST(request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const progress = await getBlueprintProgressForUserV2(user.id, id);
+    const result = await resumeLatestBlueprintJobDrainForUser(user.id, id);
 
-    if (progress.shouldNudge && progress.jobId) {
+    if (result.shouldContinue && result.job) {
       scheduleBlueprintJobRun({
         origin: new URL(request.url).origin,
-        jobId: progress.jobId,
+        jobId: result.job.id,
       });
     }
 
-    return NextResponse.json({ progress });
+    return NextResponse.json({ result });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "No se pudo obtener el progreso del blueprint.";
+      error instanceof Error ? error.message : "No se pudo reanudar el job.";
 
     return NextResponse.json({ error: message }, { status: 400 });
   }
