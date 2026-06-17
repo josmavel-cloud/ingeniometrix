@@ -4,7 +4,7 @@ import {
   scheduleBlueprintJobRun,
   verifyBlueprintWorkerRequest,
 } from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
-import { runNextBlueprintJobStage } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { runBlueprintJobDrain } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 type RouteContext = {
   params: Promise<{ jobId: string }>;
@@ -20,7 +20,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   const { jobId } = await context.params;
   const origin = new URL(request.url).origin;
-  const result = await runNextBlueprintJobStage(jobId);
+  const result = await runBlueprintJobDrain(jobId);
 
   if (result.shouldContinue && result.job) {
     scheduleBlueprintJobRun({

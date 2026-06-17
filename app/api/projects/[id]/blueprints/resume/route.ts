@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
 import { scheduleBlueprintJobRun } from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
-import { resumeLatestBlueprintJobForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { resumeLatestBlueprintJobDrainForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -15,7 +15,7 @@ export async function POST(request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const result = await resumeLatestBlueprintJobForUser(user.id, id);
+    const result = await resumeLatestBlueprintJobDrainForUser(user.id, id);
 
     if (result.shouldContinue && result.job) {
       scheduleBlueprintJobRun({

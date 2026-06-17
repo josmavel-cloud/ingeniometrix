@@ -74,7 +74,15 @@ const ACTIVE_JOB_STATUSES = [
 const STALE_LOCK_MS = 8 * 60 * 1000;
 const SECTION_BATCH_SIZE = Math.max(
   1,
-  Number(process.env.BLUEPRINT_SECTION_BATCH_SIZE ?? "1") || 1,
+  Number(process.env.BLUEPRINT_SECTION_BATCH_SIZE ?? "2") || 2,
+);
+const DEFAULT_DRAIN_MAX_STAGES = Math.max(
+  1,
+  Number(process.env.BLUEPRINT_DRAIN_MAX_STAGES ?? "3") || 3,
+);
+const DEFAULT_DRAIN_TIME_BUDGET_MS = Math.max(
+  30_000,
+  Number(process.env.BLUEPRINT_DRAIN_TIME_BUDGET_MS ?? "210000") || 210_000,
 );
 
 type EvidenceExtractionResult = Awaited<ReturnType<typeof runEvidenceExtractionEngine>>;
@@ -1057,7 +1065,7 @@ export async function runNextBlueprintJobStage(jobId: string) {
         stageKey: "generating_sections",
         status: completed
           ? BlueprintJobStageStatus.COMPLETED
-          : BlueprintJobStageStatus.RUNNING,
+          : BlueprintJobStageStatus.QUEUED,
         progress: clampProgress(nextProgress),
         completedAt: completed ? new Date() : null,
         outputJson: {
@@ -1440,6 +1448,55 @@ export async function runNextBlueprintJobStage(jobId: string) {
   }
 }
 
+export type BlueprintJobStageRunResult = Awaited<
+  ReturnType<typeof runNextBlueprintJobStage>
+>;
+
+export async function runBlueprintJobDrain(
+  jobId: string,
+  options?: {
+    maxStages?: number;
+    timeBudgetMs?: number;
+  },
+) {
+  const startedAt = Date.now();
+  const maxStages = Math.max(
+    1,
+    Math.floor(options?.maxStages ?? DEFAULT_DRAIN_MAX_STAGES),
+  );
+  const timeBudgetMs = Math.max(
+    30_000,
+    Math.floor(options?.timeBudgetMs ?? DEFAULT_DRAIN_TIME_BUDGET_MS),
+  );
+  const results: BlueprintJobStageRunResult[] = [];
+  let currentJobId = jobId;
+  let finalResult: BlueprintJobStageRunResult | null = null;
+
+  for (let stageIndex = 0; stageIndex < maxStages; stageIndex += 1) {
+    if (Date.now() - startedAt >= timeBudgetMs) {
+      break;
+    }
+
+    finalResult = await runNextBlueprintJobStage(currentJobId);
+    results.push(finalResult);
+
+    if (!finalResult.shouldContinue || !finalResult.job) {
+      break;
+    }
+
+    currentJobId = finalResult.job.id;
+  }
+
+  return {
+    job: finalResult?.job ?? null,
+    shouldContinue: Boolean(finalResult?.shouldContinue && finalResult.job),
+    stagesRun: results.length,
+    elapsedMs: Date.now() - startedAt,
+    finalResult,
+    results,
+  };
+}
+
 export async function resumeLatestBlueprintJobForUser(
   userId: string,
   projectId: string,
@@ -1462,6 +1519,34 @@ export async function resumeLatestBlueprintJobForUser(
   }
 
   return runNextBlueprintJobStage(latestJob.id);
+}
+
+export async function resumeLatestBlueprintJobDrainForUser(
+  userId: string,
+  projectId: string,
+  options?: {
+    maxStages?: number;
+    timeBudgetMs?: number;
+  },
+) {
+  const latestJob = await prisma.blueprintJob.findFirst({
+    where: {
+      userId,
+      projectId,
+      status: {
+        in: [...ACTIVE_JOB_STATUSES],
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (!latestJob) {
+    throw new Error("No hay un job activo para reanudar en este proyecto.");
+  }
+
+  return runBlueprintJobDrain(latestJob.id, options);
 }
 
 export async function getBlueprintProgressForUserV2(

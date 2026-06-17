@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 
 import type { IntakeDraft } from "@/server/projects/intake-draft-service";
 import { requireCurrentUser } from "@/server/auth/session";
-import { getRequestLanguage } from "@/server/i18n/request-language";
 import { generateIntakeDrafts } from "@/server/projects/intake-draft-service";
 import { getProjectForUser } from "@/server/projects/project-service";
+import { resolveProjectContentLanguage } from "@/server/projects/project-language-service";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -42,7 +42,6 @@ function normalizeExistingDrafts(value: unknown): IntakeDraft[] {
 export async function POST(request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
-    const language = await getRequestLanguage();
     const { id } = await context.params;
     const payload = (await request.json()) as Record<string, unknown>;
     const project = await getProjectForUser(user.id, id);
@@ -51,6 +50,7 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Proyecto no encontrado." }, { status: 404 });
     }
 
+    const language = resolveProjectContentLanguage(project.language);
     const result = await generateIntakeDrafts({
       project,
       variantSeed: normalizeOptionalText(payload.variantSeed),
