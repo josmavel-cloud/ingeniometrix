@@ -49,10 +49,22 @@ type CoherencePanelItem = {
 
 type BlueprintProgress = {
   projectStatus: string;
+  jobId: string | null;
+  jobStatus: string | null;
   stageKey: string | null;
   label: string | null;
   progress: number | null;
   updatedAt: string | null;
+  errorMessage: string | null;
+  shouldNudge: boolean;
+};
+
+type BlueprintJobResponse = {
+  id: string;
+  status: string;
+  currentStage: string | null;
+  progress: number;
+  updatedAt: string;
 };
 
 function escapeRegExp(value: string) {
@@ -133,6 +145,7 @@ export function BlueprintPanel({
   const [error, setError] = useState<BlueprintUiError | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const latestVersion = versions[0] ?? null;
@@ -257,14 +270,25 @@ export function BlueprintPanel({
     },
   ];
   const readyCount = preparationChecklist.filter((item) => item.ready).length;
+  const progressJobActive =
+    progress?.jobStatus === "QUEUED" ||
+    progress?.jobStatus === "RUNNING" ||
+    progress?.jobStatus === "WAITING_NEXT_STAGE";
+  const hasActiveGeneration = Boolean(activeJobId) || progressJobActive;
+  const shouldPollProgress =
+    isPending ||
+    hasActiveGeneration ||
+    (projectStatus === "BLUEPRINT_GENERATING" &&
+      progress?.jobStatus !== "COMPLETED" &&
+      progress?.jobStatus !== "FAILED");
 
   useEffect(() => {
-    if (!isPending) {
+    if (!shouldPollProgress) {
       return;
     }
 
     let isCancelled = false;
-    const interval = globalThis.setInterval(async () => {
+    const pollProgress = async () => {
       const response = await fetch(`/api/projects/${projectId}/blueprints/progress`, {
         cache: "no-store",
       });
@@ -275,23 +299,66 @@ export function BlueprintPanel({
       }
 
       setProgress(payload.progress);
-    }, 1000);
+
+      if (payload.progress.jobId) {
+        setActiveJobId(payload.progress.jobId);
+      }
+
+      if (
+        payload.progress.jobStatus === "COMPLETED" ||
+        payload.progress.projectStatus === "BLUEPRINT_READY"
+      ) {
+        setActiveJobId(null);
+        setMessage(copy.generated);
+        router.refresh();
+      }
+
+      if (payload.progress.jobStatus === "FAILED") {
+        setActiveJobId(null);
+        setError({
+          message: payload.progress.errorMessage ?? copy.generateError,
+        });
+      }
+    };
+
+    void pollProgress();
+    const interval = globalThis.setInterval(pollProgress, 3000);
 
     return () => {
       isCancelled = true;
       globalThis.clearInterval(interval);
     };
-  }, [isPending, projectId]);
+  }, [copy.generateError, copy.generated, projectId, router, shouldPollProgress]);
+
+  async function readJsonPayload(response: Response) {
+    const text = await response.text();
+
+    if (!text.trim()) {
+      return {};
+    }
+
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      return {
+        error: response.ok ? undefined : copy.generateError,
+      };
+    }
+  }
 
   function generateBlueprint() {
     setError(null);
     setMessage(null);
     setProgress({
       projectStatus,
+      jobId: null,
+      jobStatus: "QUEUED",
       stageKey: "queued",
       label: copy.queued,
       progress: 6,
       updatedAt: null,
+      errorMessage: null,
+      shouldNudge: false,
     });
 
     startTransition(async () => {
@@ -299,10 +366,11 @@ export function BlueprintPanel({
         method: "POST",
       });
 
-      const payload = (await response.json()) as {
+      const payload = (await readJsonPayload(response)) as {
         error?: string;
         code?: string;
         nextAction?: string;
+        job?: BlueprintJobResponse;
       };
 
       if (!response.ok) {
@@ -314,15 +382,21 @@ export function BlueprintPanel({
         return;
       }
 
-      setProgress({
-        projectStatus: "BLUEPRINT_READY",
-        stageKey: "completed",
-        label: copy.completed,
-        progress: 100,
-        updatedAt: new Date().toISOString(),
-      });
-      setMessage(copy.generated);
-      router.refresh();
+      if (payload.job) {
+        setActiveJobId(payload.job.id);
+        setProgress({
+          projectStatus: "BLUEPRINT_GENERATING",
+          jobId: payload.job.id,
+          jobStatus: payload.job.status,
+          stageKey: payload.job.currentStage,
+          label: copy.queued,
+          progress: payload.job.progress,
+          updatedAt: payload.job.updatedAt,
+          errorMessage: null,
+          shouldNudge: false,
+        });
+        setMessage(copy.queued);
+      }
     });
   }
 
@@ -344,12 +418,12 @@ export function BlueprintPanel({
 
         <button
           className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={isPending || !canGenerate}
+          disabled={isPending || hasActiveGeneration || !canGenerate}
           onClick={generateBlueprint}
           type="button"
         >
           <Sparkles className="mr-2 size-4" />
-          {isPending
+          {isPending || hasActiveGeneration
             ? copy.generating
             : canRetryInterruptedGeneration
               ? copy.retry
@@ -431,7 +505,7 @@ export function BlueprintPanel({
         {message ? <p className="text-sm text-emerald-700">{message}</p> : null}
       </div>
 
-      {isPending && progress ? (
+      {shouldPollProgress && progress ? (
         <div className="mt-5 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-sm font-semibold text-[var(--color-ink)]">

@@ -87,6 +87,23 @@ enum ExportStatus {
   FAILED
 }
 
+enum BlueprintJobStatus {
+  QUEUED
+  RUNNING
+  WAITING_NEXT_STAGE
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum BlueprintJobStageStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
 enum PeerReviewStatus {
   PEER_REVIEWED
   NOT_PEER_REVIEWED
@@ -187,6 +204,7 @@ model User {
   projects  Project[]
   auditLogs AuditLog[]
   templates Template[]
+  blueprintJobs BlueprintJob[]
 }
 
 model Project {
@@ -213,6 +231,7 @@ model Project {
   intake            Intake?
   projectReferences ProjectReference[]
   blueprintVersions BlueprintVersion[]
+  blueprintJobs     BlueprintJob[]
   auditLogs         AuditLog[]
   knowledgeFields   ProjectKnowledgeField[]
   topicSuggestions  ProjectTopicSuggestion[] @relation("ProjectTopicSuggestions")
@@ -308,6 +327,55 @@ model BlueprintVersion {
   project                       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, versionNumber])
+}
+
+model BlueprintJob {
+  id              String             @id @default(uuid())
+  projectId       String
+  userId          String
+  status          BlueprintJobStatus @default(QUEUED)
+  currentStage    String?
+  progress        Int                @default(0)
+  language        String             @default("es")
+  runnerKind      String             @default("vercel")
+  attempts        Int                @default(0)
+  lockedAt        DateTime?
+  lastHeartbeatAt DateTime?
+  startedAt       DateTime?
+  completedAt     DateTime?
+  errorMessage    String?            @db.Text
+  errorJson       Json?
+  metadataJson    Json?
+  stageDataJson   Json?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  project         Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stages          BlueprintJobStage[]
+
+  @@index([projectId, status])
+  @@index([userId, status])
+  @@index([status, updatedAt])
+}
+
+model BlueprintJobStage {
+  id          String                  @id @default(uuid())
+  jobId       String
+  stageKey    String
+  status      BlueprintJobStageStatus @default(QUEUED)
+  progress    Int
+  startedAt   DateTime?
+  completedAt DateTime?
+  durationMs  Int?
+  inputJson   Json?
+  outputJson  Json?
+  errorJson   Json?
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  job         BlueprintJob             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, stageKey])
+  @@index([jobId, status])
 }
 
 model AuditLog {

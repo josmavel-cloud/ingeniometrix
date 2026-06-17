@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
 import { getRequestLanguage } from "@/server/i18n/request-language";
-import { generateBlueprintVersion } from "@/server/blueprint-v2";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
 import { toBlueprintApiError } from "@/server/blueprint/blueprint-errors";
+import { scheduleBlueprintJobRun } from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
+import { enqueueBlueprintJobForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -25,16 +26,21 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 }
 
-export async function POST(_request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const language = await getRequestLanguage();
     const { id } = await context.params;
-    const version = await generateBlueprintVersion(user.id, id, {
+    const job = await enqueueBlueprintJobForUser(user.id, id, {
       languageOverride: language,
     });
 
-    return NextResponse.json({ version }, { status: 201 });
+    scheduleBlueprintJobRun({
+      origin: new URL(request.url).origin,
+      jobId: job.id,
+    });
+
+    return NextResponse.json({ job }, { status: 202 });
   } catch (error) {
     const payload = toBlueprintApiError(error);
 

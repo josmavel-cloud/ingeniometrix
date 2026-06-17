@@ -25,7 +25,7 @@ import type {
 import { buildDocumentProvenanceReport } from "@/server/blueprint-v2/validation/blueprint-provenance-engine";
 import { validateMasterBlueprintPackage } from "@/server/blueprint-v2/validation/blueprint-validation-engine";
 
-function buildAssumptionInputs(project: MasterBlueprintEngineProject): AssumptionInput[] {
+export function buildAssumptionInputs(project: MasterBlueprintEngineProject): AssumptionInput[] {
   const assumptions: AssumptionInput[] = [];
 
   if (!project.intake.researchLine?.trim()) {
