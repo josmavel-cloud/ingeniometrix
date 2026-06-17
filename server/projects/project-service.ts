@@ -74,10 +74,16 @@ export async function createProjectForUser(userId: string, input: CreateProjectI
   });
 }
 
-export async function listProjectsForUser(userId: string) {
+export async function listProjectsForUser(
+  userId: string,
+  options?: {
+    take?: number;
+  },
+) {
   return prisma.project.findMany({
     where: { userId },
     orderBy: { updatedAt: "desc" },
+    take: Math.max(1, Math.min(options?.take ?? 60, 100)),
     include: {
       intake: true,
       blueprintJobs: {
