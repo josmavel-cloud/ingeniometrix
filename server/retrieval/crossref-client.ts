@@ -51,6 +51,7 @@ export async function fetchCrossrefWorkByDoi(doi: string) {
   const response = await fetch(`${CROSSREF_BASE_URL}/works/${encodedDoi}`, {
     headers: buildCrossrefHeaders(),
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
@@ -81,6 +82,7 @@ export async function searchCrossrefWorks(query: string) {
   const response = await fetch(buildCrossrefSearchUrl(query), {
     headers: buildCrossrefHeaders(),
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {

@@ -1,5 +1,7 @@
 import OpenAI from "openai";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { recordLlmUsage } from "@/server/llm-usage-registry";
@@ -19,6 +21,7 @@ export type OpenAiProviderConfig = {
 
 const DEFAULT_OPENAI_TIMEOUT_MS = 120_000;
 const DEFAULT_OPENAI_RETRIES = 1;
+let reservedApiUsd = 0; // Shared by provider instances in one bounded evaluation process.
 
 function resolveTimeoutMs() {
   const rawValue = Number.parseInt(process.env.LLM_REQUEST_TIMEOUT_MS ?? "", 10);
@@ -58,12 +61,7 @@ async function runWithTimeoutAndRetry<T>(work: () => Promise<T>) {
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      return await Promise.race([
-        work(),
-        delay(timeoutMs).then(() => {
-          throw new Error(`OpenAI excedio el timeout de ${timeoutMs} ms.`);
-        }),
-      ]);
+      return await work(); // SDK timeout aborts the request; no orphan Promise.race request.
     } catch (error) {
       lastError = error;
 
@@ -83,15 +81,35 @@ async function runWithTimeoutAndRetry<T>(work: () => Promise<T>) {
 export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider {
   const client = new OpenAI({
     apiKey: config.apiKey,
+    timeout: resolveTimeoutMs(),
+    maxRetries: 0, // Only our explicit retry policy applies.
   });
   const defaultModel = config.defaultModel;
+
+  async function request(params: Parameters<typeof client.responses.create>[0]) {
+    const limit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
+    const rates = params.model === "gpt-5.4" ? [2.5, 15] : params.model === "gpt-5.4-mini" ? [0.75, 4.5] : params.model === "gpt-5.4-nano" ? [0.2, 1.25] : null;
+    // UTF-8 bytes conservatively bound input tokens, plus schema/request overhead.
+    const reserved = rates && params.max_output_tokens ? ((Buffer.byteLength(JSON.stringify(params)) + 2048) * rates[0] + params.max_output_tokens * rates[1]) / 1e6 : null;
+    if (limit > 0 && (reserved === null || reservedApiUsd + reserved > limit)) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
+    if (limit > 0) reservedApiUsd += reserved!;
+    const startedAt = new Date().toISOString();
+    const response = await client.responses.create(params as any) as OpenAI.Responses.Response;
+    if (limit > 0 && rates && response.usage) reservedApiUsd += (response.usage.input_tokens * rates[0] + response.usage.output_tokens * rates[1]) / 1e6 - reserved!;
+    const auditDir = process.env.IMX_LLM_AUDIT_DIR;
+    if (auditDir) {
+      await mkdir(auditDir, { recursive: true });
+      await writeFile(path.join(auditDir, `${Date.now()}-${randomUUID()}.json`), JSON.stringify({ started_at: startedAt, ended_at: new Date().toISOString(), request: params, response: { id: response.id, model: response.model, status: response.status, incomplete_details: response.incomplete_details, usage: response.usage, output_text: response.output_text } }, null, 2));
+    }
+    return response;
+  }
 
   return {
     name: "openai",
     async generateStructuredObject<T>(input: StructuredObjectInput) {
       const model = input.model ?? defaultModel;
       const response = await runWithTimeoutAndRetry(() =>
-        client.responses.create({
+        request({
           model,
           store: false,
           max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
@@ -110,7 +128,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
       await recordLlmUsage({
         provider: "openai",
-        model,
+        model: response.model,
         operation: input.trackingLabel ?? `structured:${input.schemaName}`,
         inputTokens: usage.inputTokens,
         cachedInputTokens: usage.cachedInputTokens,
@@ -129,7 +147,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       const imageBuffer = await readFile(input.imagePath);
       const mimeType = input.imageMimeType ?? "image/png";
       const response = await runWithTimeoutAndRetry(() =>
-        client.responses.create({
+        request({
           model,
           store: false,
           max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
@@ -156,7 +174,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
       await recordLlmUsage({
         provider: "openai",
-        model,
+        model: response.model,
         operation: input.trackingLabel ?? `vision_structured:${input.schemaName}`,
         inputTokens: usage.inputTokens,
         cachedInputTokens: usage.cachedInputTokens,
@@ -178,7 +196,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       const model = input.model ?? defaultModel;
       const startedAt = Date.now();
       const response = await runWithTimeoutAndRetry(() =>
-        client.responses.create({
+        request({
           model,
           store: false,
           max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
@@ -189,7 +207,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
       const usageResult = await recordLlmUsage({
         provider: "openai",
-        model,
+        model: response.model,
         operation: input.trackingLabel ?? "text_generation",
         inputTokens: usage.inputTokens,
         cachedInputTokens: usage.cachedInputTokens,

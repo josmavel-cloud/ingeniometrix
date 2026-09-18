@@ -37,7 +37,8 @@ import {
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
-import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v2";
+import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
+import { excerptOccurs, intakeFingerprint } from "./evidence-continuity";
 import { adaptStep5LedgerToBlueprintV2 } from "@/server/mvp/step5-blueprint-v2-adapter";
 import {
   buildStep5LlmCacheKey,
@@ -48,6 +49,7 @@ import {
 } from "@/server/mvp/step5-llm-cache";
 import {
   MVP_SOURCE_INSPECTION_KEY,
+  runMvpSourceInspection,
   type MvpSourceInspectionItem,
   type MvpSourceInspectionResult,
 } from "@/server/mvp/source-inspection-service";
@@ -693,7 +695,7 @@ async function materializePdfSources(input: {
 
   for (const source of input.registry) {
     const inspection = input.inspectionByReferenceId.get(source.reference_id) ?? null;
-    const originalPdfPath = inspection?.downloaded_pdf_path ?? null;
+    const originalPdfPath = inspection?.evidence_level === "UNUSABLE" ? null : inspection?.downloaded_pdf_path ?? null;
     const sourceDir = path.join(input.artifactDir, "materialized-sources", sourceDirectoryName(source));
     const sourcePdfPath = path.join(sourceDir, "source.pdf");
     const fulltextPath = path.join(sourceDir, "fulltext.txt");
@@ -1438,7 +1440,7 @@ function buildPromptFromRegistry(input: {
     source_health_json: JSON.stringify(input.sourceHealth),
   };
 
-  let userPrompt = STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT.userPromptTemplate;
+  let userPrompt: string = STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT.userPromptTemplate;
   for (const [key, value] of Object.entries(replacements)) {
     userPrompt = userPrompt.replaceAll(`{{${key}}}`, value);
   }
@@ -1605,6 +1607,7 @@ function normalizeSemanticExtraction(input: {
   inputChunkCount: number;
   inputCharCount: number;
   artifactPath: string;
+  recoveredTexts?: string[];
 }) {
   const validDecision = new Set(["sufficient_for_blueprint_preparation", "needs_more_evidence", "insufficient"]);
   const qualityDecision = validDecision.has(input.payload.quality_decision ?? "")
@@ -1645,6 +1648,8 @@ function normalizeSemanticExtraction(input: {
       confidence_100: clampScore(item.confidence_100),
     })),
     evidence_items: (input.payload.evidence_items ?? []).slice(0, 12).map((item, index) => ({
+      supporting_excerpt: item.supporting_excerpt,
+      support_verified: excerptOccurs(item.supporting_excerpt, input.recoveredTexts ?? []),
       evidence_id: item.evidence_id?.trim() || `${input.source.source_id}-EV${String(index + 1).padStart(2, "0")}`,
       source_id: input.source.source_id,
       citation_key: input.source.citation_key,
@@ -1738,10 +1743,10 @@ async function runSemanticSourceExtractions(input: {
     const sourceHealth = input.inspectionByReferenceId.get(source.reference_id) ?? null;
     const evidenceBasis = resolveEvidenceBasis({
       fulltext: materialization?.status === "materialized" ? materialization.fulltext_path : null,
-      sampleText: sourceHealth?.sample_text_path ?? null,
+      sampleText: null, // Extraction below consumes chunks or the abstract, never the inspection sample.
       abstract: row?.reference.abstract,
     });
-    const recoveredChunks = await buildRecoveredChunksForLlm({
+    const recoveredChunks = sourceHealth?.evidence_level === "UNUSABLE" ? [] : await buildRecoveredChunksForLlm({
       source,
       row,
       materialization,
@@ -1750,6 +1755,10 @@ async function runSemanticSourceExtractions(input: {
       budgetPolicy: input.budgetPolicy,
     });
     const inputCharCount = recoveredChunks.reduce((sum, chunk) => sum + chunk.text.length, 0);
+    await writeJson(path.join(path.dirname(input.artifactPath), `${source.source_id}-extraction-input.json`), {
+      project_id: input.projectId, run_id: input.runId, reference_id: source.reference_id, source_id: source.source_id,
+      evidence_basis: evidenceBasis, chunks: recoveredChunks,
+    });
 
     if (!recoveredChunks.length) {
       extractions.push({
@@ -1811,6 +1820,7 @@ async function runSemanticSourceExtractions(input: {
           inputChunkCount: recoveredChunks.length,
           inputCharCount,
           artifactPath: input.artifactPath,
+          recoveredTexts: recoveredChunks.map((chunk) => chunk.text),
         }));
         continue;
       }
@@ -1827,6 +1837,7 @@ async function runSemanticSourceExtractions(input: {
             provider,
             prompt,
             schemaName: "mvp_step5_source_evidence_extraction",
+            maxOutputTokens: 8000,
             schema: STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT.outputSchema as unknown as Record<string, unknown>,
             model,
             trackingAttribution: {
@@ -1852,6 +1863,7 @@ async function runSemanticSourceExtractions(input: {
       });
       extractions.push(normalizeSemanticExtraction({
         payload,
+        recoveredTexts: recoveredChunks.map((chunk) => chunk.text),
         source,
         model,
         evidenceBasis,
@@ -2196,6 +2208,7 @@ async function runVisualAssetLocalization(input: {
   sourceAssets: MvpStep5SourceAsset[];
   semanticExtractions: MvpStep5SemanticExtraction[];
 }) {
+  if (process.env.IMX_STEP5_DISABLE_VISUAL_LOCALIZATION === "1") return [] as MvpStep5VisualLocalizedAsset[];
   const sourceAssetsById = new Map(input.sourceAssets.map((asset) => [asset.asset_id, asset]));
   const semanticCandidates = input.semanticExtractions.flatMap((extraction) =>
     extraction.asset_reviews
@@ -2805,7 +2818,12 @@ export async function runMvpEvidenceMaterialization(input: {
   const errors: string[] = [];
   const project = await loadProjectForStep5(input);
   const templateContext = await resolveTemplateContext(project.templateKey, warnings);
-  const sourceInspection = await loadLatestSourceInspection(input.projectId);
+  const inspected = await runMvpSourceInspection({ ...input, runId: `${artifacts.runId}-inspection` });
+  const sourceInspection = {
+    stepRunId: inspected.step_run_id!,
+    itemsByReferenceId: new Map(inspected.items.map((item) => [item.source_id, item])),
+    warnings: inspected.warnings,
+  };
   warnings.push(...sourceInspection.warnings);
 
   const stepRun = await createMvpStepRun({
@@ -2947,6 +2965,9 @@ export async function runMvpEvidenceMaterialization(input: {
     }
 
     const evidenceLedger: MvpStep5EvidenceLedger = {
+      intake_fingerprint: intakeFingerprint(project.intake!),
+      run_id: artifacts.runId,
+      source_inspection_step_run_id: sourceInspection.stepRunId,
       project_id: input.projectId,
       step_run_id: stepRun.id,
       template_key: templateContext.templateKey,

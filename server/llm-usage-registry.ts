@@ -276,7 +276,9 @@ async function writeLlmUsageRegistry(registry: LlmUsageRegistry) {
 }
 
 function resolvePricing(model: string) {
-  return MODEL_PRICING[model.trim().toLowerCase()] ?? MODEL_PRICING["gpt-5.4"];
+  const name = model.trim().toLowerCase();
+  const key = Object.keys(MODEL_PRICING).sort((a, b) => b.length - a.length).find((candidate) => name === candidate || name.startsWith(`${candidate}-20`));
+  return MODEL_PRICING[key ?? "gpt-5.4"];
 }
 
 function addTotals(target: LlmUsageTotals, delta: LlmUsageTotals) {

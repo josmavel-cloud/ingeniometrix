@@ -163,6 +163,7 @@ export async function fetchOpenAlexWork(openAlexIdOrUrl: string) {
   const response = await fetch(url, {
     headers: buildOpenAlexHeaders(),
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
@@ -185,6 +186,7 @@ export async function fetchOpenAlexWorksCiting(openAlexIdOrUrl: string, options?
   const response = await fetch(url, {
     headers: buildOpenAlexHeaders(),
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (!response.ok) {
@@ -203,10 +205,12 @@ export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearc
       Accept: "application/json",
     },
     cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
   });
 
   if (response.status === 429) {
     const retryAfterSeconds = Number.parseFloat(response.headers.get("retry-after") ?? "");
+    if (retryAfterSeconds > 10) throw new Error(`OpenAlex HTTP 429: Retry-After ${retryAfterSeconds}s excede la espera interactiva; usar otro proveedor soportado o reintentar despues.`);
     await delay(Number.isFinite(retryAfterSeconds)
       ? Math.max(COMPLEX_QUERY_MIN_INTERVAL_MS, retryAfterSeconds * 1_000)
       : COMPLEX_QUERY_MIN_INTERVAL_MS);
@@ -214,6 +218,7 @@ export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearc
     response = await fetch(url, {
       headers: { Accept: "application/json" },
       cache: "no-store",
+    signal: AbortSignal.timeout(20_000),
     });
   }
 

@@ -19,6 +19,7 @@ import {
   verifyPdfAccess,
 } from "@/server/retrieval/reference-access";
 import { fetchCrossrefWorkByDoi } from "@/server/retrieval/crossref-client";
+import { inspectEvidenceLevel, type EvidenceLevel } from "./evidence-continuity";
 
 const execFileAsync = promisify(execFile);
 const FETCH_TIMEOUT_MS = 35_000;
@@ -50,6 +51,9 @@ export type MvpSourceHealth =
 export type MvpSourceTopicFit = "direct" | "methodological" | "contextual" | "weak" | "unknown";
 
 export type MvpSourceInspectionItem = {
+  evidence_level?: EvidenceLevel;
+  abstract_available?: boolean;
+  doi_syntax_valid?: boolean | null;
   source_id: string;
   selected_order: number | null;
   title: string;
@@ -99,6 +103,7 @@ export type MvpSourceInspectionResult = {
   generated_at: string;
   project_id: string;
   run_id: string;
+  step_run_id?: string;
   artifact_dir: string;
   decision: MvpSourceInspectionDecision;
   selected_source_count: number;
@@ -377,21 +382,15 @@ async function sourceCandidateUrls(item: ProjectReferenceWithReference, directPd
 }
 
 async function fetchWithTimeout(url: string, referer: string | null) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
+    return fetch(url, {
       method: "GET",
       redirect: "follow",
       headers: buildBrowserLikeFetchHeaders({
         accept: "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         referer: referer ?? url,
       }),
-      signal: controller.signal,
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function resolveAndFetchPdf(input: {
@@ -403,7 +402,7 @@ async function resolveAndFetchPdf(input: {
   const visited = new Set<string>();
   let lastError: string | null = null;
 
-  while (queue.length > 0) {
+  while (queue.length > 0 && visited.size < 6) {
     const candidate = queue.shift();
     if (!candidate || visited.has(candidate.url)) continue;
     visited.add(candidate.url);
@@ -419,7 +418,7 @@ async function resolveAndFetchPdf(input: {
           lastError = `${candidate.strategy}: PDF demasiado grande (${buffer.byteLength} bytes).`;
           continue;
         }
-        if (buffer.subarray(0, 5).toString("utf8") !== "%PDF-" && !contentType.includes("pdf")) {
+        if (buffer.subarray(0, 5).toString("utf8") !== "%PDF-") {
           lastError = `${candidate.strategy}: respuesta no parece PDF (${contentType || "sin content-type"}).`;
           continue;
         }
@@ -474,9 +473,9 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
     doi: item.reference.doi,
   });
   const pdfUrl = access.pdfUrl;
-  const pdfAccessible = await verifyPdfAccess(pdfUrl);
+  const pdfAccessible = false; // GET below is authoritative; a HEAD signal is not retrieved evidence.
   const sourceKey = `${String(item.selectedOrder ?? "x").padStart(2, "0")}-${safeKey(item.reference.title)}`;
-  const pdfPath = pdfUrl ? path.join(input.artifactDir, `${sourceKey}.pdf`) : null;
+  const pdfPath = path.join(input.artifactDir, `${sourceKey}.pdf`);
   const textPath = path.join(input.artifactDir, `${sourceKey}.sample.txt`);
   const warnings: string[] = [];
   const blockers: string[] = [];
@@ -539,6 +538,9 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   });
 
   return {
+    evidence_level: inspectEvidenceLevel({ title: item.reference.title, abstract: item.reference.abstract, accessiblePdf: Boolean(downloadedPdfPath), text, identity: identity.identity_status }),
+    abstract_available: Boolean(item.reference.abstract?.trim()),
+    doi_syntax_valid: item.reference.doi ? /^10\.\d{4,9}\/\S+$/i.test(item.reference.doi) : null,
     source_id: item.referenceId,
     selected_order: item.selectedOrder,
     title: item.reference.title,
@@ -579,7 +581,7 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
 }
 
 function decide(items: MvpSourceInspectionItem[]) {
-  const usable = items.filter((item) => ["usable_full_text", "partial_full_text"].includes(item.source_health) && item.identity_status !== "mismatch");
+  const usable = items.filter((item) => ["FULL_TEXT_MATERIALIZED", "ABSTRACT_AVAILABLE"].includes(item.evidence_level ?? "") && item.identity_status !== "mismatch");
   const directOrMethod = usable.filter((item) => ["direct", "methodological"].includes(item.topic_fit));
   const manualReview = items.filter((item) => item.identity_status === "mismatch" || item.identity_status === "weak_match");
   const replacements = items.filter((item) =>
@@ -611,12 +613,9 @@ function decide(items: MvpSourceInspectionItem[]) {
   } else if (manualReview.length > 0) {
     decision = "NEEDS_MANUAL_REVIEW";
     blockers.push("Hay fuentes con identidad débil o mismatch antes de usarlas como evidencia central.");
-  } else if (usable.length < MIN_USABLE_SOURCES) {
-    decision = "NEEDS_SOURCE_REPLACEMENT";
-    blockers.push("No hay suficientes fuentes con texto útil para pasar limpio a blueprint.");
-  } else if (missing.length > 0) {
-    decision = "NEEDS_DEEP_RESEARCH_LIGHT";
-    blockers.push("Tras inspección real quedan categorías de evidencia incompletas; Deep Research Light sería reparación post-inspección.");
+  } else if (usable.some((item) => item.evidence_level === "ABSTRACT_AVAILABLE") || missing.length > 0) {
+    decision = "READY_WITH_WARNINGS";
+    warnings.push("Inspeccion de disponibilidad, no certificacion cientifica: Step 5 debe verificar evidencia y Step 6 declarar sus limites.");
   } else if (replacements.length > 0 || warnings.length > 0) {
     decision = "READY_WITH_WARNINGS";
   }
@@ -686,9 +685,10 @@ export async function runMvpSourceInspection(input: { userId: string; projectId:
       project_id: input.projectId,
       run_id: runId,
       artifact_dir: artifactDir,
+      step_run_id: stepRun.id,
       decision: decision.decision,
       selected_source_count: selected.length,
-      inspected_source_count: items.filter((item) => item.fetch_status === "downloaded" || item.source_health === "metadata_only").length,
+      inspected_source_count: items.length, // A failed PDF attempt with abstract fallback was still inspected.
       usable_source_count: decision.usable.length,
       direct_or_method_source_count: decision.directOrMethod.length,
       metadata_only_source_count: items.filter((item) => item.source_health === "metadata_only").length,

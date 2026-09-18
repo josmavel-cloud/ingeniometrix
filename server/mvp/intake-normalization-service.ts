@@ -156,7 +156,7 @@ const normalizedIntakeSchema = {
     retrievalHints: {
       type: "object",
       additionalProperties: false,
-      required: ["coreConcepts", "objectTerms", "methodTerms", "localContextTerms", "excludeTerms"],
+      required: ["coreConcepts", "objectTerms", "methodTerms", "localContextTerms", "excludeTerms", "en"],
       properties: {
         coreConcepts: { type: "array", minItems: 3, maxItems: 10, items: { type: "string", minLength: 2, maxLength: 80 } },
         objectTerms: { type: "array", minItems: 1, maxItems: 10, items: { type: "string", minLength: 2, maxLength: 80 } },

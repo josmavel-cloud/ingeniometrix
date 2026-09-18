@@ -67,6 +67,7 @@ import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/ret
 import { asStepRunJson, createMvpStepRun, updateMvpStepRun } from "@/server/mvp/step-run-service";
 import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report-types";
 
+import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence } from "./evidence-continuity";
 const STEP6_ARTIFACT_ROOT = "mvp-step6-blueprint-docx";
 const FONT = "Times New Roman";
 const ACCENT = "2F5D62";
@@ -219,10 +220,9 @@ function sentenceUnits(value: string) {
     .filter((item) => item && !isDanglingPublicFragment(item));
 }
 
-function clip(value: string | null | undefined, maxLength: number) {
-  const text = sanitizePublicText(value);
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1).trim()}...`;
+function clip(value: string | null | undefined, _maxLength: number) {
+  // Page/character budgets guide generation, never remove substantive public text.
+  return sanitizePublicText(value);
 }
 
 function slug(value: string) {
@@ -251,24 +251,8 @@ function wordCount(value: string) {
   return cleanText(value).split(/\s+/).filter(Boolean).length;
 }
 
-function enforceWordBudgetOnParagraphs(paragraphs: string[], maxWords: number) {
-  if (maxWords <= 0) return paragraphs;
-  const safeParagraphs = paragraphs.map(sanitizePublicText).filter((item) => !isDanglingPublicFragment(item));
-  const words = safeParagraphs.join("\n\n").split(/\s+/).filter(Boolean);
-  if (words.length <= Math.round(maxWords * 1.15)) return paragraphs;
-  const kept: string[] = [];
-  let used = 0;
-  for (const sentence of sentenceUnits(safeParagraphs.join(" "))) {
-    const count = wordCount(sentence);
-    if (used + count > maxWords && kept.length > 0) break;
-    if (count > maxWords && kept.length === 0) {
-      break;
-    }
-    kept.push(sentence);
-    used += count;
-  }
-  if (kept.length > 0) return [kept.join(" ")];
-  return safeParagraphs.length > 0 ? [safeParagraphs[0]] : [];
+export function enforceWordBudgetOnParagraphs(paragraphs: string[], _maxWords: number) {
+  return paragraphs.map(sanitizePublicText); // Preserve paragraph indexes used by citation anchors.
 }
 
 function hashText(value: string) {
@@ -742,7 +726,7 @@ function buildPageBudgetPlan(sectionPlan: MvpStep6SectionPlanItem[]): MvpStep6Pa
 }
 
 function allEvidenceItems(ledger: MvpStep5EvidenceLedger): MvpStep5SemanticEvidenceItem[] {
-  return ledger.semantic_extractions.flatMap((extraction) => extraction.evidence_items ?? []);
+  return inspectableEvidence(ledger).map(({ item }) => item);
 }
 
 const CORE_SECTION_KEYS = [
@@ -860,7 +844,7 @@ function normalizeCitationAnchors(input: {
   const validSourceIds = new Set(input.ledger.source_registry.map((source) => source.source_id));
   const validEvidenceIds = new Set(allEvidenceItems(input.ledger).map((item) => item.evidence_id));
   return input.anchors
-    .filter((anchor) => validSourceIds.has(anchor.source_id))
+    .filter((anchor) => validSourceIds.has(anchor.source_id) && allEvidenceItems(input.ledger).some((item) => item.evidence_id === anchor.evidence_id && item.source_id === anchor.source_id))
     .map((anchor, index): MvpStep6CitationAnchor => ({
       section_key: input.sectionKey,
       block_id: `${input.sectionKey}:paragraph:${Math.max(0, Math.floor(anchor.paragraph_index ?? 0))}`,
@@ -871,7 +855,7 @@ function normalizeCitationAnchors(input: {
       source_id: anchor.source_id,
       evidence_id: anchor.evidence_id && validEvidenceIds.has(anchor.evidence_id) ? anchor.evidence_id : null,
       snippet_id: cleanText(anchor.snippet_id) || null,
-      citation_label: cleanText(anchor.citation_label) || citationLabelForSource(input.ledger, anchor.source_id),
+      citation_label: citationLabelForSource(input.ledger, anchor.source_id),
       claim_summary: clip(anchor.claim_summary, 220) || `Cita ${index + 1}`,
     }));
 }
@@ -1074,13 +1058,13 @@ function buildNativeTableForSection(input: {
     const variables = input.ledger.semantic_extractions.flatMap((extraction) => extraction.variables_or_constructs ?? []).slice(0, 8);
     return {
       kind: "table",
-      title: "Variables, categorias o constructos preliminares",
+      title: "Constructos de las fuentes: no equivalen a variables del estudio propuesto",
       rows: [
         ["Elemento", "Rol", "Descripcion", "Soporte"],
         ...(variables.length
           ? variables.map((item) => [
               item.name_es,
-              item.role,
+              ({ variable: "variable", indicator: "indicador", parameter: "parametro", category: "categoria", metric: "metrica" } as const)[item.role],
               clip(item.description_es, 120),
               item.citation_anchor.citation_key,
             ])
@@ -1093,7 +1077,7 @@ function buildNativeTableForSection(input: {
               ],
             ]),
       ],
-      source_note: "Fuente: elaboracion propia con base en intake y evidencia recuperada.",
+      source_note: "Inventario bibliografico. Su inclusion no implica adopcion en el diseno propuesto; las categorias pertinentes se definen en el texto del plan.",
     };
   }
 
@@ -1113,7 +1097,7 @@ function buildNativeTableForSection(input: {
         [
           "Enfoque",
           clip(intake?.preferredMethodology, 150) || "Enfoque metodológico por validar con asesor.",
-          methodEvidence[0]?.citation_key || "Derivado del intake y evidencia recuperada.",
+          "Propuesta del investigador en el intake; no es una conclusion de las fuentes.",
         ],
         [
           "Unidad de análisis",
@@ -1126,7 +1110,7 @@ function buildNativeTableForSection(input: {
           "No se asumen bases de datos ni resultados no ejecutados.",
         ],
         [
-          "Procedimiento",
+          "Antecedentes metodologicos (no procedimiento adoptado)",
           methodEvidence.length
             ? methodEvidence.map((item) => clip(item.traceable_summary_es, 80)).join(" ")
             : "Revisión documental, definición de variables y validación metodológica previa.",
@@ -1162,10 +1146,10 @@ function buildNativeTableForSection(input: {
       title: "Cronograma y presupuesto referencial",
       rows: [
         ["Fase", "Duracion referencial", "Entregable", "Supuesto"],
-        ["Revision de evidencia", "2-3 semanas", "Matriz bibliografica", "Depende de acceso a fuentes completas."],
-        ["Diseno metodologico", "2 semanas", "Instrumentos y plan de analisis", "Requiere validacion del asesor."],
-        ["Trabajo de campo o analisis", "4-8 semanas", "Base de datos o corpus analizado", "No ejecutado en este blueprint."],
-        ["Redaccion y revision", "3-4 semanas", "Documento academico revisable", "Sujeto a plantilla institucional."],
+        ["Revision de evidencia", "Por confirmar", "Matriz bibliografica", "Depende de acceso a fuentes completas."],
+        ["Diseno metodologico", "Por confirmar", "Protocolo y plan de analisis", "Requiere validacion del asesor."],
+        ["Produccion de informacion o analisis", "Por confirmar", "Corpus o resultados futuros", "No ejecutado en este plan."],
+        ["Redaccion y revision", "Por confirmar", "Documento academico revisable", "Sujeto a plantilla institucional."],
       ],
       source_note: "Fuente: estimacion referencial para planificacion; no representa presupuesto aprobado.",
     };
@@ -1302,13 +1286,7 @@ async function generateSectionDraft(input: {
       anchors: output.citation_anchors ?? [],
       ledger: input.ledger,
     });
-    const anchors = citationAnchors.length
-      ? citationAnchors
-      : fallbackCitationAnchors({
-          sectionKey: input.section.section_key,
-          evidenceItems,
-          ledger: input.ledger,
-        });
+    const anchors = citationAnchors.filter((anchor) => anchor.paragraph_index < output.paragraphs.length);
     const paragraphs = enforceWordBudgetOnParagraphs(ensureParagraphCitations({
       paragraphs: output.paragraphs.map(cleanText).filter(Boolean),
       anchors,
@@ -1361,12 +1339,17 @@ function bulletBlocksFromDraft(draft: MvpStep6SectionDraft) {
   return draft.blocks.filter((block): block is Extract<MvpStep6ContentBlock, { kind: "bullet_list" }> => block.kind === "bullet_list");
 }
 
-function applyEditorialPatchToDraft(input: {
+export function applyEditorialPatchToDraft(input: {
   draft: MvpStep6SectionDraft;
   paragraphs: string[];
   bulletItems: string[];
   notes: string[];
 }) {
+  // Editorial prose must not silently shift paragraph-based provenance.
+  if (input.paragraphs.length !== paragraphBlocksFromDraft(input.draft).length ||
+      input.draft.citation_anchors.some((anchor) => !input.paragraphs[anchor.paragraph_index]?.includes(anchor.citation_label))) {
+    return { ...input.draft, warnings: [...input.draft.warnings, "Revision editorial no aplicada: no preserva coordenadas/citas de evidencia."] };
+  }
   let paragraphIndex = 0;
   let bulletApplied = false;
   const nextBlocks = input.draft.blocks.map((block): MvpStep6ContentBlock => {
@@ -1466,6 +1449,7 @@ async function runEditorialReview(input: {
       provider: input.provider,
       prompt,
       schemaName: "mvp_step6_editorial_review",
+      maxOutputTokens: 16000,
       schema: STEP6_EDITORIAL_REVIEW_PROMPT.outputSchema as Record<string, unknown>,
       model,
       trackingAttribution: {
@@ -1801,7 +1785,7 @@ function buildCrossReferencePlan(input: {
   return records;
 }
 
-function applyCrossReferenceMentions(input: {
+export function applyCrossReferenceMentions(input: {
   drafts: MvpStep6SectionDraft[];
   crossReferences: MvpStep6CrossReferencePlanItem[];
 }) {
@@ -1820,16 +1804,15 @@ function applyCrossReferenceMentions(input: {
     const blocks: MvpStep6ContentBlock[] = [];
     let inserted = false;
     for (const block of draft.blocks) {
-      blocks.push(block);
       if (!inserted && block.kind === "paragraph") {
-        blocks.push({ kind: "paragraph", text: mention });
+        blocks.push({ ...block, text: `${block.text} ${mention}` });
         inserted = true;
-      }
+      } else blocks.push(block);
     }
 
     return {
       ...draft,
-      blocks: inserted ? blocks : [{ kind: "paragraph", text: mention }, ...draft.blocks],
+      blocks: inserted ? blocks : [...draft.blocks, { kind: "paragraph", text: mention }],
       word_count: wordCount(blocks.map((block) => ("text" in block ? block.text : "")).join(" ")),
     } satisfies MvpStep6SectionDraft;
   });
@@ -1895,38 +1878,18 @@ function buildConsistencyMatrixRows(input: {
   ledger: MvpStep5EvidenceLedger;
   drafts: MvpStep6SectionDraft[];
 }) {
-  const intake = input.project.intake;
-  const topic = cleanText(intake?.topic ?? input.project.title);
-  const problem = clip(intake?.problemContext ?? topic, 120) || "Problema por delimitar con el asesor.";
-  const method = clip(intake?.preferredMethodology, 100) || "Diseño metodologico propuesto sujeto a validacion.";
-  const variables = input.ledger.semantic_extractions.flatMap((extraction) => extraction.variables_or_constructs ?? []);
-  const evidenceLabels = input.ledger.source_registry.slice(0, 3).map((source) => source.citation_key).join(", ") || "Fuentes recuperadas";
-  const objectiveDraft = input.drafts.find((draft) => draft.section_key === "objectives_and_questions") ?? input.drafts[0] ?? null;
-  const objectiveText = clip(objectiveDraft ? sectionPlainText(objectiveDraft) : "", 160);
-  const generalObjective = objectiveText || `Analizar ${topic.toLowerCase()} mediante evidencia recuperada y un diseño metodológico verificable.`;
-  const variableRows = variables.slice(0, 3).map((variable, index) => [
-    index === 0 ? problem : `Brecha operativa asociada a ${sanitizePublicText(variable.name_es).toLowerCase()} dentro del objeto de estudio.`,
-    index === 0 ? generalObjective : `Caracterizar ${sanitizePublicText(variable.name_es).toLowerCase()} como componente del análisis.`,
-    `¿Cómo se vincula ${sanitizePublicText(variable.name_es).toLowerCase()} con el objetivo del estudio?`,
-    sanitizePublicText(variable.name_es),
-    clip(variable.description_es, 90),
-    method,
-    variable.citation_anchor.citation_key || evidenceLabels,
-  ]);
-
+  const draft = input.drafts.find((item) => item.section_key === "objectives_and_questions");
+  const declared = draft?.blocks.flatMap((block) => block.kind === "paragraph" ? [block.text] : block.kind === "bullet_list" ? block.items : []) ?? [];
+  const questions = declared.filter((text) => text.includes("?"));
+  const objectives = declared.filter((text) => !text.includes("?"));
   return [
-    ["Problema", "Objetivo", "Pregunta", "Variable/categoria", "Dimension o indicador", "Metodo/tecnica", "Evidencia"],
-    ...(variableRows.length
-      ? variableRows
-      : [[
-          problem,
-          generalObjective,
-          `¿Cómo se puede abordar académicamente ${topic.toLowerCase()}?`,
-          clip(topic, 70),
-          "Indicadores por operacionalizar.",
-          method,
-          evidenceLabels,
-        ]]),
+    ["Problema declarado", "Objetivos declarados", "Preguntas declaradas", "Diseno propuesto"],
+    [
+      sanitizePublicText(input.project.intake?.problemContext),
+      objectives.join("\n") || "Pendiente de formulacion; no se deriva de variables de otras investigaciones.",
+      questions.join("\n") || "Ver formulacion en el texto; alineacion pendiente de revision.",
+      sanitizePublicText(input.project.intake?.preferredMethodology),
+    ],
   ];
 }
 
@@ -1976,21 +1939,8 @@ function estimateDocumentPages(input: {
   return Number((fixedPages + bodyWords / input.pageBudget.words_per_page_estimate + tableCount * 0.25 + figureCount * 0.35).toFixed(2));
 }
 
-export function trimTextToWordLimit(text: string, maxWords: number) {
-  const publicText = sanitizePublicText(text);
-  const words = publicText.split(/\s+/).filter(Boolean);
-  if (words.length <= maxWords) return publicText;
-  const kept: string[] = [];
-  let used = 0;
-  for (const sentence of sentenceUnits(publicText)) {
-    const count = wordCount(sentence);
-    if (used + count > maxWords && kept.length > 0) break;
-    if (count > maxWords && kept.length === 0) break;
-    kept.push(sentence);
-    used += count;
-  }
-  if (kept.length > 0) return kept.join(" ");
-  return sentenceUnits(publicText)[0] ?? publicText;
+export function trimTextToWordLimit(text: string, _maxWords: number) {
+  return sanitizePublicText(text);
 }
 
 function enforceSectionWordBudgets(input: {
@@ -2019,7 +1969,7 @@ function enforceSectionWordBudgets(input: {
       return block;
     });
     const word_count = wordCount(blocks.map((block) => ("text" in block ? block.text : block.kind === "bullet_list" ? block.items.join(" ") : "")).join(" "));
-    input.warnings.push(`Se comprimio ${draft.section_key} de ${draft.word_count} a ${word_count} palabras para respetar el limite de paginas.`);
+    input.warnings.push(`Se preservaron ${word_count} palabras de ${draft.section_key}; el presupuesto de ${maxWords} es orientativo, sin recortar contenido.`);
     return {
       ...draft,
       blocks,
@@ -2309,12 +2259,10 @@ function tableCell(text: string, options: { header?: boolean; width?: number } =
       left: { style: BorderStyle.SINGLE, color: BORDER, size: 1 },
       right: { style: BorderStyle.SINGLE, color: BORDER, size: 1 },
     },
-    children: [
-      new Paragraph({
-        alignment: AlignmentType.JUSTIFIED,
-        children: [textRun(sanitizePublicText(text), { bold: options.header, size: 9.5 })],
-      }),
-    ],
+    children: text.split(/\r?\n/).map((line) => new Paragraph({
+      alignment: AlignmentType.JUSTIFIED,
+      children: [textRun(sanitizePublicText(line), { bold: options.header, size: 9.5 })],
+    })),
   });
 }
 
@@ -2323,7 +2271,7 @@ function captionText(ref: MvpStep6CrossReferencePlanItem | null, title: string) 
   return ref ? `${ref.label}. ${cleanTitle}` : cleanTitle;
 }
 
-function tableBlock(block: Extract<MvpStep6ContentBlock, { kind: "table" }>, ref: MvpStep6CrossReferencePlanItem | null) {
+export function tableBlock(block: Extract<MvpStep6ContentBlock, { kind: "table" }>, ref: MvpStep6CrossReferencePlanItem | null) {
   const columnCount = Math.max(...block.rows.map((row) => row.length));
   const width = Math.floor(100 / Math.max(1, columnCount));
   const compact = block.render_hint === "compact_landscape";
@@ -2336,7 +2284,7 @@ function tableBlock(block: Extract<MvpStep6ContentBlock, { kind: "table" }>, ref
         new TableRow({
           tableHeader: rowIndex === 0,
           children: Array.from({ length: columnCount }).map((_, index) =>
-            tableCell(clip(cleanText(row[index]) || " ", compact ? 140 : 220), { header: rowIndex === 0, width }),
+            tableCell(row[index] || " ", { header: rowIndex === 0, width }),
           ),
         }),
       ),
@@ -2614,7 +2562,7 @@ function takeCrossReference(input: {
   return match ?? null;
 }
 
-async function renderDocx(input: {
+export async function renderDocx(input: {
   project: ProjectForStep6;
   package: MvpStep6BlueprintPackage;
   outputPath: string;
@@ -2952,7 +2900,25 @@ function buildCoherenceReport(input: {
   } satisfies MvpStep6BlueprintPackage["coherence_report"];
 }
 
-function buildBlueprintJson(input: {
+// Deterministic export recovery of this run's actual provider records, not a new generation.
+export function restoreUncompactedDrafts(pkg: MvpStep6BlueprintPackage, outputs: SectionDraftLlmOutput[], ledger: MvpStep5EvidenceLedger, project: ProjectForStep6) {
+  const drafts = pkg.section_drafts.map((draft) => {
+    const output = outputs.find((item) => item.section_key === draft.section_key);
+    if (!output) return draft;
+    const anchors = normalizeCitationAnchors({ sectionKey: draft.section_key, anchors: output.citation_anchors, ledger })
+      .filter((anchor) => anchor.paragraph_index < output.paragraphs.length);
+    const paragraphs = ensureParagraphCitations({ paragraphs: output.paragraphs, anchors });
+    const blocks: MvpStep6ContentBlock[] = paragraphs.map((text) => ({ kind: "paragraph", text }));
+    if (output.bullet_items.length) blocks.push({ kind: "bullet_list", items: output.bullet_items });
+    blocks.push(...draft.blocks.filter((block) => block.kind !== "paragraph" && block.kind !== "bullet_list").map((block) =>
+      block.kind === "table" ? buildNativeTableForSection({ section: pkg.section_plan.find((section) => section.section_key === draft.section_key)!, project, ledger, evidenceItems: evidenceForSection(pkg.section_plan.find((section) => section.section_key === draft.section_key)!, ledger) }) : block));
+    return { ...draft, blocks, citation_anchors: anchors, word_count: wordCount(paragraphs.join(" ")),
+      warnings: [...draft.warnings, "Exportacion reconstruida sin compaccion desde respuesta estructurada B2; sin nueva generacion LLM."] };
+  });
+  return sanitizeDraftsForPublicDocument(replaceConsistencyMatrixTable({ drafts, project, ledger }));
+}
+
+export function buildBlueprintJson(input: {
   project: ProjectForStep6;
   package: MvpStep6BlueprintPackage;
   ledger: MvpStep5EvidenceLedger;
@@ -2965,9 +2931,15 @@ function buildBlueprintJson(input: {
       .map((block) => ("text" in block ? block.text : block.kind === "bullet_list" ? block.items.join("\n") : ""))
       .filter(Boolean)
       .join("\n\n") ?? "";
+  const objectivesDraft = input.package.section_drafts.find((draft) => draft.section_key === "objectives_and_questions");
+  const declarations = objectivesDraft?.blocks.flatMap((block) => block.kind === "paragraph" ? [block.text] : block.kind === "bullet_list" ? block.items : []) ?? [];
+  const objectives = declarations.filter((text) => !text.includes("?"));
+  const questions = declarations.filter((text) => text.includes("?"));
+  const generalObjective = objectives.find((text) => /^objetivo general\s*:/i.test(text)) ?? objectives[0] ?? "Pendiente de formulacion explicita.";
 
   return {
     project_title: titleForDocument({ project: input.project, titlePlan: input.package.title_plan }),
+    scientific_readiness: "REQUIRES_SCIENTIFIC_REVIEW",
     original_project_title: input.project.title,
     template_key: input.project.templateKey,
     degree_level: input.project.degreeLevel,
@@ -2977,35 +2949,25 @@ function buildBlueprintJson(input: {
     problem_statement: sectionText("problem_statement") || intake?.problemContext || intake?.topic || "",
     problem_delimitation: intake?.targetPopulation ?? "",
     justification: sectionText("justification"),
-    general_objective: `Analizar ${cleanText(intake?.topic ?? input.project.title).toLowerCase()} mediante un plan academico trazable.`,
-    specific_objectives: [
-      "Sistematizar evidencia bibliografica recuperada.",
-      "Definir un marco conceptual y metodologico preliminar.",
-      "Organizar un documento editable para revision academica.",
-    ],
-    research_questions: [
-      `Como puede abordarse academicamente ${cleanText(intake?.topic ?? input.project.title).toLowerCase()} con evidencia recuperada?`,
-    ],
+    general_objective: generalObjective,
+    specific_objectives: objectives.filter((text) => /^objetivos? espec[ií]ficos?\s*:/i.test(text)),
+    research_questions: questions,
     hypotheses_or_guiding_questions: ["Pregunta guia preliminar; no se formulan resultados anticipados."],
-    key_constructs_or_variables: input.ledger.semantic_extractions
-      .flatMap((extraction) => extraction.variables_or_constructs.map((item) => item.name_es))
-      .slice(0, 12),
+    key_constructs_or_variables: [sectionText("variables_or_categories")].filter(Boolean),
     proposed_methodology: sectionText("methodology") || intake?.preferredMethodology || "",
     population_and_sample: intake?.targetPopulation ?? "",
-    data_collection_techniques: ["Revision documental", "Analisis academico del corpus recuperado"],
-    analysis_plan: "Analisis documental y metodologico preliminar basado en fuentes recuperadas.",
+    data_collection_techniques: [sectionText("methodology")].filter(Boolean),
+    analysis_plan: sectionText("methodology"),
     consistency_matrix: [
       {
-        objective: "Organizar evidencia recuperada",
-        question: "Que evidencia sostiene el blueprint?",
-        method: "Revision documental",
-        technique: "Matriz de trazabilidad",
+        objective: generalObjective,
+        question: questions.join("\n"),
+        method: sectionText("methodology"),
+        technique: intake?.preferredMethodology ?? "Por definir",
       },
     ],
     work_plan: [
-      { phase: "Revision de evidencia", duration: "2-3 semanas" },
-      { phase: "Diseno metodologico", duration: "2 semanas" },
-      { phase: "Redaccion y validacion", duration: "3-4 semanas" },
+      { phase: sectionText("schedule_and_budget"), duration: "Cronograma referencial descrito en la seccion; requiere confirmacion del investigador." },
     ],
     assumptions: input.package.section_drafts.flatMap((draft) => draft.assumptions).slice(0, 20),
     limitations: input.package.section_drafts.flatMap((draft) => draft.limitations).slice(0, 20),
@@ -3018,6 +2980,11 @@ function buildBlueprintJson(input: {
     step6_docx: {
       artifact_version: "v1",
       docx_path: input.package.step7_export_contract.docx_path,
+      sha256: createHash("sha256").update(fs.readFileSync(input.package.step7_export_contract.docx_path)).digest("hex"),
+      step_run_id: input.package.step_run_id,
+      step5_step_run_id: input.ledger.step_run_id,
+      evidence_ledger_path: input.ledger.artifact_manifest_path,
+      section_drafts: input.package.section_drafts,
       section_count: input.package.section_drafts.length,
       hero_image_status: input.package.hero_image.status,
       summary_hero_image_status: input.package.summary_hero_image.status,
@@ -3034,6 +3001,9 @@ function selectedReferencesSnapshot(ledger: MvpStep5EvidenceLedger) {
     title: source.title,
     doi: source.doi,
     citation_key: source.citation_key,
+    authors: source.authors,
+    year: source.year,
+    venue: source.venue,
   }));
 }
 
@@ -3060,6 +3030,18 @@ export async function runMvpStep6BlueprintDocx(input: {
 
   const project = await loadProjectForStep6(input);
   const latestStep5 = await loadLatestStep5Ledger(input.projectId);
+  assertEvidenceContinuity(latestStep5.ledger, {
+    projectId: input.projectId, stepRunId: latestStep5.row.stepRunId, intake: project.intake!,
+    referenceIds: project.projectReferences.map((row) => row.referenceId),
+  });
+  const evidenceGate = evaluateEvidenceGate(latestStep5.ledger);
+  await writeJson(path.join(artifacts.artifactDir, "evidence-gate.json"), evidenceGate);
+  if (evidenceGate.status === "INSUFFICIENT") {
+    await logAuditEvent({ eventType: "MVP_STEP6_BLOCKED_INSUFFICIENT_EVIDENCE", actorType: ActorType.SYSTEM, provider: Provider.SYSTEM,
+      userId: input.userId, projectId: input.projectId, payloadJson: asStepRunJson({ run_id: artifacts.runId, step5_step_run_id: latestStep5.row.stepRunId, ...evidenceGate }) });
+    throw new Error("INSUFFICIENT_EVIDENCE: no hay evidencia inspeccionable verificada; agregar fuentes o repetir Step 5. No se genero plan.");
+  }
+  warnings.push(...evidenceGate.limitations);
   const sectionPlan = buildSectionPlan(project, latestStep5.ledger);
   const academicStyleContract = buildStyleContract(project);
   const pageBudgetPlan = buildPageBudgetPlan(sectionPlan);
@@ -3335,7 +3317,7 @@ export async function runMvpStep6BlueprintDocx(input: {
 
     await prisma.project.update({
       where: { id: input.projectId },
-      data: { status: "BLUEPRINT_READY" },
+      data: { status: coherenceReport.status === "failed" ? "SOURCES_SELECTED" : "BLUEPRINT_READY" },
     });
 
     const apiUsageReport = await buildMvpApiUsageReport({

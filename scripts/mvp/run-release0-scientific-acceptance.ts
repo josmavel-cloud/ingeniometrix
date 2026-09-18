@@ -14,7 +14,7 @@ import {
 import { readLlmUsageRegistry, sumLlmUsageCalls } from "@/server/llm-usage-registry";
 import { MVP_STEP1_KEY, normalizeIntakeForMvpProject } from "@/server/mvp/intake-normalization-service";
 import { STEP2_EVIDENCE_INFORMED_REFINEMENT_PROMPT } from "@/server/mvp/prompts/step2-evidence-informed-refinement.v2";
-import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v2";
+import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP6_EDITORIAL_REVIEW_PROMPT } from "@/server/mvp/prompts/step6-editorial-review.v1";
 import { STEP6_SECTION_DRAFT_PROMPT } from "@/server/mvp/prompts/step6-section-draft.v2";
 import { STEP6_TITLE_GENERATION_PROMPT } from "@/server/mvp/prompts/step6-title-generation.v1";
@@ -38,7 +38,7 @@ import { seismicEngineeringFixture } from "./fixtures/seismic-engineering-intake
 
 type CaseKey = "engineering" | "qualitative" | "negative";
 
-const OUTPUT_ROOT = path.join(process.cwd(), "artifacts-local", "release0-scientific-validation");
+const OUTPUT_ROOT = path.join(process.cwd(), "artifacts-local", "release0-scientific-validation", "b2");
 const CASE_KEY = (process.argv.find((value) => value.startsWith("--case="))?.split("=")[1] ?? "") as CaseKey;
 
 const negativeFixture = {
@@ -276,7 +276,7 @@ async function runPositive(
       ])
     : [null, null];
   const step1 = savedStep1?.outputSnapshotJson
-    ? savedStep1.outputSnapshotJson as unknown as Awaited<ReturnType<typeof normalizeIntakeForMvpProject>>
+    ? JSON.parse(await readFile(savedStep1.artifactManifestPath!, "utf8")) as Awaited<ReturnType<typeof normalizeIntakeForMvpProject>>
     : await normalizeIntakeForMvpProject({ userId: input.user.id, projectId: input.project.id, runId: `${runId}-step1` });
   if (!step1.input_quality.ready_for_step_2) throw new Error("El fixture positivo no esta listo para Paso 2.");
   const step2 = savedStep2?.outputSnapshotJson
@@ -286,7 +286,7 @@ async function runPositive(
     ?? step2.alternatives.find((option) => option.strategy === "balanceada")
     ?? step2.alternatives[0];
   if (!selectedOption) throw new Error("Paso 2 no devolvio una alternativa seleccionable.");
-  const step2Selection = resume
+  const step2Selection = resume && savedStep2?.outputSnapshotJson
     ? { project_id: input.project.id, step_run_id: step2.step_run_id, selected_option_id: selectedOption.option_id, selected_strategy: selectedOption.strategy, first_batch_candidate_ids: selectedOption.source_feasibility.first_batch_candidate_ids, discarded_candidate_ids: [], next_action_es: "Seleccion previamente registrada; reanudacion de evaluacion." }
     : await applyMvpStep2IntakeChoice({
         userId: input.user.id,
@@ -387,7 +387,7 @@ async function runPositive(
       step5: { status: step5.status, duration_ms: step5.duration_ms, prompt_version: step5.prompt_version },
       step6: { status: step6.status, duration_ms: step6.duration_ms, prompt_version: step6.prompt_version, metrics: step6.metrics },
     },
-    backend_duration_ms: step1.duration_ms + step2.duration_ms + step3.duration_ms + (step4?.duration_ms ?? 0) + step4Selection.duration_ms + step5.duration_ms + step6.duration_ms,
+    backend_duration_ms: Date.parse(finishedAt) - Date.parse(startedAt),
     started_at: effectiveStartedAt,
     completed_at: finishedAt,
     api_usage: usage,
@@ -416,6 +416,10 @@ async function runPositive(
 }
 
 async function main() {
+  for (const key of ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]) {
+    const db = new URL(process.env[key] ?? "");
+    if (db.hostname !== "127.0.0.1" || db.port !== "55434" || db.pathname !== "/imx_b1") throw new Error("Aceptacion permitida solo en la DB aislada verificada 127.0.0.1:55434/imx_b1.");
+  }
   const promptsProjectIds = process.argv.find((value) => value.startsWith("--prompts-project="))?.split("=")[1]?.split(",").filter(Boolean);
   const outputDir = process.argv.find((value) => value.startsWith("--output-dir="))?.slice("--output-dir=".length);
   if (promptsProjectIds?.length && outputDir) {
@@ -431,12 +435,20 @@ async function main() {
   if (!Object.hasOwn(cases, CASE_KEY)) throw new Error("Usa --case=engineering, --case=qualitative o --case=negative.");
   const resumeProjectId = process.argv.find((value) => value.startsWith("--resume-project="))?.split("=")[1];
   const startedAt = new Date().toISOString();
-  const runId = `release0-${CASE_KEY}-${stamp()}`;
+  const runId = `release0-b2-${CASE_KEY}-${stamp()}`;
   const caseDir = path.join(OUTPUT_ROOT, CASE_KEY, runId);
   await mkdir(caseDir, { recursive: true });
+  process.env.IMX_LLM_AUDIT_DIR = path.join(caseDir, "provider-calls");
+  process.env.IMX_LLM_RUN_BUDGET_USD = CASE_KEY === "negative" ? "0.000001" : "2.20";
+  process.env.LLM_MAX_OUTPUT_TOKENS = "8000";
+  process.env.LLM_REQUEST_MAX_RETRIES = "0";
+  process.env.IMX_STEP6_DISABLE_IMAGE_GENERATION = "1";
+  process.env.IMX_STEP5_DISABLE_VISUAL_LOCALIZATION = "1";
   const input = resumeProjectId
     ? await prisma.project.findFirstOrThrow({ where: { id: resumeProjectId }, include: { user: true } }).then((project) => ({ user: project.user, project, fixture: cases[CASE_KEY] }))
     : await createCaseProject(CASE_KEY, runId);
+  await writeFile(path.join(caseDir, "run-start.json"), JSON.stringify({ project_id: input.project.id, run_id: runId, started_at: startedAt, budget_usd: process.env.IMX_LLM_RUN_BUDGET_USD, fixture: input.fixture.id }));
+  console.log(JSON.stringify({ started: true, project_id: input.project.id, case_dir: caseDir }));
   const result = CASE_KEY === "negative"
     ? await runNegative(input, runId, caseDir)
     : await runPositive(input, runId, caseDir, startedAt, Boolean(resumeProjectId));

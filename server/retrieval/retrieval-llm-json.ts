@@ -51,6 +51,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
   schemaName: string;
   schema: Record<string, unknown>;
   model?: string;
+  maxOutputTokens?: number;
   trackingAttribution?: LlmUsageAttribution;
 }) {
   try {
@@ -59,6 +60,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       schemaName: params.schemaName,
       schema: params.schema,
       model: params.model,
+      maxOutputTokens: params.maxOutputTokens,
       trackingLabel: `structured:${params.schemaName}`,
       trackingAttribution: params.trackingAttribution,
     });
@@ -69,6 +71,7 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       const textResponse = await params.provider.generateText({
         prompt: buildJsonOnlyPrompt(params.prompt),
         model: params.model,
+        maxOutputTokens: params.maxOutputTokens,
         trackingLabel: `text_fallback:${params.schemaName}`,
         trackingAttribution: params.trackingAttribution,
       });

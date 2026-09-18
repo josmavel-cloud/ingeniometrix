@@ -1381,14 +1381,20 @@ export async function searchProjectReferencesV2(
     openAlex: 0,
     crossref: 0,
   };
+  let openAlexUnavailable = false;
 
   for (const queryStage of queryStages) {
     for (const attemptQuery of queryStage.queries) {
+      if (openAlexUnavailable) break;
       attemptedQueries.push(attemptQuery);
       const attemptResults = await searchOpenAlexWorks(attemptQuery, {
         filters: queryStage.openAlexFilters,
         perPage: 35,
         sort: "relevance_score:desc,cited_by_count:desc",
+      }).catch((error) => {
+        openAlexUnavailable = true;
+        console.warn("OpenAlex no disponible; se usara Crossref:", error instanceof Error ? error.message : String(error));
+        return [];
       });
       attemptSummaries.push({
         query: attemptQuery,
@@ -1696,6 +1702,7 @@ export async function searchProjectReferencesV2(
       skippedCount,
       providerBreakdown,
       searchSnapshot,
+      providerFallback: openAlexUnavailable ? "OpenAlex unavailable; supported Crossref fallback used" : null,
     },
   });
 

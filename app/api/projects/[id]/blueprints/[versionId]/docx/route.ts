@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { readCanonicalStep6Docx } from "@/server/mvp/canonical-docx-download";
 
 import { requireCurrentUser } from "@/server/auth/session";
 import { getBlueprintVersionForUser } from "@/server/blueprint/blueprint-service";
@@ -23,11 +24,10 @@ export async function GET(_request: Request, context: RouteContext) {
     const user = await requireCurrentUser();
     const { id, versionId } = await context.params;
     const blueprintVersion = await getBlueprintVersionForUser(user.id, id, versionId);
-    const report = await buildCanonicalReportFromBlueprint({
-      projectId: id,
-      blueprintVersionId: versionId,
-    });
-    const docxBuffer = await renderCanonicalReportDocxBuffer(report.canonicalDocument);
+    const canonicalDocx = await readCanonicalStep6Docx(blueprintVersion);
+    const docxBuffer = canonicalDocx ?? await renderCanonicalReportDocxBuffer((await buildCanonicalReportFromBlueprint({
+      projectId: id, blueprintVersionId: versionId,
+    })).canonicalDocument);
     const filename = `${slugify(blueprintVersion.id)}-ingeniometrix-blueprint.docx`;
 
     return new NextResponse(docxBuffer as BodyInit, {

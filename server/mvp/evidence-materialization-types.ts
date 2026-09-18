@@ -338,6 +338,8 @@ export type MvpStep5SemanticEvidenceItem = {
   claim_type: string;
   traceable_summary_es: string;
   supporting_quote_or_paraphrase_es: string;
+  supporting_excerpt?: string;
+  support_verified?: boolean;
   citation_anchor: MvpStep5SemanticCitationAnchor;
   confidence_100: number;
   allowed_use: "blueprint_planning" | "theory_or_method_support" | "context_only" | "gap_only";
@@ -427,6 +429,9 @@ export type MvpStep5LlmWavePlanItem = {
 
 export type MvpStep5EvidenceLedger = {
   project_id: string;
+  intake_fingerprint?: string;
+  run_id?: string;
+  source_inspection_step_run_id?: string;
   step_run_id: string;
   template_key: string;
   template_version_id: string | null;
