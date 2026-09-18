@@ -524,10 +524,10 @@ export function Step7Reader({ snapshot }: Step7ReaderProps) {
             <div className="max-w-4xl">
               <Link
                 className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-muted)]"
-                href="/lab/master-blueprint"
+                href="/projects"
               >
                 <ArrowLeft className="size-4" />
-                Volver al lab
+                Volver a proyectos
               </Link>
               <p className="mt-4 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
                 Step 7 / master_template_runtime

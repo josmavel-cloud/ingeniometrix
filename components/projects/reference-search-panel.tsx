@@ -258,74 +258,77 @@ export function ReferenceSearchPanel({
     }
 
     startSearchTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ desiredTotal }),
-      });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ desiredTotal }),
+        });
 
-      const payload = (await response.json()) as {
-        error?: string;
-        result?: {
-          totalResults: number;
-          attemptedQueries: string[];
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          result?: {
+            totalResults: number;
+            attemptedQueries: string[];
+          };
         };
-      };
 
-      if (!response.ok) {
-        setError(payload.error ?? copy.searchError);
-        return;
-      }
+        if (!response.ok) {
+          setError(payload.error ?? copy.searchError);
+          return;
+        }
 
-      const refreshResponse = await fetch(`/api/projects/${projectId}/references`);
-      const refreshPayload = (await refreshResponse.json()) as {
-        error?: string;
-        references?: ReferenceListItem[];
-        searchSnapshot?: ReferenceSearchSnapshot | null;
-      };
+        const refreshResponse = await fetch(`/api/projects/${projectId}/references`);
+        const refreshPayload = (await refreshResponse.json().catch(() => ({}))) as {
+          error?: string;
+          references?: ReferenceListItem[];
+          searchSnapshot?: ReferenceSearchSnapshot | null;
+        };
 
-      if (!refreshResponse.ok || !refreshPayload.references) {
-        setError(refreshPayload.error ?? copy.referencesLoadError);
-        return;
-      }
+        if (!refreshResponse.ok || !refreshPayload.references) {
+          setError(refreshPayload.error ?? copy.referencesLoadError);
+          return;
+        }
 
-      let mergedReferencesLength = refreshPayload.references.length;
-      let newUniqueCount = refreshPayload.references.length;
+        let mergedReferencesLength = refreshPayload.references.length;
+        let newUniqueCount = refreshPayload.references.length;
 
-      setReferences((current) => {
-        const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
-        mergedReferencesLength = merged.length;
-        newUniqueCount = Math.max(0, merged.length - current.length);
-        return merged;
-      });
-      setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
-      setVisibleCount((current) =>
-        Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
-      );
-
-      const totalResults = payload.result?.totalResults ?? 0;
-
-      if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
-        setMessage(
-          desiredTotal > REFERENCE_BATCH_SIZE
-            ? copy.addedNew(newUniqueCount)
-            : copy.searchCompleted(
-                Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE),
-                MIN_SELECTED_REFERENCES,
-                MAX_SELECTED_REFERENCES,
-              ),
+        setReferences((current) => {
+          const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
+          mergedReferencesLength = merged.length;
+          newUniqueCount = Math.max(0, merged.length - current.length);
+          return merged;
+        });
+        setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
+        setVisibleCount((current) =>
+          Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
         );
-        setInfo(null);
-      } else if (mergedReferencesLength > 0) {
-        setMessage(null);
-        setInfo(copy.noNew);
-      } else {
-        setMessage(null);
-        setInfo(copy.noResults);
-      }
 
+        const totalResults = payload.result?.totalResults ?? 0;
+
+        if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
+          setMessage(
+            desiredTotal > REFERENCE_BATCH_SIZE
+              ? copy.addedNew(newUniqueCount)
+              : copy.searchCompleted(
+                  Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE),
+                  MIN_SELECTED_REFERENCES,
+                  MAX_SELECTED_REFERENCES,
+                ),
+          );
+          setInfo(null);
+        } else if (mergedReferencesLength > 0) {
+          setMessage(null);
+          setInfo(copy.noNew);
+        } else {
+          setMessage(null);
+          setInfo(copy.noResults);
+        }
+      } catch {
+        setError(copy.searchError);
+      }
     });
   }
 
@@ -365,23 +368,27 @@ export function ReferenceSearchPanel({
     }
 
     startSaveTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/references`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ selectedReferenceIds }),
-      });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/references`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ selectedReferenceIds }),
+        });
 
-      const payload = (await response.json()) as { error?: string };
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
 
-      if (!response.ok) {
-        setError(payload.error ?? copy.saveError);
-        return;
+        if (!response.ok) {
+          setError(payload.error ?? copy.saveError);
+          return;
+        }
+
+        setMessage(copy.saved);
+        router.refresh();
+      } catch {
+        setError(copy.saveError);
       }
-
-      setMessage(copy.saved);
-      router.refresh();
     });
   }
 

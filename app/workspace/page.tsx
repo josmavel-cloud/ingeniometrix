@@ -74,26 +74,6 @@ export default async function WorkspaceEntryPage() {
               </p>
             </article>
 
-            <article className="rounded-[28px] p-5 brand-card-mint">
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
-                Laboratorio
-              </p>
-              <h3 className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">
-                Blueprint Lab
-              </h3>
-              <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
-                Si necesitas pruebas controladas, tambien puedes entrar al laboratorio tecnico del MasterBlueprintEngine.
-              </p>
-              <div className="mt-5">
-                <Link
-                  className="brand-button-secondary px-5 py-3 text-sm font-semibold"
-                  href="/lab/master-blueprint"
-                >
-                  Abrir lab
-                </Link>
-              </div>
-            </article>
-
             <article className="rounded-[28px] p-5 brand-card-gold">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
                 Portal

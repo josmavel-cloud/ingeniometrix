@@ -785,43 +785,47 @@ export function CreateProjectForm({
     }
 
     startTransition(async () => {
-      const trimmedIdea = finalTopicTitle.trim();
-      const shouldUseCatalogSuggestion =
-        !selectedIdea &&
-        !selectedVariantTitle &&
-        !!selectedSuggestion &&
-        normalizeSearchText(selectedSuggestion.title) === normalizeSearchText(trimmedIdea);
+      try {
+        const trimmedIdea = finalTopicTitle.trim();
+        const shouldUseCatalogSuggestion =
+          !selectedIdea &&
+          !selectedVariantTitle &&
+          !!selectedSuggestion &&
+          normalizeSearchText(selectedSuggestion.title) === normalizeSearchText(trimmedIdea);
 
-      const response = await fetch("/api/projects", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          catalogTopicId: shouldUseCatalogSuggestion ? selectedSuggestion.id : undefined,
-          customIdeaText: shouldUseCatalogSuggestion ? undefined : trimmedIdea,
-          title: trimmedIdea,
-          degreeLevel,
-          university,
-          program,
-          language,
-          topicAreaId: topicAreaId ?? undefined,
-          topicAreaLabel: topicAreaLabel ?? undefined,
-        }),
-      });
+        const response = await fetch("/api/projects", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            catalogTopicId: shouldUseCatalogSuggestion ? selectedSuggestion.id : undefined,
+            customIdeaText: shouldUseCatalogSuggestion ? undefined : trimmedIdea,
+            title: trimmedIdea,
+            degreeLevel,
+            university,
+            program,
+            language,
+            topicAreaId: topicAreaId ?? undefined,
+            topicAreaLabel: topicAreaLabel ?? undefined,
+          }),
+        });
 
-      const payload = (await response.json()) as {
-        error?: string;
-        project?: { id: string };
-      };
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          project?: { id: string };
+        };
 
-      if (!response.ok || !payload.project) {
-        setError(payload.error ?? copy.createError);
-        return;
+        if (!response.ok || !payload.project) {
+          setError(payload.error ?? copy.createError);
+          return;
+        }
+
+        router.push(`/projects/${payload.project.id}#intake`);
+        router.refresh();
+      } catch {
+        setError(copy.createError);
       }
-
-      router.push(`/projects/${payload.project.id}#intake`);
-      router.refresh();
     });
   }
 

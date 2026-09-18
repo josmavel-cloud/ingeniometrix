@@ -38,22 +38,28 @@ export function LoginForm() {
     setError(null);
 
     startTransition(async () => {
-      const response = await fetch("/api/auth/session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      });
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email, password }),
+        });
 
-      if (!response.ok) {
-        const payload = (await response.json()) as LoginErrorPayload;
-        setError(getLoginErrorMessage(payload));
-        return;
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => ({}))) as LoginErrorPayload;
+          setError(getLoginErrorMessage(payload));
+          return;
+        }
+
+        router.push("/projects");
+        router.refresh();
+      } catch {
+        setError(
+          "No pudimos conectar con Ingeniometrix. Revisa tu conexion e intenta nuevamente.",
+        );
       }
-
-      router.push("/projects");
-      router.refresh();
     });
   }
 
@@ -90,7 +96,11 @@ export function LoginForm() {
         />
       </label>
 
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+      {error ? (
+        <p aria-live="polite" className="text-sm text-rose-600" role="alert">
+          {error}
+        </p>
+      ) : null}
 
       <button
         className="brand-button-primary h-12 px-5 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"

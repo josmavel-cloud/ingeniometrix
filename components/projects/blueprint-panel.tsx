@@ -290,49 +290,63 @@ export function BlueprintPanel({
 
     let isCancelled = false;
     const pollProgress = async () => {
-      const response = await fetch(`/api/projects/${projectId}/blueprints/progress`, {
-        cache: "no-store",
-      });
-      const payload = (await response.json()) as { progress?: BlueprintProgress };
-
-      if (isCancelled || !response.ok || !payload.progress) {
-        return;
-      }
-
-      setProgress(payload.progress);
-
-      if (payload.progress.jobId) {
-        setActiveJobId(payload.progress.jobId);
-      }
-
-      if (
-        payload.progress.shouldNudge &&
-        payload.progress.jobId &&
-        !resumeInFlightRef.current
-      ) {
-        resumeInFlightRef.current = true;
-        fetch(`/api/projects/${projectId}/blueprints/resume`, {
-          method: "POST",
+      try {
+        const response = await fetch(`/api/projects/${projectId}/blueprints/progress`, {
           cache: "no-store",
-        }).finally(() => {
-          resumeInFlightRef.current = false;
         });
-      }
+        const payload = (await response.json().catch(() => ({}))) as {
+          progress?: BlueprintProgress;
+        };
 
-      if (
-        payload.progress.jobStatus === "COMPLETED" ||
-        payload.progress.projectStatus === "BLUEPRINT_READY"
-      ) {
-        setActiveJobId(null);
-        setMessage(copy.generated);
-        router.refresh();
-      }
+        if (isCancelled) {
+          return;
+        }
 
-      if (payload.progress.jobStatus === "FAILED") {
-        setActiveJobId(null);
-        setError({
-          message: payload.progress.errorMessage ?? copy.generateError,
-        });
+        if (!response.ok || !payload.progress) {
+          setError({ message: copy.generateError });
+          return;
+        }
+
+        setError(null);
+        setProgress(payload.progress);
+
+        if (payload.progress.jobId) {
+          setActiveJobId(payload.progress.jobId);
+        }
+
+        if (
+          payload.progress.shouldNudge &&
+          payload.progress.jobId &&
+          !resumeInFlightRef.current
+        ) {
+          resumeInFlightRef.current = true;
+          fetch(`/api/projects/${projectId}/blueprints/resume`, {
+            method: "POST",
+            cache: "no-store",
+          }).finally(() => {
+            resumeInFlightRef.current = false;
+          });
+        }
+
+        if (
+          payload.progress.jobStatus === "COMPLETED" ||
+          payload.progress.projectStatus === "BLUEPRINT_READY"
+        ) {
+          setActiveJobId(null);
+          setMessage(copy.generated);
+          router.refresh();
+        }
+
+        if (payload.progress.jobStatus === "FAILED") {
+          setActiveJobId(null);
+          setError({
+            message: payload.progress.errorMessage ?? copy.generateError,
+          });
+        }
+      } catch {
+        if (!isCancelled) {
+          setError({ message: copy.generateError });
+        }
       }
     };
 
@@ -377,40 +391,44 @@ export function BlueprintPanel({
     });
 
     startTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/blueprints`, {
-        method: "POST",
-      });
-
-      const payload = (await readJsonPayload(response)) as {
-        error?: string;
-        code?: string;
-        nextAction?: string;
-        job?: BlueprintJobResponse;
-      };
-
-      if (!response.ok) {
-        setError({
-          code: payload.code,
-          message: payload.error ?? copy.generateError,
-          nextAction: payload.nextAction,
+      try {
+        const response = await fetch(`/api/projects/${projectId}/blueprints`, {
+          method: "POST",
         });
-        return;
-      }
 
-      if (payload.job) {
-        setActiveJobId(payload.job.id);
-        setProgress({
-          projectStatus: "BLUEPRINT_GENERATING",
-          jobId: payload.job.id,
-          jobStatus: payload.job.status,
-          stageKey: payload.job.currentStage,
-          label: copy.queued,
-          progress: payload.job.progress,
-          updatedAt: payload.job.updatedAt,
-          errorMessage: null,
-          shouldNudge: false,
-        });
-        setMessage(copy.queued);
+        const payload = (await readJsonPayload(response)) as {
+          error?: string;
+          code?: string;
+          nextAction?: string;
+          job?: BlueprintJobResponse;
+        };
+
+        if (!response.ok) {
+          setError({
+            code: payload.code,
+            message: payload.error ?? copy.generateError,
+            nextAction: payload.nextAction,
+          });
+          return;
+        }
+
+        if (payload.job) {
+          setActiveJobId(payload.job.id);
+          setProgress({
+            projectStatus: "BLUEPRINT_GENERATING",
+            jobId: payload.job.id,
+            jobStatus: payload.job.status,
+            stageKey: payload.job.currentStage,
+            label: copy.queued,
+            progress: payload.job.progress,
+            updatedAt: payload.job.updatedAt,
+            errorMessage: null,
+            shouldNudge: false,
+          });
+          setMessage(copy.queued);
+        }
+      } catch {
+        setError({ message: copy.generateError });
       }
     });
   }

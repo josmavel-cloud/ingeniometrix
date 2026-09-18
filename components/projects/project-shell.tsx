@@ -21,7 +21,7 @@ export async function ProjectShell({ title, description, children }: ProjectShel
     <main className="min-h-screen px-4 pb-12 pt-6 sm:px-6 lg:px-8">
       <FloatingNavbar
         action={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             <LanguageToggle initialLanguage={language} />
             <Link
               className="brand-button-secondary px-4 py-2 text-sm font-semibold"
