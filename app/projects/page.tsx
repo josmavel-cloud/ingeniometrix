@@ -3,25 +3,24 @@ import Link from "next/link";
 import { ProjectList, type ProjectListItem } from "@/components/projects/project-list";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { requireCurrentUser } from "@/server/auth/session";
-import { getRequestLanguage } from "@/server/i18n/request-language";
 import { listProjectsForUser } from "@/server/projects/project-service";
 
 const copy = {
   es: {
     title: "Tus proyectos",
     description:
-      "El MVP se mueve en un solo recorrido: define contexto, entra con una base sugerida, afina el intake y valida fuentes antes del blueprint.",
+      "Retoma tu investigacion o empieza una nueva: idea, definicion, evidencia, plan y descarga.",
     kicker: "Inicio del workspace",
     heading: "Sigue cada proyecto como un recorrido guiado.",
     activeUser: "Usuario activo",
     newProject: "Nuevo proyecto",
     emptyTitle: "Aun no tienes proyectos.",
     emptyBody:
-      "El nuevo arranque del MVP empieza por contexto y sugerencias. Creas una base inicial en segundos y despues entras al workspace para afinar el intake y avanzar hacia fuentes y blueprint.",
+      "Empieza con una idea. Ingeniometrix te ayudara a definirla, contrastarla con evidencia y convertirla en un plan revisable.",
     createFirst: "Crear primer proyecto",
     step1: ["Paso 1", "Define contexto", "Elige universidad, nivel, area e interes para entrar con mejor punto de partida."],
     step2: ["Paso 2", "Elige una base sugerida", "Ingeniometrix te propone temas iniciales del catalogo segun ese contexto."],
-    step3: ["Paso 3", "Refina y valida", "Ajusta intake, selecciona fuentes trazables y genera un blueprint para revision academica."],
+    step3: ["Paso 3", "Contrasta y construye", "Selecciona evidencia trazable y genera un plan para revision academica."],
     nextStep: "Siguiente paso",
   },
   en: {
@@ -45,7 +44,7 @@ const copy = {
 
 export default async function ProjectsPage() {
   const user = await requireCurrentUser();
-  const language = await getRequestLanguage();
+  const language = "es" as const;
   const t = copy[language];
   const projects = await listProjectsForUser(user.id);
   const projectListItems: ProjectListItem[] = projects.map((project) => {

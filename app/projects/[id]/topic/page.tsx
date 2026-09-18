@@ -23,7 +23,7 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
     return (
       <ProjectShell
         title="Elegir tema"
-        description="Compara tu idea original con tres opciones relacionadas y elige una base para el intake."
+        description="Compara tu idea original con tres opciones relacionadas y elige la base de tu investigacion."
       >
         <TopicStage
           projectId={project.id}

@@ -16,11 +16,11 @@ function getLoginErrorMessage(payload: LoginErrorPayload) {
   const diagnosticMessage = payload.diagnostic?.message ?? "";
 
   if (/exceeded the data transfer quota/i.test(diagnosticMessage)) {
-    return "La base de datos de Ingeniometrix alcanzo su cuota de transferencia en Neon. Hay que ampliar el plan o liberar la cuota para entrar al workspace.";
+    return "El acceso esta temporalmente no disponible. Intenta nuevamente mas tarde.";
   }
 
   if (/can't reach database server/i.test(diagnosticMessage)) {
-    return "No se pudo conectar con la base de datos cloud. Revisa que el proyecto Neon este activo y que las variables de Vercel apunten al endpoint correcto.";
+    return "No pudimos conectar con Ingeniometrix. Intenta nuevamente en unos minutos.";
   }
 
   return payload.error ?? "No se pudo iniciar la sesion.";
@@ -66,8 +66,7 @@ export function LoginForm() {
   return (
     <form className="grid gap-4" onSubmit={handleSubmit}>
       <div className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.9)] p-4 text-sm leading-6 text-[var(--color-muted)]">
-        Entra con una cuenta ya habilitada en el backend para continuar al
-        workspace de Ingeniometrix.
+        Entra con tu cuenta de Ingeniometrix para continuar.
       </div>
 
       <label className="grid gap-2">

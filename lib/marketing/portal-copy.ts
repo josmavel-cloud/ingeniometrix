@@ -9,12 +9,6 @@ const providerDescriptions = {
       logoClassName: "w-9 rounded-[10px]",
     },
     {
-      name: "Claude",
-      description: "Apoyo conversacional para analisis guiado y revision de enfoque.",
-      logoSrc: "/providers/claude.png",
-      logoClassName: "w-8 rounded-[10px]",
-    },
-    {
       name: "OpenAlex",
       description: "Descubrimiento bibliografico abierto y contexto academico recuperable.",
       logoSrc: "/providers/openalex.png",
@@ -34,12 +28,6 @@ const providerDescriptions = {
       description: "Assistance for structuring, synthesizing, and explaining complex ideas.",
       logoSrc: "/providers/openai.png",
       logoClassName: "w-9 rounded-[10px]",
-    },
-    {
-      name: "Claude",
-      description: "Conversational support for guided analysis and focus review.",
-      logoSrc: "/providers/claude.png",
-      logoClassName: "w-8 rounded-[10px]",
     },
     {
       name: "OpenAlex",

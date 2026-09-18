@@ -4,11 +4,9 @@ import type { ReactNode } from "react";
 
 import { getPortalHomeCopy } from "@/lib/marketing/portal-copy";
 import { PUBLIC_SITE_NAME, PUBLIC_SITE_URL } from "@/lib/public-site";
-import { getRequestLanguage } from "@/server/i18n/request-language";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const language = await getRequestLanguage();
-  const copy = getPortalHomeCopy(language).metadata;
+  const copy = getPortalHomeCopy("es").metadata;
 
   return {
     metadataBase: new URL(PUBLIC_SITE_URL),
@@ -27,7 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description: copy.ogDescription,
       url: PUBLIC_SITE_URL,
       siteName: PUBLIC_SITE_NAME,
-      locale: language === "en" ? "en_US" : "es_PE",
+      locale: "es_PE",
       type: "website",
       images: [
         {
@@ -56,10 +54,8 @@ type RootLayoutProps = {
 };
 
 export default async function RootLayout({ children }: RootLayoutProps) {
-  const language = await getRequestLanguage();
-
   return (
-    <html lang={language}>
+    <html lang="es">
       <body className="antialiased">{children}</body>
     </html>
   );

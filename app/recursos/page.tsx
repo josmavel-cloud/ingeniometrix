@@ -29,14 +29,9 @@ export default function ResourcesPage() {
           <Link className="min-w-0 flex-1" href="/">
             <BrandBadge compact context="company" />
           </Link>
-          <div className="flex items-center gap-2">
-            <Link className="brand-button-secondary hidden px-4 py-2 text-sm font-semibold sm:inline-flex" href="/campana">
-              Ver snapshot
-            </Link>
-            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/campana">
-              Snapshot
-            </Link>
-          </div>
+          <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/workspace">
+            Entrar
+          </Link>
         </div>
       </header>
 

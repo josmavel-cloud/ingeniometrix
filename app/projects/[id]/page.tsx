@@ -8,18 +8,14 @@ import { ProjectContextRibbon } from "@/components/projects/project-context-ribb
 import { ProjectShell } from "@/components/projects/project-shell";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
-import { getDegreeLevelLabelForLanguage } from "@/lib/degree-levels";
 import { getLocaleForLanguage } from "@/lib/language";
 import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
 import {
   getProjectStatusMetaForLanguage,
   getProjectUiCopy,
 } from "@/lib/project-ui-copy";
-import { getProjectStatusToneClasses } from "@/lib/project-status";
-import { getTemplateDisplayLabel } from "@/lib/system-master-template";
 import { requireCurrentUser } from "@/server/auth/session";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
-import { getRequestLanguage } from "@/server/i18n/request-language";
 import { getProjectForUser } from "@/server/projects/project-service";
 import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import { listProjectReferences } from "@/server/retrieval/reference-service";
@@ -32,7 +28,7 @@ export default async function ProjectDetailPage({
   params,
 }: ProjectDetailPageProps) {
   const user = await requireCurrentUser();
-  const language = await getRequestLanguage();
+  const language = "es" as const;
   const copy = getProjectUiCopy(language);
   const locale = getLocaleForLanguage(language);
   const { id } = await params;
@@ -77,6 +73,7 @@ export default async function ProjectDetailPage({
       title: copy.workflow.stages.topic[0],
       description: copy.workflow.stages.topic[1],
       active: project.topicSelectionStatus === "SELECTED",
+      current: project.topicSelectionStatus !== "SELECTED",
       cardClassName: "brand-card-lilac",
     },
     {
@@ -85,6 +82,7 @@ export default async function ProjectDetailPage({
       title: copy.workflow.stages.intake[0],
       description: copy.workflow.stages.intake[1],
       active: statusMeta.stage >= 1,
+      current: project.topicSelectionStatus === "SELECTED" && statusMeta.stage === 1,
       cardClassName: "brand-card-gold",
     },
     {
@@ -93,6 +91,7 @@ export default async function ProjectDetailPage({
       title: copy.workflow.stages.sources[0],
       description: copy.workflow.stages.sources[1],
       active: statusMeta.stage >= 2,
+      current: statusMeta.stage === 2,
       cardClassName: "brand-card-mint",
     },
     {
@@ -101,6 +100,7 @@ export default async function ProjectDetailPage({
       title: copy.workflow.stages.blueprint[0],
       description: copy.workflow.stages.blueprint[1],
       active: statusMeta.stage >= 3,
+      current: statusMeta.stage === 3,
       cardClassName: "brand-card-blush",
     },
     {
@@ -109,6 +109,7 @@ export default async function ProjectDetailPage({
       title: copy.workflow.stages.export[0],
       description: copy.workflow.stages.export[1],
       active: statusMeta.stage >= 4,
+      current: statusMeta.stage >= 4,
       cardClassName: "surface-panel",
     },
   ];
@@ -180,53 +181,6 @@ export default async function ProjectDetailPage({
             </div>
           </section>
 
-          <details className="surface-panel rounded-[32px] p-6 sm:p-8">
-            <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-              {copy.projectPage.projectData}
-            </summary>
-            <div className="mt-5 grid gap-4">
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {copy.projectPage.status}
-                </p>
-                <div
-                  className={`mt-2 inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] ${getProjectStatusToneClasses(project.status)}`}
-                >
-                  {statusMeta.label}
-                </div>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {copy.projectPage.university}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {getUniversityDisplayNameByCode(project.university)}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {copy.projectPage.degree}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {getDegreeLevelLabelForLanguage(project.degreeLevel, language)}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {copy.projectPage.program}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">{project.program}</p>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  {copy.projectPage.template}
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {getTemplateDisplayLabel(project.templateKey)}
-                </p>
-              </div>
-            </div>
-          </details>
         </aside>
 
         <section className="grid gap-6">

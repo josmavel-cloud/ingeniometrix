@@ -12,12 +12,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
-      url: getPublicUrl("/campana"),
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
       url: getPublicUrl("/recursos"),
       lastModified: new Date(),
       changeFrequency: "weekly",
