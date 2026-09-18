@@ -37,7 +37,7 @@ import {
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
-import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v1";
+import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v2";
 import { adaptStep5LedgerToBlueprintV2 } from "@/server/mvp/step5-blueprint-v2-adapter";
 import {
   buildStep5LlmCacheKey,

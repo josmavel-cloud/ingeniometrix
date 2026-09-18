@@ -1,0 +1,178 @@
+{
+  "artifact_version": "current-lab-a-test-fixture.v1",
+  "project_id": "project-blueprint-engine-test",
+  "evidence_run_id": "evidence-run-blueprint-engine-test",
+  "handoff_id": "evidence-handoff-blueprint-engine-test",
+  "generated_at": "2026-09-18T00:00:00.000Z",
+  "summary": "Fixture minima y reproducible para contratos del motor de evidencia.",
+  "project_context": {
+    "intake_topic": "Evaluacion de una intervencion educativa con evidencia trazable",
+    "problem_context": "El proyecto debe contrastar una intervencion propuesta sin afirmar resultados.",
+    "research_line": "Evaluacion educativa",
+    "methodology_preference": "Diseno comparativo de propuesta",
+    "population_or_context": "Documentos y actores por confirmar",
+    "country_context": "PE",
+    "degree_level": "maestria",
+    "academic_program": "Posgrado",
+    "university": "Universidad de prueba"
+  },
+  "quality_gate": {
+    "status": "warn",
+    "ready_for_steps_7_11": true,
+    "traceability_warnings": [
+      "Fixture sintetica: no representa evidencia de una investigacion real."
+    ],
+    "unsupported_claims": [],
+    "checks": [],
+    "handoff_notes": []
+  },
+  "coverage_map": {
+    "overall_readiness": "media",
+    "section_keys_ready": [
+      "problem_statement"
+    ],
+    "section_keys_partial": [],
+    "section_keys_low": []
+  },
+  "source_priorities": [
+    {
+      "source_id": "src-fixture-1",
+      "reference_id": "ref-fixture-1",
+      "title": "Fuente sintetica para verificar contratos",
+      "authors": [
+        "Autoria de prueba"
+      ],
+      "year": 2024,
+      "venue": "Repositorio de pruebas",
+      "doi": null,
+      "landing_page_url": "https://example.invalid/source-fixture-1",
+      "pdf_url": null,
+      "is_open_access": false,
+      "selected_order": 1,
+      "eligible_for_formal_reference": false,
+      "input_mode": "pdf",
+      "topic_relevance": "directa",
+      "proposal_usefulness": "alta",
+      "reason": "input=pdf; relevancia=directa; utilidad=alta"
+    }
+  ],
+  "evidence_units": [
+    {
+      "evidence_id": "snippet:src-fixture-1-title",
+      "source_id": "src-fixture-1",
+      "source_title": "Fuente sintetica para verificar contratos",
+      "unit_type": "original_excerpt",
+      "extraction_kind": "metadata",
+      "label": "Titulo de la fuente",
+      "original_text": "Fuente sintetica para verificar contratos",
+      "section_keys": [
+        "problem_statement"
+      ],
+      "citation_eligibility": "direct_quote",
+      "confidence": 1,
+      "relevance_score": 0.5,
+      "page_start": null,
+      "page_end": null,
+      "char_start": null,
+      "char_end": null,
+      "quote_hash": null,
+      "original_language": "es"
+    },
+    {
+      "evidence_id": "snippet:src-fixture-1-intake",
+      "source_id": "src-fixture-1",
+      "source_title": "Fuente sintetica para verificar contratos",
+      "unit_type": "original_excerpt",
+      "extraction_kind": "intake_context",
+      "label": "Tema del intake",
+      "original_text": "Evaluacion de una intervencion educativa con evidencia trazable.",
+      "section_keys": [
+        "problem_statement"
+      ],
+      "citation_eligibility": "direct_quote",
+      "confidence": 1,
+      "relevance_score": 0.5,
+      "page_start": null,
+      "page_end": null,
+      "char_start": null,
+      "char_end": null,
+      "quote_hash": null,
+      "original_language": "es"
+    },
+    {
+      "evidence_id": "snippet:src-fixture-1-llm-chunk-src-fixture-1-p2-c1-abcd1234",
+      "source_id": "src-fixture-1",
+      "source_title": "Fuente sintetica para verificar contratos",
+      "unit_type": "original_excerpt",
+      "extraction_kind": "llm_selected_original",
+      "label": "Extracto original de prueba",
+      "original_text": "Este fragmento sintetico existe solo para verificar la trazabilidad del contrato.",
+      "source_chunk_id": "src-fixture-1-p2-c1",
+      "section_keys": [
+        "problem_statement"
+      ],
+      "citation_eligibility": "direct_quote",
+      "confidence": 0.9,
+      "relevance_score": 0.8,
+      "page_start": 2,
+      "page_end": 2,
+      "char_start": 120,
+      "char_end": 198,
+      "quote_hash": "fixture-quote-hash-1",
+      "original_language": "es"
+    }
+  ],
+  "section_input_packets": [
+    {
+      "section_key": "problem_statement",
+      "readiness": "media",
+      "summary": "Paquete sintetico para probar el contrato.",
+      "source_ids": [
+        "src-fixture-1"
+      ],
+      "evidence_ids": [
+        "snippet:src-fixture-1-llm-chunk-src-fixture-1-p2-c1-abcd1234"
+      ],
+      "snippet_ids": [],
+      "asset_keys": [],
+      "key_points": [
+        "No usar esta fixture como evidencia real."
+      ],
+      "open_questions": [],
+      "missing_elements": [],
+      "do_not_claim": [
+        "Resultados empiricos"
+      ],
+      "assumptions_allowed": [],
+      "recommended_chunk_refs": [],
+      "required_original_fragments": [
+        "snippet:src-fixture-1-llm-chunk-src-fixture-1-p2-c1-abcd1234"
+      ]
+    }
+  ],
+  "weak_section_completion_packets": [],
+  "asset_usage_plan": [
+    {
+      "asset_key": "asset-fixture-1",
+      "source_id": "src-fixture-1",
+      "asset_kind": "table",
+      "title": "Tabla sintetica de prueba",
+      "caption": "Fixture sin contenido empirico ni archivo binario.",
+      "section_key": "problem_statement",
+      "usage_reason": "Verificar continuidad de referencias de assets en pruebas."
+    }
+  ],
+  "proposal_method_candidate": {},
+  "proposal_framework_candidate": {},
+  "dominant_methods": [],
+  "dominant_frameworks": [],
+  "key_findings": [],
+  "evidence_gaps": [],
+  "followup_requirements": {},
+  "gap_resolution_plan": {},
+  "context_preservation_contract": {},
+  "warnings": [],
+  "downstream_handoff_manifest": {
+    "read_only_input_paths": []
+  }
+}

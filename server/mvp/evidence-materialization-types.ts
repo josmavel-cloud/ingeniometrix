@@ -1,5 +1,5 @@
 export const MVP_STEP5_KEY = "step_5_evidence_materialization";
-export const MVP_STEP5_PROMPT_VERSION = "ingeniometrix-step5-evidence-materialization-v1";
+export const MVP_STEP5_PROMPT_VERSION = "ingeniometrix-step5-evidence-materialization-v2";
 
 export type MvpStep5CitationStyle = "APA7" | "ISO690" | "VANCOUVER" | "IEEE";
 

@@ -1,6 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-
 import { adaptCurrentLabAArtifactToEvidenceHandoffV1 } from "@/server/blueprint-engine/adapters/current-lab-a-handoff-adapter";
 import { evidenceEngineHandoffV1Schema } from "@/server/blueprint-engine/contracts";
 import {
@@ -10,15 +7,7 @@ import {
   summarizeCitationSemantics,
   type CitationSemanticsInput,
 } from "@/server/blueprint-engine/quality/citation-semantics";
-
-const DIAGNOSTIC_STEP_6_ARTIFACT_PATH = path.join(
-  process.cwd(),
-  "artifacts-local",
-  "evidence-selected-source-runs",
-  "case-001-seismic-isolators-peruvian-buildings",
-  "2026-05-04T13-20-37-881Z",
-  "step-6-consolidated-evidence.json",
-);
+import { loadCurrentLabATestArtifact } from "@/scripts/fixtures/blueprint-engine/evidence-handoff-fixture";
 
 type TestResult = {
   name: string;
@@ -121,21 +110,10 @@ function runSyntheticTests(): TestResult[] {
 }
 
 function runDiagnosticArtifactTests(): TestResult[] {
-  if (!existsSync(DIAGNOSTIC_STEP_6_ARTIFACT_PATH)) {
-    return [
-      result(
-        "diagnostic artifact fixture is available",
-        false,
-        `missing ${DIAGNOSTIC_STEP_6_ARTIFACT_PATH}`,
-      ),
-    ];
-  }
-
-  const rawJson = readFileSync(DIAGNOSTIC_STEP_6_ARTIFACT_PATH, "utf8");
-  const artifact = JSON.parse(rawJson) as Record<string, unknown>;
-  const handoff = adaptCurrentLabAArtifactToEvidenceHandoffV1(artifact, {
-    sourceArtifactPath: DIAGNOSTIC_STEP_6_ARTIFACT_PATH,
-    rawJson,
+  const loaded = loadCurrentLabATestArtifact();
+  const handoff = adaptCurrentLabAArtifactToEvidenceHandoffV1(loaded.artifact, {
+    sourceArtifactPath: loaded.artifact_path,
+    rawJson: loaded.raw_json,
   });
   const schemaResult = evidenceEngineHandoffV1Schema.safeParse(handoff);
   const contextPreservation = handoff.proposal_context.context_preservation_contract as
@@ -157,7 +135,7 @@ function runDiagnosticArtifactTests(): TestResult[] {
 
   return [
     result(
-      "adapted diagnostic handoff remains schema-valid",
+      "adapted fixture handoff remains schema-valid",
       schemaResult.success,
       schemaResult.success
         ? `handoff=${handoff.handoff_id}`
@@ -167,7 +145,7 @@ function runDiagnosticArtifactTests(): TestResult[] {
             .join("; "),
     ),
     result(
-      "diagnostic metadata/intake direct quotes are downgraded",
+      "fixture metadata/intake direct quotes are downgraded",
       reported > trueBacked &&
         directQuoteCount === trueBacked &&
         metadataCount > 0 &&

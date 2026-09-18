@@ -30,6 +30,27 @@ function resolveRetryCount() {
   return Number.isFinite(rawValue) && rawValue >= 0 ? rawValue : DEFAULT_OPENAI_RETRIES;
 }
 
+function resolveMaxOutputTokens(explicitValue?: number) {
+  const candidate = explicitValue ?? Number.parseInt(process.env.LLM_MAX_OUTPUT_TOKENS ?? "", 10);
+  return Number.isFinite(candidate) && candidate > 0 ? Math.floor(candidate) : undefined;
+}
+
+function requireUsage(response: { usage?: {
+  input_tokens: number;
+  input_tokens_details?: { cached_tokens?: number } | null;
+  output_tokens: number;
+} | null }) {
+  if (!response.usage) {
+    throw new Error("OpenAI no devolvio metricas de uso; la llamada no se registrara como cero.");
+  }
+
+  return {
+    inputTokens: response.usage.input_tokens,
+    cachedInputTokens: response.usage.input_tokens_details?.cached_tokens ?? 0,
+    outputTokens: response.usage.output_tokens,
+  };
+}
+
 async function runWithTimeoutAndRetry<T>(work: () => Promise<T>) {
   const timeoutMs = resolveTimeoutMs();
   const maxRetries = resolveRetryCount();
@@ -73,6 +94,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         client.responses.create({
           model,
           store: false,
+          max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
           input: input.prompt,
           text: {
             format: {
@@ -84,14 +106,15 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
           },
         }),
       );
+      const usage = requireUsage(response);
 
       await recordLlmUsage({
         provider: "openai",
         model,
         operation: input.trackingLabel ?? `structured:${input.schemaName}`,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
+        outputTokens: usage.outputTokens,
         attribution: input.trackingAttribution,
       });
 
@@ -109,6 +132,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         client.responses.create({
           model,
           store: false,
+          max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
           input: [
             {
               role: "user",
@@ -128,14 +152,15 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
           },
         } as unknown as Parameters<typeof client.responses.create>[0]),
       ) as any;
+      const usage = requireUsage(response);
 
       await recordLlmUsage({
         provider: "openai",
         model,
         operation: input.trackingLabel ?? `vision_structured:${input.schemaName}`,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
+        outputTokens: usage.outputTokens,
         attribution: input.trackingAttribution,
       });
 
@@ -156,17 +181,19 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         client.responses.create({
           model,
           store: false,
+          max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
           input: input.prompt,
         }),
       );
+      const usage = requireUsage(response);
 
       const usageResult = await recordLlmUsage({
         provider: "openai",
         model,
         operation: input.trackingLabel ?? "text_generation",
-        inputTokens: response.usage?.input_tokens ?? 0,
-        cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens,
+        outputTokens: usage.outputTokens,
         attribution: input.trackingAttribution,
       });
 

@@ -5,8 +5,8 @@ import {
 import {
   adaptCurrentLabAArtifactToEvidenceHandoffV1,
   buildBlueprintEngineInputFromEvidenceHandoffV1,
-  loadCurrentLabAEvidenceArtifact,
 } from "@/server/blueprint-engine/adapters/current-lab-a-handoff-adapter";
+import { loadCurrentLabATestArtifact } from "@/scripts/fixtures/blueprint-engine/evidence-handoff-fixture";
 
 type TestResult = {
   name: string;
@@ -24,7 +24,7 @@ function sameJson(a: unknown, b: unknown) {
 
 function main() {
   const results: TestResult[] = [];
-  const loaded = loadCurrentLabAEvidenceArtifact();
+  const loaded = loadCurrentLabATestArtifact();
   const originalArtifactSnapshot = JSON.parse(JSON.stringify(loaded.artifact)) as unknown;
   const originalArtifactJson = JSON.stringify(loaded.artifact);
 

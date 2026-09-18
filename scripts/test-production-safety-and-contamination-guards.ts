@@ -1,26 +1,11 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { buildBlueprintEngineInputFromEvidenceHandoffV1 } from "@/server/blueprint-engine/adapters/current-lab-a-handoff-adapter";
 import { inspectBlueprintInputForCurrentLabB } from "@/server/blueprint-engine/adapters/blueprint-input-to-current-lab-b-adapter";
-import {
-  evidenceEngineHandoffV1Schema,
-  type EvidenceEngineHandoffV1,
-} from "@/server/blueprint-engine/contracts";
 import {
   evaluateBlueprintProductionSafety,
   validateFreshRunIsolation,
   validatePublicAppendixPolicyText,
 } from "@/server/blueprint-engine/quality/production-safety";
-
-const DEFAULT_HANDOFF_PATH = path.join(
-  process.cwd(),
-  "artifacts-local",
-  "evidence-selected-source-runs",
-  "case-001-seismic-isolators-peruvian-buildings",
-  "2026-05-04T13-20-37-881Z",
-  "evidence-handoff-v1.json",
-);
+import { buildEvidenceHandoffTestFixture } from "@/scripts/fixtures/blueprint-engine/evidence-handoff-fixture";
 
 type TestResult = {
   name: string;
@@ -36,24 +21,8 @@ function assertResult(name: string, condition: boolean, details: string): TestRe
   };
 }
 
-function loadDiagnosticHandoff(): EvidenceEngineHandoffV1 {
-  const raw = JSON.parse(readFileSync(DEFAULT_HANDOFF_PATH, "utf8")) as unknown;
-  const parsed = evidenceEngineHandoffV1Schema.safeParse(raw);
-
-  if (!parsed.success) {
-    throw new Error(
-      `Diagnostic handoff fixture failed schema validation: ${parsed.error.issues
-        .slice(0, 5)
-        .map((issue) => issue.message)
-        .join("; ")}`,
-    );
-  }
-
-  return parsed.data as EvidenceEngineHandoffV1;
-}
-
 function runTests() {
-  const handoff = loadDiagnosticHandoff();
+  const handoff = buildEvidenceHandoffTestFixture();
   const blueprintInput = buildBlueprintEngineInputFromEvidenceHandoffV1(handoff, {
     blueprintRunId: "test-production-safety-diagnostic-fixture",
     executionMode: "dry_run",

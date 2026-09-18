@@ -1,4 +1,8 @@
+import { setTimeout as delay } from "node:timers/promises";
+
 const OPENALEX_BASE_URL = "https://api.openalex.org";
+const COMPLEX_QUERY_MIN_INTERVAL_MS = 1_100;
+let lastComplexQueryAt = 0;
 
 export type OpenAlexSearchOptions = {
   perPage?: number;
@@ -141,6 +145,17 @@ function buildOpenAlexUrl(query: string, options?: OpenAlexSearchOptions) {
   return url;
 }
 
+function isComplexBooleanQuery(query: string) {
+  return (query.match(/\b(?:AND|OR|NOT)\b/g) ?? []).length > 5;
+}
+
+async function respectOpenAlexComplexQueryLimit(query: string) {
+  if (process.env.OPENALEX_API_KEY?.trim() || !isComplexBooleanQuery(query)) return;
+  const remainingMs = COMPLEX_QUERY_MIN_INTERVAL_MS - (Date.now() - lastComplexQueryAt);
+  if (remainingMs > 0) await delay(remainingMs);
+  lastComplexQueryAt = Date.now();
+}
+
 export async function fetchOpenAlexWork(openAlexIdOrUrl: string) {
   const id = openAlexIdOrUrl.replace(/^https?:\/\/openalex\.org\//, "");
   const url = new URL(`/works/${encodeURIComponent(id)}`, OPENALEX_BASE_URL);
@@ -181,15 +196,32 @@ export async function fetchOpenAlexWorksCiting(openAlexIdOrUrl: string, options?
 }
 
 export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearchOptions) {
-  const response = await fetch(buildOpenAlexUrl(query, options), {
+  const url = buildOpenAlexUrl(query, options);
+  await respectOpenAlexComplexQueryLimit(query);
+  let response = await fetch(url, {
     headers: {
       Accept: "application/json",
     },
     cache: "no-store",
   });
 
+  if (response.status === 429) {
+    const retryAfterSeconds = Number.parseFloat(response.headers.get("retry-after") ?? "");
+    await delay(Number.isFinite(retryAfterSeconds)
+      ? Math.max(COMPLEX_QUERY_MIN_INTERVAL_MS, retryAfterSeconds * 1_000)
+      : COMPLEX_QUERY_MIN_INTERVAL_MS);
+    lastComplexQueryAt = Date.now();
+    response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+  }
+
   if (!response.ok) {
-    throw new Error("OpenAlex no respondio correctamente.");
+    const detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 320);
+    throw new Error(
+      `OpenAlex no respondio correctamente (HTTP ${response.status})${detail ? `: ${detail}` : "."}`,
+    );
   }
 
   const payload = (await response.json()) as OpenAlexResponse;

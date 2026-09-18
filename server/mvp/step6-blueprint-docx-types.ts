@@ -1,5 +1,5 @@
 export const MVP_STEP6_KEY = "step_6_blueprint_docx";
-export const MVP_STEP6_PROMPT_VERSION = "ingeniometrix-step6-blueprint-docx-v1";
+export const MVP_STEP6_PROMPT_VERSION = "ingeniometrix-step6-blueprint-docx-v2";
 
 export type MvpStep6SectionPriority = "required" | "recommended" | "annex";
 export type MvpStep6SectionOutputMode =

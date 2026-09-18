@@ -44,7 +44,7 @@ import {
 } from "@/server/mvp/evidence-materialization-types";
 import { STEP6_HERO_IMAGE_PROMPT } from "@/server/mvp/prompts/step6-hero-image.v1";
 import { STEP6_EDITORIAL_REVIEW_PROMPT } from "@/server/mvp/prompts/step6-editorial-review.v1";
-import { STEP6_SECTION_DRAFT_PROMPT } from "@/server/mvp/prompts/step6-section-draft.v1";
+import { STEP6_SECTION_DRAFT_PROMPT } from "@/server/mvp/prompts/step6-section-draft.v2";
 import { STEP6_TITLE_GENERATION_PROMPT } from "@/server/mvp/prompts/step6-title-generation.v1";
 import {
   MVP_STEP6_KEY,
@@ -203,13 +203,13 @@ function sanitizePublicText(value: string | null | undefined) {
   return accentPublicSpanish(normalizeDuplicateCitations(cleaned));
 }
 
-function isDanglingPublicFragment(value: string) {
+export function isDanglingPublicFragment(value: string) {
   const text = sanitizePublicText(value);
   if (!text) return true;
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length <= 2) return true;
-  return /(?:^|\s)(?:el|la|los|las|un|una|de|del|que|y|o|pero|sin embargo|no obstante)[.]?$/i.test(text) &&
-    words.length <= 6;
+  return /(?:^|\s)(?:el|la|los|las|un|una|de|del|que|y|o|en|sobre|para|con|mediante|segun|pero|sin embargo|no obstante)[.]?$/i.test(text) &&
+    words.length <= 12;
 }
 
 function sentenceUnits(value: string) {
@@ -268,8 +268,7 @@ function enforceWordBudgetOnParagraphs(paragraphs: string[], maxWords: number) {
     used += count;
   }
   if (kept.length > 0) return [kept.join(" ")];
-  const clipped = words.slice(0, maxWords).join(" ").replace(/[,;:\s]+$/, ".");
-  return [clipped.endsWith(".") ? clipped : `${clipped}.`];
+  return safeParagraphs.length > 0 ? [safeParagraphs[0]] : [];
 }
 
 function hashText(value: string) {
@@ -1977,7 +1976,7 @@ function estimateDocumentPages(input: {
   return Number((fixedPages + bodyWords / input.pageBudget.words_per_page_estimate + tableCount * 0.25 + figureCount * 0.35).toFixed(2));
 }
 
-function trimTextToWordLimit(text: string, maxWords: number) {
+export function trimTextToWordLimit(text: string, maxWords: number) {
   const publicText = sanitizePublicText(text);
   const words = publicText.split(/\s+/).filter(Boolean);
   if (words.length <= maxWords) return publicText;
@@ -1991,8 +1990,7 @@ function trimTextToWordLimit(text: string, maxWords: number) {
     used += count;
   }
   if (kept.length > 0) return kept.join(" ");
-  const clipped = words.slice(0, Math.max(1, maxWords)).join(" ");
-  return `${clipped.replace(/[,\s;:]+$/, "").replace(/[.\s]*$/, ".")}`;
+  return sentenceUnits(publicText)[0] ?? publicText;
 }
 
 function enforceSectionWordBudgets(input: {
@@ -2014,13 +2012,8 @@ function enforceSectionWordBudgets(input: {
         return { ...block, text: nextText };
       }
       if (block.kind === "bullet_list") {
-        const items: string[] = [];
-        for (const item of block.items) {
-          if (remaining <= 10) break;
-          const trimmed = trimTextToWordLimit(item, Math.min(remaining, 28));
-          items.push(trimmed);
-          remaining -= wordCount(trimmed);
-        }
+        const items = block.items.map(sanitizePublicText).filter(Boolean);
+        remaining -= wordCount(items.join(" "));
         return { ...block, items };
       }
       return block;
@@ -2129,6 +2122,13 @@ async function generateHeroImage(input: {
     status: "svg_fallback",
     warnings: [],
   };
+
+  if (process.env.IMX_STEP6_DISABLE_IMAGE_GENERATION === "1") {
+    return {
+      ...basePlan,
+      warnings: ["Generacion remota de imagenes deshabilitada para esta ejecucion; se usara el hero SVG deterministico."],
+    };
+  }
 
   if (!process.env.OPENAI_API_KEY?.trim()) {
     return {
@@ -2895,6 +2895,11 @@ function buildCoherenceReport(input: {
       key: "references_available",
       passed: input.ledger.references.length > 0,
       detail: `${input.ledger.references.length} references`,
+    },
+    {
+      key: "inspectable_evidence_available",
+      passed: allEvidenceItems(input.ledger).length > 0,
+      detail: `${allEvidenceItems(input.ledger).length} evidence items with source-level traceability`,
     },
     {
       key: "docx_written",

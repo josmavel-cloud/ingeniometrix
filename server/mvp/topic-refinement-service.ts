@@ -17,10 +17,14 @@ import { runMvpSourceDiscovery } from "@/server/mvp/source-discovery-service";
 import { parseIntakeInput, type IntakeInput } from "@/server/projects/project-validation";
 import { saveIntakeForProject } from "@/server/projects/project-service";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
+import {
+  renderStep2EvidenceInformedRefinementPrompt,
+  STEP2_EVIDENCE_INFORMED_REFINEMENT_PROMPT,
+} from "@/server/mvp/prompts/step2-evidence-informed-refinement.v2";
 import type { ProjectReferenceSearchSnapshot, ReferenceScoreBreakdown } from "@/server/retrieval/reference-search-v2";
 
 export const MVP_STEP2_KEY = "step_2_evidence_informed_refinement";
-export const MVP_STEP2_PROMPT_VERSION = "ingeniometrix-step2-evidence-informed-refinement-v1";
+export const MVP_STEP2_PROMPT_VERSION = STEP2_EVIDENCE_INFORMED_REFINEMENT_PROMPT.version;
 export const DEFAULT_TOPIC_REFINEMENT_MODEL = "gpt-5.4-mini";
 const STEP2_ARTIFACT_TYPE = "mvp_step2_evidence_informed_refinement";
 
@@ -789,28 +793,7 @@ function buildRefinementPrompt(input: {
     })),
   };
 
-  return `
-Eres un estratega academico de investigacion aplicada.
-
-Objetivo: refinar el intake inicial usando SOLO las señales bibliograficas exploratorias provistas: titulos, abstracts, relevancia, grupos de keywords, DOI, señales de PDF/open access y roles de evidencia. No inventes resultados ni afirmes hallazgos definitivos.
-
-Debes proponer exactamente 3 alternativas de intake mejorado:
-- conservadora: maxima viabilidad documental
-- balanceada: buena brecha + suficiente literatura
-- ambiciosa: mayor novedad, mayor riesgo
-
-Reglas:
-- El texto visible debe quedar en español academico claro.
-- Usa abstracts solo como senales de pertinencia, no como evidencia concluyente.
-- Da mas peso a fuentes con PDF directo u open access real porque despues pueden aportar evidencia mas fuerte.
-- Mantén la relevancia tematica por encima de disponibilidad de PDF: una fuente con PDF pero tema flojo no debe dominar.
-- Cada alternativa debe preparar el Paso 3 con first_batch_candidate_ids: hasta 5 fuentes ya persistidas que deben mostrarse primero si el usuario elige esa alternativa.
-- No propongas una alternativa que no tenga suficientes fuentes esperadas sin marcar riesgo alto.
-- No incluyas recomendaciones de escritura de tesis completa ni promesas de resultados.
-
-Payload:
-${JSON.stringify(payload, null, 2)}
-`.trim();
+  return renderStep2EvidenceInformedRefinementPrompt(payload);
 }
 
 function normalizeAlternatives(alternatives: ImprovedIntakeAlternative[], fallback: ImprovedIntakeAlternative[]) {

@@ -5,6 +5,7 @@ export type StructuredObjectInput = {
   schemaName: string;
   schema: Record<string, unknown>;
   model?: string;
+  maxOutputTokens?: number;
   trackingLabel?: string;
   trackingAttribution?: LlmUsageAttribution;
 };
@@ -17,6 +18,7 @@ export type VisionStructuredObjectInput = StructuredObjectInput & {
 export type TextGenerationInput = {
   prompt: string;
   model?: string;
+  maxOutputTokens?: number;
   trackingLabel?: string;
   trackingAttribution?: LlmUsageAttribution;
 };

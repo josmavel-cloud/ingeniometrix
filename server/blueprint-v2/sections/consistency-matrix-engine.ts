@@ -765,6 +765,8 @@ function buildValidation(input: {
   const objectiveCount = input.rows.filter((row) => Boolean(row.objetivo_especifico)).length;
   const questionCount = input.rows.filter((row) => Boolean(row.interrogante_especifica)).length;
   const hypothesisCount = input.rows.filter((row) => Boolean(row.hipotesis_especifica)).length;
+  const declaredObjectiveCount = input.objectives.length;
+  const declaredQuestionCount = input.questions.length;
 
   if (!input.generalBlock.problema_principal) {
     blockedReasons.push("Falta problema principal o pregunta general.");
@@ -798,9 +800,9 @@ function buildValidation(input: {
     warnings.push("Hipotesis general ausente; puede ser aceptable si el enfoque no la requiere.");
   }
 
-  if (questionCount !== objectiveCount) {
+  if (declaredQuestionCount !== declaredObjectiveCount) {
     blockedReasons.push(
-      `Cantidad de preguntas especificas (${questionCount}) no coincide con objetivos especificos (${objectiveCount}).`,
+      `Cantidad de preguntas especificas declaradas (${declaredQuestionCount}) no coincide con objetivos especificos declarados (${declaredObjectiveCount}).`,
     );
   }
 
