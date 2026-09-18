@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { readFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { recordLlmUsage } from "@/server/llm-usage-registry";
@@ -8,6 +9,7 @@ import type {
   StructuredObjectInput,
   TextGenerationResult,
   TextGenerationInput,
+  VisionStructuredObjectInput,
 } from "../provider";
 
 export type OpenAiProviderConfig = {
@@ -95,6 +97,50 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
       if (!response.output_text) {
         throw new Error("OpenAI no devolvio contenido estructurado.");
+      }
+
+      return JSON.parse(response.output_text) as T;
+    },
+    async generateVisionStructuredObject<T>(input: VisionStructuredObjectInput) {
+      const model = input.model ?? defaultModel;
+      const imageBuffer = await readFile(input.imagePath);
+      const mimeType = input.imageMimeType ?? "image/png";
+      const response = await runWithTimeoutAndRetry(() =>
+        client.responses.create({
+          model,
+          store: false,
+          input: [
+            {
+              role: "user",
+              content: [
+                { type: "input_text", text: input.prompt },
+                { type: "input_image", image_url: `data:${mimeType};base64,${imageBuffer.toString("base64")}` },
+              ],
+            },
+          ],
+          text: {
+            format: {
+              type: "json_schema",
+              name: input.schemaName,
+              strict: true,
+              schema: input.schema,
+            },
+          },
+        } as unknown as Parameters<typeof client.responses.create>[0]),
+      ) as any;
+
+      await recordLlmUsage({
+        provider: "openai",
+        model,
+        operation: input.trackingLabel ?? `vision_structured:${input.schemaName}`,
+        inputTokens: response.usage?.input_tokens ?? 0,
+        cachedInputTokens: response.usage?.input_tokens_details?.cached_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        attribution: input.trackingAttribution,
+      });
+
+      if (!response.output_text) {
+        throw new Error("OpenAI no devolvio contenido visual estructurado.");
       }
 
       return JSON.parse(response.output_text) as T;

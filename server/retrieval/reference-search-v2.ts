@@ -904,6 +904,35 @@ function hasAnyGroupMatch(text: string, groups: ReferenceSearchV2Metadata["keywo
   );
 }
 
+function detectVenueQualityPenalty(venue: string | null) {
+  const normalizedVenue = normalizeTitle(venue);
+  if (!normalizedVenue) {
+    return { penalty: 0, reasons: [] as string[] };
+  }
+
+  const suspiciousPatterns = [
+    "universal research reports",
+    "world journal of advanced research and reviews",
+    "journal of artificial intelligence general science",
+    "international journal of all research",
+    "researchgate",
+  ];
+  const genericMarketingTerms = ["advanced research", "general science", "universal research"];
+  const reasons = [
+    ...suspiciousPatterns
+      .filter((pattern) => normalizedVenue.includes(pattern))
+      .map((pattern) => `venue potencialmente debil: ${pattern}`),
+    ...genericMarketingTerms
+      .filter((pattern) => normalizedVenue.includes(pattern))
+      .map((pattern) => `venue generica/promocional: ${pattern}`),
+  ];
+
+  return {
+    penalty: Math.min(24, reasons.length * 12),
+    reasons: [...new Set(reasons)],
+  };
+}
+
 function buildRelevanceScore(input: {
   title: string;
   abstract: string | null;
@@ -966,9 +995,12 @@ function buildRelevanceScore(input: {
       ? 4
       : 0;
   const localObjectBonus = Math.min(localObjectMatches.length * 3, 8);
+  const venueQuality = detectVenueQualityPenalty(input.venue);
 
   const penalties: string[] = [];
-  let alignmentPenalty = 0;
+  let alignmentPenalty = venueQuality.penalty;
+
+  penalties.push(...venueQuality.reasons);
 
   if (necessaryMatches.length === 0) {
     penalties.push("sin coincidencias necesarias");

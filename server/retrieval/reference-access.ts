@@ -115,10 +115,6 @@ export function extractAccessSignals(input: {
   return {
     pdfUrl,
     hasPdfUrl: Boolean(pdfUrl),
-    isOpenAccess:
-      openAccess?.is_oa === true ||
-      Boolean(pdfUrl) ||
-      Boolean(input.landingPageUrl) ||
-      Boolean(input.doi),
+    isOpenAccess: openAccess?.is_oa === true || Boolean(pdfUrl),
   };
 }

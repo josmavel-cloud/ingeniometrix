@@ -87,6 +87,14 @@ enum ExportStatus {
   FAILED
 }
 
+enum MvpStepRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIALLY_COMPLETED
+}
+
 enum PeerReviewStatus {
   PEER_REVIEWED
   NOT_PEER_REVIEWED
@@ -185,6 +193,7 @@ model User {
   updatedAt DateTime   @updatedAt
   projects  Project[]
   auditLogs AuditLog[]
+  stepRuns  MvpStepRun[]
   templates Template[]
 }
 
@@ -213,6 +222,12 @@ model Project {
   projectReferences ProjectReference[]
   blueprintVersions BlueprintVersion[]
   auditLogs         AuditLog[]
+  stepRuns          MvpStepRun[]
+  templateContentPlans ProjectTemplateContentPlan[]
+  evidenceLedgers   ProjectEvidenceLedger[]
+  evidenceCards     ProjectEvidenceCard[]
+  sourceMaterializations ProjectSourceMaterialization[]
+  sourceAssets       ProjectSourceAsset[]
   knowledgeFields   ProjectKnowledgeField[]
   topicSuggestions  ProjectTopicSuggestion[] @relation("ProjectTopicSuggestions")
   selectedTopicSuggestion ProjectTopicSuggestion? @relation("ProjectSelectedTopicSuggestion", fields: [selectedTopicSuggestionId], references: [id], onDelete: SetNull)
@@ -290,6 +305,8 @@ model ProjectReference {
   reference       Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, referenceId])
+  @@index([projectId, relevanceScore])
+  @@index([projectId, selected, selectedOrder])
 }
 
 model BlueprintVersion {
@@ -323,6 +340,178 @@ model AuditLog {
 
   @@index([projectId, createdAt])
   @@index([userId, createdAt])
+}
+
+model MvpStepRun {
+  id                 String           @id @default(uuid())
+  projectId          String
+  userId             String?
+  stepKey            String
+  status             MvpStepRunStatus @default(PENDING)
+  provider           Provider?
+  model              String?
+  promptVersion      String?
+  startedAt          DateTime         @default(now())
+  finishedAt         DateTime?
+  durationMs         Int?
+  retryCount         Int              @default(0)
+  fallbackUsed       Boolean          @default(false)
+  inputHash          String?
+  outputHash         String?
+  inputSnapshotJson  Json?
+  outputSnapshotJson Json?
+  warningsJson       Json?
+  errorsJson         Json?
+  artifactDir        String?          @db.Text
+  artifactManifestPath String?        @db.Text
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  project            Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user               User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  templateContentPlans ProjectTemplateContentPlan[]
+  evidenceLedgers   ProjectEvidenceLedger[]
+  evidenceCards     ProjectEvidenceCard[]
+  sourceMaterializations ProjectSourceMaterialization[]
+  sourceAssets       ProjectSourceAsset[]
+
+  @@index([projectId, stepKey, startedAt])
+  @@index([projectId, status, startedAt])
+  @@index([inputHash])
+  @@index([promptVersion, model])
+}
+
+model ProjectTemplateContentPlan {
+  id                   String     @id @default(uuid())
+  projectId            String
+  stepRunId            String
+  templateVersionId    String?
+  templateKey          String
+  citationStyle        String
+  qualityStatus        String     @default("PLANNED")
+  sectionPlanJson      Json
+  llmWavePlanJson      Json
+  artifactManifestPath String?    @db.Text
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  project              Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stepRun              MvpStepRun @relation(fields: [stepRunId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+  @@index([stepRunId])
+  @@index([templateKey, citationStyle])
+}
+
+model ProjectEvidenceLedger {
+  id                   String     @id @default(uuid())
+  projectId            String
+  stepRunId            String
+  citationStyle        String
+  sourceRegistryJson   Json
+  referencesJson       Json
+  ledgerJson           Json
+  artifactManifestPath String?    @db.Text
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+  project              Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stepRun              MvpStepRun @relation(fields: [stepRunId], references: [id], onDelete: Cascade)
+  evidenceCards        ProjectEvidenceCard[]
+  sourceMaterializations ProjectSourceMaterialization[]
+  sourceAssets          ProjectSourceAsset[]
+
+  @@index([projectId, createdAt])
+  @@index([stepRunId])
+  @@index([citationStyle])
+}
+
+model ProjectEvidenceCard {
+  id                   String                 @id @default(uuid())
+  projectId            String
+  stepRunId            String
+  evidenceLedgerId     String?
+  sourceId             String
+  referenceId          String
+  citationKey          String
+  evidenceBasis        String
+  qualityStatus        String                 @default("NEEDS_REVIEW")
+  qualityScore         Float?
+  requiresFullText     Boolean                @default(true)
+  sectionKeysJson      Json
+  contentJson          Json
+  artifactPath         String?                @db.Text
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stepRun              MvpStepRun             @relation(fields: [stepRunId], references: [id], onDelete: Cascade)
+  evidenceLedger       ProjectEvidenceLedger? @relation(fields: [evidenceLedgerId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sourceId])
+  @@index([projectId, referenceId])
+  @@index([projectId, qualityStatus])
+  @@index([stepRunId])
+  @@index([evidenceLedgerId])
+}
+
+model ProjectSourceMaterialization {
+  id                   String                 @id @default(uuid())
+  projectId            String
+  stepRunId            String
+  evidenceLedgerId     String?
+  sourceId             String
+  referenceId          String
+  materializationType  String
+  status               String
+  sourcePdfPath        String?                @db.Text
+  fulltextPath         String?                @db.Text
+  pagesPath            String?                @db.Text
+  chunksPath           String?                @db.Text
+  metricsJson          Json
+  artifactsJson        Json
+  errorsJson           Json?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stepRun              MvpStepRun             @relation(fields: [stepRunId], references: [id], onDelete: Cascade)
+  evidenceLedger       ProjectEvidenceLedger? @relation(fields: [evidenceLedgerId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sourceId])
+  @@index([projectId, referenceId])
+  @@index([projectId, status])
+  @@index([stepRunId])
+  @@index([evidenceLedgerId])
+}
+
+model ProjectSourceAsset {
+  id                   String                 @id @default(uuid())
+  projectId            String
+  stepRunId            String
+  evidenceLedgerId     String?
+  sourceId             String
+  referenceId          String
+  citationKey          String
+  assetKind            String
+  status               String
+  curationStatus       String                 @default("RAW")
+  curationScore        Float?
+  sectionKey           String?
+  pageNumber           Int?
+  imagePath            String?                @db.Text
+  structuredPath       String?                @db.Text
+  bboxJson             Json?
+  metadataJson         Json
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stepRun              MvpStepRun             @relation(fields: [stepRunId], references: [id], onDelete: Cascade)
+  evidenceLedger       ProjectEvidenceLedger? @relation(fields: [evidenceLedgerId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sourceId])
+  @@index([projectId, referenceId])
+  @@index([projectId, assetKind])
+  @@index([projectId, curationStatus])
+  @@index([projectId, sectionKey])
+  @@index([projectId, status])
+  @@index([stepRunId])
+  @@index([evidenceLedgerId])
 }
 
 model TaxonomyScheme {

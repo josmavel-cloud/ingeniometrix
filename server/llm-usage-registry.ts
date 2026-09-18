@@ -7,6 +7,7 @@ export type LlmUsageStage =
   | "source_discovery"
   | "source_translation"
   | "source_inspection"
+  | "evidence_materialization"
   | "blueprint_generation"
   | "section_generation"
   | "docx_generation"
@@ -20,6 +21,12 @@ export type LlmUsageAttribution = {
   stage?: LlmUsageStage | string | null;
   userId?: string | null;
   source?: string | null;
+  promptVersion?: string | null;
+  promptHash?: string | null;
+  schemaName?: string | null;
+  cacheKey?: string | null;
+  sourceId?: string | null;
+  assetId?: string | null;
 };
 
 type PricingRecord = {
@@ -158,6 +165,12 @@ function cleanAttribution(input?: LlmUsageAttribution | null): LlmUsageAttributi
   if (input.stage) cleaned.stage = input.stage;
   if (input.userId) cleaned.userId = input.userId;
   if (input.source) cleaned.source = input.source;
+  if (input.promptVersion) cleaned.promptVersion = input.promptVersion;
+  if (input.promptHash) cleaned.promptHash = input.promptHash;
+  if (input.schemaName) cleaned.schemaName = input.schemaName;
+  if (input.cacheKey) cleaned.cacheKey = input.cacheKey;
+  if (input.sourceId) cleaned.sourceId = input.sourceId;
+  if (input.assetId) cleaned.assetId = input.assetId;
   return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }
 

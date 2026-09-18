@@ -81,7 +81,7 @@ async function main() {
     runId,
     projectId: project.id,
     database_design: {
-      current: "Sin migracion nueva: Project/Intake/Reference/ProjectReference/AuditLog + artifacts JSON.",
+      current: "Project/Intake/Reference/ProjectReference/AuditLog + MvpStepRun + artifacts JSON.",
       doc: "docs/architecture/mvp-source-discovery-data-design.md",
       future_tables: [
         "ProjectIntakeNormalization",

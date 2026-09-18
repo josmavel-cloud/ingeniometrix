@@ -12,5 +12,7 @@ artifacts-local/*
 prisma/dev.db
 *.log
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 
 .vercel

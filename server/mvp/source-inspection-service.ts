@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { Prisma, Provider } from "@prisma/client";
+import { ActorType, Provider } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { logAuditEvent } from "@/server/audit/audit-service";
@@ -12,6 +12,7 @@ import {
   buildMvpApiUsageReport,
   captureMvpApiUsageSnapshot,
 } from "@/server/mvp/api-usage-service";
+import { asStepRunJson, createMvpStepRun, updateMvpStepRun } from "@/server/mvp/step-run-service";
 import {
   buildBrowserLikeFetchHeaders,
   extractAccessSignals,
@@ -26,6 +27,9 @@ const MAX_SAMPLE_CHARS = 18_000;
 const MIN_USEFUL_TEXT_CHARS = 500;
 const MIN_USABLE_SOURCES = 3;
 const MIN_DIRECT_OR_METHOD_SOURCES = 2;
+
+export const MVP_SOURCE_INSPECTION_KEY = "step_4_source_inspection";
+export const MVP_SOURCE_INSPECTION_PROMPT_VERSION = "deterministic-source-inspection-v1";
 
 export type MvpSourceInspectionDecision =
   | "READY_FOR_BLUEPRINT"
@@ -119,24 +123,24 @@ export type MvpSourceInspectionResult = {
 type ProjectReferenceWithReference = NonNullable<Awaited<ReturnType<typeof loadSelectedReferences>>>[number];
 
 const METHOD_TERMS = [
-  "method", "methodology", "form", "first-order reliability", "first order reliability",
-  "monte carlo", "simulation", "reliability index", "beta", "probability of failure",
-  "limit state", "sensitivity", "sampling", "metodo", "metodologia", "simulacion",
-  "indice de confiabilidad", "probabilidad de falla", "estado limite", "confiabilidad",
+  "method", "methodology", "model", "simulation", "experiment", "survey", "interview",
+  "regression", "case study", "systematic review", "bibliometric", "statistical",
+  "qualitative", "quantitative", "mixed methods", "sampling", "analysis", "metodo",
+  "metodologia", "modelo", "simulacion", "experimento", "encuesta", "entrevista",
+  "revision sistematica", "bibliometrico", "estadistico", "cualitativo", "cuantitativo",
+  "metodos mixtos", "muestreo", "analisis",
 ];
 const THEORY_TERMS = [
-  "theory", "framework", "model", "structural reliability", "reliability", "fragility",
-  "seismic", "fatigue", "steel bridge", "bridge", "truss", "teoria", "marco", "modelo",
-  "confiabilidad estructural", "fragilidad", "sismica", "puente", "acero",
+  "theory", "framework", "model", "conceptual", "empirical", "state of the art",
+  "literature", "background", "approach", "hypothesis", "construct", "teoria", "marco",
+  "modelo", "conceptual", "empirico", "estado del arte", "literatura", "antecedente",
+  "enfoque", "hipotesis", "constructo",
 ];
 const VARIABLE_TERMS = [
-  "variable", "indicator", "parameter", "load", "resistance", "failure", "deflection",
-  "corrosion", "fatigue", "seismic demand", "capacity", "uncertainty", "parametro",
-  "carga", "resistencia", "falla", "deflexion", "incertidumbre", "capacidad",
-];
-const DIRECT_TOPIC_TERMS = [
-  "bridge", "steel", "structural reliability", "reliability index", "seismic", "fatigue",
-  "puente", "acero", "confiabilidad estructural", "sismica", "fatiga",
+  "variable", "indicator", "parameter", "factor", "outcome", "effect", "impact", "risk",
+  "performance", "measure", "dimension", "criteria", "metric", "variable", "indicador",
+  "parametro", "factor", "resultado", "efecto", "impacto", "riesgo", "desempeno",
+  "medida", "dimension", "criterio", "metrica",
 ];
 
 function safeKey(value: string) {
@@ -198,13 +202,16 @@ function countPattern(text: string, pattern: RegExp) {
   return (text.match(pattern) ?? []).length;
 }
 
-function resolveTopicFit(input: { title: string; abstract: string | null; text: string; methodCount: number; theoryCount: number }) {
-  const haystack = normalize([input.title, input.abstract, input.text.slice(0, 10_000)].join("\n"));
-  const directMatches = DIRECT_TOPIC_TERMS.filter((term) => haystack.includes(normalize(term))).length;
-  if (directMatches >= 4 && input.methodCount > 0) return "direct" as const;
-  if (input.methodCount >= 3) return "methodological" as const;
-  if (directMatches >= 2 || input.theoryCount >= 2) return "contextual" as const;
-  if (directMatches > 0 || input.methodCount > 0 || input.theoryCount > 0) return "weak" as const;
+function resolveTopicFit(input: { methodCount: number; theoryCount: number; variableCount: number; relevanceScore: number }) {
+  if (input.relevanceScore < 35) {
+    if (input.theoryCount > 0 || input.variableCount > 0) return "contextual" as const;
+    if (input.methodCount > 0) return "weak" as const;
+    return "unknown" as const;
+  }
+  if (input.relevanceScore >= 60 && input.theoryCount >= 1 && input.variableCount >= 1) return "direct" as const;
+  if (input.methodCount >= 2 && input.theoryCount >= 1) return "methodological" as const;
+  if (input.theoryCount > 0 || input.variableCount > 0) return "contextual" as const;
+  if (input.methodCount > 0) return "weak" as const;
   return "unknown" as const;
 }
 
@@ -525,11 +532,10 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   const theory = countSignals(evidenceText, THEORY_TERMS);
   const variable = countSignals(evidenceText, VARIABLE_TERMS);
   const topicFit = resolveTopicFit({
-    title: item.reference.title,
-    abstract: item.reference.abstract,
-    text: evidenceText,
     methodCount: method.count,
     theoryCount: theory.count,
+    variableCount: variable.count,
+    relevanceScore: item.relevanceScore ?? 0,
   });
 
   return {
@@ -558,7 +564,7 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
     method_signal_count: method.count,
     theory_signal_count: theory.count,
     variable_signal_count: variable.count,
-    equation_candidate_count: countPattern(evidenceText, /(?:β|\bFORM\b|P\s*\(|probability of failure|reliability index|limit state|=|≤|≥)/gi),
+    equation_candidate_count: countPattern(evidenceText, /(?:\b[a-z]\s*=|=|≤|≥|\bmodel\b|\bequation\b|\bformula\b|\becuaci[oó]n\b|\bf[oó]rmula\b)/gi),
     table_candidate_count: countPattern(evidenceText, /(?:table|tabla)\s+\d+/gi),
     figure_candidate_count: countPattern(evidenceText, /(?:figure|fig\.|figura)\s+\d+/gi),
     secondary_reference_candidate_count: countPattern(evidenceText, /\([A-ZÁÉÍÓÚÑ][A-Za-zÁÉÍÓÚÑáéíóúñ-]+(?:\s+et\s+al\.)?,\s*(?:19|20)\d{2}\)/g),
@@ -625,78 +631,160 @@ function decide(items: MvpSourceInspectionItem[]) {
 export async function runMvpSourceInspection(input: { userId: string; projectId: string; runId?: string }) {
   const runId = input.runId ?? `mvp-source-inspection-${randomUUID()}`;
   const artifactDir = path.join(process.cwd(), "artifacts-local", "mvp-source-inspection", input.projectId, runId);
+  const artifactManifestPath = path.join(artifactDir, "source-inspection-report.json");
+  const startedAt = new Date();
   await mkdir(artifactDir, { recursive: true });
   const usageBefore = await captureMvpApiUsageSnapshot();
-  const selected = await loadSelectedReferences(input.userId, input.projectId);
-
-  if (selected.length === 0) {
-    throw new Error("No hay fuentes seleccionadas para inspeccionar.");
-  }
-
-  const items: MvpSourceInspectionItem[] = [];
-  for (const item of selected) {
-    items.push(await inspectOne({ item, artifactDir }));
-  }
-  const decision = decide(items);
-  const reportWithoutUsage = {
-    artifact_type: "mvp_source_inspection" as const,
-    artifact_version: "v1" as const,
-    generated_at: new Date().toISOString(),
-    project_id: input.projectId,
-    run_id: runId,
-    artifact_dir: artifactDir,
-    decision: decision.decision,
-    selected_source_count: selected.length,
-    inspected_source_count: items.filter((item) => item.fetch_status === "downloaded" || item.source_health === "metadata_only").length,
-    usable_source_count: decision.usable.length,
-    direct_or_method_source_count: decision.directOrMethod.length,
-    metadata_only_source_count: items.filter((item) => item.source_health === "metadata_only").length,
-    source_ids_ready_for_blueprint: decision.usable.map((item) => item.source_id),
-    source_ids_needing_replacement: decision.replacements.map((item) => item.source_id),
-    source_ids_needing_manual_review: decision.manualReview.map((item) => item.source_id),
-    missing_evidence_categories: unique(decision.missing),
-    reasons: unique(decision.reasons),
-    warnings: unique(decision.warnings),
-    blockers: unique(decision.blockers),
-    items,
-  };
-
-  await writeFile(path.join(artifactDir, "source-inspection-report.json"), `${JSON.stringify(reportWithoutUsage, null, 2)}\n`, "utf8");
-  const summary = renderMvpSourceInspectionSummary(reportWithoutUsage);
-  await writeFile(path.join(artifactDir, "source-inspection-summary.md"), summary, "utf8");
-  const apiUsageReport = await buildMvpApiUsageReport({
-    before: usageBefore,
-    label: "mvp_source_inspection",
-    filter: { projectId: input.projectId, runId },
+  const stepRun = await createMvpStepRun({
+    projectId: input.projectId,
+    userId: input.userId,
+    stepKey: MVP_SOURCE_INSPECTION_KEY,
+    status: "RUNNING",
+    provider: Provider.SYSTEM,
+    model: null,
+    promptVersion: MVP_SOURCE_INSPECTION_PROMPT_VERSION,
+    inputSnapshotJson: asStepRunJson({
+      project_id: input.projectId,
+      run_id: runId,
+    }),
+    artifactDir,
+    artifactManifestPath,
   });
-  await writeFile(path.join(artifactDir, "api-usage-report.json"), `${JSON.stringify(apiUsageReport, null, 2)}\n`, "utf8");
 
   await logAuditEvent({
-    eventType: "MVP_SOURCE_INSPECTION_COMPLETED",
-    actorType: "SYSTEM",
+    eventType: "MVP_SOURCE_INSPECTION_STARTED",
+    actorType: ActorType.SYSTEM,
     provider: Provider.SYSTEM,
     userId: input.userId,
     projectId: input.projectId,
-    payloadJson: {
-      runId,
-      artifactDir,
-      decision: reportWithoutUsage.decision,
-      selected_source_count: reportWithoutUsage.selected_source_count,
-      usable_source_count: reportWithoutUsage.usable_source_count,
-      source_ids_ready_for_blueprint: reportWithoutUsage.source_ids_ready_for_blueprint,
-      source_ids_needing_replacement: reportWithoutUsage.source_ids_needing_replacement,
-      source_ids_needing_manual_review: reportWithoutUsage.source_ids_needing_manual_review,
-      missing_evidence_categories: reportWithoutUsage.missing_evidence_categories,
-      api_usage_delta: apiUsageReport.filtered_delta,
-    } satisfies Prisma.InputJsonValue,
+    payloadJson: asStepRunJson({
+      run_id: runId,
+      step_run_id: stepRun.id,
+      step_key: MVP_SOURCE_INSPECTION_KEY,
+      started_at: startedAt.toISOString(),
+      artifact_dir: artifactDir,
+      artifact_manifest_path: artifactManifestPath,
+    }),
   });
 
-  await rm(path.join(artifactDir, ".tmp"), { recursive: true, force: true }).catch(() => undefined);
+  try {
+    const selected = await loadSelectedReferences(input.userId, input.projectId);
 
-  return {
-    ...reportWithoutUsage,
-    api_usage: { run_id: runId, report: apiUsageReport },
-  } satisfies MvpSourceInspectionResult;
+    if (selected.length === 0) {
+      throw new Error("No hay fuentes seleccionadas para inspeccionar.");
+    }
+
+    const items: MvpSourceInspectionItem[] = [];
+    for (const item of selected) {
+      items.push(await inspectOne({ item, artifactDir }));
+    }
+    const decision = decide(items);
+    const reportWithoutUsage = {
+      artifact_type: "mvp_source_inspection" as const,
+      artifact_version: "v1" as const,
+      generated_at: new Date().toISOString(),
+      project_id: input.projectId,
+      run_id: runId,
+      artifact_dir: artifactDir,
+      decision: decision.decision,
+      selected_source_count: selected.length,
+      inspected_source_count: items.filter((item) => item.fetch_status === "downloaded" || item.source_health === "metadata_only").length,
+      usable_source_count: decision.usable.length,
+      direct_or_method_source_count: decision.directOrMethod.length,
+      metadata_only_source_count: items.filter((item) => item.source_health === "metadata_only").length,
+      source_ids_ready_for_blueprint: decision.usable.map((item) => item.source_id),
+      source_ids_needing_replacement: decision.replacements.map((item) => item.source_id),
+      source_ids_needing_manual_review: decision.manualReview.map((item) => item.source_id),
+      missing_evidence_categories: unique(decision.missing),
+      reasons: unique(decision.reasons),
+      warnings: unique(decision.warnings),
+      blockers: unique(decision.blockers),
+      items,
+    };
+
+    await writeFile(artifactManifestPath, `${JSON.stringify(reportWithoutUsage, null, 2)}\n`, "utf8");
+    const summary = renderMvpSourceInspectionSummary(reportWithoutUsage);
+    await writeFile(path.join(artifactDir, "source-inspection-summary.md"), summary, "utf8");
+    const apiUsageReport = await buildMvpApiUsageReport({
+      before: usageBefore,
+      label: "mvp_source_inspection",
+      filter: { projectId: input.projectId, since: usageBefore.capturedAt },
+    });
+    await writeFile(path.join(artifactDir, "api-usage-report.json"), `${JSON.stringify(apiUsageReport, null, 2)}\n`, "utf8");
+
+    const completedAt = new Date();
+    const result = {
+      ...reportWithoutUsage,
+      api_usage: { run_id: runId, report: apiUsageReport },
+    } satisfies MvpSourceInspectionResult;
+
+    await updateMvpStepRun(stepRun.id, {
+      status: reportWithoutUsage.decision === "BLOCKED_INSUFFICIENT_EVIDENCE" ? "PARTIALLY_COMPLETED" : "COMPLETED",
+      provider: Provider.SYSTEM,
+      model: null,
+      promptVersion: MVP_SOURCE_INSPECTION_PROMPT_VERSION,
+      outputSnapshotJson: asStepRunJson(result),
+      warningsJson: asStepRunJson(reportWithoutUsage.warnings),
+      errorsJson: asStepRunJson(reportWithoutUsage.blockers),
+      fallbackUsed: false,
+      artifactDir,
+      artifactManifestPath,
+      finishedAt: completedAt,
+    });
+
+    await logAuditEvent({
+      eventType: "MVP_SOURCE_INSPECTION_COMPLETED",
+      actorType: ActorType.SYSTEM,
+      provider: Provider.SYSTEM,
+      userId: input.userId,
+      projectId: input.projectId,
+      payloadJson: asStepRunJson({
+        run_id: runId,
+        step_run_id: stepRun.id,
+        decision: reportWithoutUsage.decision,
+        selected_source_count: reportWithoutUsage.selected_source_count,
+        usable_source_count: reportWithoutUsage.usable_source_count,
+        source_ids_ready_for_blueprint: reportWithoutUsage.source_ids_ready_for_blueprint,
+        source_ids_needing_replacement: reportWithoutUsage.source_ids_needing_replacement,
+        source_ids_needing_manual_review: reportWithoutUsage.source_ids_needing_manual_review,
+        missing_evidence_categories: reportWithoutUsage.missing_evidence_categories,
+        api_usage_delta: apiUsageReport.filtered_delta,
+        completed_at: completedAt.toISOString(),
+        artifact_manifest_path: artifactManifestPath,
+      }),
+    });
+
+    await rm(path.join(artifactDir, ".tmp"), { recursive: true, force: true }).catch(() => undefined);
+
+    return result;
+  } catch (error) {
+    const completedAt = new Date();
+    const message = error instanceof Error ? error.message : "Fallo desconocido en inspección de fuentes.";
+    await updateMvpStepRun(stepRun.id, {
+      status: "FAILED",
+      provider: Provider.SYSTEM,
+      model: null,
+      promptVersion: MVP_SOURCE_INSPECTION_PROMPT_VERSION,
+      errorsJson: asStepRunJson([message]),
+      artifactDir,
+      artifactManifestPath,
+      finishedAt: completedAt,
+    });
+    await logAuditEvent({
+      eventType: "MVP_SOURCE_INSPECTION_FAILED",
+      actorType: ActorType.SYSTEM,
+      provider: Provider.SYSTEM,
+      userId: input.userId,
+      projectId: input.projectId,
+      payloadJson: asStepRunJson({
+        run_id: runId,
+        step_run_id: stepRun.id,
+        errors: [message],
+        completed_at: completedAt.toISOString(),
+      }),
+    });
+    throw error;
+  }
 }
 
 export function renderMvpSourceInspectionSummary(report: Omit<MvpSourceInspectionResult, "api_usage">) {
