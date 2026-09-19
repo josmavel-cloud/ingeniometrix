@@ -449,6 +449,32 @@ def page_candidates(doc, page_index, source_id):
     lines, image_blocks, text_blocks = line_records(page)
     candidates = []
 
+    # Native vector geometry, before caption-only inference. Keep complete drawing
+    # clusters and their nearby labels, not an arbitrary rectangle above a caption.
+    vector_groups = {}
+    for rect in page.cluster_drawings():
+        if rect_area(rect) < 1200:
+            continue
+        caption = nearest_caption(lines, rect, "figure")
+        if not caption:
+            continue
+        gap = min(abs(caption["bbox"].y0 - rect.y1), abs(rect.y0 - caption["bbox"].y1))
+        if gap > 75:
+            continue
+        vector_groups.setdefault(caption["text"], {"caption": caption, "rects": []})["rects"].append(rect)
+    for group in vector_groups.values():
+        rect = union_rect(group["rects"])
+        if rect is None:
+            continue
+        labels = [line["bbox"] for line in lines
+                  if line is not group["caption"] and len(line["text"]) < 120
+                  and (rect + (-12, -12, 12, 12)).intersects(line["bbox"])
+                  and not ASSET_LABEL_RE.search(line["text"])]
+        rect = union_rect([rect, *labels])
+        add_candidate(candidates, source_id, page_index, page, "figure",
+                      "pymupdf_vector_cluster", rect, group["caption"]["text"],
+                      text_near_rect(text_blocks, rect), 94, [], group["caption"])
+
     # Native image blocks are precise for raster figures. Scholarly figures are often
     # stored as multiple image blocks, so merge blocks that share the same caption.
     captioned_image_groups = {}

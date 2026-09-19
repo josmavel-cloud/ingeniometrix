@@ -88,6 +88,7 @@ export type MvpStep5PdfLayoutCandidate = {
   asset_kind: "equation" | "table" | "figure";
   detection_method:
       | "pymupdf_image_block"
+      | "pymupdf_vector_cluster"
       | "pymupdf_find_tables"
       | "pymupdf_equation_text_line"
       | "caption_inferred_region";
@@ -162,6 +163,7 @@ export type MvpStep5SourceAsset = {
   status: "ready_for_review" | "text_only" | "render_failed";
   page_number: number;
   detection_method: "text_signal" | "pymupdf_layout";
+  native_extraction_method?: MvpStep5PdfLayoutCandidate["detection_method"];
   caption_or_signal_text: string | null;
   caption_text?: string | null;
   nearby_text_excerpt: string | null;

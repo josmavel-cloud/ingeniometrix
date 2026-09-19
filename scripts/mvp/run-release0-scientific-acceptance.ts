@@ -26,6 +26,10 @@ import {
   type MvpStep3Candidate,
 } from "@/server/mvp/source-selection-service";
 import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-service";
+import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "@/server/mvp/application-budget";
+import { SCIENTIFIC_PLAN_PROMPT, SCIENTIFIC_TASKS } from "@/server/mvp/prompts/scientific-plan.v3";
+import { CONSISTENCY_MATRIX_PROMPT } from "@/server/mvp/prompts/consistency-matrix.v1";
+import { HERO_INFOGRAPHIC_PROMPT } from "@/server/mvp/prompts/hero-infographic.v1";
 import {
   applyMvpStep2IntakeChoice,
   MVP_STEP2_KEY,
@@ -38,7 +42,7 @@ import { seismicEngineeringFixture } from "./fixtures/seismic-engineering-intake
 
 type CaseKey = "engineering" | "qualitative" | "negative";
 
-const OUTPUT_ROOT = path.join(process.cwd(), "artifacts-local", "release0-scientific-validation", "b2");
+const OUTPUT_ROOT = path.join(process.cwd(), "artifacts-local", "release0-scientific-validation", "b3");
 const CASE_KEY = (process.argv.find((value) => value.startsWith("--case="))?.split("=")[1] ?? "") as CaseKey;
 
 const negativeFixture = {
@@ -211,15 +215,15 @@ async function writePromptsUsed(outputPath: string, projectIds: string | string[
     "",
     promptObjectBlock("Paso 5 — extraccion de evidencia", STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT, "STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT.outputSchema"),
     "",
-    promptObjectBlock("Paso 6 — borrador por seccion", STEP6_SECTION_DRAFT_PROMPT, "STEP6_SECTION_DRAFT_PROMPT.outputSchema"),
+    promptObjectBlock("Paso 6 — generacion cientifica secuencial", { ...SCIENTIFIC_PLAN_PROMPT, tasks: SCIENTIFIC_TASKS }, "server/mvp/scientific-plan-generation.ts"),
     "",
-    promptObjectBlock("Paso 6 — revision editorial", STEP6_EDITORIAL_REVIEW_PROMPT, "STEP6_EDITORIAL_REVIEW_PROMPT.outputSchema"),
+    promptObjectBlock("Paso 6 — matriz dedicada", CONSISTENCY_MATRIX_PROMPT, "server/mvp/research-plan-contracts.ts"),
     "",
-    promptObjectBlock("Paso 6 — titulo", STEP6_TITLE_GENERATION_PROMPT, "STEP6_TITLE_GENERATION_PROMPT.outputSchema"),
+    promptObjectBlock("Paso 6 — infografia final", HERO_INFOGRAPHIC_PROMPT, "PNG Images API; una llamada high 1024x1024 sin reintentos"),
     "",
     "## Prompts no ejecutados",
     "",
-    "La generacion remota de hero images y las ondas visuales/OCR del Paso 5 se deshabilitaron para esta aceptacion. No se presentan como prompts usados.",
+    "Vision/OCR de Paso 5 deshabilitado. Infografia B3 habilitada una vez por plan. Deep Research solo si Tier 2 deja evidencia insuficiente; revisar research-discovery.json. Roles reales de imagen: unico prompt en Images API. Textos: unico input concatenado en Responses API. Schemas exactos y tareas por llamada en scientific-plan/PROMPTS_USED.md; solicitudes efectivas en provider-calls (fixtures publicos de prueba).",
     "",
   ].join("\n");
   await writeFile(outputPath, markdown, "utf8");
@@ -316,13 +320,15 @@ async function runPositive(
   const blueprintVersion = await prisma.blueprintVersion.findUniqueOrThrow({ where: { id: step6.blueprint_version_id } });
   const exportReferences = extractExportReferences(blueprintVersion);
   const evidenceLog = buildEvidenceLog(blueprintVersion);
-  const docxPath = path.join(caseDir, `${CASE_KEY}-thesis-plan.docx`);
-  const bibtexPath = path.join(caseDir, "references.bib");
-  const risPath = path.join(caseDir, "references.ris");
-  const evidenceLogPath = path.join(caseDir, "evidence_log.json");
+  const docxPath = path.join(caseDir, "final-thesis-plan.docx");
+  const pdfPath = path.join(caseDir, "final-thesis-plan.pdf");
+  const bibtexPath = path.join(caseDir, "bibliography.bib");
+  const risPath = path.join(caseDir, "bibliography.ris");
+  const evidenceLogPath = path.join(caseDir, "evidence-log.json");
   const ledgerPath = path.join(caseDir, "evidence-ledger.json");
   await Promise.all([
     copyFile(step6.docx_path, docxPath),
+    copyFile(step6.pdf_path!, pdfPath),
     copyFile(step5.artifacts.evidence_ledger, ledgerPath),
     writeFile(bibtexPath, `${renderBibtex(exportReferences)}\n`, "utf8"),
     writeFile(risPath, `${renderRis(exportReferences)}\n`, "utf8"),
@@ -392,7 +398,9 @@ async function runPositive(
     completed_at: finishedAt,
     api_usage: usage,
     models_used: [...new Set(calls.map((call) => call.model))],
-    artifacts: { docx: docxPath, evidence_log: evidenceLogPath, evidence_ledger: ledgerPath, bibtex: bibtexPath, ris: risPath, prompts_used: promptsUsedPath },
+    application_budget: currentApplicationBudget()?.entries,
+    committed_api_usd: currentApplicationBudget()?.committedUsd,
+    artifacts: { docx: docxPath, pdf: pdfPath, canonical_dir: step6.artifact_dir, evidence_log: evidenceLogPath, evidence_ledger: ledgerPath, bibtex: bibtexPath, ris: risPath, prompts_used: promptsUsedPath },
     continuity: {
       project_id: input.project.id,
       step5_step_run_id: step5.step_run_id,
@@ -435,11 +443,11 @@ async function main() {
   if (!Object.hasOwn(cases, CASE_KEY)) throw new Error("Usa --case=engineering, --case=qualitative o --case=negative.");
   const resumeProjectId = process.argv.find((value) => value.startsWith("--resume-project="))?.split("=")[1];
   const startedAt = new Date().toISOString();
-  const runId = `release0-b2-${CASE_KEY}-${stamp()}`;
+  const runId = `release0-b3-${CASE_KEY}-${stamp()}`;
   const caseDir = path.join(OUTPUT_ROOT, CASE_KEY, runId);
   await mkdir(caseDir, { recursive: true });
   process.env.IMX_LLM_AUDIT_DIR = path.join(caseDir, "provider-calls");
-  process.env.IMX_LLM_RUN_BUDGET_USD = CASE_KEY === "negative" ? "0.000001" : "2.20";
+  process.env.IMX_LLM_RUN_BUDGET_USD = CASE_KEY === "negative" ? "0.000001" : "2.40";
   process.env.LLM_MAX_OUTPUT_TOKENS = "8000";
   process.env.LLM_REQUEST_MAX_RETRIES = "0";
   process.env.IMX_STEP6_DISABLE_IMAGE_GENERATION = "1";
@@ -449,9 +457,15 @@ async function main() {
     : await createCaseProject(CASE_KEY, runId);
   await writeFile(path.join(caseDir, "run-start.json"), JSON.stringify({ project_id: input.project.id, run_id: runId, started_at: startedAt, budget_usd: process.env.IMX_LLM_RUN_BUDGET_USD, fixture: input.fixture.id }));
   console.log(JSON.stringify({ started: true, project_id: input.project.id, case_dir: caseDir }));
-  const result = CASE_KEY === "negative"
-    ? await runNegative(input, runId, caseDir)
-    : await runPositive(input, runId, caseDir, startedAt, Boolean(resumeProjectId));
+  const budget = new ApplicationBudget(CASE_KEY === "negative" ? 0.000001 : 2.4);
+  let result;
+  try {
+    result = await withApplicationBudget(budget, async () => CASE_KEY === "negative"
+      ? await runNegative(input, runId, caseDir)
+      : await runPositive(input, runId, caseDir, startedAt, Boolean(resumeProjectId)));
+  } finally {
+    await writeFile(path.join(caseDir, "application-budget.json"), JSON.stringify({ cap_usd: budget.hardCapUsd, committed_usd: budget.committedUsd, entries: budget.entries }, null, 2));
+  }
   console.log(JSON.stringify({ ok: true, case_dir: caseDir, result }, null, 2));
 }
 

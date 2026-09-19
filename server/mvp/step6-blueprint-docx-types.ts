@@ -1,5 +1,5 @@
 export const MVP_STEP6_KEY = "step_6_blueprint_docx";
-export const MVP_STEP6_PROMPT_VERSION = "ingeniometrix-step6-blueprint-docx-v2";
+export const MVP_STEP6_PROMPT_VERSION = "ingeniometrix-step6-blueprint-docx-v3";
 
 export type MvpStep6SectionPriority = "required" | "recommended" | "annex";
 export type MvpStep6SectionOutputMode =
@@ -69,6 +69,7 @@ export type MvpStep6ContentBlock =
     }
   | {
       kind: "figure";
+      caption_type?: "figure" | "table" | "equation";
       title: string;
       image_path: string | null;
       source_note: string;
@@ -227,6 +228,12 @@ export type MvpStep6EditorialReport = {
 };
 
 export type MvpStep6BlueprintPackage = {
+  scientific_plan?: {
+    definition: import("./research-plan-contracts").ResearchDefinition;
+    design: import("./research-plan-contracts").ResearchDesign;
+    matrix: import("zod").infer<typeof import("./research-plan-contracts").consistencyMatrixSchema>;
+    generation_order: string[];
+  };
   artifact_type: "mvp_step6_blueprint_docx_package";
   artifact_version: "v1";
   project_id: string;
@@ -281,6 +288,7 @@ export type MvpStep6BlueprintPackage = {
 };
 
 export type MvpStep6Result = {
+  pdf_path?: string;
   step_key: typeof MVP_STEP6_KEY;
   prompt_version: typeof MVP_STEP6_PROMPT_VERSION;
   project_id: string;

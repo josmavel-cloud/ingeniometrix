@@ -28,7 +28,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const docxBuffer = canonicalDocx ?? await renderCanonicalReportDocxBuffer((await buildCanonicalReportFromBlueprint({
       projectId: id, blueprintVersionId: versionId,
     })).canonicalDocument);
-    const filename = `${slugify(blueprintVersion.id)}-ingeniometrix-blueprint.docx`;
+    const filename = canonicalDocx ? "final-thesis-plan.docx" : `${slugify(blueprintVersion.id)}-ingeniometrix-blueprint.docx`;
 
     return new NextResponse(docxBuffer as BodyInit, {
       status: 200,

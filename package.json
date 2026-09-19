@@ -69,6 +69,8 @@
     "test:b2-docx-integrity": "tsx scripts/test-b2-docx-integrity.ts",
     "test:b2-canonical-download": "tsx scripts/test-b2-canonical-download.ts",
     "test:b2-provider-boundaries": "tsx scripts/test-b2-provider-boundaries.ts",
+    "test:b3-scientific-contracts": "tsx scripts/test-b3-scientific-contracts.ts",
+    "test:b3-generation-export": "tsx scripts/test-b3-generation-export.ts",
     "compare:diagnostic-runs": "tsx scripts/compare-diagnostic-runs.ts",
     "diagnose:lab-b-ingestion": "tsx scripts/run-lab-b-diagnostic-ingestion.ts",
     "diagnose:lab-b-full-docx": "tsx scripts/run-lab-b-full-diagnostic-docx.ts --allow-degraded-handoff",
@@ -132,6 +134,7 @@
     "openai": "^6.34.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "sharp": "0.35.4",
     "tailwindcss": "^4.2.2",
     "zod": "^4.4.2"
   },

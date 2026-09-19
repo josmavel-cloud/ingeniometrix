@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { ActorType, Provider, type Project, type Intake } from "@prisma/client";
@@ -12,6 +12,7 @@ import {
   Header,
   HeadingLevel,
   ImageRun,
+  LineRuleType,
   Math as DocxMath,
   MathRun,
   Packer,
@@ -68,6 +69,15 @@ import { asStepRunJson, createMvpStepRun, updateMvpStepRun } from "@/server/mvp/
 import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report-types";
 
 import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence } from "./evidence-continuity";
+import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
+import { generateFinalInfographic, deterministicInfographic, infographicContext, infographicFingerprint } from "./final-infographic";
+import { attachScientificAssets } from "./scientific-assets";
+import { exportPlanPdf } from "./pdf-export";
+import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "./application-budget";
+import { ensureResearchCoverage } from "./research-fallback";
+import { GENERATION_ORDER } from "./research-plan-contracts";
+import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v3";
+import { buildEvidenceLog, extractExportReferences, renderBibtex, renderRis } from "@/server/blueprint/blueprint-export";
 const STEP6_ARTIFACT_ROOT = "mvp-step6-blueprint-docx";
 const FONT = "Times New Roman";
 const ACCENT = "2F5D62";
@@ -267,7 +277,7 @@ async function writeJson(filePath: string, value: unknown) {
 function buildArtifacts(projectId: string, runId?: string) {
   const resolvedRunId = runId?.trim() || `step6-blueprint-docx-${nowStamp()}-${randomUUID().slice(0, 8)}`;
   const artifactDir = path.join(process.cwd(), "artifacts-local", STEP6_ARTIFACT_ROOT, projectId, resolvedRunId);
-  const docxPath = path.join(artifactDir, `${slug(projectId)}-step6-blueprint-ingeniometrix.docx`);
+  const docxPath = path.join(artifactDir, "final-thesis-plan.docx");
   return {
     runId: resolvedRunId,
     artifactDir,
@@ -1745,11 +1755,12 @@ function buildCrossReferencePlan(input: {
           used_in_section_keys: [draft.section_key],
         });
       } else if (block.kind === "figure") {
-        figureCount += 1;
-        const label = buildCaptionLabel("figure", figureCount);
+        const kind = block.caption_type ?? "figure";
+        const count = kind === "table" ? ++tableCount : kind === "equation" ? ++equationCount : ++figureCount;
+        const label = buildCaptionLabel(kind, count);
         records.push({
-          ref_id: `${draft.section_key}:figure:${figureCount}`,
-          ref_type: "figure",
+          ref_id: `${draft.section_key}:${kind}:${count}`,
+          ref_type: kind,
           label,
           title: sanitizePublicText(block.title),
           section_key: draft.section_key,
@@ -2207,9 +2218,10 @@ function textRun(text: string, options: { bold?: boolean; italics?: boolean; siz
   });
 }
 
-function paragraph(text: string, options: { bold?: boolean; italics?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; indent?: boolean; afterPt?: number } = {}) {
+function paragraph(text: string, options: { bold?: boolean; italics?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; indent?: boolean; afterPt?: number; keepNext?: boolean } = {}) {
   return new Paragraph({
     alignment: options.align ?? AlignmentType.JUSTIFIED,
+    keepNext: options.keepNext,
     spacing: { line: 276, after: twipPt(options.afterPt ?? 4) },
     indent: { firstLine: options.indent === false ? 0 : cm(1.25) },
     children: [textRun(sanitizePublicText(text), { bold: options.bold, italics: options.italics })],
@@ -2349,10 +2361,11 @@ async function imageBlock(block: Extract<MvpStep6ContentBlock, { kind: "figure" 
     ? fitDimensions({ originalWidth: dimensions.width, originalHeight: dimensions.height, maxWidth: 420, maxHeight: 260 })
     : { width: 420, height: 260 };
   return [
-    paragraph(captionText(ref, block.title), { bold: true, align: AlignmentType.CENTER, indent: false }),
+    paragraph(captionText(ref, block.title), { bold: true, align: AlignmentType.CENTER, indent: false, keepNext: true }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: twipPt(6) },
+      keepNext: true,
+      spacing: { after: twipPt(6), line: Math.ceil(fitted.height * 15 + 40), lineRule: LineRuleType.AT_LEAST },
       children: [
         new ImageRun({
           type: imageType(block.image_path),
@@ -2426,7 +2439,7 @@ async function renderLogoParagraph(input: {
     : { width: input.maxWidth, height: input.maxHeight };
   return new Paragraph({
     alignment: AlignmentType.CENTER,
-    spacing: { after: twipPt(input.afterPt ?? 10) },
+    spacing: { after: twipPt(input.afterPt ?? 10), line: Math.ceil(fitted.height * 15 + 40), lineRule: LineRuleType.AT_LEAST },
     children: [
       new ImageRun({
         type: imageType(input.logoPath),
@@ -2455,7 +2468,7 @@ async function heroImageParagraph(input: {
       : { width: input.maxWidth, height: input.maxHeight };
     return new Paragraph({
       alignment: AlignmentType.CENTER,
-      spacing: { after: twipPt(10) },
+      spacing: { after: twipPt(10), line: Math.ceil(fitted.height * 15 + 40), lineRule: LineRuleType.AT_LEAST },
       children: [
         new ImageRun({
           type: "png",
@@ -2476,7 +2489,7 @@ async function heroImageParagraph(input: {
   });
   return new Paragraph({
     alignment: AlignmentType.CENTER,
-    spacing: { after: twipPt(10) },
+    spacing: { after: twipPt(10), line: Math.ceil(fitted.height * 15 + 40), lineRule: LineRuleType.AT_LEAST },
     children: [
       new ImageRun({
         type: "svg",
@@ -2499,7 +2512,7 @@ function makeHeaderFooter(title: string) {
           new Paragraph({
             alignment: AlignmentType.RIGHT,
             children: [
-              textRun(`${clip(title, 72)} | Ingeniometrix`, {
+              textRun(title, {
                 size: 9,
                 color: "666666",
               }),
@@ -2555,7 +2568,7 @@ function takeCrossReference(input: {
   const match = input.refs.find((ref) => {
     if (input.usedRefIds.has(ref.ref_id) || ref.section_key !== input.sectionKey) return false;
     if (block.kind === "table") return ref.ref_type === classifyTable(block, input.sectionKey);
-    if (block.kind === "figure") return ref.ref_type === "figure" && ref.asset_key === block.asset_key;
+    if (block.kind === "figure") return ref.ref_type === (block.caption_type ?? "figure") && ref.asset_key === block.asset_key;
     return ref.ref_type === "equation" && ref.asset_key === block.asset_key;
   });
   if (match) input.usedRefIds.add(match.ref_id);
@@ -2569,7 +2582,7 @@ export async function renderDocx(input: {
 }) {
   const style = input.package.academic_style_contract;
   const displayTitle = titleForDocument({ project: input.project, titlePlan: input.package.title_plan });
-  const common = makeHeaderFooter(displayTitle);
+  const common = makeHeaderFooter(input.package.title_plan.short_title || displayTitle);
   const coverChildren: FileChild[] = [];
   const hero = input.package.hero_image;
 
@@ -2580,7 +2593,8 @@ export async function renderDocx(input: {
     afterPt: 12,
   }));
 
-  coverChildren.push(await heroImageParagraph({ plan: hero, maxWidth: 330, maxHeight: 430 }));
+  const heroExtent = hero.status === "generated" ? 520 : 310;
+  coverChildren.push(await heroImageParagraph({ plan: hero, maxWidth: heroExtent, maxHeight: heroExtent }));
 
   coverChildren.push(
     paragraph(displayTitle, { bold: true, align: AlignmentType.CENTER, indent: false }),
@@ -2590,13 +2604,11 @@ export async function renderDocx(input: {
       align: AlignmentType.CENTER,
       indent: false,
     }),
-    paragraph("Documento editable generado como blueprint académico preliminar con evidencia trazable.", {
+    paragraph("Plan de investigación", {
       italics: true,
       align: AlignmentType.CENTER,
       indent: false,
     }),
-    new Paragraph({ children: [new PageBreak()] }),
-    new TableOfContents("Tabla de contenido", { hyperlink: false, headingStyleRange: "1-3" }),
     new Paragraph({ children: [new PageBreak()] }),
   );
 
@@ -2604,12 +2616,13 @@ export async function renderDocx(input: {
   const beforeMatrixChildren: FileChild[] = [];
   const matrixChildren: FileChild[] = [];
   const afterMatrixChildren: FileChild[] = [];
+  const referenceChildren: FileChild[] = [];
   const usedRefIds = new Set<string>();
   const orderedDrafts = [...input.package.section_drafts].sort((left, right) => left.order - right.order);
   let pastMatrix = false;
 
   for (const section of orderedDrafts) {
-    const target = section.section_key === "consistency_matrix"
+    const target = section.section_key === "references" ? referenceChildren : section.section_key === "consistency_matrix"
       ? matrixChildren
       : pastMatrix
         ? afterMatrixChildren
@@ -2629,10 +2642,6 @@ export async function renderDocx(input: {
       target.push(...(await renderBlock(block, ref)));
     }
     if (section.section_key === "consistency_matrix") {
-      matrixChildren.push(
-        paragraph("Sintesis visual del blueprint", { bold: true, align: AlignmentType.CENTER, indent: false, afterPt: 4 }),
-        await heroImageParagraph({ plan: input.package.summary_hero_image, maxWidth: 620, maxHeight: 270 }),
-      );
       pastMatrix = true;
     }
   }
@@ -2640,7 +2649,7 @@ export async function renderDocx(input: {
   const doc = new Document({
     creator: "Ingeniometrix",
     title: displayTitle,
-    description: "Blueprint academico editable generado por Ingeniometrix.",
+    description: "Plan de investigacion academica.",
     styles: {
       paragraphStyles: [
         {
@@ -2701,7 +2710,12 @@ export async function renderDocx(input: {
       {
         properties: sectionProperties({ style, orientation: "portrait" }),
         ...common,
-        children: afterMatrixChildren.length ? afterMatrixChildren : [paragraph("Referencias disponibles en artefactos JSON.", { italics: true })],
+        children: afterMatrixChildren,
+      },
+      {
+        properties: sectionProperties({ style, orientation: "portrait" }),
+        ...common,
+        children: referenceChildren,
       },
     ],
   });
@@ -2936,6 +2950,7 @@ export function buildBlueprintJson(input: {
   const objectives = declarations.filter((text) => !text.includes("?"));
   const questions = declarations.filter((text) => text.includes("?"));
   const generalObjective = objectives.find((text) => /^objetivo general\s*:/i.test(text)) ?? objectives[0] ?? "Pendiente de formulacion explicita.";
+  const scientific = input.package.scientific_plan;
 
   return {
     project_title: titleForDocument({ project: input.project, titlePlan: input.package.title_plan }),
@@ -2946,19 +2961,24 @@ export function buildBlueprintJson(input: {
     university: input.project.university,
     program: input.project.program,
     research_line: intake?.researchLine ?? input.project.topicAreaLabel ?? "",
-    problem_statement: sectionText("problem_statement") || intake?.problemContext || intake?.topic || "",
+    problem_statement: scientific?.definition.problem || sectionText("problem_statement") || intake?.problemContext || intake?.topic || "",
     problem_delimitation: intake?.targetPopulation ?? "",
     justification: sectionText("justification"),
-    general_objective: generalObjective,
-    specific_objectives: objectives.filter((text) => /^objetivos? espec[ií]ficos?\s*:/i.test(text)),
-    research_questions: questions,
-    hypotheses_or_guiding_questions: ["Pregunta guia preliminar; no se formulan resultados anticipados."],
-    key_constructs_or_variables: [sectionText("variables_or_categories")].filter(Boolean),
+    general_objective: scientific?.definition.objectives[0]?.text ?? generalObjective,
+    specific_objectives: scientific?.definition.objectives.slice(1).map((o) => o.text) ?? objectives.filter((text) => /^objetivos? espec[ií]ficos?\s*:/i.test(text)),
+    research_questions: scientific?.definition.questions.map((q) => q.text) ?? questions,
+    hypotheses_or_guiding_questions: scientific?.definition.hypotheses_or_propositions.map((h) => h.text) ?? [],
+    key_constructs_or_variables: scientific?.design.constructs.map((c) => c.name) ?? [sectionText("variables_or_categories")].filter(Boolean),
     proposed_methodology: sectionText("methodology") || intake?.preferredMethodology || "",
     population_and_sample: intake?.targetPopulation ?? "",
     data_collection_techniques: [sectionText("methodology")].filter(Boolean),
     analysis_plan: sectionText("methodology"),
-    consistency_matrix: [
+    consistency_matrix: scientific ? scientific.matrix.rows.map((row) => ({
+      objective: row.objective_ids.map((id) => scientific.definition.objectives.find((o) => o.id === id)!.text).join("\n"),
+      question: row.question_ids.map((id) => scientific.definition.questions.find((q) => q.id === id)!.text).join("\n"),
+      method: row.design_alignment,
+      technique: row.data_techniques_instruments,
+    })) : [
       {
         objective: generalObjective,
         question: questions.join("\n"),
@@ -2966,12 +2986,12 @@ export function buildBlueprintJson(input: {
         technique: intake?.preferredMethodology ?? "Por definir",
       },
     ],
-    work_plan: [
+    work_plan: scientific ? [] : [
       { phase: sectionText("schedule_and_budget"), duration: "Cronograma referencial descrito en la seccion; requiere confirmacion del investigador." },
     ],
     assumptions: input.package.section_drafts.flatMap((draft) => draft.assumptions).slice(0, 20),
     limitations: input.package.section_drafts.flatMap((draft) => draft.limitations).slice(0, 20),
-    references_used: input.ledger.source_registry.map((source) => ({
+    references_used: input.ledger.source_registry.filter((source) => !scientific || input.package.section_drafts.some((draft) => draft.used_source_ids.includes(source.source_id))).map((source) => ({
       reference_id: source.reference_id,
       title: source.title,
       doi: source.doi,
@@ -2980,6 +3000,9 @@ export function buildBlueprintJson(input: {
     step6_docx: {
       artifact_version: "v1",
       docx_path: input.package.step7_export_contract.docx_path,
+      pdf_path: scientific ? path.join(path.dirname(input.package.step7_export_contract.docx_path), "final-thesis-plan.pdf") : null,
+      pdf_sha256: scientific ? createHash("sha256").update(fs.readFileSync(path.join(path.dirname(input.package.step7_export_contract.docx_path), "final-thesis-plan.pdf"))).digest("hex") : null,
+      scientific_plan: scientific,
       sha256: createHash("sha256").update(fs.readFileSync(input.package.step7_export_contract.docx_path)).digest("hex"),
       step_run_id: input.package.step_run_id,
       step5_step_run_id: input.ledger.step_run_id,
@@ -3021,19 +3044,31 @@ export async function runMvpStep6BlueprintDocx(input: {
   userId: string;
   projectId: string;
   runId?: string;
+  /** Internal dependency injection for offline tests and bounded acceptance repair, never from HTTP input. */
+  providerOverride?: import("@/llm/provider").LlmProvider;
+  /** Evaluation-only reuse: identical structured design/title, same project, no second image request. */
+  heroReuse?: { projectId: string; fingerprint: string; plan: MvpStep6HeroImagePlan; qualityRejectionReason?: string };
 }): Promise<MvpStep6Result> {
+  if (!currentApplicationBudget()) return withApplicationBudget(new ApplicationBudget(), () => runMvpStep6BlueprintDocx(input));
   const artifacts = buildArtifacts(input.projectId, input.runId);
   const warnings: string[] = [];
   const errors: string[] = [];
   const apiUsageBefore = await captureMvpApiUsageSnapshot();
   await mkdir(artifacts.artifactDir, { recursive: true });
 
-  const project = await loadProjectForStep6(input);
-  const latestStep5 = await loadLatestStep5Ledger(input.projectId);
+  let project = await loadProjectForStep6(input);
+  let latestStep5 = await loadLatestStep5Ledger(input.projectId);
   assertEvidenceContinuity(latestStep5.ledger, {
     projectId: input.projectId, stepRunId: latestStep5.row.stepRunId, intake: project.intake!,
     referenceIds: project.projectReferences.map((row) => row.referenceId),
   });
+  const coverageResult = await ensureResearchCoverage({ ...input, runId: artifacts.runId, intake: project.intake!, ledger: latestStep5.ledger, artifactDir: artifacts.artifactDir });
+  if (coverageResult.changed) {
+    project = await loadProjectForStep6(input);
+    latestStep5 = await loadLatestStep5Ledger(input.projectId);
+    if (latestStep5.ledger.step_run_id !== coverageResult.ledger.step_run_id) throw new Error("EVIDENCE_RUN_CHANGED_DURING_GENERATION");
+    assertEvidenceContinuity(latestStep5.ledger, { projectId: input.projectId, stepRunId: latestStep5.row.stepRunId, intake: project.intake!, referenceIds: project.projectReferences.map((row) => row.referenceId) });
+  }
   const evidenceGate = evaluateEvidenceGate(latestStep5.ledger);
   await writeJson(path.join(artifacts.artifactDir, "evidence-gate.json"), evidenceGate);
   if (evidenceGate.status === "INSUFFICIENT") {
@@ -3042,10 +3077,13 @@ export async function runMvpStep6BlueprintDocx(input: {
     throw new Error("INSUFFICIENT_EVIDENCE: no hay evidencia inspeccionable verificada; agregar fuentes o repetir Step 5. No se genero plan.");
   }
   warnings.push(...evidenceGate.limitations);
-  const sectionPlan = buildSectionPlan(project, latestStep5.ledger);
+  const sectionPlan = scientificSectionPlan();
   const academicStyleContract = buildStyleContract(project);
-  const pageBudgetPlan = buildPageBudgetPlan(sectionPlan);
-  const sectionGenerationOrder = buildSectionGenerationOrder(sectionPlan);
+  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: 18,
+    max_body_words: sectionPlan.reduce((total, section) => total + section.max_words, 0),
+    fixed_page_reservations: [{ label: "Portada (fuera del cuerpo)", pages: 1 }, { label: "Referencias (fuera del cuerpo; extension variable)", pages: 1 }],
+    compression_policy: ["Objetivo 12-15 paginas de cuerpo; maximo 18 verificado sobre PDF.", "No truncar texto ni reducir tipografia; resolver redundancia antes de publicar si excede el maximo."] };
+  const sectionGenerationOrder: MvpStep6BlueprintPackage["section_generation_order"] = [{ wave: "core", section_keys: [...GENERATION_ORDER], model_tier: "strong_reasoning" }];
 
   const stepRun = await createMvpStepRun({
     projectId: input.projectId,
@@ -3064,10 +3102,9 @@ export async function runMvpStep6BlueprintDocx(input: {
       evidence_item_count: allEvidenceItems(latestStep5.ledger).length,
       section_count: sectionPlan.length,
       prompts: {
-        section_draft: STEP6_SECTION_DRAFT_PROMPT.version,
-        editorial_review: STEP6_EDITORIAL_REVIEW_PROMPT.version,
-        title_generation: STEP6_TITLE_GENERATION_PROMPT.version,
-        hero_image: STEP6_HERO_IMAGE_PROMPT.version,
+        scientific_plan: SCIENTIFIC_PLAN_PROMPT.version,
+        consistency_matrix: "ingeniometrix-consistency-matrix-v1",
+        hero_image: "ingeniometrix-hero-infographic-v1",
       },
       section_generation_order: sectionGenerationOrder,
       academic_style_contract: academicStyleContract,
@@ -3092,148 +3129,45 @@ export async function runMvpStep6BlueprintDocx(input: {
   });
 
   try {
-    const provider = tryGetProvider(warnings);
-    const projectContext = buildProjectContext(project);
-    const styleContract = academicStyleContract;
-    const priorSectionSummaries: Array<{ section_key: string; summary: string }> = [];
-    const sectionDrafts: MvpStep6SectionDraft[] = [];
-
-    await withLlmUsageContext(
-      {
-        userId: input.userId,
-        projectId: input.projectId,
-        runId: artifacts.runId,
-        stage: "blueprint_generation",
-        source: "runMvpStep6BlueprintDocx",
-        promptVersion: MVP_STEP6_PROMPT_VERSION,
-      },
-      async () => {
-        for (const section of orderedSectionsForGeneration(sectionPlan)) {
-          const draft = await generateSectionDraft({
-            provider,
-            userId: input.userId,
-            projectId: input.projectId,
-            runId: artifacts.runId,
-            section,
-            project,
-            ledger: latestStep5.ledger,
-            projectContext,
-            styleContract,
-            pageBudget: pageBudgetPlan,
-            priorSectionSummaries,
-            warnings,
-          });
-          sectionDrafts.push(draft);
-          priorSectionSummaries.push({
-            section_key: draft.section_key,
-            summary: clip(
-              draft.blocks.map((block) => ("text" in block ? block.text : "")).join(" "),
-              320,
-            ),
-          });
-        }
-      },
+    const provider = input.providerOverride ?? tryGetProvider(warnings);
+    if (!provider) throw new Error("SCIENTIFIC_GENERATION_REQUIRES_PROVIDER");
+    const scientific = await withLlmUsageContext(
+      { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
+      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
     );
-
-    const pdfCrossReferenceMentions = await buildPdfCrossReferenceMentionIndex(latestStep5.ledger);
-    const matrixReadyDrafts = replaceConsistencyMatrixTable({
-      drafts: sectionDrafts,
-      project,
-      ledger: latestStep5.ledger,
-    });
-    const preliminaryCrossReferencePlan = buildCrossReferencePlan({
-      drafts: matrixReadyDrafts,
-      pdfMentions: pdfCrossReferenceMentions,
-    });
-    const crossReferencedDrafts = applyCrossReferenceMentions({
-      drafts: matrixReadyDrafts,
-      crossReferences: preliminaryCrossReferencePlan,
-    });
-
-    const editorial = await runEditorialReview({
-      provider,
-      userId: input.userId,
-      projectId: input.projectId,
-      runId: artifacts.runId,
-      drafts: crossReferencedDrafts,
-      styleContract,
-      pageBudget: pageBudgetPlan,
-      warnings,
-    });
-    const compactedDrafts = compactDraftsForPageBudget({
-      drafts: sanitizeDraftsForPublicDocument(replaceConsistencyMatrixTable({
-        drafts: editorial.drafts,
-        project,
-        ledger: latestStep5.ledger,
-      })),
-      sectionPlan,
-      warnings,
-    });
-    const compactedCrossReferencePlan = buildCrossReferencePlan({
-      drafts: compactedDrafts,
-      pdfMentions: pdfCrossReferenceMentions,
-    });
-    let finalSectionDrafts = sanitizeDraftsForPublicDocument(applyCrossReferenceMentions({
-      drafts: compactedDrafts,
-      crossReferences: compactedCrossReferencePlan,
-    }));
-    let crossReferencePlan = buildCrossReferencePlan({
-      drafts: finalSectionDrafts,
-      pdfMentions: pdfCrossReferenceMentions,
-    });
-    finalSectionDrafts = sanitizeDraftsForPublicDocument(repairDanglingCrossReferenceMentions({
-      drafts: finalSectionDrafts,
-      crossReferencePlan,
-      warnings,
-    }));
-    crossReferencePlan = buildCrossReferencePlan({
-      drafts: finalSectionDrafts,
-      pdfMentions: pdfCrossReferenceMentions,
-    });
-    const finalPageBudgetPlan: MvpStep6PageBudgetPlan = {
-      ...pageBudgetPlan,
-      estimated_pages: estimateDocumentPages({ drafts: finalSectionDrafts, pageBudget: pageBudgetPlan }),
-    };
-    if (finalPageBudgetPlan.estimated_pages > finalPageBudgetPlan.max_pages) {
-      warnings.push(`El documento estima ${finalPageBudgetPlan.estimated_pages} paginas, por encima del maximo objetivo de ${finalPageBudgetPlan.max_pages}.`);
+    const finalSectionDrafts = scientific.drafts;
+    const assetQuality = attachScientificAssets(finalSectionDrafts, latestStep5.ledger, scientific.usedSources);
+    await writeJson(path.join(artifacts.artifactDir, "asset-quality.json"), assetQuality);
+    await writeJson(path.join(artifacts.artifactDir, "evidence-coverage.json"), scientific.coverage);
+    const crossReferencePlan = buildCrossReferencePlan({ drafts: finalSectionDrafts, pdfMentions: [] });
+    const finalPageBudgetPlan: MvpStep6PageBudgetPlan = { ...pageBudgetPlan, max_pages: 18,
+      estimated_pages: estimateDocumentPages({ drafts: finalSectionDrafts, pageBudget: pageBudgetPlan }) };
+    const titlePlan = scientific.titlePlan;
+    const editorial = { report: { artifact_type: "mvp_step6_editorial_report" as const, artifact_version: "v1" as const, status: "applied" as const, model: SCIENTIFIC_PLAN_PROMPT.model, prompt_version: SCIENTIFIC_PLAN_PROMPT.version, revised_section_count: 0, warnings: scientific.review.warnings, notes: scientific.review.checked_dimensions } };
+    warnings.push(...scientific.review.warnings);
+    const imageFingerprint = infographicFingerprint(scientific.definition, scientific.design, titlePlan.title);
+    let heroImage: MvpStep6HeroImagePlan;
+    if (input.heroReuse) {
+      if (input.heroReuse.projectId !== input.projectId || input.heroReuse.fingerprint !== imageFingerprint || !input.heroReuse.plan.image_path) throw new Error("HERO_REUSE_DESIGN_MISMATCH");
+      await copyFile(input.heroReuse.plan.image_path, artifacts.heroImagePath);
+      heroImage = { ...input.heroReuse.plan, image_path: artifacts.heroImagePath };
+      if (input.heroReuse.qualityRejectionReason) {
+        await deterministicInfographic(artifacts.heroImagePath);
+        heroImage = { ...heroImage, status: "svg_fallback", image_model: null, warnings: [...heroImage.warnings, `Visual quality rejection: ${input.heroReuse.qualityRejectionReason}`] };
+      }
+      await writeJson(`${artifacts.heroImagePath}.json`, { ...heroImage, reused_from: input.heroReuse.plan.image_path, image_fingerprint: imageFingerprint, provider_request_executed: false, cost_this_execution_usd: 0 });
+    } else {
+      heroImage = await generateFinalInfographic(infographicContext(scientific.definition, scientific.design), artifacts.heroImagePath);
     }
-
-    const titlePlan = await generateTitlePlan({
-      provider,
-      userId: input.userId,
-      projectId: input.projectId,
-      runId: artifacts.runId,
-      project,
-      ledger: latestStep5.ledger,
-      pageBudget: finalPageBudgetPlan,
-      drafts: finalSectionDrafts,
-      warnings,
-    });
-    warnings.push(...titlePlan.warnings);
-
-    const heroImage = await generateHeroImage({
-      project,
-      sectionPlan,
-      titlePlan,
-      placement: "cover",
-      outputPath: artifacts.heroImagePath,
-      warnings,
-    });
     warnings.push(...heroImage.warnings);
-    const summaryHeroImage = await generateHeroImage({
-      project,
-      sectionPlan,
-      titlePlan,
-      placement: "post_matrix_summary",
-      outputPath: artifacts.summaryHeroImagePath,
-      warnings,
-    });
+    const summaryHeroImage: MvpStep6HeroImagePlan = { ...heroImage, placement: "post_matrix_summary", image_path: null, status: "skipped", warnings: [] };
     warnings.push(...summaryHeroImage.warnings);
 
     const traceabilityMatrix = buildTraceabilityMatrix(finalSectionDrafts);
     const citationCoordinatePlan = buildCitationCoordinatePlan(finalSectionDrafts);
     const assetPlacementPlan = buildAssetPlacementPlan(finalSectionDrafts);
     const provisionalPackage: MvpStep6BlueprintPackage = {
+      scientific_plan: { definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, generation_order: [...scientific.generation_order, "hero_infographic", "docx", "pdf"] },
       artifact_type: "mvp_step6_blueprint_docx_package",
       artifact_version: "v1",
       project_id: input.projectId,
@@ -3273,6 +3207,11 @@ export async function runMvpStep6BlueprintDocx(input: {
       outputPath: artifacts.docxPath,
     });
 
+    const pdf = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"));
+    finalPageBudgetPlan.estimated_pages = pdf.body_pages!;
+    await writeJson(path.join(artifacts.artifactDir, "pdf-validation.json"), pdf);
+    await writeJson(path.join(artifacts.artifactDir, "application-budget.json"), currentApplicationBudget()?.entries);
+
     const coherenceReport = buildCoherenceReport({
       sectionPlan,
       drafts: finalSectionDrafts,
@@ -3296,7 +3235,7 @@ export async function runMvpStep6BlueprintDocx(input: {
           : "deterministic-fallback",
         promptVersion: MVP_STEP6_PROMPT_VERSION,
         intakeSnapshotJson: asStepRunJson(project.intake),
-        selectedReferencesSnapshotJson: asStepRunJson(selectedReferencesSnapshot(latestStep5.ledger)),
+        selectedReferencesSnapshotJson: asStepRunJson(selectedReferencesSnapshot({ ...latestStep5.ledger, source_registry: latestStep5.ledger.source_registry.filter((source) => scientific.usedSources.some((used) => used.source_id === source.source_id)) })),
         blueprintJson: asStepRunJson(buildBlueprintJson({
           project,
           package: finalPackageWithoutVersion,
@@ -3314,6 +3253,13 @@ export async function runMvpStep6BlueprintDocx(input: {
         blueprint_version_id: blueprintVersion.id,
       },
     };
+
+    const exportReferences = extractExportReferences(blueprintVersion);
+    await Promise.all([
+      writeFile(path.join(artifacts.artifactDir, "bibliography.bib"), renderBibtex(exportReferences)),
+      writeFile(path.join(artifacts.artifactDir, "bibliography.ris"), renderRis(exportReferences)),
+      writeJson(path.join(artifacts.artifactDir, "evidence-log.json"), buildEvidenceLog(blueprintVersion)),
+    ]);
 
     await prisma.project.update({
       where: { id: input.projectId },
@@ -3366,6 +3312,7 @@ export async function runMvpStep6BlueprintDocx(input: {
       artifact_dir: artifacts.artifactDir,
       artifact_manifest_path: artifacts.manifestPath,
       docx_path: artifacts.docxPath,
+      pdf_path: pdf.pdf_path,
       artifacts: {
         manifest: artifacts.manifestPath,
         section_plan: artifacts.sectionPlanPath,

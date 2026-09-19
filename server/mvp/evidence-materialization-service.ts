@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { assessAssetQuality } from "./scientific-assets";
 import { promisify } from "node:util";
 
 import { ActorType, Provider } from "@prisma/client";
@@ -1119,6 +1120,7 @@ async function buildSourceAssets(input: {
         status: candidate.crop_path || candidate.page_image_path ? "ready_for_review" : "text_only",
         page_number: candidate.page_number,
         detection_method: "pymupdf_layout",
+        native_extraction_method: candidate.detection_method,
         caption_or_signal_text: candidate.caption_text,
         caption_text: candidate.asset_kind === "equation" ? null : candidate.caption_text,
         nearby_text_excerpt: candidate.nearby_text,
@@ -1345,6 +1347,7 @@ function curateSourceAssets(input: {
 }) {
   const registryRankBySourceId = sourceRelevanceRank(input.sourceRegistry);
   const scored = input.sourceAssets
+    .filter((asset) => assessAssetQuality(asset).accepted)
     .map((asset) => {
       const sectionKey = chooseAssetSection({ asset, sectionContentPlan: input.sectionContentPlan });
       const curation = scoreSourceAssetForBlueprint({

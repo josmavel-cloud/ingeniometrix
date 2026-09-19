@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { recordLlmUsage } from "@/server/llm-usage-registry";
+import { currentApplicationBudget } from "@/server/mvp/application-budget";
 
 import type {
   LlmProvider,
@@ -94,7 +95,16 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
     if (limit > 0 && (reserved === null || reservedApiUsd + reserved > limit)) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
     if (limit > 0) reservedApiUsd += reserved!;
     const startedAt = new Date().toISOString();
-    const response = await client.responses.create(params as any) as OpenAI.Responses.Response;
+    const budget = currentApplicationBudget();
+    if (budget && reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
+    const reservation = budget?.reserve("text", String(params.model), reserved!);
+    let response: OpenAI.Responses.Response;
+    try { response = await client.responses.create(params as any) as OpenAI.Responses.Response; }
+    catch (error) { reservation?.fail(); throw error; }
+    if (reservation && rates && response.usage) {
+      const cached = response.usage.input_tokens_details?.cached_tokens ?? 0;
+      reservation.complete(((response.usage.input_tokens - cached) * rates[0] + cached * rates[0] / 10 + response.usage.output_tokens * rates[1]) / 1e6, response.usage);
+    } else reservation?.fail();
     if (limit > 0 && rates && response.usage) reservedApiUsd += (response.usage.input_tokens * rates[0] + response.usage.output_tokens * rates[1]) / 1e6 - reserved!;
     const auditDir = process.env.IMX_LLM_AUDIT_DIR;
     if (auditDir) {
