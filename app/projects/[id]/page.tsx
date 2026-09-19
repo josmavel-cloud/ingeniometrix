@@ -8,10 +8,12 @@ import { ProjectContextRibbon } from "@/components/projects/project-context-ribb
 import { ProjectShell } from "@/components/projects/project-shell";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
-import { getDegreeLevelLabel } from "@/lib/degree-levels";
+import { getLocaleForLanguage } from "@/lib/language";
 import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
-import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
-import { getTemplateDisplayLabel } from "@/lib/system-master-template";
+import {
+  getProjectStatusMetaForLanguage,
+  getProjectUiCopy,
+} from "@/lib/project-ui-copy";
 import { requireCurrentUser } from "@/server/auth/session";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
 import { getProjectForUser } from "@/server/projects/project-service";
@@ -26,6 +28,9 @@ export default async function ProjectDetailPage({
   params,
 }: ProjectDetailPageProps) {
   const user = await requireCurrentUser();
+  const language = "es" as const;
+  const copy = getProjectUiCopy(language);
+  const locale = getLocaleForLanguage(language);
   const { id } = await params;
   const project = await getProjectForUser(user.id, id);
 
@@ -34,11 +39,11 @@ export default async function ProjectDetailPage({
   }
 
   const [references, initialReferenceSearchSnapshot] = await Promise.all([
-    listProjectReferences(user.id, id),
+    listProjectReferences(user.id, id, { languageOverride: language }),
     getLatestProjectReferenceSearchSnapshot(id),
   ]);
   const blueprintVersions = await listBlueprintVersionsForUser(user.id, id);
-  const statusMeta = getProjectStatusMeta(project.status);
+  const statusMeta = getProjectStatusMetaForLanguage(project.status, language);
   const selectedReferenceCount = references.filter((reference) => reference.selected).length;
   const hasIntakeMinimum = Boolean(
     project.intake?.topic?.trim() &&
@@ -52,10 +57,10 @@ export default async function ProjectDetailPage({
       : project.topicSeedText ?? project.title;
   const topicOriginLabel =
     project.topicOriginType === "CUSTOM"
-      ? "Idea propia"
+      ? copy.projectPage.topicOrigin.custom
       : project.topicOriginType === "HYBRID"
-        ? "Idea propia + sugerencia"
-        : "Catalogo";
+        ? copy.projectPage.topicOrigin.hybrid
+        : copy.projectPage.topicOrigin.catalog;
   const latestBlueprintJson = latestBlueprint?.blueprintJson as
     | {
         references_used?: Array<{ reference_id: string; title: string }>;
@@ -65,41 +70,46 @@ export default async function ProjectDetailPage({
     {
       step: "01",
       href: `/projects/${project.id}/topic`,
-      title: "Tema",
-      description: "Idea semilla, variantes y seleccion de base tematica.",
+      title: copy.workflow.stages.topic[0],
+      description: copy.workflow.stages.topic[1],
       active: project.topicSelectionStatus === "SELECTED",
+      current: project.topicSelectionStatus !== "SELECTED",
       cardClassName: "brand-card-lilac",
     },
     {
       step: "02",
       href: "#intake",
-      title: "Intake",
-      description: "Problema, poblacion y contexto minimo del proyecto.",
+      title: copy.workflow.stages.intake[0],
+      description: copy.workflow.stages.intake[1],
       active: statusMeta.stage >= 1,
+      current: project.topicSelectionStatus === "SELECTED" && statusMeta.stage === 1,
       cardClassName: "brand-card-gold",
     },
     {
       step: "03",
       href: "#fuentes",
-      title: "Fuentes semilla",
-      description: "Busqueda, revision y seleccion de evidencia trazable.",
+      title: copy.workflow.stages.sources[0],
+      description: copy.workflow.stages.sources[1],
       active: statusMeta.stage >= 2,
+      current: statusMeta.stage === 2,
       cardClassName: "brand-card-mint",
     },
     {
       step: "04",
       href: "#blueprint",
-      title: "Blueprint",
-      description: "Validacion de coherencia y preparacion para salida.",
+      title: copy.workflow.stages.blueprint[0],
+      description: copy.workflow.stages.blueprint[1],
       active: statusMeta.stage >= 3,
+      current: statusMeta.stage === 3,
       cardClassName: "brand-card-blush",
     },
     {
       step: "05",
       href: "#exportacion",
-      title: "Exportacion",
-      description: "Salidas finales y evidencia lista para compartir.",
+      title: copy.workflow.stages.export[0],
+      description: copy.workflow.stages.export[1],
       active: statusMeta.stage >= 4,
+      current: statusMeta.stage >= 4,
       cardClassName: "surface-panel",
     },
   ];
@@ -107,10 +117,11 @@ export default async function ProjectDetailPage({
   return (
     <ProjectShell
       title={project.title}
-      description="Avanza por etapas: intake, fuentes, blueprint y exportacion."
+      description={copy.projectPage.description}
     >
       <ProjectContextRibbon
         degreeLevel={project.degreeLevel}
+        language={language}
         program={project.program}
         selectedTopicLabel={selectedTopicLabel}
         templateKey={project.templateKey}
@@ -119,28 +130,27 @@ export default async function ProjectDetailPage({
         universityLabel={getUniversityDisplayNameByCode(project.university)}
       />
 
-      <WorkflowStageNav items={stageCards} />
+      <WorkflowStageNav items={stageCards} language={language} />
 
       <section className="grid gap-6 xl:grid-cols-[0.88fr_1.22fr]">
         <aside className="grid gap-6" id="proyecto">
           {project.topicSelectionStatus !== "SELECTED" ? (
             <section className="rounded-[32px] p-6 brand-card-lilac">
               <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
-                Falta cerrar la etapa tema
+                {copy.projectPage.missingTopicKicker}
               </p>
               <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-                Antes del intake, elige la base tematica definitiva.
+                {copy.projectPage.missingTopicTitle}
               </h2>
               <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-                Tu proyecto ya tiene semilla, pero aun no selecciona un tema final.
-                Cierra esa etapa y luego sigue con intake, fuentes y blueprint.
+                {copy.projectPage.missingTopicBody}
               </p>
               <div className="mt-5">
                 <Link
                   className="brand-button-primary px-5 py-3 text-sm font-semibold"
                   href={`/projects/${project.id}/topic`}
                 >
-                  Ir a etapa Tema
+                  {copy.projectPage.goToTopic}
                 </Link>
               </div>
             </section>
@@ -150,20 +160,20 @@ export default async function ProjectDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
-                  Estado actual
+                  {copy.projectPage.currentStatus}
                 </p>
                 <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-white">
                   {statusMeta.label}
                 </h2>
               </div>
               <div className="rounded-full bg-white/12 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
-                Etapa {Math.min(statusMeta.stage + 1, 5)} de 5
+                {copy.projectPage.stageCounter(Math.min(statusMeta.stage + 1, 5))}
               </div>
             </div>
             <p className="mt-4 text-sm leading-7 text-white/76">{statusMeta.summary}</p>
             <div className="mt-5 rounded-[24px] bg-white/10 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/58">
-                Siguiente paso
+                {copy.projectPage.nextStep}
               </p>
               <p className="mt-2 text-sm leading-6 text-white">
                 {statusMeta.nextStep}
@@ -171,70 +181,23 @@ export default async function ProjectDetailPage({
             </div>
           </section>
 
-          <details className="surface-panel rounded-[32px] p-6 sm:p-8">
-            <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-              Ver datos del proyecto
-            </summary>
-            <div className="mt-5 grid gap-4">
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Estado
-                </p>
-                <div
-                  className={`mt-2 inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] ${getProjectStatusToneClasses(project.status)}`}
-                >
-                  {statusMeta.label}
-                </div>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Universidad
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {getUniversityDisplayNameByCode(project.university)}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Nivel
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {getDegreeLevelLabel(project.degreeLevel)}
-                </p>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Programa
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">{project.program}</p>
-              </div>
-              <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                  Plantilla
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  {getTemplateDisplayLabel(project.templateKey)}
-                </p>
-              </div>
-            </div>
-          </details>
         </aside>
 
         <section className="grid gap-6">
           <section className="surface-panel scroll-mt-32 rounded-[32px] p-6 sm:p-8" id="intake">
             <div className="mb-6">
               <p className="brand-kicker">
-                Intake estructurado
+                {copy.projectPage.intakeKicker}
               </p>
               <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-                Construye una base mas clara para tu tesis.
+                {copy.projectPage.intakeTitle}
               </h2>
               <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-                El objetivo aqui no es llenar un formulario administrativo, sino traducir tu idea en una estructura que luego podamos validar y enriquecer.
+                {copy.projectPage.intakeBody}
               </p>
             </div>
 
-            <IntakeForm project={project} />
+            <IntakeForm project={project} language={language} />
           </section>
 
           <div className="scroll-mt-32" id="fuentes">
@@ -247,6 +210,7 @@ export default async function ProjectDetailPage({
               }}
               initialSearchSnapshot={initialReferenceSearchSnapshot}
               initialReferences={references}
+              language={language}
               projectId={project.id}
               status={project.status}
             />
@@ -255,6 +219,7 @@ export default async function ProjectDetailPage({
           <div className="scroll-mt-32" id="blueprint">
             <BlueprintPanel
               hasIntakeMinimum={hasIntakeMinimum}
+              language={language}
               projectId={project.id}
               projectStatus={project.status}
               selectedReferenceCount={selectedReferenceCount}
@@ -271,9 +236,10 @@ export default async function ProjectDetailPage({
           <ExportPanel
             hasBlueprint={blueprintVersions.length > 0}
             hasIntakeMinimum={hasIntakeMinimum}
+            language={language}
             latestBlueprintId={latestBlueprint?.id ?? null}
             latestBlueprintCreatedAt={
-              latestBlueprint ? latestBlueprint.createdAt.toLocaleString("es-PE") : null
+              latestBlueprint ? latestBlueprint.createdAt.toLocaleString(locale) : null
             }
             latestBlueprintReferenceCount={latestBlueprintJson?.references_used?.length ?? 0}
             latestBlueprintVersionNumber={latestBlueprint?.versionNumber ?? null}

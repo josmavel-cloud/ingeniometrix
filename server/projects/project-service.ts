@@ -1,4 +1,4 @@
-import { TopicSuggestionSourceType } from "@prisma/client";
+import { TopicSelectionStatus, TopicSuggestionSourceType } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
@@ -15,48 +15,95 @@ export async function createProjectForUser(userId: string, input: CreateProjectI
     topicAreaId: input.topicAreaId,
     topicAreaLabel: input.topicAreaLabel,
   });
+  const advisorNotes =
+    "Tema inicial seleccionado al crear el proyecto. Completa problema, poblacion y restricciones antes de buscar fuentes.";
 
-  return prisma.project.create({
-    data: {
-      userId,
-      catalogTopicId: input.catalogTopicId,
-      title: input.title,
-      degreeLevel: input.degreeLevel,
-      university: input.university,
-      program: input.program,
-      templateKey: input.templateKey,
-      topicOriginType: input.topicOriginType,
-      topicSeedText: seedText,
-      topicAreaId: resolvedArea.topicAreaId,
-      topicAreaLabel: resolvedArea.topicAreaLabel,
-      topicSuggestions: {
-        create: {
-          sourceType: TopicSuggestionSourceType.USER_SEED,
-          seedText,
-          title: seedText,
-          researchLine: resolvedArea.topicAreaLabel ?? null,
-          rationale: "Idea original registrada al crear el proyecto.",
-          metadataJson: {
-            topicOriginType: input.topicOriginType,
-            variantKind: "USER_SEED",
-            suggestedIntake: {
-              researchLine: resolvedArea.topicAreaLabel ?? null,
-              advisorNotes:
-                "Puedes mantener esta idea original o elegir una version mas tecnica antes del intake.",
-            },
+  return prisma.$transaction(async (tx) => {
+    const project = await tx.project.create({
+      data: {
+        userId,
+        catalogTopicId: input.catalogTopicId,
+        title: input.title,
+        degreeLevel: input.degreeLevel,
+        university: input.university,
+        program: input.program,
+        language: input.language,
+        templateKey: input.templateKey,
+        topicOriginType: input.topicOriginType,
+        topicSeedText: seedText,
+        topicAreaId: resolvedArea.topicAreaId,
+        topicAreaLabel: resolvedArea.topicAreaLabel,
+      },
+    });
+
+    const suggestion = await tx.projectTopicSuggestion.create({
+      data: {
+        projectId: project.id,
+        sourceType: TopicSuggestionSourceType.USER_SEED,
+        seedText,
+        title: input.title,
+        researchLine: resolvedArea.topicAreaLabel ?? null,
+        rationale: "Idea inicial registrada al crear el proyecto.",
+        selected: true,
+        metadataJson: {
+          topicOriginType: input.topicOriginType,
+          variantKind: "USER_SEED",
+          suggestedIntake: {
+            topic: input.title,
+            researchLine: resolvedArea.topicAreaLabel ?? null,
+            advisorNotes,
           },
         },
       },
-    },
+    });
+
+    return tx.project.update({
+      where: { id: project.id },
+      data: {
+        selectedTopicSuggestionId: suggestion.id,
+        topicSelectionStatus: TopicSelectionStatus.SELECTED,
+        intake: {
+          create: {
+            topic: input.title,
+            researchLine: resolvedArea.topicAreaLabel ?? null,
+            advisorNotes,
+          },
+        },
+      },
+    });
   });
 }
 
-export async function listProjectsForUser(userId: string) {
+export async function listProjectsForUser(
+  userId: string,
+  options?: {
+    take?: number;
+  },
+) {
   return prisma.project.findMany({
     where: { userId },
     orderBy: { updatedAt: "desc" },
+    take: Math.max(1, Math.min(options?.take ?? 60, 100)),
     include: {
       intake: true,
+      blueprintJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      blueprintVersions: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
+      generatedArtifacts: {
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          kind: true,
+          fileName: true,
+          byteSize: true,
+          updatedAt: true,
+        },
+      },
     },
   });
 }

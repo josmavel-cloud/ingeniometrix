@@ -1,6 +1,7 @@
 import { DegreeLevel, University } from "@prisma/client";
 import { NextResponse } from "next/server";
 
+import { APP_DEFAULT_LANGUAGE, normalizeLanguageCode } from "@/lib/language";
 import { resolveTemplateKeyForMvp } from "@/lib/system-master-template";
 import { requireCurrentUser } from "@/server/auth/session";
 import { generateIdeaDrafts } from "@/server/projects/idea-draft-service";
@@ -37,6 +38,9 @@ export async function POST(request: Request) {
       degreeLevel: degreeLevel as DegreeLevel,
       university: university as University,
       program: normalizeOptionalText(payload.program) ?? "Programa de posgrado",
+      language:
+        normalizeLanguageCode(normalizeOptionalText(payload.language)) ??
+        APP_DEFAULT_LANGUAGE,
       templateKey,
       topicAreaId: normalizeOptionalText(payload.topicAreaId) ?? null,
       topicAreaLabel: normalizeOptionalText(payload.topicAreaLabel) ?? null,

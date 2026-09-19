@@ -1,17 +1,26 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import {
+  assertLoginAllowed,
+  clearLoginFailures,
+  recordLoginFailure,
+} from "@/server/auth/login-throttle";
+import { verifyPassword } from "@/server/auth/password";
 import { createSession, validateEmail } from "@/server/auth/session";
 
 export async function POST(request: Request) {
+  let stage = "READ_BODY";
+
   try {
+    stage = "READ_BODY";
     const body = (await request.json()) as {
       email?: string;
-      name?: string;
+      password?: string;
     };
 
-    const email = body.email?.trim().toLowerCase();
-    const name = body.name?.trim() || null;
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
 
     if (!email || !validateEmail(email)) {
       return NextResponse.json(
@@ -20,18 +29,35 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await prisma.user.upsert({
+    const throttle = await assertLoginAllowed(request, email);
+    if (!throttle.allowed) {
+      return NextResponse.json(
+        { error: "Demasiados intentos. Intenta nuevamente mas tarde." },
+        { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds) } },
+      );
+    }
+
+    stage = "USER_LOOKUP";
+    const user = await prisma.user.findUnique({
       where: { email },
-      update: {
-        name,
-      },
-      create: {
-        email,
-        name,
-      },
     });
 
-    await createSession({ userId: user.id });
+    stage = "VERIFY_PASSWORD";
+    const passwordValid = await verifyPassword(password, user?.passwordHash);
+    if (!user || !passwordValid) {
+      const blockedUntil = await recordLoginFailure(throttle.keyHash);
+      return NextResponse.json(
+        { error: "Credenciales invalidas." },
+        {
+          status: blockedUntil ? 429 : 401,
+          headers: blockedUntil ? { "Retry-After": String(15 * 60) } : undefined,
+        },
+      );
+    }
+
+    stage = "CREATE_SESSION";
+    await clearLoginFailures(throttle.keyHash);
+    await createSession({ userId: user.id, userAgent: request.headers.get("user-agent") });
 
     return NextResponse.json({
       user: {
@@ -40,7 +66,9 @@ export async function POST(request: Request) {
         name: user.name,
       },
     });
-  } catch {
+  } catch (error) {
+    console.error(`Unable to start Ingeniometrix session at ${stage}.`, error);
+
     return NextResponse.json(
       { error: "No se pudo iniciar la sesion." },
       { status: 500 },

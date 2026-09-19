@@ -1,19 +1,23 @@
 import type { MetadataRoute } from "next";
 
+import { getPublicUrl } from "@/lib/public-site";
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/campana", "/recursos"],
+      allow: ["/", "/recursos", "/recursos/"],
       disallow: [
         "/api/",
         "/blueprint-launch/",
+        "/campana",
         "/lab/",
         "/preview/",
         "/projects/",
+        "/reviews/",
         "/workspace/",
       ],
     },
-    sitemap: "https://ingeniometrix.com/sitemap.xml",
+    sitemap: getPublicUrl("/sitemap.xml"),
   };
 }

@@ -80,6 +80,7 @@ export async function verifyPdfAccess(pdfUrl: string | null) {
 
 export function extractAccessSignals(input: {
   rawOpenAlexJson: unknown | null;
+  rawCrossrefJson?: unknown | null;
   landingPageUrl: string | null;
   doi: string | null;
 }) {
@@ -107,9 +108,36 @@ export function extractAccessSignals(input: {
     record.open_access !== null
       ? (record.open_access as Record<string, unknown>)
       : null;
+  const crossrefRecord =
+    typeof input.rawCrossrefJson === "object" &&
+    input.rawCrossrefJson !== null &&
+    !Array.isArray(input.rawCrossrefJson)
+      ? (input.rawCrossrefJson as Record<string, unknown>)
+      : null;
+  const crossrefLinks = Array.isArray(crossrefRecord?.link)
+    ? crossrefRecord.link.filter(
+        (link): link is Record<string, unknown> =>
+          typeof link === "object" && link !== null && !Array.isArray(link),
+      )
+    : [];
+  const crossrefPdfUrl =
+    crossrefLinks
+      .map((link) => {
+        const url = typeof link.URL === "string" ? link.URL : null;
+        const contentType =
+          typeof link["content-type"] === "string" ? link["content-type"] : "";
+
+        return url &&
+          (contentType.toLowerCase().includes("pdf") ||
+            url.toLowerCase().includes(".pdf"))
+          ? url
+          : null;
+      })
+      .find((url): url is string => Boolean(url)) ?? null;
   const pdfUrl =
     (typeof bestOaLocation?.pdf_url === "string" && bestOaLocation.pdf_url) ||
     (typeof primaryLocation?.pdf_url === "string" && primaryLocation.pdf_url) ||
+    crossrefPdfUrl ||
     null;
 
   return {

@@ -358,6 +358,7 @@ export type AcademicDocument = {
   artifact_type: "academic_document_model";
   artifact_version: "v1";
   variant: AcademicDocumentVariant;
+  language: string;
   template_key: string;
   template_name: string;
   citation_style: AcademicCitationStyle;

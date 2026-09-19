@@ -5,6 +5,7 @@ import type {
   SectionGenerationPlanItem,
   SectionPromptManifestItem,
 } from "@/server/blueprint-v2/types";
+import { getLanguageInstruction, normalizeLanguageCode } from "@/lib/language";
 import { clipText } from "@/server/blueprint-v2/utils";
 
 function formatEvidenceSnippet(text: string) {
@@ -19,6 +20,11 @@ export function buildSectionPrompt(input: {
   priorSections: Array<{ section_key: string; title: string; content: string }>;
   manifestItem: Omit<SectionPromptManifestItem, "prompt">;
 }) {
+  const language = normalizeLanguageCode(input.project.language) ?? "es";
+  const outputLanguageLock =
+    language === "en"
+      ? "- OUTPUT LANGUAGE LOCK: write the final section entirely in English. Spanish labels or intake text are context and must be translated/paraphrased into natural academic English."
+      : "- BLOQUEO DE IDIOMA: escribe la seccion final enteramente en espanol academico. No conserves narrativa en ingles salvo nombres propios o titulos de fuentes.";
   const evidenceLines = input.manifestItem.evidence_snippet_ids
     .map((snippetId) => input.evidenceLedger.snippets.find((snippet) => snippet.snippet_id === snippetId))
     .filter((snippet): snippet is NonNullable<typeof snippet> => Boolean(snippet))
@@ -57,9 +63,11 @@ export function buildSectionPrompt(input: {
     .join("\n\n");
 
   return `
-Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado en espanol, usando como contrato la plantilla maestra del sistema.
+Eres Ingeniometrix. Debes redactar SOLO la seccion indicada de un plan de tesis de posgrado, usando como contrato la plantilla maestra del sistema.
 
 Reglas:
+- ${getLanguageInstruction(language)}
+${outputLanguageLock}
 - no inventes citas
 - no inventes datos
 - no inventes resultados

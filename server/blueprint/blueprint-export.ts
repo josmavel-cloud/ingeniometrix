@@ -64,6 +64,10 @@ export function extractExportReferences(blueprintVersion: {
         return [];
       }
 
+      if (record.eligible_for_formal_reference === false) {
+        return [];
+      }
+
       return [{
         reference_id: normalizeText(record.reference_id) ?? "",
         title: normalizeText(record.title) ?? "Referencia sin titulo",

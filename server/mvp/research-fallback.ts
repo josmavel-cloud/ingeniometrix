@@ -105,6 +105,10 @@ export async function ensureResearchCoverage(input: { userId: string; projectId:
       },
       deep: async (ledger) => {
         if (!remaining || !shouldExpandEvidence(assessEvidenceCoverage(ledger))) return ledger;
+        if (process.env.IMX_ENABLE_DEEP_RESEARCH !== "1") {
+          audit.warnings.push("Deep Research disabled for the secure pilot; unresolved coverage remains blocked.");
+          return ledger;
+        }
         const discovered = await discoverWithDeepResearch({ intake: input.intake, uncovered_dimensions: assessEvidenceCoverage(ledger).uncovered_dimensions, known_dois: [...knownDois], max_sources: Math.min(remaining, 5), preferred_sources: ["scholarly publishers", "university repositories", "official research institutions"] }, input.artifactDir, { projectId: input.projectId, runId: input.runId });
         audit.candidates.push(...discovered);
         return inspectCandidates(discovered, ledger, "tier3");

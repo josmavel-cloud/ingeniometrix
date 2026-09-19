@@ -85,6 +85,8 @@ export type ProjectReferenceSearchSnapshot = {
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
     suggestedSelectedOrder: number | null;
+    pdfUrl?: string | null;
+    pdfAccessible?: boolean;
   }>;
 };
 
@@ -1542,6 +1544,8 @@ export async function searchProjectReferencesV2(
     referenceId: string;
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
+    pdfUrl: string | null;
+    pdfAccessible: boolean;
   }> = [];
 
   for (const ranked of selectedCandidates) {
@@ -1638,6 +1642,8 @@ export async function searchProjectReferencesV2(
       referenceId: reference.id,
       relevanceScore: ranked.score,
       scoreBreakdown: ranked.scoreBreakdown,
+      pdfUrl: ranked.pdfUrl,
+      pdfAccessible: ranked.pdfAccessible,
     });
   }
 
@@ -1678,6 +1684,8 @@ export async function searchProjectReferencesV2(
       relevanceScore: item.relevanceScore,
       scoreBreakdown: item.scoreBreakdown,
       suggestedSelectedOrder: suggestedSelectionOrders.get(item.referenceId) ?? null,
+      pdfUrl: item.pdfUrl,
+      pdfAccessible: item.pdfAccessible,
     })),
   };
 

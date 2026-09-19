@@ -7,6 +7,7 @@ import type {
   MasterBlueprintEngineProject,
   MasterSectionDraft,
 } from "@/server/blueprint-v2/types";
+import { getLanguageInstruction, normalizeLanguageCode } from "@/lib/language";
 import { clipText } from "@/server/blueprint-v2/utils";
 
 import { buildMethodBundle } from "@/server/blueprint-v2/sections/section-method-bundles";
@@ -541,11 +542,21 @@ function buildCompactRuntimeBasePrompt(input: {
   planItem: ExtendedPlanItem;
   project: MasterBlueprintEngineProject;
 }) {
+  const language = normalizeLanguageCode(input.project.language) ?? "es";
+  const outputLanguageLock =
+    language === "en"
+      ? "- OUTPUT LANGUAGE LOCK: write the final section entirely in English. Translate or paraphrase any Spanish intake/template labels into natural academic English. Do not output Spanish narrative unless quoting a source title, university/program name, or user-provided proper noun."
+      : "- BLOQUEO DE IDIOMA: escribe la seccion final enteramente en espanol academico. No devuelvas narrativa en ingles salvo nombres propios, titulos de fuentes o terminos tecnicos inevitables.";
+
   return [
     "Eres un redactor academico para un proyecto de investigacion de maestria.",
     "No redactas una tesis completa. Solo produces la seccion solicitada.",
     "Reglas obligatorias:",
-    "- escribe en espanol academico claro",
+    `- ${getLanguageInstruction(language)}`,
+    outputLanguageLock,
+    language === "en"
+      ? "- write in clear academic English"
+      : "- escribe en espanol academico claro",
     "- no inventes citas, datos, resultados ni validaciones locales",
     "- usa el intake como ancla del caso y la evidencia solo como soporte comparativo",
     "- si falta soporte, declara el limite como alcance pendiente o validacion futura",
@@ -666,6 +677,7 @@ export function buildGenerationPrompt(input: {
     input.executionProfile.execution_mode,
     input.executionProfile.prompt_budget,
     input.basePrompt,
+    input.project.language,
     JSON.stringify(input.manifestItem.source_ids ?? input.manifestItem.supporting_source_ids),
     JSON.stringify(input.manifestItem.evidence_snippet_ids),
     input.priorSections.map((section) => `${section.section_key}:${section.content}`).join("|"),
@@ -678,6 +690,11 @@ export function buildGenerationPrompt(input: {
   }
 
   const theoreticalSection = isTheoreticalSection(input.planItem.section_key);
+  const language = normalizeLanguageCode(input.project.language) ?? "es";
+  const outputLanguageLock =
+    language === "en"
+      ? "- OUTPUT LANGUAGE LOCK: return only English academic prose in the final answer. Spanish template labels and intake phrasing are input context, not output language."
+      : "- BLOQUEO DE IDIOMA: devuelve solo prosa academica en espanol en la respuesta final. Los textos ingleses de fuentes son contexto, no idioma de salida.";
   const methodSection = isMethodSection(input.planItem.section_key);
   const citationPolicy = buildCitationPolicy({
     sectionKey: input.planItem.section_key,
@@ -881,6 +898,7 @@ export function buildGenerationPrompt(input: {
           "- usa la evidencia para redactar, pero deja las citas como coordenadas internas; el sistema registrara citation_intents para el DOCX",
           "- si necesitas una tabla, usa filas separadas por tabuladores; no uses tablas Markdown con |---|",
           "- no uses Markdown visible: sin ##, sin **, sin cursivas con asteriscos",
+          outputLanguageLock,
           "- no conviertas el proyecto en validacion definitiva, cumplimiento normativo cerrado o factibilidad total demostrada",
           "- si la evidencia no alcanza, declara el limite o deja la formulacion como propuesta preliminar",
           "- no repitas objetivos, preguntas ni encabezados; usa vinetas solo donde mejoren la lectura",

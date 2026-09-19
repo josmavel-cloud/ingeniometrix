@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { PROJECT_CAREERS } from "@/lib/project-presets";
-import { getTopicAreaLabel, normalizeSearchText } from "@/lib/topic-suggestion-scoring";
+import { PROJECT_CAREERS, PROJECT_PRESETS } from "@/lib/project-presets";
+import {
+  buildPresetSearchText,
+  getInterestTokens,
+  getMatchingSearchTokens,
+  getTopicAreaLabel,
+  normalizeSearchText,
+} from "@/lib/topic-suggestion-scoring";
 import { normalizeTopicAreaSemantically } from "@/server/projects/topic-area-normalizer";
 
 type TopicAreaSuggestion = {
@@ -164,13 +170,59 @@ async function persistTopicAreaEntry(input: {
 
 export async function listTopicAreaSuggestions(query?: string) {
   const normalizedQuery = normalizeSearchText(query ?? "");
-  const catalogSuggestions = PROJECT_CAREERS.filter((career) => {
+  const queryTokens = getInterestTokens(query ?? "");
+  const rankedCatalogSuggestions = PROJECT_CAREERS.map((career) => {
     if (!normalizedQuery) {
-      return true;
+      return {
+        career,
+        score: 1,
+      };
     }
 
-    return normalizeSearchText(career.label).includes(normalizedQuery);
-  }).map((career) =>
+    const careerLabel = normalizeSearchText(career.label);
+    let score = 0;
+
+    if (careerLabel.includes(normalizedQuery) || normalizedQuery.includes(careerLabel)) {
+      score += 20;
+    }
+
+    const careerTokens = getMatchingSearchTokens({
+      queryTokens,
+      searchText: careerLabel,
+    });
+    score += careerTokens.length * 5;
+
+    const presetMatches = PROJECT_PRESETS.filter((preset) => preset.careerId === career.id)
+      .map((preset) => {
+        const searchText = buildPresetSearchText(preset);
+        const tokenMatches = getMatchingSearchTokens({
+          queryTokens,
+          searchText,
+        });
+        const directMatch =
+          normalizedQuery.length >= 5 && searchText.includes(normalizedQuery) ? 1 : 0;
+
+        return tokenMatches.length * 4 + directMatch * 10;
+      })
+      .reduce((total, presetScore) => total + presetScore, 0);
+
+    score += presetMatches;
+
+    return {
+      career,
+      score,
+    };
+  })
+    .filter((entry) => !normalizedQuery || entry.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+
+      return left.career.label.localeCompare(right.career.label, "es");
+    });
+
+  const catalogSuggestions = rankedCatalogSuggestions.map(({ career }) =>
     toTopicAreaSuggestion({
       label: career.label,
       canonicalAreaId: career.id,

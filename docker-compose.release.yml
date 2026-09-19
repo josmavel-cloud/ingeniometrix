@@ -1,0 +1,85 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ingeniometrix_release0}
+      POSTGRES_USER: ${POSTGRES_USER:-ingeniometrix}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-55436}:5432"
+    volumes:
+      - release_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ingeniometrix} -d ${POSTGRES_DB:-ingeniometrix_release0}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.release
+      target: migration
+    environment: &release-env
+      NODE_ENV: production
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3301}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ingeniometrix}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ingeniometrix_release0}
+      DATABASE_URL_UNPOOLED: postgresql://${POSTGRES_USER:-ingeniometrix}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-ingeniometrix_release0}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      CROSSREF_MAILTO: ${CROSSREF_MAILTO:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-gpt-5.4}
+      LLM_FAST_MODEL: ${LLM_FAST_MODEL:-gpt-5.4-mini}
+      IMX_ENABLE_DEEP_RESEARCH: "0"
+      IMX_AUTHLESS_WORKSPACE: "0"
+      IMX_ARTIFACTS_DIR: /app/artifacts-local
+      BLUEPRINT_WORKER_SECRET: ${BLUEPRINT_WORKER_SECRET:?set BLUEPRINT_WORKER_SECRET}
+      BLUEPRINT_MAX_ATTEMPTS: ${BLUEPRINT_MAX_ATTEMPTS:-3}
+      BLUEPRINT_STALE_LOCK_MS: ${BLUEPRINT_STALE_LOCK_MS:-600000}
+      BLUEPRINT_HEARTBEAT_MS: ${BLUEPRINT_HEARTBEAT_MS:-30000}
+      BLUEPRINT_WORKER_POLL_MS: ${BLUEPRINT_WORKER_POLL_MS:-2000}
+      IMX_SESSION_MAX_AGE_SECONDS: ${IMX_SESSION_MAX_AGE_SECONDS:-43200}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["npm", "run", "db:migrate:deploy"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.release
+      target: runtime
+    restart: unless-stopped
+    environment: *release-env
+    ports:
+      - "${APP_PORT:-3301}:3000"
+    volumes:
+      - release_artifacts:/app/artifacts-local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/ >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.release
+      target: runtime
+    restart: unless-stopped
+    environment: *release-env
+    volumes:
+      - release_artifacts:/app/artifacts-local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    command: ["npm", "run", "worker:release"]
+
+volumes:
+  release_postgres:
+  release_artifacts:

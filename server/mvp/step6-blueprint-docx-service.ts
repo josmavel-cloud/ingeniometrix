@@ -391,9 +391,6 @@ function resolveIngeniometrixLogoPath() {
     path.join(process.cwd(), "public", "brand", "ingeniometrix-lockup-960.png"),
     path.join(process.cwd(), "public", "brand", "ingeniometrix-lockup-640.png"),
     path.join(process.cwd(), "public", "brand", "ingeniometrix-lockup.png"),
-    "/home/pepe/.openclaw/workspace/ingeniometrix/public/brand/ingeniometrix-lockup-960.png",
-    "/home/pepe/.openclaw/workspace/ingeniometrix/public/brand/ingeniometrix-lockup-640.png",
-    "/home/pepe/.openclaw/workspace/ingeniometrix/public/brand/ingeniometrix-lockup.png",
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }

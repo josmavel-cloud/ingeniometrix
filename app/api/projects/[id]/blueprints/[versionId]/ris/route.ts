@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { GeneratedArtifactKind } from "@prisma/client";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { extractExportReferences, renderRis } from "@/server/blueprint/blueprint-export";
 import { getBlueprintVersionForUser } from "@/server/blueprint/blueprint-service";
 
@@ -25,6 +27,19 @@ export async function GET(_request: Request, context: RouteContext) {
     const references = extractExportReferences(blueprintVersion);
     const body = renderRis(references);
     const filename = `${slugify(blueprintVersion.id)}-ingeniometrix-referencias.ris`;
+    await upsertGeneratedArtifact({
+      userId: user.id,
+      projectId: id,
+      blueprintVersionId: versionId,
+      kind: GeneratedArtifactKind.RIS,
+      fileName: filename,
+      mimeType: "application/x-research-info-systems; charset=utf-8",
+      content: body,
+      metadataJson: {
+        exportRoute: "blueprint-ris",
+        referenceCount: references.length,
+      },
+    });
 
     return new NextResponse(body, {
       status: 200,

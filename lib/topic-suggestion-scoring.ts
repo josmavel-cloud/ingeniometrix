@@ -28,6 +28,20 @@ export function normalizeSearchText(value: string) {
     .trim();
 }
 
+function getTokenVariants(token: string) {
+  const variants = new Set([token]);
+
+  if (token.endsWith("es") && token.length > 5) {
+    variants.add(token.slice(0, -2));
+  }
+
+  if (token.endsWith("s") && token.length > 4) {
+    variants.add(token.slice(0, -1));
+  }
+
+  return Array.from(variants);
+}
+
 export function getInterestTokens(value: string) {
   const normalized = normalizeSearchText(value);
 
@@ -42,6 +56,33 @@ export function getInterestTokens(value: string) {
         .map((token) => token.trim())
         .filter((token) => token.length >= 4),
     ),
+  );
+}
+
+export function buildPresetSearchText(preset: ProjectPreset) {
+  return normalizeSearchText(
+    [
+      preset.careerLabel,
+      preset.label,
+      preset.title,
+      preset.researchLine,
+      ...preset.intakePresets.flatMap((intake) => [
+        intake.label,
+        intake.topic,
+        intake.problemContext,
+        intake.researchLine,
+        intake.targetPopulation,
+      ]),
+    ].join(" "),
+  );
+}
+
+export function getMatchingSearchTokens(input: {
+  queryTokens: string[];
+  searchText: string;
+}) {
+  return input.queryTokens.filter((token) =>
+    getTokenVariants(token).some((variant) => input.searchText.includes(variant)),
   );
 }
 
@@ -72,7 +113,7 @@ export function buildProjectPresetSuggestionEntries(params: {
       let score = 0;
 
       if (preset.degreeLevel === degreeLevel) {
-        score += 5;
+        score += 2;
         reasons.push(
           degreeLevel === "MAESTRIA"
             ? "Encaja con maestria."
@@ -85,18 +126,21 @@ export function buildProjectPresetSuggestionEntries(params: {
         reasons.push("Se alinea con el area definida.");
       }
 
-      const haystack = normalizeSearchText(
-        [preset.label, preset.title, preset.researchLine].join(" "),
-      );
-      const matchingTokens = interestTokens.filter((token) => haystack.includes(token));
+      const haystack = buildPresetSearchText(preset);
+      const matchingTokens = getMatchingSearchTokens({
+        queryTokens: interestTokens,
+        searchText: haystack,
+      });
 
       if (matchingTokens.length > 0) {
-        score += matchingTokens.length * 3;
+        score += matchingTokens.length * 6;
         reasons.push(
           `Se acerca a tu interes: ${matchingTokens.slice(0, 2).join(", ")}.`,
         );
-      } else if (normalizedInterest.length >= 10 && haystack.includes(normalizedInterest)) {
-        score += 4;
+      }
+
+      if (normalizedInterest.length >= 5 && haystack.includes(normalizedInterest)) {
+        score += 10;
         reasons.push("Se alinea de forma directa con lo que escribiste.");
       }
 

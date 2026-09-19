@@ -4,7 +4,12 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
 
-import { getProjectStatusMeta, getProjectStatusToneClasses } from "@/lib/project-status";
+import type { SupportedLanguage } from "@/lib/language";
+import {
+  getProjectStatusMetaForLanguage,
+  getProjectUiCopy,
+} from "@/lib/project-ui-copy";
+import { getProjectStatusToneClasses } from "@/lib/project-status";
 import {
   REFERENCE_BATCH_SIZE,
   MAX_SELECTED_REFERENCES,
@@ -65,6 +70,7 @@ type ReferenceSearchSnapshot = {
       complementary: Array<{ label: string; variants: string[] }>;
       optional: Array<{ label: string; variants: string[] }>;
     };
+    providerWarnings?: string[];
     queryPack: {
       necessaryOnly: string[];
       complementaryBoosted: string[];
@@ -92,6 +98,7 @@ type ReferenceSearchPanelProps = {
   };
   initialSearchSnapshot: ReferenceSearchSnapshot | null;
   initialReferences: ReferenceListItem[];
+  language: SupportedLanguage;
 };
 
 function renderAuthors(authorsJson: unknown) {
@@ -100,6 +107,26 @@ function renderAuthors(authorsJson: unknown) {
   }
 
   return authorsJson.filter((author): author is string => typeof author === "string").join(", ");
+}
+
+function renderScoreLabel(label: string | null | undefined, language: SupportedLanguage) {
+  if (!label || language !== "en") {
+    return label;
+  }
+
+  if (label === "ALTO") {
+    return "HIGH";
+  }
+
+  if (label === "MEDIO") {
+    return "MEDIUM";
+  }
+
+  if (label === "MINIMO") {
+    return "MINIMUM";
+  }
+
+  return "LOW";
 }
 
 function mergeReferenceLists(
@@ -150,8 +177,10 @@ export function ReferenceSearchPanel({
   intakeSnapshot,
   initialSearchSnapshot,
   initialReferences,
+  language,
 }: ReferenceSearchPanelProps) {
   const router = useRouter();
+  const copy = getProjectUiCopy(language).sourceSearch;
   const [references, setReferences] = useState(initialReferences);
   const [searchSnapshot, setSearchSnapshot] = useState<ReferenceSearchSnapshot | null>(
     initialSearchSnapshot,
@@ -175,20 +204,20 @@ export function ReferenceSearchPanel({
   );
   const nextVisibleTarget = Math.min(visibleCount + REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES);
   const canExpand = visibleCount < Math.min(references.length, MAX_SELECTED_REFERENCES);
-  const statusMeta = getProjectStatusMeta(status);
+  const statusMeta = getProjectStatusMetaForLanguage(status, language);
   const intakeChecklist = [
     {
-      label: "Tema",
+      label: copy.topic,
       ready: intakeSnapshot.topic.trim().length > 0,
       value: intakeSnapshot.topic,
     },
     {
-      label: "Contexto del problema",
+      label: copy.problemContext,
       ready: intakeSnapshot.problemContext.trim().length > 0,
       value: intakeSnapshot.problemContext,
     },
     {
-      label: "Poblacion objetivo",
+      label: copy.targetPopulation,
       ready: intakeSnapshot.targetPopulation.trim().length > 0,
       value: intakeSnapshot.targetPopulation,
     },
@@ -199,7 +228,7 @@ export function ReferenceSearchPanel({
       const isSelected = current.find((item) => item.reference.id === referenceId)?.selected;
 
       if (!isSelected && selectedCount >= MAX_SELECTED_REFERENCES) {
-        setError(`Puedes seleccionar hasta ${MAX_SELECTED_REFERENCES} fuentes en esta etapa.`);
+        setError(copy.maxSelected(MAX_SELECTED_REFERENCES));
         return current;
       }
 
@@ -224,81 +253,82 @@ export function ReferenceSearchPanel({
     setInfo(null);
 
     if (!hasIntakeMinimum) {
-      setInfo(
-        "Completa primero el minimo del intake para que la busqueda tenga suficiente contexto.",
-      );
+      setInfo(copy.minimumIntakeInfo);
       return;
     }
 
     startSearchTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ desiredTotal }),
-      });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ desiredTotal }),
+        });
 
-      const payload = (await response.json()) as {
-        error?: string;
-        result?: {
-          totalResults: number;
-          attemptedQueries: string[];
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          result?: {
+            totalResults: number;
+            attemptedQueries: string[];
+          };
         };
-      };
 
-      if (!response.ok) {
-        setError(payload.error ?? "No se pudo ejecutar la busqueda.");
-        return;
-      }
+        if (!response.ok) {
+          setError(payload.error ?? copy.searchError);
+          return;
+        }
 
-      const refreshResponse = await fetch(`/api/projects/${projectId}/references`);
-      const refreshPayload = (await refreshResponse.json()) as {
-        error?: string;
-        references?: ReferenceListItem[];
-        searchSnapshot?: ReferenceSearchSnapshot | null;
-      };
+        const refreshResponse = await fetch(`/api/projects/${projectId}/references`);
+        const refreshPayload = (await refreshResponse.json().catch(() => ({}))) as {
+          error?: string;
+          references?: ReferenceListItem[];
+          searchSnapshot?: ReferenceSearchSnapshot | null;
+        };
 
-      if (!refreshResponse.ok || !refreshPayload.references) {
-        setError(refreshPayload.error ?? "No se pudo cargar la lista de fuentes.");
-        return;
-      }
+        if (!refreshResponse.ok || !refreshPayload.references) {
+          setError(refreshPayload.error ?? copy.referencesLoadError);
+          return;
+        }
 
-      let mergedReferencesLength = refreshPayload.references.length;
-      let newUniqueCount = refreshPayload.references.length;
+        let mergedReferencesLength = refreshPayload.references.length;
+        let newUniqueCount = refreshPayload.references.length;
 
-      setReferences((current) => {
-        const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
-        mergedReferencesLength = merged.length;
-        newUniqueCount = Math.max(0, merged.length - current.length);
-        return merged;
-      });
-      setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
-      setVisibleCount((current) =>
-        Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
-      );
-
-      const totalResults = payload.result?.totalResults ?? 0;
-
-      if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
-        setMessage(
-          desiredTotal > REFERENCE_BATCH_SIZE
-            ? `Anadimos ${newUniqueCount} fuente(s) nueva(s) y mantuvimos tu seleccion actual.`
-            : `Busqueda completada. Revisa las primeras ${Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE)} fuentes y selecciona entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} referencias para continuar.`,
+        setReferences((current) => {
+          const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
+          mergedReferencesLength = merged.length;
+          newUniqueCount = Math.max(0, merged.length - current.length);
+          return merged;
+        });
+        setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
+        setVisibleCount((current) =>
+          Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
         );
-        setInfo(null);
-      } else if (mergedReferencesLength > 0) {
-        setMessage(null);
-        setInfo(
-          "No encontramos referencias nuevas en este intento, pero mantuvimos las fuentes ya cargadas en el proyecto.",
-        );
-      } else {
-        setMessage(null);
-        setInfo(
-          "No encontramos referencias con esta formulacion. Ajusta el intake o vuelve a intentar con un tema mas concreto.",
-        );
-      }
 
+        const totalResults = payload.result?.totalResults ?? 0;
+
+        if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
+          setMessage(
+            desiredTotal > REFERENCE_BATCH_SIZE
+              ? copy.addedNew(newUniqueCount)
+              : copy.searchCompleted(
+                  Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE),
+                  MIN_SELECTED_REFERENCES,
+                  MAX_SELECTED_REFERENCES,
+                ),
+          );
+          setInfo(null);
+        } else if (mergedReferencesLength > 0) {
+          setMessage(null);
+          setInfo(copy.noNew);
+        } else {
+          setMessage(null);
+          setInfo(copy.noResults);
+        }
+      } catch {
+        setError(copy.searchError);
+      }
     });
   }
 
@@ -333,30 +363,32 @@ export function ReferenceSearchPanel({
       selectedReferenceIds.length < MIN_SELECTED_REFERENCES ||
       selectedReferenceIds.length > MAX_SELECTED_REFERENCES
     ) {
-      setError(
-        `Debes seleccionar entre ${MIN_SELECTED_REFERENCES} y ${MAX_SELECTED_REFERENCES} fuentes para continuar.`,
-      );
+      setError(copy.saveRange(MIN_SELECTED_REFERENCES, MAX_SELECTED_REFERENCES));
       return;
     }
 
     startSaveTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/references`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ selectedReferenceIds }),
-      });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/references`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ selectedReferenceIds }),
+        });
 
-      const payload = (await response.json()) as { error?: string };
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
 
-      if (!response.ok) {
-        setError(payload.error ?? "No se pudo guardar la seleccion.");
-        return;
+        if (!response.ok) {
+          setError(payload.error ?? copy.saveError);
+          return;
+        }
+
+        setMessage(copy.saved);
+        router.refresh();
+      } catch {
+        setError(copy.saveError);
       }
-
-      setMessage("Seleccion de fuentes guardada.");
-      router.refresh();
     });
   }
 
@@ -366,13 +398,13 @@ export function ReferenceSearchPanel({
         <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
             <Sparkles className="size-3.5 text-lime-500" />
-            Fuentes bibliograficas
+            {copy.kicker}
           </div>
           <h2 className="font-[var(--font-heading)] text-2xl font-semibold text-slate-950">
-            Elige tus fuentes semilla.
+            {copy.title}
           </h2>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Busca, revisa y guarda entre {MIN_SELECTED_REFERENCES} y {MAX_SELECTED_REFERENCES} referencias.
+            {copy.body(MIN_SELECTED_REFERENCES, MAX_SELECTED_REFERENCES)}
           </p>
         </div>
 
@@ -390,10 +422,10 @@ export function ReferenceSearchPanel({
           >
             <Search className="mr-2 size-4" />
             {isSearching
-              ? "Buscando..."
+              ? copy.searching
               : hasIntakeMinimum
-                ? "Buscar fuentes"
-                : "Completa intake minimo"}
+                ? copy.search
+                : copy.completeIntake}
           </button>
         </div>
       </div>
@@ -406,16 +438,16 @@ export function ReferenceSearchPanel({
         }`}
       >
         {hasIntakeMinimum
-          ? "La base ya esta lista para buscar evidencia."
-          : "Falta completar tema, problema y poblacion para mejorar la busqueda."}
+          ? copy.intakeReady
+          : copy.intakeMissing}
       </div>
 
       <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm leading-6 text-slate-600">
-          Seleccionadas: <strong>{selectedCount}</strong> / {MAX_SELECTED_REFERENCES}
+          {copy.selected}: <strong>{selectedCount}</strong> / {MAX_SELECTED_REFERENCES}
         </p>
         <p className="text-sm leading-6 text-slate-500">
-          Mostrando <strong>{visibleReferences.length}</strong> de <strong>{references.length}</strong>
+          {copy.showing} <strong>{visibleReferences.length}</strong> {copy.of} <strong>{references.length}</strong>
         </p>
       </div>
 
@@ -427,7 +459,7 @@ export function ReferenceSearchPanel({
 
       <details className="mt-4 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-          Ver contexto de busqueda
+          {copy.contextSummary}
         </summary>
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           {intakeChecklist.map((item) => (
@@ -439,7 +471,7 @@ export function ReferenceSearchPanel({
                 {item.label}
               </p>
               <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-                {item.ready ? item.value : "Pendiente"}
+                {item.ready ? item.value : getProjectUiCopy(language).action.pending}
               </p>
             </article>
           ))}
@@ -449,7 +481,7 @@ export function ReferenceSearchPanel({
             <div className="grid gap-3 lg:grid-cols-3">
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Query derivada
+                  {copy.derivedQuery}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
                   {searchSnapshot.searchQuery}
@@ -457,10 +489,10 @@ export function ReferenceSearchPanel({
               </article>
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Planner
+                  {copy.planner}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
-                  {searchSnapshot.metadata.planSource === "llm" ? "LLM" : "Fallback heuristico"}
+                  {searchSnapshot.metadata.planSource === "llm" ? copy.llm : copy.fallbackPlanner}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
                   {searchSnapshot.metadata.intentSummary}
@@ -468,7 +500,7 @@ export function ReferenceSearchPanel({
               </article>
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Providers
+                  {copy.providers}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">
                   OpenAlex: {searchSnapshot.providerBreakdown.openAlex}
@@ -479,45 +511,63 @@ export function ReferenceSearchPanel({
               </article>
             </div>
 
+            {(searchSnapshot.metadata.providerWarnings ?? []).length > 0 ? (
+              <article className="rounded-[20px] border border-amber-200 bg-amber-50/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
+                  {copy.providerWarnings}
+                </p>
+                <div className="mt-2 grid gap-2">
+                  {searchSnapshot.metadata.providerWarnings?.map((warning) => (
+                    <p className="text-sm leading-6 text-amber-900" key={warning}>
+                      {warning}
+                    </p>
+                  ))}
+                </div>
+              </article>
+            ) : null}
+
             <div className="grid gap-3 lg:grid-cols-3">
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Necesarias
+                  {copy.necessary}
                 </p>
                 <div className="mt-2 grid gap-2">
                   {searchSnapshot.metadata.keywordGroups.necessary.map((group) => (
                     <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
-                      <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                      <strong>{group.label}:</strong>{" "}
+                      {group.variants.join(` ${copy.variantJoiner} `)}
                     </p>
                   ))}
                 </div>
               </article>
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Complementarias
+                  {copy.complementary}
                 </p>
                 <div className="mt-2 grid gap-2">
                   {searchSnapshot.metadata.keywordGroups.complementary.map((group) => (
                     <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
-                      <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                      <strong>{group.label}:</strong>{" "}
+                      {group.variants.join(` ${copy.variantJoiner} `)}
                     </p>
                   ))}
                 </div>
               </article>
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  No obligatorias
+                  {copy.optional}
                 </p>
                 <div className="mt-2 grid gap-2">
                   {searchSnapshot.metadata.keywordGroups.optional.length > 0 ? (
                     searchSnapshot.metadata.keywordGroups.optional.map((group) => (
                       <p className="text-sm leading-6 text-[var(--color-muted)]" key={group.label}>
-                        <strong>{group.label}:</strong> {group.variants.join(" or ")}
+                        <strong>{group.label}:</strong>{" "}
+                        {group.variants.join(` ${copy.variantJoiner} `)}
                       </p>
                     ))
                   ) : (
                     <p className="text-sm leading-6 text-[var(--color-muted)]">
-                      Sin grupo opcional para esta corrida.
+                      {copy.noOptional}
                     </p>
                   )}
                 </div>
@@ -527,7 +577,7 @@ export function ReferenceSearchPanel({
             <div className="grid gap-3 lg:grid-cols-2">
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Queries intentadas
+                  {copy.attemptedQueries}
                 </p>
                 <div className="mt-2 grid gap-2">
                   {searchSnapshot.attemptedQueries.map((query) => (
@@ -539,10 +589,10 @@ export function ReferenceSearchPanel({
               </article>
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
-                  Reglas de score
+                  {copy.scoreRules}
                 </p>
                 <div className="mt-2 grid gap-2">
-                  {searchSnapshot.metadata.scoringRules.map((rule) => (
+                  {copy.scoreRuleItems.map((rule) => (
                     <p className="text-sm leading-6 text-[var(--color-muted)]" key={rule}>
                       {rule}
                     </p>
@@ -557,10 +607,10 @@ export function ReferenceSearchPanel({
       {references.length === 0 ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
           <p className="font-[var(--font-heading)] text-xl font-semibold text-slate-950">
-            Aun no hay referencias cargadas.
+            {copy.emptyTitle}
           </p>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Guarda un intake suficiente y ejecuta la busqueda. Si sigue vacio, prueba con un tema menos largo o mas especifico.
+            {copy.emptyBody}
           </p>
         </div>
       ) : (
@@ -579,11 +629,12 @@ export function ReferenceSearchPanel({
                     type="checkbox"
                   />
                   <span>
-                    {item.selectedOrder ? `Seleccion ${item.selectedOrder}` : "No seleccionada"}
+                    {item.selectedOrder ? copy.selectedOrder(item.selectedOrder) : copy.notSelected}
                   </span>
                 </label>
                 <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                  {item.scoreBreakdown?.label ?? "BAJO"} · {item.relevanceScore?.toFixed(2) ?? "0.00"}
+                  {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)} -{" "}
+                  {item.relevanceScore?.toFixed(2) ?? "0.00"}
                 </div>
               </div>
 
@@ -593,16 +644,16 @@ export function ReferenceSearchPanel({
                 </h3>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
-                    {[item.reference.venue, item.reference.year].filter(Boolean).join(" | ") || "Sin fecha"}
+                    {[item.reference.venue, item.reference.year].filter(Boolean).join(" | ") || copy.noDate}
                   </span>
                   {item.reference.abstract ? (
                     <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-emerald-700">
-                      Abstract
+                      {copy.abstractLabel}
                     </span>
                   ) : null}
                   {item.reference.hasAutoTranslation ? (
                     <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
-                      Traducida
+                      {copy.translated}
                     </span>
                   ) : null}
                 </div>
@@ -627,7 +678,7 @@ export function ReferenceSearchPanel({
                       rel="noreferrer"
                       target="_blank"
                     >
-                      PDF
+                      {copy.pdfLabel}
                       <FileText className="ml-2 size-4" />
                     </a>
                   ) : null}
@@ -639,54 +690,61 @@ export function ReferenceSearchPanel({
                       rel="noreferrer"
                       target="_blank"
                     >
-                      Ver fuente
+                      {copy.viewSource}
                       <ExternalLink className="ml-2 size-4" />
                     </a>
                   ) : null}
 
                   <details className="text-sm text-slate-500">
                     <summary className="cursor-pointer font-semibold text-slate-600">
-                      Ver detalles
+                      {copy.details}
                     </summary>
                     <div className="mt-3 grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
-                      <p>DOI: {item.reference.doi ?? "No disponible"}</p>
-                      <p>Score label: {item.scoreBreakdown?.label ?? "No disponible"}</p>
-                      <p>Query: {item.scoreBreakdown?.matchedQuery ?? "No disponible"}</p>
+                      <p>{copy.doiLabel}: {item.reference.doi ?? copy.unavailable}</p>
                       <p>
-                        Etapa:{" "}
+                        {copy.scoreLabel}:{" "}
+                        {renderScoreLabel(item.scoreBreakdown?.label, language) ??
+                          copy.unavailable}
+                      </p>
+                      <p>
+                        {copy.queryLabel}:{" "}
+                        {item.scoreBreakdown?.matchedQuery ?? copy.unavailable}
+                      </p>
+                      <p>
+                        {copy.stage}:{" "}
                         {item.scoreBreakdown?.matchedQueryStage === "necessary_only"
-                          ? "Necesarias"
+                          ? copy.stageNecessary
                           : item.scoreBreakdown?.matchedQueryStage === "complementary_boosted"
-                            ? "Necesarias + complementaria"
-                            : "Backup opcional"}
+                            ? copy.stageComplementary
+                            : copy.stageBackup}
                       </p>
                       <p>
-                        Match necesarias:{" "}
-                        {item.scoreBreakdown?.necessaryMatches.join(", ") || "Sin match fuerte"}
+                        {copy.necessaryMatches}:{" "}
+                        {item.scoreBreakdown?.necessaryMatches.join(", ") || copy.noStrongMatch}
                       </p>
                       <p>
-                        Match complementarias:{" "}
+                        {copy.complementaryMatches}:{" "}
                         {item.scoreBreakdown?.complementaryMatches.join(", ") ||
-                          "Sin refuerzo"}
+                          copy.noBoost}
                       </p>
                       <p>
-                        Match opcionales:{" "}
-                        {item.scoreBreakdown?.optionalMatches.join(", ") || "Sin match"}
+                        {copy.optionalMatches}:{" "}
+                        {item.scoreBreakdown?.optionalMatches.join(", ") || copy.noMatch}
                       </p>
-                      <p>Recencia: {item.scoreBreakdown?.recencyBand ?? "No disponible"}</p>
+                      <p>{copy.recency}: {item.scoreBreakdown?.recencyBand ?? copy.unavailable}</p>
                       <p>
-                        PDF accesible:{" "}
-                        {item.reference.pdfUrl && item.reference.pdfAccessible ? "Si" : "No verificado"}
+                        {copy.pdfAccessible}:{" "}
+                        {item.reference.pdfUrl && item.reference.pdfAccessible ? copy.yes : copy.notVerified}
                       </p>
                       {item.reference.hasAutoTranslation &&
                       item.reference.translatedTitle &&
                       item.reference.translatedTitle !== item.reference.title ? (
-                        <p>Titulo original: {item.reference.title}</p>
+                        <p>{copy.originalTitle}: {item.reference.title}</p>
                       ) : null}
                       {item.reference.hasAutoTranslation &&
                       item.reference.translatedAbstract &&
                       item.reference.abstract ? (
-                        <p>Abstract original disponible en el registro recuperado.</p>
+                        <p>{copy.originalAbstract}</p>
                       ) : null}
                     </div>
                   </details>
@@ -706,23 +764,23 @@ export function ReferenceSearchPanel({
             type="button"
           >
             {isSearching
-              ? "Cargando..."
+              ? copy.loading
               : canExpand
-                ? `Ver ${Math.min(REFERENCE_BATCH_SIZE, references.length - visibleCount)} mas`
-                : `Buscar ${Math.min(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES - references.length)} mas`}
+                ? copy.seeMore(Math.min(REFERENCE_BATCH_SIZE, references.length - visibleCount))
+                : copy.searchMore(Math.min(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES - references.length))}
           </button>
         </div>
       ) : null}
 
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm leading-6 text-slate-500">Guarda la seleccion para continuar al blueprint.</p>
+        <p className="text-sm leading-6 text-slate-500">{copy.saveHint}</p>
         <button
           className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
           disabled={isSaving || references.length === 0}
           onClick={saveSelection}
           type="button"
         >
-          {isSaving ? "Guardando..." : "Guardar seleccion"}
+          {isSaving ? copy.saving : copy.saveSelection}
         </button>
       </div>
     </section>

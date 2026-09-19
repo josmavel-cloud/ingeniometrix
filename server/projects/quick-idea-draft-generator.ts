@@ -1,4 +1,5 @@
 import ideaDraftBundleSchema from "@/ai/schemas/idea-draft-bundle.schema.json";
+import { getLanguageInstruction, normalizeLanguageCode } from "@/lib/language";
 import { getConfiguredLlmProvider } from "@/llm";
 
 type IdeaDraft = {
@@ -11,6 +12,7 @@ type QuickIdeaDraftGeneratorInput = {
   universityContext: string;
   degreeLevel: string;
   program: string;
+  language?: string | null;
   areaLabel: string | null;
   seedText: string;
   existingTitles: string[];
@@ -25,6 +27,7 @@ export async function generateQuickIdeaDraft(
   input: QuickIdeaDraftGeneratorInput,
 ) {
   const provider = getConfiguredLlmProvider();
+  const language = normalizeLanguageCode(input.language) ?? "es";
   const existingIdeas =
     input.existingTitles.length > 0
       ? input.existingTitles.map((title) => `- ${title}`).join("\n")
@@ -38,7 +41,7 @@ Actua como un asesor experto en formulacion rapida de temas de tesis aplicados p
 Tu tarea en esta etapa es generar solo ideas generales de tema, no el intake ni la metodologia completa.
 
 Reglas:
-- responde en espanol
+- ${getLanguageInstruction(language)}
 - no inventes resultados
 - no generes una tesis completa
 - genera formulaciones cortas, claras, defendibles y actuales

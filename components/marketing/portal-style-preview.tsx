@@ -23,15 +23,6 @@ type ExtendedPreviewVariant =
   | "workbench"
   | "campaign";
 
-const variantLinks: Array<{ href: string; label: string; value: ExtendedPreviewVariant }> = [
-  { href: "/preview/editorial", label: "Editorial", value: "editorial" },
-  { href: "/preview/premium", label: "Premium", value: "premium" },
-  { href: "/preview/landing", label: "Landing", value: "landing" },
-  { href: "/preview/minimal", label: "Minimal", value: "minimal" },
-  { href: "/preview/workbench", label: "Workbench", value: "workbench" },
-  { href: "/preview/campaign", label: "Campaign", value: "campaign" },
-];
-
 const serviceCards = [
   {
     title: "IngenioIA",
@@ -67,7 +58,6 @@ const audiencePills = [
 ];
 
 function PreviewShell({
-  variant,
   children,
 }: {
   variant: ExtendedPreviewVariant;
@@ -83,23 +73,16 @@ function PreviewShell({
           <nav className="flex flex-wrap items-center gap-2">
             <Link
               className="rounded-full border border-[rgba(74,58,97,0.08)] bg-[rgba(248,245,251,0.86)] px-4 py-2 text-sm font-semibold text-[var(--color-muted)]"
-              href="/preview"
+              href="/"
             >
-              Comparador
+              Volver al portal
             </Link>
-            {variantLinks.map((item) => (
-              <Link
-                className={`rounded-full px-4 py-2 text-sm font-semibold ${
-                  item.value === variant
-                    ? "bg-[var(--color-plum)] text-white"
-                    : "border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.86)] text-[var(--color-muted)]"
-                }`}
-                href={item.href}
-                key={item.href}
-              >
-                {item.label}
-              </Link>
-            ))}
+            <Link
+              className="rounded-full bg-[var(--color-plum)] px-4 py-2 text-sm font-semibold text-white"
+              href="/workspace"
+            >
+              Ir al workspace
+            </Link>
           </nav>
         </div>
       </header>
@@ -374,8 +357,8 @@ function CampaignPreview() {
                 Explorar esta direccion
                 <ArrowRight className="ml-2 size-4" />
               </a>
-              <Link className="brand-button-secondary px-6 py-3 text-sm font-semibold" href="/preview">
-                Volver al comparador
+              <Link className="brand-button-secondary px-6 py-3 text-sm font-semibold" href="/">
+                Volver al portal
               </Link>
             </div>
           </section>
@@ -511,8 +494,8 @@ function EditorialPreview() {
                 Elegir esta direccion
                 <ArrowRight className="ml-2 size-4" />
               </a>
-              <Link className="brand-button-secondary px-6 py-3 text-sm font-semibold" href="/preview">
-                Volver al comparador
+              <Link className="brand-button-secondary px-6 py-3 text-sm font-semibold" href="/">
+                Volver al portal
               </Link>
             </div>
           </div>
@@ -651,9 +634,9 @@ function PremiumPreview() {
               </a>
               <Link
                 className="inline-flex items-center justify-center rounded-full border border-white/12 bg-white/10 px-6 py-3 text-sm font-semibold text-white"
-                href="/preview"
+                href="/"
               >
-                Volver al comparador
+                Volver al portal
               </Link>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import type { Intake, Project } from "@prisma/client";
 
 import blueprintContextCompletionSchema from "@/ai/schemas/blueprint-context-completion.schema.json";
+import { getLanguageInstruction } from "@/lib/language";
 import type { LlmProvider } from "@/llm/provider";
 
 import { generateStructuredObjectWithTextFallback } from "./blueprint-llm-json";
@@ -11,7 +12,10 @@ import type {
 } from "./blueprint-types";
 
 function buildBlueprintContextCompletionPrompt(input: {
-  project: Pick<Project, "title" | "degreeLevel" | "university" | "program" | "templateKey">;
+  project: Pick<
+    Project,
+    "title" | "degreeLevel" | "university" | "program" | "templateKey" | "language"
+  >;
   intake: Pick<
     Intake,
     | "topic"
@@ -26,6 +30,7 @@ function buildBlueprintContextCompletionPrompt(input: {
   referenceInsights: BlueprintReferenceInsight[];
   readinessSnapshot: BlueprintReadinessSnapshot;
 }) {
+  const languageInstruction = getLanguageInstruction(input.project.language);
   const insightsBlock = input.referenceInsights
     .slice(0, 6)
     .map((insight, index) =>
@@ -44,6 +49,8 @@ function buildBlueprintContextCompletionPrompt(input: {
 
   return `
 Eres Ingeniometrix. Debes completar un contexto minimo y prudente para permitir la generacion de un blueprint inicial de investigacion.
+${languageInstruction}
+Mantén titulos de referencias, DOI y nombres propios tal como fueron recuperados.
 
 Reglas:
 - responde solo con el objeto solicitado
@@ -92,7 +99,10 @@ Devuelve:
 
 export async function generateBlueprintContextCompletion(params: {
   provider: LlmProvider;
-  project: Pick<Project, "title" | "degreeLevel" | "university" | "program" | "templateKey">;
+  project: Pick<
+    Project,
+    "title" | "degreeLevel" | "university" | "program" | "templateKey" | "language"
+  >;
   intake: Pick<
     Intake,
     | "topic"

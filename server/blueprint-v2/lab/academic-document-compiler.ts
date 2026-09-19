@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { ResearchBlueprintRecord } from "@/server/blueprint/blueprint-types";
+import { normalizeLanguageCode } from "@/lib/language";
 import {
   buildEnforcedAcademicMetadata,
 } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
@@ -83,6 +84,101 @@ const NO_INLINE_CITATION_SECTIONS = new Set([
   "general_hypothesis",
   "specific_hypotheses",
 ]);
+
+function documentLanguage(project: MasterBlueprintEngineProject) {
+  return normalizeLanguageCode(project.language) ?? "es";
+}
+
+function isEnglishProject(project: MasterBlueprintEngineProject) {
+  return documentLanguage(project) === "en";
+}
+
+export function normalizeEnglishAcademicText(value: string) {
+  return value
+    .normalize("NFC")
+    .replace(/retroalimentaci(?:o|\u00f3|o\u0301|\u00c3\u00b3)n/gi, "feedback")
+    .replace(/investigaci(?:o|\u00f3|o\u0301|\u00c3\u00b3)n/gi, "research")
+    .replace(/acad(?:e|\u00e9|e\u0301|\u00c3\u00a9)mica/gi, "academic")
+    .replace(/acad(?:e|\u00e9|e\u0301|\u00c3\u00a9)mico/gi, "academic")
+    .replace(/maestr(?:i|\u00ed|i\u0301|\u00c3\u00ad)a/gi, "master's program")
+    .replace(/Per(?:u|\u00fa|u\u0301|\u00c3\u00ba)/g, "Peru")
+    .replace(/\bretroalimentaci(?:o|\u00f3)n\b/gi, "feedback")
+    .replace(/\binvestigaci(?:o|\u00f3)n\b/gi, "research")
+    .replace(/\bacad(?:e|\u00e9)mica\b/gi, "academic")
+    .replace(/\bacad(?:e|\u00e9)mico\b/gi, "academic")
+    .replace(/\bmaestr(?:i|\u00ed)a\b/gi, "master's program")
+    .replace(/\bPer(?:u|\u00fa)\b/g, "Peru")
+    .replace(/\bplan de tesis institucional\b/gi, "institutional thesis plan")
+    .replace(/\bplanteamiento del problema\b/gi, "problem statement")
+    .replace(/\bmatriz de consistencia\b/gi, "consistency matrix")
+    .replace(/\bpresupuesto preliminar\b/gi, "preliminary budget")
+    .replace(/\bcronograma de investigaci(?:o|\u00f3)n\b/gi, "research schedule")
+    .replace(/\belaboraci(?:o|\u00f3)n propia\b/gi, "own elaboration")
+    .replace(/\bcotizaciones de proveedor\b/gi, "vendor quotations")
+    .replace(/\bretroalimentaci[oó]n\b/gi, "feedback")
+    .replace(/\binvestigaci[oó]n\b/gi, "research")
+    .replace(/\bpropuesta\b/gi, "proposal")
+    .replace(/\bestudiantes\b/gi, "students")
+    .replace(/\bacad[eé]mica\b/gi, "academic")
+    .replace(/\bacad[eé]mico\b/gi, "academic")
+    .replace(/\bposgrado\b/gi, "graduate")
+    .replace(/\bPer[uú]\b/g, "Peru")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const ENGLISH_NORMALIZATION_PROTECTED_KEYS = new Set([
+  "artifact_type",
+  "artifact_version",
+  "citation_style",
+  "content_base64",
+  "file_path",
+  "generated_at",
+  "image_path",
+  "language",
+  "mime_type",
+  "rendered_citation",
+  "source",
+  "variant",
+]);
+
+function shouldProtectEnglishNormalization(parentKey: string) {
+  return (
+    parentKey === "references" ||
+    ENGLISH_NORMALIZATION_PROTECTED_KEYS.has(parentKey) ||
+    parentKey.endsWith("_id") ||
+    parentKey.endsWith("_ids") ||
+    parentKey.endsWith("_key") ||
+    parentKey.endsWith("_keys") ||
+    parentKey.endsWith("_path") ||
+    parentKey.endsWith("_at")
+  );
+}
+
+export function normalizeEnglishAcademicDocument<T>(value: T, parentKey = ""): T {
+  if (shouldProtectEnglishNormalization(parentKey)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return normalizeEnglishAcademicText(value) as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeEnglishAcademicDocument(item, parentKey)) as T;
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [
+        key,
+        normalizeEnglishAcademicDocument(entry, key),
+      ]),
+    ) as T;
+  }
+
+  return value;
+}
 
 const BULLET_FRIENDLY_SECTION_KEYS = new Set([
   "research_questions",
@@ -1462,6 +1558,7 @@ function buildCoverVisualPlan(input: {
     evidenceRunId: runScope.evidence_run_id,
     snapshotHash: runScope.immutable_snapshot_hash,
     variant: input.variant,
+    language: documentLanguage(input.project),
   });
 
   return {
@@ -2286,12 +2383,62 @@ function buildMasterSectionInputs(input: {
   return sections;
 }
 
+function localizedUniversitySectionTitle(section: UniversityBlueprintSection, language: string) {
+  if (language !== "en") {
+    return section.title;
+  }
+
+  const titles: Record<string, string> = {
+    abstract: "Abstract",
+    keywords: "Keywords",
+    introduction: "Introduction",
+    problem_statement: "Problem statement",
+    research_questions: "Research questions",
+    general_research_question: "General research question",
+    specific_research_questions: "Specific research questions",
+    objectives: "Objectives",
+    general_objective: "General objective",
+    specific_objectives: "Specific objectives",
+    hypotheses: "Hypotheses",
+    general_hypothesis: "General hypothesis",
+    specific_hypotheses: "Specific hypotheses",
+    justification: "Justification",
+    theoretical_justification: "Theoretical justification",
+    practical_justification: "Practical justification",
+    methodological_justification: "Methodological justification",
+    theoretical_framework: "Theoretical framework",
+    research_antecedents: "Research background",
+    state_of_the_art: "State of the art",
+    theoretical_bases: "Theoretical foundations",
+    terms_definition: "Definition of terms",
+    consistency_matrix: "Consistency matrix",
+    variables_or_categories: "Variables, dimensions, and indicators or analysis categories",
+    methodology: "Methodology",
+    methodological_approach: "Approach, type, and level",
+    research_design: "Research design",
+    population_and_sample: "Population and sample",
+    data_collection_techniques: "Data collection techniques and instruments",
+    research_instruments: "Research instruments",
+    research_procedure: "Procedure",
+    analysis_plan: "Data or information analysis plan",
+    ethics: "Ethical aspects",
+    scope_and_limitations: "Scope and limitations",
+    schedule: "Schedule",
+    budget: "Budget",
+    references: "References",
+    annexes: "Appendices",
+  };
+
+  return titles[section.section_key] ?? section.title;
+}
+
 function buildUniversitySectionInputs(
   universityBlueprint: UniversityBlueprintPackage,
+  language = "es",
 ): RenderSectionInput[] {
   return universityBlueprint.sections.map((section: UniversityBlueprintSection) => ({
     section_key: section.section_key,
-    title: section.title,
+    title: localizedUniversitySectionTitle(section, language),
     content: section.content,
     level: section.level ?? (section.section_key.includes("_") ? 2 : 1),
     source_ids: section.source_ids ?? [],
@@ -2462,12 +2609,30 @@ function buildAcademicDocument(input: {
     knowledge_area_label: input.project.topicAreaLabel,
     keywords: methodContract?.keyword_terms ?? null,
   });
-  const metadataTitle = sentenceStyleCapitalizePublicText(enforcedMetadata.final_title, "title");
-  const shortHeaderTitle = sentenceStyleCapitalizePublicText(
-    enforcedMetadata.short_method_title,
+  const language = documentLanguage(input.project);
+  const metadataTitle = sentenceStyleCapitalizePublicText(
+    language === "en"
+      ? normalizeEnglishAcademicText(
+          cleanAcademicText(input.project.title) ||
+            cleanAcademicText(input.legacyBlueprint.project_title) ||
+            enforcedMetadata.final_title,
+        )
+      : enforcedMetadata.final_title,
     "title",
   );
-  const keywordsLine = capitalizeKeywordLine(enforcedMetadata.keywords_line);
+  const shortHeaderTitle = sentenceStyleCapitalizePublicText(
+    language === "en"
+      ? normalizeEnglishAcademicText(
+          cleanAcademicText(input.project.title) ||
+            enforcedMetadata.short_method_title,
+        )
+      : enforcedMetadata.short_method_title,
+    "title",
+  );
+  const keywordsLine =
+    language === "en"
+      ? normalizeEnglishAcademicText(capitalizeKeywordLine(enforcedMetadata.keywords_line))
+      : capitalizeKeywordLine(enforcedMetadata.keywords_line);
   const layoutPlan = buildAcademicDocxLayoutPlan({
     variant: input.variant,
     project: input.project,
@@ -2484,6 +2649,7 @@ function buildAcademicDocument(input: {
     artifact_type: "academic_document_model",
     artifact_version: "v1",
     variant: input.variant,
+    language,
     template_key: input.templateKey,
     template_name: input.templateName,
     citation_style: "APA7",
@@ -2529,7 +2695,11 @@ function buildAcademicDocument(input: {
     ]),
   };
 
-  return normalizeAcademicDocumentPublicFields(document);
+  const publicDocument = normalizeAcademicDocumentPublicFields(document);
+
+  return language === "en"
+    ? normalizeEnglishAcademicDocument(publicDocument)
+    : publicDocument;
 }
 
 export function buildMasterAcademicDocument(input: {
@@ -2541,12 +2711,15 @@ export function buildMasterAcademicDocument(input: {
   legacyBlueprint: ResearchBlueprintRecord;
   consolidatedAssetUsagePlan: Array<Record<string, unknown>>;
 }) {
+  const english = isEnglishProject(input.project);
   return buildAcademicDocument({
     variant: "master",
     project: input.project,
     templateKey: input.masterTemplate.template_key,
     templateName: input.masterTemplate.template_name,
-    subtitle: "Documento academico para proyecto de investigacion",
+    subtitle: english
+      ? "Academic document for a research project"
+      : "Documento academico para proyecto de investigacion",
     legacyBlueprint: input.legacyBlueprint,
     sectionInputs: buildMasterSectionInputs({
       masterTemplate: input.masterTemplate,
@@ -2566,6 +2739,7 @@ export function buildUniversityAcademicDocument(input: {
   legacyBlueprint: ResearchBlueprintRecord;
   consolidatedAssetUsagePlan: Array<Record<string, unknown>>;
 }) {
+  const english = isEnglishProject(input.project);
   return buildAcademicDocument({
     variant: "university",
     project: input.project,
@@ -2573,10 +2747,13 @@ export function buildUniversityAcademicDocument(input: {
     templateName: input.universityBlueprint.template_name,
     subtitle:
       [input.project.degreeLevel, input.project.program].filter(Boolean).join(" - ") ||
-      "Plan de tesis institucional",
+      (english ? "Institutional thesis plan" : "Plan de tesis institucional"),
     universityBlueprint: input.universityBlueprint,
     legacyBlueprint: input.legacyBlueprint,
-    sectionInputs: buildUniversitySectionInputs(input.universityBlueprint),
+    sectionInputs: buildUniversitySectionInputs(
+      input.universityBlueprint,
+      documentLanguage(input.project),
+    ),
     matrixArtifact: input.matrixArtifact,
     evidenceLedger: input.evidenceLedger,
     consolidatedAssetUsagePlan: input.consolidatedAssetUsagePlan,

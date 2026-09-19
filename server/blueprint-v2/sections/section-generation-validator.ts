@@ -2,6 +2,7 @@ import type {
   ExtendedPlanItem,
   SectionExecutionProfile,
 } from "@/server/blueprint-v2/sections/section-generation-shared";
+import { normalizeLanguageCode } from "@/lib/language";
 import { inspectAcademicEditorialPolicy } from "@/server/blueprint-v2/editorial/academic-editorial-policy";
 import { inspectSectionOutput } from "@/server/blueprint-v2/sections/section-output-normalizer";
 
@@ -86,6 +87,48 @@ function inspectResearchLogicShape(sectionKey: string, content: string) {
   };
 }
 
+function languageSignalCounts(value: string) {
+  const normalized = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+  const spanishMatches =
+    normalized.match(
+      /\b(el|la|los|las|para|como|una|un|del|que|esta|este|investigacion|objetivo|problema|metodologia|estudiantes|propuesta|evidencia|cronograma|presupuesto|fuente|referencias)\b/g,
+    ) ?? [];
+  const englishMatches =
+    normalized.match(
+      /\b(the|and|for|with|this|that|research|objective|problem|methodology|students|proposal|evidence|schedule|budget|source|references|assessment|feedback)\b/g,
+    ) ?? [];
+
+  return {
+    spanish: spanishMatches.length,
+    english: englishMatches.length,
+  };
+}
+
+function detectLanguageFailure(input: {
+  content: string;
+  targetLanguage?: string | null;
+  sectionKey: string;
+}) {
+  if (input.sectionKey === "references") {
+    return false;
+  }
+
+  const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? "es";
+  const counts = languageSignalCounts(input.content);
+
+  if (targetLanguage === "en") {
+    return counts.spanish >= 8 && counts.spanish > counts.english * 1.35;
+  }
+
+  return (
+    counts.english >= 8 &&
+    counts.english > counts.spanish * 1.35
+  );
+}
+
 export function validateDraftAgainstPlan(input: {
   content: string;
   planItem: ExtendedPlanItem;
@@ -94,6 +137,7 @@ export function validateDraftAgainstPlan(input: {
   executionProfile?: SectionExecutionProfile;
   usedReferenceIds?: string[];
   sourceTitles?: string[];
+  targetLanguage?: string | null;
 }) {
   const wordCount = countWords(input.content);
   const failures: string[] = [];
@@ -103,12 +147,12 @@ export function validateDraftAgainstPlan(input: {
     /cumple (la )?(normativa|regulacion)|es viable|viabilidad demostrada|es rentable|rentabilidad demostrada|demuestra que/i.test(
       input.content,
     ) && input.blockedClaims.length > 0;
-  const languageFailed =
-    /\b(the|with|building|framework|assessment|urban|existing)\b/i.test(
-      input.content,
-    ) &&
-    !/\b(la|el|los|las|para|como|una|un)\b/i.test(input.content) &&
-    input.planItem.section_key !== "references";
+  const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? "es";
+  const languageFailed = detectLanguageFailure({
+    content: input.content,
+    targetLanguage,
+    sectionKey: input.planItem.section_key,
+  });
   const editorialInspection = inspectAcademicEditorialPolicy({
     section_key: input.planItem.section_key,
     section_title: input.planItem.title,
@@ -216,7 +260,9 @@ export function validateDraftAgainstPlan(input: {
 
   if (languageFailed) {
     failures.push(
-      "Debes responder principalmente en espanol y evitar bloques innecesarios en ingles.",
+      targetLanguage === "en"
+        ? "You must rewrite the section primarily in English and avoid Spanish narrative blocks."
+        : "Debes responder principalmente en espanol y evitar bloques innecesarios en ingles.",
     );
   }
 
@@ -264,7 +310,9 @@ export function validateDraftAgainstPlan(input: {
 
   if (scheduleFailed) {
     failures.push(
-      "Debes devolver un cronograma breve, visible y principalmente en espanol.",
+      targetLanguage === "en"
+        ? "You must return a short, visible schedule primarily in English."
+        : "Debes devolver un cronograma breve, visible y principalmente en espanol.",
     );
   }
 
@@ -304,7 +352,7 @@ export function validateDraftAgainstPlan(input: {
       (input.planItem.critical_asset_keys?.length ?? 0) === 0 ||
       input.usedAssetKeys.length > 0,
     claims_guard_pass: !claimsGuardFailed,
-    language_pass: !languageFailed && !scheduleFailed,
+    language_pass: !languageFailed,
     format_contamination_pass: !formatContaminationFailed,
     citation_deferred_pass: !citationDeferredFailed,
     punctuation_pass: !outputInspection.has_double_period,
@@ -335,7 +383,9 @@ export function buildRetryPrompt(input: {
   failures: string[];
   planItem: ExtendedPlanItem;
   executionProfile?: SectionExecutionProfile;
+  targetLanguage?: string | null;
 }) {
+  const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? "es";
   return [
     input.originalPrompt,
     "",
@@ -350,6 +400,9 @@ export function buildRetryPrompt(input: {
     input.executionProfile
       ? `Mantente dentro del perfil ${input.executionProfile.execution_mode} con budget ${input.executionProfile.prompt_budget}.`
       : null,
+    targetLanguage === "en"
+      ? "OUTPUT LANGUAGE LOCK: rewrite the final section entirely in English. Do not keep Spanish narrative text."
+      : "BLOQUEO DE IDIOMA: reescribe la seccion final enteramente en espanol. No conserves narrativa en ingles.",
     "No insertes citas visibles, titulos de fuentes, autores/anios entre parentesis, reference_id, source_id, evidence_id ni Markdown.",
     "Devuelve solo la nueva version final de la seccion.",
   ]

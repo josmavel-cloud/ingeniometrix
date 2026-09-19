@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { GeneratedArtifactKind } from "@prisma/client";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { buildEvidenceLog } from "@/server/blueprint/blueprint-export";
 import { getBlueprintVersionForUser } from "@/server/blueprint/blueprint-service";
 
@@ -24,10 +26,24 @@ export async function GET(_request: Request, context: RouteContext) {
     const blueprintVersion = await getBlueprintVersionForUser(user.id, id, versionId);
     const evidenceLog = buildEvidenceLog(blueprintVersion);
     const filename = `${slugify(blueprintVersion.id)}-ingeniometrix-evidence-log.json`;
+    const body = JSON.stringify(evidenceLog, null, 2);
+    await upsertGeneratedArtifact({
+      userId: user.id,
+      projectId: id,
+      blueprintVersionId: versionId,
+      kind: GeneratedArtifactKind.EVIDENCE_LOG,
+      fileName: filename,
+      mimeType: "application/json; charset=utf-8",
+      content: body,
+      metadataJson: {
+        exportRoute: "blueprint-evidence-log",
+      },
+    });
 
-    return NextResponse.json(evidenceLog, {
+    return new NextResponse(body, {
       status: 200,
       headers: {
+        "Content-Type": "application/json; charset=utf-8",
         "Content-Disposition": `attachment; filename=\"${filename}\"`,
         "Cache-Control": "no-store",
       },

@@ -4,16 +4,20 @@ import Link from "next/link";
 import { BrandBadge } from "@/components/brand/brand-badge";
 import { ResearchFlowDiagram } from "@/components/marketing/research-visuals";
 import { resourceArticles } from "@/lib/marketing/resources";
+import { getPublicUrl } from "@/lib/public-site";
 
 export const metadata: Metadata = {
   title: "Recursos",
   description:
     "Guías prácticas de Ingeniometrix para plan de tesis, investigación académica, trazabilidad y uso responsable de IA.",
+  alternates: {
+    canonical: "/recursos",
+  },
   openGraph: {
     title: "Recursos | Ingeniometrix",
     description:
       "Guías para convertir una idea de investigación en una base de plan de tesis clara, revisable y trazable.",
-    url: "https://ingeniometrix.com/recursos",
+    url: getPublicUrl("/recursos"),
   },
 };
 
@@ -25,14 +29,9 @@ export default function ResourcesPage() {
           <Link className="min-w-0 flex-1" href="/">
             <BrandBadge compact context="company" />
           </Link>
-          <div className="flex items-center gap-2">
-            <Link className="brand-button-secondary hidden px-4 py-2 text-sm font-semibold sm:inline-flex" href="/campana">
-              Ver snapshot
-            </Link>
-            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/campana">
-              Snapshot
-            </Link>
-          </div>
+          <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/workspace">
+            Entrar
+          </Link>
         </div>
       </header>
 

@@ -30,10 +30,12 @@ import {
   type IRunOptions,
 } from "docx";
 
+import { normalizeLanguageCode } from "@/lib/language";
 import {
   buildMasterAcademicDocument,
   buildUniversityAcademicDocument,
   cleanAcademicText,
+  normalizeEnglishAcademicDocument,
 } from "@/server/blueprint-v2/lab/academic-document-compiler";
 import {
   capitalizePublicTableRows,
@@ -168,6 +170,197 @@ const TRANSPARENT_PNG_BUFFER = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lYQG7wAAAABJRU5ErkJggg==",
   "base64",
 );
+
+function docLanguage(document: AcademicDocument | { language?: string | null } | null | undefined) {
+  return normalizeLanguageCode(document?.language) ?? "es";
+}
+
+function docLabels(document: AcademicDocument | { language?: string | null } | null | undefined) {
+  const english = docLanguage(document) === "en";
+
+  return english
+    ? {
+        academicInfographic: "Academic methodological infographic",
+        studyObject: "Study object",
+        problem: "Problem",
+        evidence: "Evidence",
+        method: "Method",
+        analysis: "Analysis",
+        output: "Output",
+        contextTools: "Context, tools, and components",
+        application: "Application",
+        criteria: "Criteria",
+        deliverable: "Deliverable",
+        noInvented: "Contains no invented data, citations, or results",
+        figure: "Figure",
+        equation: "Equation",
+        table: "Table",
+        visualSupport: "Visual support",
+        supportField: "Field",
+        supportDetail: "Detail",
+        supportType: "Support type",
+        intendedUse: "Intended use",
+        intendedUseText: "Complement the academic explanation of the corresponding section.",
+        status: "Status",
+        statusText: "Pending structured reconstruction with source support before production use.",
+        tableOfContents: "Table of contents",
+        masterDocument: "Master academic document",
+        institutionalPlan: "Institutional thesis plan",
+        matrixUnavailable: "Consistency matrix not available.",
+        matrixHeading: "Consistency matrix",
+        matrixCaption: "Table 1. Consistency matrix for the research project.",
+        matrixSource: "Source: Own elaboration based on the project's objectives, questions, hypotheses, and methodology.",
+        sourceOwn: "Source: Own elaboration based on generated content and traceable evidence.",
+        phase: "Phase",
+        activity: "Activity",
+        period: "Period",
+        dependency: "Dependency",
+        ganttDeliverable: "Deliverable",
+        planApproval: "Work plan approval",
+        activityN: "Activity",
+        verifiableProgress: "Verifiable project progress",
+        budgetUnavailable: "Preliminary budget not available; ranges and assumptions must be completed before academic delivery.",
+        budgetCaption: "Table 3. Preliminary research budget with reference ranges.",
+        budgetTotalPrefix: "Estimated reference total",
+        budgetSource: "Source: Own elaboration; does not correspond to vendor quotations.",
+        appendixAcademic: "Academic appendix",
+        purpose: "Purpose",
+        appendixB: "Appendix B. Public academic appendices",
+        appendixA: "Appendix A. Research schedule",
+        scheduleHeading: "Research schedule",
+        assetElement: "Element",
+        academicUse: "Academic use",
+        pendingEquation: "Pending equation",
+        pendingTable: "Pending table",
+        pendingSupport: "Pending support",
+        appendixC: "Appendix C. Academic visual supports",
+        references: "References",
+        secondaryReferences: "Detected secondary references pending recovery",
+        secondaryReferencesNote: "These sources were mentioned inside recovered documents. They are not cited as primary sources until they are recovered, validated, and added to the corpus.",
+        referencesAndAnnexes: "References and appendices",
+        projectManagement: "Project management",
+        appendices: "Appendices",
+        documentDescription: "Academic research project assisted by Ingeniometrix.",
+      }
+    : {
+        academicInfographic: "Infografia metodologica academica",
+        studyObject: "Objeto de estudio",
+        problem: "Problema",
+        evidence: "Evidencia",
+        method: "Metodo",
+        analysis: "Analisis",
+        output: "Salida",
+        contextTools: "Contexto, herramientas y componentes",
+        application: "Aplicacion",
+        criteria: "Criterios",
+        deliverable: "Entregable",
+        noInvented: "No contiene datos, citas ni resultados inventados",
+        figure: "Figura",
+        equation: "Ecuacion",
+        table: "Tabla",
+        visualSupport: "Apoyo visual",
+        supportField: "Campo",
+        supportDetail: "Detalle",
+        supportType: "Tipo de apoyo",
+        intendedUse: "Uso previsto",
+        intendedUseText: "Complementar la explicacion academica de la seccion correspondiente.",
+        status: "Estado",
+        statusText: "Pendiente de reconstruccion estructurada con soporte de fuente antes de uso productivo.",
+        tableOfContents: "Tabla de contenido",
+        masterDocument: "Documento master academico",
+        institutionalPlan: "Plan de tesis institucional",
+        matrixUnavailable: "Matriz de consistencia no disponible.",
+        matrixHeading: "Matriz de consistencia",
+        matrixCaption: "Tabla 1. Matriz de consistencia del proyecto de investigacion.",
+        matrixSource: "Fuente: elaboracion propia a partir de los objetivos, preguntas, hipotesis y metodologia del proyecto.",
+        sourceOwn: "Fuente: elaboracion propia a partir del contenido generado y evidencia trazable.",
+        phase: "Fase",
+        activity: "Actividad",
+        period: "Periodo",
+        dependency: "Dependencia",
+        ganttDeliverable: "Entregable",
+        planApproval: "Aprobacion del plan de trabajo",
+        activityN: "Actividad",
+        verifiableProgress: "Avance verificable del proyecto",
+        budgetUnavailable: "Presupuesto preliminar no disponible; debe completarse con rangos y supuestos antes de entrega academica.",
+        budgetCaption: "Tabla 3. Presupuesto preliminar de investigacion con rangos referenciales.",
+        budgetTotalPrefix: "Total estimado referencial",
+        budgetSource: "Fuente: elaboracion propia; no corresponde a cotizaciones de proveedor.",
+        appendixAcademic: "Anexo academico",
+        purpose: "Proposito",
+        appendixB: "Anexo B. Anexos academicos publicos",
+        appendixA: "Anexo A. Cronograma de investigacion",
+        scheduleHeading: "Cronograma de investigacion",
+        assetElement: "Elemento",
+        academicUse: "Uso academico",
+        pendingEquation: "Ecuacion pendiente",
+        pendingTable: "Tabla pendiente",
+        pendingSupport: "Apoyo pendiente",
+        appendixC: "Anexo C. Apoyos visuales academicos",
+        references: "Referencias",
+        secondaryReferences: "Referencias secundarias detectadas y pendientes de recuperacion",
+        secondaryReferencesNote: "Estas fuentes fueron mencionadas dentro de documentos recuperados. No se citan como fuentes primarias hasta recuperarlas, validarlas y agregarlas al corpus.",
+        referencesAndAnnexes: "Referencias y anexos",
+        projectManagement: "Gestion del proyecto",
+        appendices: "Anexos",
+        documentDescription: "Proyecto de investigacion academica asistida por Ingeniometrix.",
+      };
+}
+
+function localizedSectionHeading(section: AcademicSection, academicDocument: AcademicDocument) {
+  if (docLanguage(academicDocument) !== "en") {
+    return section.title;
+  }
+
+  const titles: Record<string, string> = {
+    abstract: "Abstract",
+    keywords: "Keywords",
+    introduction: "Introduction",
+    problem_statement: "Problem statement",
+    research_questions: "Research questions",
+    general_research_question: "General research question",
+    specific_research_questions: "Specific research questions",
+    objectives: "Objectives",
+    general_objective: "General objective",
+    specific_objectives: "Specific objectives",
+    hypotheses: "Hypotheses",
+    general_hypothesis: "General hypothesis",
+    specific_hypotheses: "Specific hypotheses",
+    justification: "Justification",
+    theoretical_justification: "Theoretical justification",
+    practical_justification: "Practical justification",
+    methodological_justification: "Methodological justification",
+    theoretical_framework: "Theoretical framework",
+    research_antecedents: "Research background",
+    state_of_the_art: "State of the art",
+    theoretical_bases: "Theoretical foundations",
+    terms_definition: "Definition of terms",
+    consistency_matrix: "Consistency matrix",
+    variables_or_categories: "Variables, dimensions, and indicators or analysis categories",
+    methodology: "Methodology",
+    methodological_approach: "Approach, type, and level",
+    research_design: "Research design",
+    population_and_sample: "Population and sample",
+    data_collection_techniques: "Data collection techniques and instruments",
+    research_instruments: "Research instruments",
+    research_procedure: "Procedure",
+    analysis_plan: "Data or information analysis plan",
+    ethics: "Ethical aspects",
+    scope_and_limitations: "Scope and limitations",
+    schedule: "Schedule",
+    budget: "Budget",
+    references: "References",
+    annexes: "Appendices",
+  };
+
+  return titles[section.section_key] ?? section.title;
+}
+
+function normalizeAcademicDocumentForDocx(academicDocument: AcademicDocument) {
+  return docLanguage(academicDocument) === "en"
+    ? normalizeEnglishAcademicDocument(academicDocument)
+    : academicDocument;
+}
 
 function cmToTwip(value: number) {
   return Math.round(value * 566.93);
@@ -722,6 +915,7 @@ function escapeSvgText(value: string) {
 
 export function buildCoverInfographicSvg(document: AcademicDocument) {
   const visual = document.layout_plan.cover_visual;
+  const labels = docLabels(document);
   const title = escapeSvgText(visual.title);
   const subtitle = escapeSvgText(compactHeaderText(visual.subtitle, 84));
   const concept = escapeSvgText(compactHeaderText(visual.concept, 118));
@@ -734,7 +928,7 @@ export function buildCoverInfographicSvg(document: AcademicDocument) {
   <rect x="60" y="64" width="780" height="186" rx="28" fill="#ffffff" opacity="0.86"/>
   <text x="450" y="126" text-anchor="middle" font-family="Georgia, serif" font-size="34" fill="#${palette.primary}" font-weight="700">${title}</text>
   <text x="450" y="176" text-anchor="middle" font-family="Georgia, serif" font-size="23" fill="#${palette.accent}" font-weight="700">${subtitle}</text>
-  <text x="450" y="217" text-anchor="middle" font-family="Georgia, serif" font-size="17" fill="#${palette.primary}" opacity="0.76">Infografia metodologica academica</text>
+  <text x="450" y="217" text-anchor="middle" font-family="Georgia, serif" font-size="17" fill="#${palette.primary}" opacity="0.76">${labels.academicInfographic}</text>
 
   <rect x="150" y="300" width="600" height="188" rx="32" fill="#ffffff" stroke="#${palette.muted}" stroke-width="4"/>
   <rect x="304" y="344" width="292" height="78" rx="12" fill="#${palette.primary}" opacity="0.96"/>
@@ -742,38 +936,38 @@ export function buildCoverInfographicSvg(document: AcademicDocument) {
   <path d="M338 422 L318 456 L582 456 L562 422 Z" fill="#${palette.muted}" opacity="0.78"/>
   <line x1="362" y1="360" x2="538" y2="360" stroke="#ffffff" stroke-width="6" opacity="0.88"/>
   <line x1="382" y1="384" x2="518" y2="384" stroke="#ffffff" stroke-width="6" opacity="0.68"/>
-  <text x="450" y="284" text-anchor="middle" font-family="Georgia, serif" font-size="23" fill="#${palette.primary}" font-weight="700">Objeto de estudio</text>
+  <text x="450" y="284" text-anchor="middle" font-family="Georgia, serif" font-size="23" fill="#${palette.primary}" font-weight="700">${labels.studyObject}</text>
   <text x="450" y="525" text-anchor="middle" font-family="Georgia, serif" font-size="18" fill="#${palette.primary}" opacity="0.78">${promptSummary}</text>
 
   <path d="M450 548 L450 594" stroke="#${palette.muted}" stroke-width="8" stroke-linecap="round"/>
   <g font-family="Georgia, serif" font-size="18" font-weight="700">
     <rect x="54" y="612" width="128" height="96" rx="20" fill="#${palette.primary}" opacity="0.95"/>
-    <text x="118" y="667" text-anchor="middle" fill="#ffffff">Problema</text>
+    <text x="118" y="667" text-anchor="middle" fill="#ffffff">${labels.problem}</text>
     <rect x="212" y="612" width="128" height="96" rx="20" fill="#${palette.accent}" opacity="0.93"/>
-    <text x="276" y="667" text-anchor="middle" fill="#ffffff">Evidencia</text>
+    <text x="276" y="667" text-anchor="middle" fill="#ffffff">${labels.evidence}</text>
     <rect x="370" y="612" width="128" height="96" rx="20" fill="#${palette.primary}" opacity="0.92"/>
-    <text x="434" y="667" text-anchor="middle" fill="#ffffff">Metodo</text>
+    <text x="434" y="667" text-anchor="middle" fill="#ffffff">${labels.method}</text>
     <rect x="528" y="612" width="128" height="96" rx="20" fill="#${palette.accent}" opacity="0.9"/>
-    <text x="592" y="667" text-anchor="middle" fill="#ffffff">Analisis</text>
+    <text x="592" y="667" text-anchor="middle" fill="#ffffff">${labels.analysis}</text>
     <rect x="686" y="612" width="160" height="96" rx="20" fill="#${palette.primary}" opacity="0.9"/>
-    <text x="766" y="667" text-anchor="middle" fill="#ffffff">Salida</text>
+    <text x="766" y="667" text-anchor="middle" fill="#ffffff">${labels.output}</text>
   </g>
   <path d="M182 660 L212 660 M340 660 L370 660 M498 660 L528 660 M656 660 L686 660" stroke="#${palette.muted}" stroke-width="8" stroke-linecap="round"/>
 
   <rect x="104" y="790" width="692" height="196" rx="30" fill="#ffffff" opacity="0.86"/>
-  <text x="450" y="838" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="#${palette.primary}" font-weight="700">Contexto, herramientas y componentes</text>
+  <text x="450" y="838" text-anchor="middle" font-family="Georgia, serif" font-size="24" fill="#${palette.primary}" font-weight="700">${labels.contextTools}</text>
   <circle cx="220" cy="910" r="35" fill="#${palette.primary}" opacity="0.94"/>
   <path d="M206 908 L220 890 L235 908 L235 934 L206 934 Z" fill="#ffffff" opacity="0.94"/>
   <circle cx="450" cy="910" r="35" fill="#${palette.accent}" opacity="0.94"/>
   <path d="M430 920 L450 892 L470 920 Z" fill="#ffffff" opacity="0.94"/>
   <circle cx="680" cy="910" r="35" fill="#${palette.primary}" opacity="0.94"/>
   <path d="M660 896 H700 M660 912 H700 M660 928 H688" stroke="#ffffff" stroke-width="8" stroke-linecap="round"/>
-  <text x="220" y="966" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#${palette.primary}">Aplicacion</text>
-  <text x="450" y="966" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#${palette.primary}">Criterios</text>
-  <text x="680" y="966" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#${palette.primary}">Entregable</text>
+  <text x="220" y="966" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#${palette.primary}">${labels.application}</text>
+  <text x="450" y="966" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#${palette.primary}">${labels.criteria}</text>
+  <text x="680" y="966" text-anchor="middle" font-family="Georgia, serif" font-size="15" fill="#${palette.primary}">${labels.deliverable}</text>
 
   <text x="450" y="1062" text-anchor="middle" font-family="Georgia, serif" font-size="21" fill="#${palette.primary}">${concept}</text>
-  <text x="450" y="1128" text-anchor="middle" font-family="Georgia, serif" font-size="18" fill="#${palette.primary}" opacity="0.70">No contiene datos, citas ni resultados inventados</text>
+  <text x="450" y="1128" text-anchor="middle" font-family="Georgia, serif" font-size="18" fill="#${palette.primary}" opacity="0.70">${labels.noInvented}</text>
 </svg>`.trim();
 }
 
@@ -783,10 +977,12 @@ export function buildDeterministicFigureCaption(input: {
   assetKind?: string | null;
   sourceLabel?: string | null;
   existingCaption?: string | null;
+  language?: string | null;
 }) {
+  const labels = docLabels({ language: input.language });
   const existing = cleanDocText(input.existingCaption);
   if (existing) {
-    return `Figura ${input.figureNumber}. ${sentenceStyleCapitalizePublicText(existing, "caption")}`;
+    return `${labels.figure} ${input.figureNumber}. ${sentenceStyleCapitalizePublicText(existing, "caption")}`;
   }
 
   const sectionTitle =
@@ -798,7 +994,7 @@ export function buildDeterministicFigureCaption(input: {
   const sourceLabel = cleanDocText(input.sourceLabel);
   const sourceSuffix = sourceLabel ? ` derivado de ${sourceLabel}` : "";
 
-  return `Figura ${input.figureNumber}. ${assetKind} de ${sectionTitle}${sourceSuffix}.`;
+  return `${labels.figure} ${input.figureNumber}. ${assetKind} de ${sectionTitle}${sourceSuffix}.`;
 }
 
 function renderCoverVisual(input: {
@@ -866,7 +1062,10 @@ function assetPlacementIdentity(asset: AssetPlacement) {
 
 function renderImageAsset(input: {
   figure: FigureLayoutPlan;
+  academicDocument?: AcademicDocument;
 }) {
+  const labels = docLabels(input.academicDocument);
+  const english = docLanguage(input.academicDocument) === "en";
   const buffer = resolveBinaryAsset({ filePath: input.figure.file_path });
   if (!buffer) {
     return [];
@@ -900,7 +1099,7 @@ function renderImageAsset(input: {
         }),
       ],
     }),
-    smallNote(`Figura ${input.figure.figure_number}. ${caption}`),
+    smallNote(`${labels.figure} ${input.figure.figure_number}. ${caption}`),
     smallNote(input.figure.source_note),
   ];
 }
@@ -974,13 +1173,14 @@ function equationMath(equation: EquationLayoutPlan) {
   });
 }
 
-function equationSvg(equation: EquationLayoutPlan) {
+function equationSvg(equation: EquationLayoutPlan, academicDocument?: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   const equationText =
     equation.render_strategy === "generated_equation_image"
       ? equation.source_latex || equation.normalized_latex || equation.latex || equation.display_text
       : equation.display_text || equation.normalized_latex || equation.latex;
   const text = escapeSvgText(mathText(equationText));
-  const caption = escapeSvgText(`Ecuacion ${equation.equation_number}`);
+  const caption = escapeSvgText(`${labels.equation} ${equation.equation_number}`);
 
   return `
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="220" viewBox="0 0 960 220">
@@ -992,7 +1192,8 @@ function equationSvg(equation: EquationLayoutPlan) {
 </svg>`;
 }
 
-function renderEquationAsset(equation: EquationLayoutPlan) {
+function renderEquationAsset(equation: EquationLayoutPlan, academicDocument?: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   const imageBuffer =
     equation.file_path && fs.existsSync(equation.file_path)
       ? fs.readFileSync(equation.file_path)
@@ -1040,7 +1241,7 @@ function renderEquationAsset(equation: EquationLayoutPlan) {
         ? [
             new ImageRun({
               type: "svg",
-              data: Buffer.from(equationSvg(equation), "utf8"),
+              data: Buffer.from(equationSvg(equation, academicDocument), "utf8"),
               fallback: {
                 type: "png",
                 data: TRANSPARENT_PNG_BUFFER,
@@ -1116,7 +1317,7 @@ function renderEquationAsset(equation: EquationLayoutPlan) {
         }),
       ],
     }),
-    smallNote(`Ecuación ${equation.equation_number}. ${cleanDocText(equation.caption)}`),
+    smallNote(`${labels.equation} ${equation.equation_number}. ${cleanDocText(equation.caption)}`),
     smallNote(equation.purpose),
     ...(normalizedVariableRows.length > 0
       ? [
@@ -1133,16 +1334,17 @@ function renderEquationAsset(equation: EquationLayoutPlan) {
   ];
 }
 
-function renderNonImageAssetBlock(asset: AssetPlacement) {
+function renderNonImageAssetBlock(asset: AssetPlacement, academicDocument?: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   const label =
     asset.render_mode === "equation"
-      ? "Ecuación"
+      ? labels.equation
       : asset.render_mode === "table"
-        ? "Tabla"
-        : "Apoyo visual";
+        ? labels.table
+        : labels.visualSupport;
 
   return [
-    paragraph(`${label} de apoyo: ${cleanDocText(asset.caption)}`, {
+    paragraph(`${label}: ${cleanDocText(asset.caption)}`, {
       bold: true,
       alignment: AlignmentType.LEFT,
       indentFirstLine: false,
@@ -1152,17 +1354,18 @@ function renderNonImageAssetBlock(asset: AssetPlacement) {
     }),
     simpleTable(
       [
-        ["Campo", "Detalle"],
-        ["Tipo de apoyo", label],
-        ["Uso previsto", "Complementar la explicación académica de la sección correspondiente."],
-        ["Estado", "Pendiente de reconstrucción estructurada con soporte de fuente antes de uso productivo."],
+        [labels.supportField, labels.supportDetail],
+        [labels.supportType, label],
+        [labels.intendedUse, labels.intendedUseText],
+        [labels.status, labels.statusText],
       ],
       [24, 76],
     ),
   ];
 }
 
-function renderAcademicContentBlocks(section: AcademicSection) {
+function renderAcademicContentBlocks(section: AcademicSection, academicDocument?: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   if (section.section_key === "theoretical_framework") {
     return renderStructuredTheoreticalFramework(section);
   }
@@ -1182,7 +1385,7 @@ function renderAcademicContentBlocks(section: AcademicSection) {
         fontSizePt: block.layout.font_size_pt,
       }));
       if (block.caption) {
-        children.push(smallNote("Fuente: elaboracion propia a partir del contenido generado y evidencia trazable."));
+        children.push(smallNote(labels.sourceOwn));
       }
       continue;
     }
@@ -1301,6 +1504,7 @@ function renderCover(input: {
   templateName: string;
   brandingAssets: AcademicBrandingAsset[];
 }) {
+  const labels = docLabels(input.academicDocument);
   const preferredLogo =
     input.brandingAssets.find((asset) => asset.available) ??
     input.brandingAssets.find((asset) => asset.role === "master_logo") ??
@@ -1340,8 +1544,8 @@ function renderCover(input: {
     }),
     paragraph(
       input.academicDocument.variant === "master"
-        ? "Documento master academico"
-        : "Plan de tesis institucional",
+        ? labels.masterDocument
+        : labels.institutionalPlan,
       {
       alignment: AlignmentType.CENTER,
       indentFirstLine: false,
@@ -1353,9 +1557,10 @@ function renderCover(input: {
   ];
 }
 
-function renderTableOfContents(_entries: TocEntry[]) {
+function renderTableOfContents(_entries: TocEntry[], academicDocument?: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   return [
-    new TableOfContents("Tabla de contenido", {
+    new TableOfContents(labels.tableOfContents, {
       hyperlink: false,
       headingStyleRange: "1-3",
     }),
@@ -1364,10 +1569,11 @@ function renderTableOfContents(_entries: TocEntry[]) {
 }
 
 function renderMatrix(academicDocument: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   const matrixArtifact = academicDocument.matrix;
   const tableModel = matrixArtifact.table_model;
   if (!tableModel) {
-    return [smallNote("Matriz de consistencia no disponible.")];
+    return [smallNote(labels.matrixUnavailable)];
   }
 
   const header = tableModel.header_rows[0] ?? tableModel.columns.map((column) => column.label);
@@ -1377,13 +1583,13 @@ function renderMatrix(academicDocument: AcademicDocument) {
   ];
 
   return [
-    heading("Matriz de consistencia", 1),
-    smallNote("Tabla 1. Matriz de consistencia del proyecto de investigacion."),
+    heading(labels.matrixHeading, 1),
+    smallNote(labels.matrixCaption),
     simpleTable(rows, academicDocument.matrix_layout.column_widths_pct, {
       paperLike: true,
       fontSizePt: academicDocument.matrix_layout.font_size_pt,
     }),
-    smallNote("Fuente: elaboracion propia a partir de los objetivos, preguntas, hipotesis y metodologia del proyecto."),
+    smallNote(labels.matrixSource),
   ];
 }
 
@@ -1406,17 +1612,21 @@ function phaseFill(phase: ScheduleVisualPlan["tasks"][number]["phase"]) {
   }
 }
 
-export function buildScheduleGanttTableRows(plan: ScheduleVisualPlan) {
+export function buildScheduleGanttTableRows(
+  plan: ScheduleVisualPlan,
+  academicDocument?: AcademicDocument,
+) {
+  const labels = docLabels(academicDocument);
   const months = [1, 2, 3, 4, 5, 6];
 
   return [
     [
-      "Fase",
-      "Actividad",
-      "Periodo",
+      labels.phase,
+      labels.activity,
+      labels.period,
       ...months.map((month) => `M${month}`),
-      "Dependencia",
-      "Entregable",
+      labels.dependency,
+      labels.ganttDeliverable,
     ],
     ...plan.tasks.map((task, index) => [
       sentenceStyleCapitalizePublicText(task.phase.replace(/_/g, " "), "label"),
@@ -1424,16 +1634,16 @@ export function buildScheduleGanttTableRows(plan: ScheduleVisualPlan) {
       `M${Math.max(1, task.start_month)}-M${Math.max(task.start_month, task.end_month)}`,
       ...months.map((month) => (month >= task.start_month && month <= task.end_month ? "X" : "")),
       sentenceStyleCapitalizePublicText(
-        task.dependency || (index === 0 ? "Aprobacion del plan de trabajo" : `Actividad ${index}`),
+        task.dependency || (index === 0 ? labels.planApproval : `${labels.activityN} ${index}`),
         "label",
       ),
-      sentenceStyleCapitalizePublicText(task.deliverable || "Avance verificable del proyecto", "label"),
+      sentenceStyleCapitalizePublicText(task.deliverable || labels.verifiableProgress, "label"),
     ]),
   ];
 }
 
-function renderScheduleVisual(plan: ScheduleVisualPlan) {
-  const rows = buildScheduleGanttTableRows(plan);
+function renderScheduleVisual(plan: ScheduleVisualPlan, academicDocument?: AcademicDocument) {
+  const rows = buildScheduleGanttTableRows(plan, academicDocument);
   const widths = [10, 28, 12, 5, 5, 5, 5, 5, 5, 12, 18];
 
   return [
@@ -1470,40 +1680,44 @@ function formatBudgetRange(range: BudgetRange) {
   return `${range.currency} ${range.min.toLocaleString("en-US")} - ${range.max.toLocaleString("en-US")}`;
 }
 
-function formatCostType(value: string) {
+function formatCostType(value: string, language?: string | null) {
+  const english = normalizeLanguageCode(language) === "en";
   const normalized = value.trim().toLowerCase();
-  if (normalized === "direct") return "Directo";
-  if (normalized === "optional") return "Opcional";
-  if (normalized === "contingency") return "Contingencia";
+  if (normalized === "direct") return english ? "Direct" : "Directo";
+  if (normalized === "optional") return english ? "Optional" : "Opcional";
+  if (normalized === "contingency") return english ? "Contingency" : "Contingencia";
   return value;
 }
 
 function renderBudgetPlan(input: {
   rows: ResearchBudgetRow[];
   totalRange: BudgetRange | null;
+  academicDocument?: AcademicDocument;
 }) {
+  const labels = docLabels(input.academicDocument);
+  const english = docLanguage(input.academicDocument) === "en";
   if (input.rows.length === 0) {
     return [
       smallNote(
-        "Presupuesto preliminar no disponible; debe completarse con rangos y supuestos antes de entrega academica.",
+        labels.budgetUnavailable,
       ),
     ];
   }
 
   const rows = capitalizePublicTableRows([
     [
-      "Categoría",
-      "Tipo",
-      "Ítem",
-      "Unidad",
-      "Cantidad",
-      "Costo unitario",
+      english ? "Category" : "Categoria",
+      english ? "Type" : "Tipo",
+      english ? "Item" : "Item",
+      english ? "Unit" : "Unidad",
+      english ? "Quantity" : "Cantidad",
+      english ? "Unit cost" : "Costo unitario",
       "Subtotal",
-      "Supuesto",
+      english ? "Assumption" : "Supuesto",
     ],
     ...input.rows.map((row) => [
       row.category,
-      formatCostType(row.cost_type),
+      formatCostType(row.cost_type, input.academicDocument?.language),
       row.item,
       row.unit,
       String(row.quantity),
@@ -1514,33 +1728,37 @@ function renderBudgetPlan(input: {
   ]);
 
   return [
-    smallNote("Tabla 3. Presupuesto preliminar de investigación con rangos referenciales."),
+    smallNote(labels.budgetCaption),
     simpleTable(rows, [11, 9, 22, 10, 8, 12, 12, 16], {
       paperLike: true,
       fontSizePt: 7.5,
     }),
     smallNote(
       input.totalRange
-        ? `Total estimado referencial: ${formatBudgetRange(input.totalRange)}. Fuente: elaboración propia; no corresponde a cotizaciones de proveedor.`
-        : "Fuente: elaboración propia; no corresponde a cotizaciones de proveedor.",
+        ? `${labels.budgetTotalPrefix}: ${formatBudgetRange(input.totalRange)}. ${labels.budgetSource}`
+        : labels.budgetSource,
     ),
   ];
 }
 
-function renderPublicAppendixPolicyItems(items: PublicAppendixItem[]) {
+function renderPublicAppendixPolicyItems(
+  items: PublicAppendixItem[],
+  academicDocument?: AcademicDocument,
+) {
+  const labels = docLabels(academicDocument);
   if (items.length === 0) {
     return [];
   }
 
   const rows = capitalizePublicTableRows([
-    ["Anexo academico", "Proposito"],
+    [labels.appendixAcademic, labels.purpose],
     ...items
       .filter((item) => item.include_in_docx)
       .map((item) => [item.title, item.purpose]),
   ]);
 
   return [
-    heading("Anexo B. Anexos académicos públicos", 1),
+    heading(labels.appendixB, 1),
     simpleTable(rows, [34, 66], { paperLike: true, fontSizePt: 8.5 }),
   ];
 }
@@ -1549,7 +1767,9 @@ function renderProjectManagementAnnex(input: {
   sections: AcademicSection[];
   titleOverrides: Record<string, string>;
   scheduleVisual: ScheduleVisualPlan | null;
+  academicDocument?: AcademicDocument;
 }) {
+  const labels = docLabels(input.academicDocument);
   const managementSections = input.sections.filter((section) =>
     section.section_key === "schedule",
   );
@@ -1559,25 +1779,35 @@ function renderProjectManagementAnnex(input: {
   }
 
   return [
-    heading("Anexo A. Cronograma de investigación", 1),
+    heading(labels.appendixA, 1),
     ...managementSections.flatMap((section) => {
       if (section.section_key === "schedule" && input.scheduleVisual) {
         return [
-          heading(input.titleOverrides[section.section_key] ?? section.title, 2),
-          ...renderScheduleVisual(input.scheduleVisual),
+          heading(
+            input.academicDocument && docLanguage(input.academicDocument) === "en"
+              ? localizedSectionHeading(section, input.academicDocument)
+              : input.titleOverrides[section.section_key] ?? section.title,
+            2,
+          ),
+          ...renderScheduleVisual(input.scheduleVisual, input.academicDocument),
         ];
       }
 
       return [
-        heading(input.titleOverrides[section.section_key] ?? section.title, 2),
-        ...renderAcademicContentBlocks(section),
+        heading(
+          input.academicDocument && docLanguage(input.academicDocument) === "en"
+            ? localizedSectionHeading(section, input.academicDocument)
+            : input.titleOverrides[section.section_key] ?? section.title,
+          2,
+        ),
+        ...renderAcademicContentBlocks(section, input.academicDocument),
       ];
     }),
     ...(managementSections.some((section) => section.section_key === "schedule") || !input.scheduleVisual
       ? []
       : [
-          heading("Cronograma de investigacion", 2),
-          ...renderScheduleVisual(input.scheduleVisual),
+          heading(labels.scheduleHeading, 2),
+          ...renderScheduleVisual(input.scheduleVisual, input.academicDocument),
         ]),
   ];
 }
@@ -1586,6 +1816,7 @@ function renderAssetPlanAnnex(input: {
   academicDocument: AcademicDocument;
   renderedAssetKeys: Set<string>;
 }) {
+  const labels = docLabels(input.academicDocument);
   const figures = input.academicDocument.layout_plan.figures.filter(
     (figure) => !input.renderedAssetKeys.has(`${figure.section_key}|${figure.source_id}|${figure.asset_key}`),
   );
@@ -1602,35 +1833,40 @@ function renderAssetPlanAnnex(input: {
   }
 
   const rows = [
-    ["Elemento", "Uso académico"],
+    [labels.assetElement, labels.academicUse],
     ...figures.map((figure) => [
-      `Figura ${figure.figure_number}`,
+      `${labels.figure} ${figure.figure_number}`,
       figure.caption,
     ]),
     ...equations.map((equation) => [
-      `Ecuación ${equation.equation_number}`,
+      `${labels.equation} ${equation.equation_number}`,
       equation.caption,
     ]),
     ...plannedNonRenderableAssets.map((asset, index) => [
       asset.render_mode === "equation"
-        ? `Ecuación pendiente ${index + 1}`
+        ? `${labels.pendingEquation} ${index + 1}`
         : asset.render_mode === "table"
-          ? `Tabla pendiente ${index + 1}`
-          : `Apoyo pendiente ${index + 1}`,
+          ? `${labels.pendingTable} ${index + 1}`
+          : `${labels.pendingSupport} ${index + 1}`,
       cleanDocText(asset.caption),
     ]),
   ];
 
   return [
-    heading("Anexo C. Apoyos visuales académicos", 1),
+    heading(labels.appendixC, 1),
     simpleTable(rows, [24, 76], { paperLike: true, fontSizePt: 8.5 }),
-    ...equations.flatMap((equation) => renderEquationAsset(equation)),
-    ...figures.flatMap((figure) => renderImageAsset({ figure })),
-    ...plannedNonRenderableAssets.flatMap((asset) => renderNonImageAssetBlock(asset)),
+    ...equations.flatMap((equation) => renderEquationAsset(equation, input.academicDocument)),
+    ...figures.flatMap((figure) =>
+      renderImageAsset({ figure, academicDocument: input.academicDocument }),
+    ),
+    ...plannedNonRenderableAssets.flatMap((asset) =>
+      renderNonImageAssetBlock(asset, input.academicDocument),
+    ),
   ];
 }
 
-function renderReferences(references: AcademicReference[]) {
+function renderReferences(references: AcademicReference[], academicDocument?: AcademicDocument) {
+  const labels = docLabels(academicDocument);
   const primaryReferences = references.filter(
     (reference) => reference.reference_kind !== "secondary_unrecovered",
   );
@@ -1639,7 +1875,7 @@ function renderReferences(references: AcademicReference[]) {
   );
 
   return [
-    heading("Referencias", 1),
+    heading(labels.references, 1),
     ...primaryReferences.slice(0, 60).map((reference) =>
       paragraph(reference.apa_reference, {
         alignment: AlignmentType.LEFT,
@@ -1649,10 +1885,8 @@ function renderReferences(references: AcademicReference[]) {
     ),
     ...(secondaryReferences.length > 0
       ? [
-          heading("Referencias secundarias detectadas y pendientes de recuperacion", 2),
-          smallNote(
-            "Estas fuentes fueron mencionadas dentro de documentos recuperados. No se citan como fuentes primarias hasta recuperarlas, validarlas y agregarlas al corpus.",
-          ),
+          heading(labels.secondaryReferences, 2),
+          smallNote(labels.secondaryReferencesNote),
           ...secondaryReferences.slice(0, 25).map((reference) =>
             paragraph(reference.apa_reference, {
               alignment: AlignmentType.LEFT,
@@ -1729,7 +1963,10 @@ function renderSections(input: {
     }
 
     const sectionNumber = nextSectionNumber(section.level);
-    const rawTitle = titleOverrides[section.section_key] ?? section.title;
+    const rawTitle =
+      docLanguage(input.academicDocument) === "en"
+        ? localizedSectionHeading(section, input.academicDocument)
+        : titleOverrides[section.section_key] ?? section.title;
     const numberedTitle = /^\d+(?:\.\d+)*\.?\s/.test(rawTitle)
       ? rawTitle
       : `${sectionNumber}. ${rawTitle}`;
@@ -1740,7 +1977,12 @@ function renderSections(input: {
     });
     children.push(heading(numberedTitle, section.level));
     if (section.section_key === "schedule" && input.academicDocument.layout_plan.schedule_visual) {
-      children.push(...renderScheduleVisual(input.academicDocument.layout_plan.schedule_visual));
+      children.push(
+        ...renderScheduleVisual(
+          input.academicDocument.layout_plan.schedule_visual,
+          input.academicDocument,
+        ),
+      );
       continue;
     }
     if (section.section_key === "budget" && (input.academicDocument.layout_plan.budget_rows ?? []).length > 0) {
@@ -1748,12 +1990,13 @@ function renderSections(input: {
         ...renderBudgetPlan({
           rows: input.academicDocument.layout_plan.budget_rows ?? [],
           totalRange: input.academicDocument.layout_plan.budget_total_range ?? null,
+          academicDocument: input.academicDocument,
         }),
       );
       continue;
     }
 
-    children.push(...renderAcademicContentBlocks(section));
+    children.push(...renderAcademicContentBlocks(section, input.academicDocument));
     const sectionFigures = input.academicDocument.layout_plan.figures
       .filter((figure) => figure.section_key === section.section_key)
       .slice(0, 2);
@@ -1762,12 +2005,15 @@ function renderSections(input: {
       .slice(0, 2);
 
     for (const equation of sectionEquations) {
-      children.push(...renderEquationAsset(equation));
+      children.push(...renderEquationAsset(equation, input.academicDocument));
       renderedAssetKeys.add(`${equation.section_key}|${equation.source_id}|${equation.asset_key}`);
     }
 
     for (const figure of sectionFigures) {
-      const renderedAsset = renderImageAsset({ figure });
+      const renderedAsset = renderImageAsset({
+        figure,
+        academicDocument: input.academicDocument,
+      });
       if (renderedAsset.length === 0) {
         continue;
       }
@@ -1790,6 +2036,7 @@ function createDocument(input: {
   evidenceLedger: EvidenceLedger;
   validationReport: MasterBlueprintValidationReport;
 }) {
+  const labels = docLabels(input.academicDocument);
   const renderedSections = renderSections({
     academicDocument: input.academicDocument,
     assetPlacements: input.academicDocument.asset_placements,
@@ -1798,13 +2045,14 @@ function createDocument(input: {
     sections: input.academicDocument.sections,
     titleOverrides: input.academicDocument.editorial_plan.title_overrides,
     scheduleVisual: input.academicDocument.layout_plan.schedule_visual,
+    academicDocument: input.academicDocument,
   });
   const publicAppendixChildren: never[] = [];
 
   return new Document({
     creator: "Ingeniometrix",
     title: input.academicDocument.metadata.title,
-    description: "Proyecto de investigación académica asistida por Ingeniometrix.",
+    description: labels.documentDescription,
     styles: {
       default: {
         document: {
@@ -1844,7 +2092,7 @@ function createDocument(input: {
             templateName: input.academicDocument.template_name,
             brandingAssets: input.academicDocument.branding,
           }),
-          ...renderTableOfContents(renderedSections.tocEntries),
+          ...renderTableOfContents(renderedSections.tocEntries, input.academicDocument),
           ...renderedSections.children,
         ],
       },
@@ -1855,7 +2103,7 @@ function createDocument(input: {
         headers: {
           default: buildAcademicHeader({
             academicDocument: input.academicDocument,
-            sectionLabel: "Matriz de consistencia",
+            sectionLabel: labels.matrixHeading,
           }),
         },
         footers: {
@@ -1870,13 +2118,13 @@ function createDocument(input: {
         headers: {
           default: buildAcademicHeader({
             academicDocument: input.academicDocument,
-            sectionLabel: "Referencias y anexos",
+            sectionLabel: labels.referencesAndAnnexes,
           }),
         },
         footers: {
           default: buildAcademicFooter(),
         },
-        children: renderReferences(input.academicDocument.references),
+        children: renderReferences(input.academicDocument.references, input.academicDocument),
       },
       ...(projectManagementChildren.length > 0
         ? [
@@ -1887,7 +2135,7 @@ function createDocument(input: {
               headers: {
                 default: buildAcademicHeader({
                   academicDocument: input.academicDocument,
-                  sectionLabel: "Gestión del proyecto",
+                  sectionLabel: labels.projectManagement,
                 }),
               },
               footers: {
@@ -1906,7 +2154,7 @@ function createDocument(input: {
               headers: {
                 default: buildAcademicHeader({
                   academicDocument: input.academicDocument,
-                  sectionLabel: "Anexos",
+                  sectionLabel: labels.appendices,
                 }),
               },
               footers: {
@@ -2100,17 +2348,18 @@ export async function renderMasterDocx(input: {
   outputPath: string;
   runDir: string;
 }) {
-  const academicDocument =
+  const academicDocument = normalizeAcademicDocumentForDocx(
     input.academicDocumentOverride ??
-    buildMasterAcademicDocument({
-      project: input.project,
-      masterTemplate: input.masterTemplate,
-      drafts: input.drafts,
-      matrixArtifact: input.matrixArtifact,
-      evidenceLedger: input.evidenceLedger,
-      legacyBlueprint: input.legacyBlueprint,
-      consolidatedAssetUsagePlan: input.consolidatedAssetUsagePlan,
-    });
+      buildMasterAcademicDocument({
+        project: input.project,
+        masterTemplate: input.masterTemplate,
+        drafts: input.drafts,
+        matrixArtifact: input.matrixArtifact,
+        evidenceLedger: input.evidenceLedger,
+        legacyBlueprint: input.legacyBlueprint,
+        consolidatedAssetUsagePlan: input.consolidatedAssetUsagePlan,
+      }),
+  );
   const document = createDocument({
     project: input.project,
     academicDocument,
@@ -2142,16 +2391,17 @@ export async function renderUniversityDocx(input: {
   outputPath: string;
   runDir: string;
 }) {
-  const academicDocument =
+  const academicDocument = normalizeAcademicDocumentForDocx(
     input.academicDocumentOverride ??
-    buildUniversityAcademicDocument({
-      project: input.project,
-      universityBlueprint: input.universityBlueprint,
-      matrixArtifact: input.matrixArtifact,
-      evidenceLedger: input.evidenceLedger,
-      legacyBlueprint: input.legacyBlueprint,
-      consolidatedAssetUsagePlan: input.consolidatedAssetUsagePlan,
-    });
+      buildUniversityAcademicDocument({
+        project: input.project,
+        universityBlueprint: input.universityBlueprint,
+        matrixArtifact: input.matrixArtifact,
+        evidenceLedger: input.evidenceLedger,
+        legacyBlueprint: input.legacyBlueprint,
+        consolidatedAssetUsagePlan: input.consolidatedAssetUsagePlan,
+      }),
+  );
   const document = createDocument({
     project: input.project,
     academicDocument,

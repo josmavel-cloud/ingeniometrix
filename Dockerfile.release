@@ -1,0 +1,62 @@
+FROM node:20.20.2-bookworm-slim AS system
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    fonts-dejavu-core \
+    libreoffice-writer \
+    poppler-utils \
+    python3 \
+    python3-pip \
+    tini \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+FROM system AS build
+ENV NODE_ENV=development
+COPY package.json package-lock.json requirements-release.txt ./
+RUN npm ci --include=dev && pip3 install --break-system-packages --no-cache-dir -r requirements-release.txt
+COPY . .
+RUN DATABASE_URL=postgresql://offline:offline@127.0.0.1:1/offline \
+    DATABASE_URL_UNPOOLED=postgresql://offline:offline@127.0.0.1:1/offline \
+    NODE_ENV=production \
+    npm run build \
+  && npm run build:release-worker
+
+FROM build AS migration
+ENV NODE_ENV=production
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["npm", "run", "db:migrate:deploy"]
+
+FROM system AS runtime
+ENV NODE_ENV=production
+COPY package.json package-lock.json requirements-release.txt ./
+RUN npm ci --omit=dev --omit=peer --ignore-scripts \
+  && pip3 install --break-system-packages --no-cache-dir -r requirements-release.txt \
+  && rm -rf \
+    node_modules/prisma \
+    node_modules/@prisma/config \
+    node_modules/@prisma/engines \
+    node_modules/deepmerge-ts \
+    node_modules/esbuild \
+    node_modules/@esbuild \
+    node_modules/tsx \
+    node_modules/typescript
+COPY --from=build /app/node_modules/.prisma /app/node_modules/.prisma
+COPY --from=build /app/.next ./.next
+COPY --from=build /app/public ./public
+COPY --from=build /app/dist/release-worker.cjs ./dist/release-worker.cjs
+COPY --from=build /app/prisma ./prisma
+COPY --from=build /app/scripts/mvp/python ./scripts/mvp/python
+RUN mkdir -p /app/artifacts-local && chown node:node /app/artifacts-local
+USER node
+
+EXPOSE 3000
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["npm", "start"]

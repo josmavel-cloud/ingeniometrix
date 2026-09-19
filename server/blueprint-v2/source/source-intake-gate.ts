@@ -1,4 +1,5 @@
 import { normalizeTitle } from "@/lib/text";
+import { extractAccessSignals } from "@/server/retrieval/reference-access";
 import type {
   MasterBlueprintEngineProject,
   BlueprintSourceRecord,
@@ -10,24 +11,12 @@ const MINIMUM_REQUIRED_SOURCES = 3;
 function buildSelectedSourceRecord(
   item: MasterBlueprintEngineProject["projectReferences"][number],
 ): BlueprintSourceRecord {
-  const rawOpenAlex =
-    item.reference.rawOpenAlexJson &&
-    typeof item.reference.rawOpenAlexJson === "object" &&
-    !Array.isArray(item.reference.rawOpenAlexJson)
-      ? (item.reference.rawOpenAlexJson as Record<string, unknown>)
-      : null;
-  const bestOaLocation =
-    rawOpenAlex &&
-    typeof rawOpenAlex.best_oa_location === "object" &&
-    rawOpenAlex.best_oa_location !== null
-      ? (rawOpenAlex.best_oa_location as Record<string, unknown>)
-      : null;
-  const primaryLocation =
-    rawOpenAlex &&
-    typeof rawOpenAlex.primary_location === "object" &&
-    rawOpenAlex.primary_location !== null
-      ? (rawOpenAlex.primary_location as Record<string, unknown>)
-      : null;
+  const accessSignals = extractAccessSignals({
+    rawOpenAlexJson: item.reference.rawOpenAlexJson,
+    rawCrossrefJson: item.reference.rawCrossrefJson,
+    landingPageUrl: item.reference.landingPageUrl,
+    doi: item.reference.doi,
+  });
 
   return {
     source_id: item.reference.id,
@@ -46,20 +35,12 @@ function buildSelectedSourceRecord(
     venue: item.reference.venue ?? null,
     abstract: item.reference.abstract ?? null,
     landing_page_url: item.reference.landingPageUrl ?? null,
-    pdf_url:
-      (typeof bestOaLocation?.pdf_url === "string" && bestOaLocation.pdf_url) ||
-      (typeof primaryLocation?.pdf_url === "string" && primaryLocation.pdf_url) ||
-      null,
+    pdf_url: accessSignals.pdfUrl,
     query: null,
     snippet: null,
     selected_order: item.selectedOrder ?? null,
     citation_count: item.reference.citationCount ?? null,
-    is_open_access: Boolean(
-      bestOaLocation?.pdf_url ||
-        primaryLocation?.pdf_url ||
-        item.reference.landingPageUrl ||
-        item.reference.doi,
-    ),
+    is_open_access: accessSignals.isOpenAccess,
     raw_openalex_json: item.reference.rawOpenAlexJson,
     raw_crossref_json: item.reference.rawCrossrefJson,
     eligible_for_formal_reference: true,

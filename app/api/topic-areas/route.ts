@@ -6,16 +6,28 @@ import {
   normalizeTopicAreaInRealTime,
 } from "@/server/projects/topic-area-service";
 
+function readOptionalText(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.replace(/\u0000/g, "").trim();
+
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export async function GET(request: Request) {
   try {
     await requireCurrentUser();
-    const { searchParams } = new URL(request.url);
-    const suggestions = await listTopicAreaSuggestions(searchParams.get("q") ?? "");
+
+    const url = new URL(request.url);
+    const query = readOptionalText(url.searchParams.get("q"));
+    const suggestions = await listTopicAreaSuggestions(query ?? undefined);
 
     return NextResponse.json({ suggestions });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "No se pudieron cargar las areas.";
+      error instanceof Error ? error.message : "No se pudieron listar areas tematicas.";
 
     return NextResponse.json({ error: message }, { status: 400 });
   }
@@ -24,12 +36,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await requireCurrentUser();
-    const payload = (await request.json()) as { label?: unknown };
-    const label = typeof payload.label === "string" ? payload.label.trim() : "";
+
+    const payload = (await request.json()) as Record<string, unknown>;
+    const label = readOptionalText(payload.label);
 
     if (!label) {
       return NextResponse.json(
-        { error: "La etiqueta del area es obligatoria." },
+        { error: "La etiqueta de area tematica es requerida." },
         { status: 400 },
       );
     }
@@ -39,7 +52,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ normalizedArea });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "No se pudo normalizar el area.";
+      error instanceof Error ? error.message : "No se pudo normalizar el area tematica.";
 
     return NextResponse.json({ error: message }, { status: 400 });
   }
