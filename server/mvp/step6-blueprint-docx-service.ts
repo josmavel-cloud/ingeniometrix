@@ -63,6 +63,7 @@ import {
   type MvpStep6SectionDraft,
   type MvpStep6SectionPlanItem,
   type MvpStep6TitlePlan,
+  type MvpStep6VisualPlan,
 } from "@/server/mvp/step6-blueprint-docx-types";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 import { asStepRunJson, createMvpStepRun, updateMvpStepRun } from "@/server/mvp/step-run-service";
@@ -70,7 +71,8 @@ import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report
 
 import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence } from "./evidence-continuity";
 import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
-import { generateFinalInfographic, deterministicInfographic, infographicContext, infographicFingerprint } from "./final-infographic";
+import { deterministicInfographic, infographicFingerprint } from "./final-infographic";
+import { buildVisualDeliverables } from "./visual-deliverables";
 import { attachScientificAssets } from "./scientific-assets";
 import { exportPlanPdf } from "./pdf-export";
 import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "./application-budget";
@@ -1727,7 +1729,7 @@ async function buildPdfCrossReferenceMentionIndex(ledger: MvpStep5EvidenceLedger
   });
 }
 
-function buildCrossReferencePlan(input: {
+export function buildCrossReferencePlan(input: {
   drafts: MvpStep6SectionDraft[];
   pdfMentions: MvpStep6CrossReferencePlanItem["original_pdf_mentions"];
 }) {
@@ -2260,11 +2262,11 @@ function bullet(text: string) {
   });
 }
 
-function tableCell(text: string, options: { header?: boolean; width?: number } = {}) {
+function tableCell(text: string, options: { header?: boolean; width?: number; compact?: boolean } = {}) {
   return new TableCell({
     width: options.width ? { size: options.width, type: WidthType.PERCENTAGE } : undefined,
     shading: options.header ? { fill: LIGHT } : undefined,
-    margins: { top: 80, bottom: 80, left: 80, right: 80 },
+    margins: options.compact ? { top: 55, bottom: 55, left: 55, right: 55 } : { top: 80, bottom: 80, left: 80, right: 80 },
     borders: {
       top: { style: BorderStyle.SINGLE, color: BORDER, size: 1 },
       bottom: { style: BorderStyle.SINGLE, color: BORDER, size: 1 },
@@ -2273,13 +2275,13 @@ function tableCell(text: string, options: { header?: boolean; width?: number } =
     },
     children: text.split(/\r?\n/).map((line) => new Paragraph({
       alignment: AlignmentType.JUSTIFIED,
-      children: [textRun(sanitizePublicText(line), { bold: options.header, size: 9.5 })],
+      children: [textRun(sanitizePublicText(line), { bold: options.header, size: options.compact ? 8.5 : 9.5 })],
     })),
   });
 }
 
 function captionText(ref: MvpStep6CrossReferencePlanItem | null, title: string) {
-  const cleanTitle = sanitizePublicText(title).replace(/^(?:Tabla|Figura|Ecuaci[oó]n)\s+\d+\.\s*/i, "");
+  const cleanTitle = sanitizePublicText(title).replace(/^(?:Tabla|Figura|Figure|Ecuaci[oó]n)\s+\d+\.\s*/i, "");
   return ref ? `${ref.label}. ${cleanTitle}` : cleanTitle;
 }
 
@@ -2296,7 +2298,7 @@ export function tableBlock(block: Extract<MvpStep6ContentBlock, { kind: "table" 
         new TableRow({
           tableHeader: rowIndex === 0,
           children: Array.from({ length: columnCount }).map((_, index) =>
-            tableCell(row[index] || " ", { header: rowIndex === 0, width }),
+            tableCell(row[index] || " ", { header: rowIndex === 0, width, compact: compact || block.render_hint === "compact" }),
           ),
         }),
       ),
@@ -2357,9 +2359,11 @@ async function imageBlock(block: Extract<MvpStep6ContentBlock, { kind: "figure" 
   }
   const image = await readFile(block.image_path);
   const dimensions = dimensionsFromImageBuffer(image, block.image_path);
+  const maxWidth = block.render_hint === "landscape_full" ? 680 : 420;
+  const maxHeight = block.render_hint === "landscape_full" ? 420 : 260;
   const fitted = dimensions
-    ? fitDimensions({ originalWidth: dimensions.width, originalHeight: dimensions.height, maxWidth: 420, maxHeight: 260 })
-    : { width: 420, height: 260 };
+    ? fitDimensions({ originalWidth: dimensions.width, originalHeight: dimensions.height, maxWidth, maxHeight })
+    : { width: maxWidth, height: maxHeight };
   return [
     paragraph(captionText(ref, block.title), { bold: true, align: AlignmentType.CENTER, indent: false, keepNext: true }),
     new Paragraph({
@@ -3104,7 +3108,9 @@ export async function runMvpStep6BlueprintDocx(input: {
       prompts: {
         scientific_plan: SCIENTIFIC_PLAN_PROMPT.version,
         consistency_matrix: "ingeniometrix-consistency-matrix-v1",
-        hero_image: "ingeniometrix-hero-infographic-v1",
+        hero_image: "ingeniometrix-hero-infographic-v2",
+        matrix_visual: "ingeniometrix-consistency-matrix-visual-v1",
+        visual_qa: "ingeniometrix-visual-qa-v1",
       },
       section_generation_order: sectionGenerationOrder,
       academic_style_contract: academicStyleContract,
@@ -3139,7 +3145,6 @@ export async function runMvpStep6BlueprintDocx(input: {
     const assetQuality = attachScientificAssets(finalSectionDrafts, latestStep5.ledger, scientific.usedSources);
     await writeJson(path.join(artifacts.artifactDir, "asset-quality.json"), assetQuality);
     await writeJson(path.join(artifacts.artifactDir, "evidence-coverage.json"), scientific.coverage);
-    const crossReferencePlan = buildCrossReferencePlan({ drafts: finalSectionDrafts, pdfMentions: [] });
     const finalPageBudgetPlan: MvpStep6PageBudgetPlan = { ...pageBudgetPlan, max_pages: 18,
       estimated_pages: estimateDocumentPages({ drafts: finalSectionDrafts, pageBudget: pageBudgetPlan }) };
     const titlePlan = scientific.titlePlan;
@@ -3147,6 +3152,7 @@ export async function runMvpStep6BlueprintDocx(input: {
     warnings.push(...scientific.review.warnings);
     const imageFingerprint = infographicFingerprint(scientific.definition, scientific.design, titlePlan.title);
     let heroImage: MvpStep6HeroImagePlan;
+    let visualPlan: MvpStep6VisualPlan | undefined;
     if (input.heroReuse) {
       if (input.heroReuse.projectId !== input.projectId || input.heroReuse.fingerprint !== imageFingerprint || !input.heroReuse.plan.image_path) throw new Error("HERO_REUSE_DESIGN_MISMATCH");
       await copyFile(input.heroReuse.plan.image_path, artifacts.heroImagePath);
@@ -3157,17 +3163,32 @@ export async function runMvpStep6BlueprintDocx(input: {
       }
       await writeJson(`${artifacts.heroImagePath}.json`, { ...heroImage, reused_from: input.heroReuse.plan.image_path, image_fingerprint: imageFingerprint, provider_request_executed: false, cost_this_execution_usd: 0 });
     } else {
-      heroImage = await generateFinalInfographic(infographicContext(scientific.definition, scientific.design), artifacts.heroImagePath);
+      const visuals = await buildVisualDeliverables({
+        provider,
+        definition: scientific.definition,
+        design: scientific.design,
+        matrix: scientific.matrix,
+        ledger: latestStep5.ledger,
+        usedSourceIds: scientific.usedSources.map((source) => source.source_id),
+        drafts: finalSectionDrafts,
+        artifactDir: artifacts.artifactDir,
+        heroOutputPath: artifacts.heroImagePath,
+        projectId: input.projectId,
+        runId: artifacts.runId,
+      });
+      heroImage = visuals.heroImage;
+      visualPlan = visuals.visualPlan;
     }
     warnings.push(...heroImage.warnings);
     const summaryHeroImage: MvpStep6HeroImagePlan = { ...heroImage, placement: "post_matrix_summary", image_path: null, status: "skipped", warnings: [] };
     warnings.push(...summaryHeroImage.warnings);
 
+    const crossReferencePlan = buildCrossReferencePlan({ drafts: finalSectionDrafts, pdfMentions: [] });
     const traceabilityMatrix = buildTraceabilityMatrix(finalSectionDrafts);
     const citationCoordinatePlan = buildCitationCoordinatePlan(finalSectionDrafts);
     const assetPlacementPlan = buildAssetPlacementPlan(finalSectionDrafts);
     const provisionalPackage: MvpStep6BlueprintPackage = {
-      scientific_plan: { definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, generation_order: [...scientific.generation_order, "hero_infographic", "docx", "pdf"] },
+      scientific_plan: { definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, generation_order: [...scientific.generation_order, "visual_plan", "consistency_matrix_visual", "consistency_matrix_editable", "hero_infographic", "docx", "pdf"] },
       artifact_type: "mvp_step6_blueprint_docx_package",
       artifact_version: "v1",
       project_id: input.projectId,
@@ -3183,6 +3204,7 @@ export async function runMvpStep6BlueprintDocx(input: {
       editorial_report: editorial.report,
       hero_image: heroImage,
       summary_hero_image: summaryHeroImage,
+      visual_plan: visualPlan,
       citation_coordinate_plan: citationCoordinatePlan,
       cross_reference_plan: crossReferencePlan,
       asset_placement_plan: assetPlacementPlan,

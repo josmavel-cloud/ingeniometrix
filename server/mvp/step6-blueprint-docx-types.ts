@@ -65,7 +65,7 @@ export type MvpStep6ContentBlock =
       title: string;
       rows: string[][];
       source_note: string;
-      render_hint?: "standard" | "compact_landscape";
+      render_hint?: "standard" | "compact_landscape" | "compact";
     }
   | {
       kind: "figure";
@@ -75,6 +75,7 @@ export type MvpStep6ContentBlock =
       source_note: string;
       asset_key: string | null;
       source_id: string | null;
+      render_hint?: "standard" | "landscape_full";
     }
   | {
       kind: "equation";
@@ -118,6 +119,36 @@ export type MvpStep6HeroImagePlan = {
   image_path: string | null;
   image_model: string | null;
   status: "generated" | "svg_fallback" | "failed" | "skipped";
+  warnings: string[];
+};
+
+export type MvpStep6VisualAssetPlan = {
+  asset_id: string;
+  asset_type: "hero_infographic" | "conceptual_diagram" | "methodology_workflow" | "evidence_comparison_table" | "research_design_table" | "consistency_matrix_image" | "consistency_matrix_table" | "equation" | "source_asset";
+  purpose: string;
+  destination_section: string;
+  origin: "original_design" | "evidence_synthesis" | "reproduced_source";
+  content_specification: unknown;
+  supporting_source_ids: string[];
+  rendering_method: string;
+  caption: string;
+  attribution: string;
+  quality_requirements: string[];
+  status: "generated" | "accepted" | "rejected" | "not_applicable" | "failed";
+  output_paths: string[];
+  failure_reason: string | null;
+  validation: unknown;
+};
+
+export type MvpStep6VisualPlan = {
+  artifact_type: "mvp_step6_visual_plan";
+  artifact_version: "v1";
+  generated_at: string;
+  research_design_hash: string;
+  matrix_hash: string;
+  matrix_sequence: string[];
+  assets: MvpStep6VisualAssetPlan[];
+  image_requests: { initial: number; repairs: number };
   warnings: string[];
 };
 
@@ -253,6 +284,7 @@ export type MvpStep6BlueprintPackage = {
   editorial_report: MvpStep6EditorialReport;
   hero_image: MvpStep6HeroImagePlan;
   summary_hero_image: MvpStep6HeroImagePlan;
+  visual_plan?: MvpStep6VisualPlan;
   citation_coordinate_plan: MvpStep6CitationAnchor[];
   cross_reference_plan: MvpStep6CrossReferencePlanItem[];
   asset_placement_plan: Array<{
