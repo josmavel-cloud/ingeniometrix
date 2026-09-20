@@ -1,213 +1,71 @@
 # AGENTS.md
 
-## Mission
+STATUS: CURRENT - Release 0 secure pilot handoff.
 
-Build Ingeniometrix as a focused, ethical MVP for academic research assistance in Peru.
+This file is for future Codex/agent sessions. Keep it operational and short.
+For the current state, read [CURRENT_STATE.md](CURRENT_STATE.md) first.
 
-The product name to use in the app, prompts, and user-facing materials is:
+## Source Of Truth
 
-`Ingeniometrix`
+- Canonical release branch: `release/secure-pilot`
+- Canonical release commit: `5442a9ba29abed0aabaa4b882e4ca5a0ca057760`
+- Release worktree: `/home/pepe/.openclaw/workspace/ingeniometrix-wt-release0`
+- Active backend development lineage: `/home/pepe/.openclaw/workspace/ingeniometrix-wt-mvp-backend-core` on `mvp/backend-core-clean`
+- Historical reference only: `/home/pepe/.openclaw/workspace/ingeniometrix/app/lab/master-blueprint`
 
-The current goal is:
+Do not resume MVP development from the historical `master-blueprint` workspace.
 
-`ship Release 0 fast, with minimal rework, full traceability, and no scope creep`
+## Before Any Work
 
-## Canonical Workflow Sources
+1. Read `CURRENT_STATE.md`.
+2. Read the relevant architecture document in `docs/architecture/`.
+3. Confirm path, branch and HEAD.
+4. Inspect `git status --short --branch`.
+5. Plan before modifying code.
 
-Use these files in this order when working inside Codex:
+## Non-Negotiable Rules
 
-1. `AGENTS.md`
-2. `docs/architecture/codex-workflow-blueprint.md`
-3. `docs/runbooks/debugging.md`
-4. `docs/runbooks/worktrees.md`
-5. `docs/thread-briefs/`
-6. `docs/adr/`
+- Product name: `Ingeniometrix`.
+- Spanish is the Release 0 user-facing language.
+- Do not add intake-specific production logic.
+- Do not hardcode important prompts into services; use versioned prompt files.
+- Scientific claims require inspectable evidence.
+- A DOI or metadata record alone is not substantive evidence.
+- Deep Research remains disabled in Release 0 until separately validated.
+- Prefer deterministic logic when facts can be checked without an LLM.
+- Frontend terminology must not expose backend internals, run IDs, prompt names, model names or artifact paths.
+- Private artifacts must remain private and owner-scoped.
+- User/project ownership must be enforced for reads, writes, generation and downloads.
+- Database fields and artifacts should have known producers and consumers.
+- Avoid resurrecting legacy/lab pipelines accidentally.
+- Never invent citations, data, findings, ethics approvals, instruments or access to participants/data.
 
-If guidance conflicts, this file wins.
+## Canonical Docs
 
-## Locked Product Decisions
+- Current state: `CURRENT_STATE.md`
+- Architecture: `docs/architecture/ARCHITECTURE.md`
+- Evidence engine: `docs/architecture/EVIDENCE_ENGINE.md`
+- Data/artifacts: `docs/architecture/DATA_MODEL_AND_ARTIFACTS.md`
+- LLM/prompts: `docs/architecture/LLM_AND_PROMPT_REGISTRY.md`
+- Repo/release map: `docs/architecture/REPOSITORY_AND_RELEASE_MAP.md`
+- Future work: `docs/development/FUTURE_DEVELOPMENT.md`
+- Deployment: `docs/runbooks/deployment.md`
 
-- single product: Ingeniometrix
-- initial user: maestria or posgrado student or professional in Peru
-- initial templates: UPC, UCV, USMP
-- language: Spanish only
-- intake: structured text only
-- initial providers: OpenAlex + Crossref
-- initial exports: DOCX + BibTeX + RIS + evidence_log.json
+## Test Requirements
 
-## Non-Negotiables
+For documentation-only changes, run lightweight checks proportional to the change.
 
-- never invent citations
-- never invent data
-- never invent results
-- every meaningful output must be traceable to recovered sources
-- missing information must be declared in assumptions
-- do not build features that enable academic fraud
-- do not reposition the product as a thesis generator
+For release/runtime changes, the secure pilot baseline used:
 
-## Preferred Stack
+```bash
+npm run prisma:validate
+npm run typecheck
+npm run build
+npm run test:secure-pilot
+```
 
-- frontend: Next.js + React + TypeScript
-- backend: Node.js
-- database: PostgreSQL
-- ORM: Prisma
-- local orchestration: Docker Compose
-- automation: Python + shell
-- local development target: Ubuntu 24.04 and WSL
+The secure pilot report records the broader validation: all `test:*` scripts, B2/B3 scientific and visual suites, container build, Compose startup and isolated E2E.
 
-## Coding Rules
+## Deployment
 
-- prefer ASCII in source and docs unless there is a strong reason not to
-- keep modules small and obvious
-- favor explicitness over indirection
-- avoid premature abstractions
-- do not introduce services that are not needed for Release 0
-- keep business logic out of framework glue when possible
-- every external provider integration should sit behind a small local interface
-
-## Deployment Convention
-
-- Ubuntu laptop is the reference execution machine
-- Windows is control; WSL is compatibility and local Linux fallback
-- app runs on host
-- Postgres runs in Docker Compose
-- long-running operations run in tmux
-- repeatable scheduled tasks should later move into systemd timers
-
-## Secret Handling
-
-- never commit secrets
-- keep secrets in local `.env`
-- keep placeholders only in `.env.example`
-- production or shared secrets must be injected outside the repo
-
-## Automation Limits
-
-- do not automate thesis completion
-- do not automate plagiarism evasion
-- do not add OCR, PDF ingestion, or unsupported providers in Release 0
-- do not add subscriptions, upsells, or advanced monetization in Release 0
-
-## Scope Guardrails
-
-If a change does not directly improve one of these, defer it:
-
-- reproducibility
-- Release 0 delivery speed
-- source traceability
-- schema validity
-- export reliability
-
-Move to later releases anything that mainly improves:
-
-- polish
-- marketing sophistication
-- enterprise readiness
-- advanced infra
-- speculative growth features
-
-## Release Boundaries
-
-### Release 0
-
-- auth minima
-- project workspace
-- structured intake
-- OpenAlex search
-- Crossref enrichment
-- source selection
-- blueprint generation
-- coherence report
-- exports
-- audit trail
-
-### Release 0.5
-
-- simple landing
-- payment flow
-- delivery email
-
-### Release 1
-
-- subscriptions
-- revisions
-- more providers
-- PDF
-- bigger commercial and institutional features
-
-## Codex Thread Rules
-
-Permanent thread families:
-
-- `IMX-ARCH-*`: architecture, repo structure, ADRs, operating rules
-- `IMX-WEB-*`: workspace UI, forms, navigation, UX polish
-- `IMX-PIPELINE-*`: retrieval, providers, deduplication, source selection
-- `IMX-AI-*`: prompts, schemas, blueprint generation, validation
-- `IMX-REPORT-*`: LaTeX, DOCX, RIS, BibTeX, evidence log, export packaging
-- `IMX-AUTH-*`: auth, access control, sessions, billing hooks
-- `IMX-GTM-*`: landing, copy, marketing assets
-
-Temporary thread prefixes:
-
-- `IMX-BUG-*`
-- `IMX-FEAT-*`
-- `IMX-EXP-*`
-
-Thread hygiene:
-
-- each thread should have one dominant subsystem
-- debugging does not belong in architecture threads
-- marketing does not belong in retrieval or AI threads
-- research spikes do not belong in implementation threads once the answer is known
-- when a thread is complete, summarize the result into `docs/thread-briefs/`
-
-## Worktree Rules
-
-When Git is available, use separate worktrees for:
-
-- web workspace
-- retrieval pipeline
-- blueprint and schema work
-- reporting and export work
-- auth and billing
-- marketing
-- bug isolation
-
-Do not mix unrelated feature work inside the same worktree.
-
-## Debugging Rules
-
-- every non-trivial bug gets its own `IMX-BUG-*` thread
-- reproduce first, then inspect, then patch, then verify
-- do not debug from the same thread used for product planning
-- keep large logs out of chat; store them in `artifacts-local/`
-- convert stable reproductions into tests or minimal fixtures as soon as possible
-
-## Artifact Policy
-
-- write temporary debug outputs to `artifacts-local/`
-- keep committed `artifacts/` minimal and intentional
-- do not rely on old debug dumps as long-term product documentation
-
-## Documentation Policy
-
-- durable technical decisions go into `docs/adr/`
-- run procedures go into `docs/runbooks/`
-- thread summaries go into `docs/thread-briefs/`
-- day-to-day operating checklists go into `docs/checklists/`
-
-## Current Architecture Direction
-
-Keep one repo for Release 0.
-
-Target internal separation:
-
-- app shell and routes in `app/`
-- UI components in `components/`
-- durable domain helpers and data catalogs in `lib/`
-- backend orchestration in `server/`
-- provider abstraction in `llm/`
-- schemas in `ai/schemas/`
-- local scripts in `scripts/`
-
-Do not force a monorepo split before the current MVP boundaries are stable.
+Use `docs/runbooks/deployment.md`. Keep `IMX_AUTHLESS_WORKSPACE=0` and `IMX_ENABLE_DEEP_RESEARCH=0` for the pilot. Do not push, deploy or mutate production data unless the user explicitly authorizes that task.

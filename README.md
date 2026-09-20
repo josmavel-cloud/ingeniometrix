@@ -1,151 +1,69 @@
 # Ingeniometrix
 
-Ingeniometrix is the company/workspace repo for building `Ingeniometrix`, an ethical thesis-planning MVP for maestria and posgrado users in Peru.
+Ingeniometrix is an ethical academic research-assistance MVP for Spanish-speaking maestria/posgrado users in Peru. Release 0 helps a user create a traceable thesis-plan proposal from structured intake, selected sources, inspected evidence and owner-scoped exports.
 
-## Current Product
+Canonical release:
 
-- product name: `Ingeniometrix`
-- company/workspace name: `Ingeniometrix`
-- Release 0 focus: reproducible technical MVP with traceability
-- Release 0.5 focus: minimal monetization layer
+- Branch: `release/secure-pilot`
+- Commit: `5442a9ba29abed0aabaa4b882e4ca5a0ca057760`
+- Status: secure pilot package validated locally; external deployment not yet performed.
 
-## Current Codebase State
+## Release 0 Does
 
-Implemented now:
+- Password login and opaque DB-backed sessions.
+- Owner-scoped projects, intake and source selection.
+- OpenAlex/Crossref discovery and enrichment.
+- Evidence inspection/materialization and sufficiency checks.
+- Scientific thesis-plan generation with versioned prompts.
+- Visual deliverables, consistency matrix, DOCX/PDF, BibTeX, RIS and `evidence-log.json`.
+- DB-backed generation jobs with retries, heartbeat and recovery.
+- Private DB-backed final artifact storage.
 
-- auth minima
-- project workspace
-- structured intake flow
-- OpenAlex + Crossref search and enrichment
-- manual source selection
-- blueprint generation with schema validation
-- coherence report
-- audit trail
-- local debug runners for provider and workflow checks
+Deep Research code exists but is disabled for the secure pilot with `IMX_ENABLE_DEEP_RESEARCH=0`.
 
-Not implemented yet:
+## Stack
 
-- payment system
-- subscriptions
-- LaTeX rendering pipeline
-- DOCX/BibTeX/RIS export packaging
-- production-grade test suite
+- Next.js 16, React 19, TypeScript.
+- Node.js 20.x runtime.
+- PostgreSQL 16.
+- Prisma.
+- Docker Compose for release assembly.
+- LibreOffice, Poppler, Python and PyMuPDF for document/PDF processing.
+- OpenAI application models configured through local wrappers and versioned prompts.
 
-## Repo Layout
+## Run Locally
 
-- `app/`: Next.js routes and API handlers
-- `components/`: UI and user-facing flows
-- `server/`: orchestration for auth, projects, retrieval, blueprint, audit
-- `lib/`: catalogs, helpers, Prisma client, workflow-level utilities
-- `llm/`: provider abstraction and OpenAI implementation
-- `ai/schemas/`: structured output schemas
-- `prisma/`: database schema
-- `scripts/`: local dev and debug scripts
-- `blueprint_launch/`: isolated workspace for the independent blueprint launch track
-- `docs/`: Codex workflow docs, ADRs, runbooks, checklists, thread briefs
-- `docs/prompts/`: reusable chat starters and operating prompts
-- `artifacts-local/`: local debug outputs, intentionally untracked
-
-## Codex Operating Docs
-
-Read these in order before doing substantial work:
-
-1. `AGENTS.md`
-2. `docs/architecture/codex-workflow-blueprint.md`
-3. `docs/runbooks/debugging.md`
-4. `docs/runbooks/worktrees.md`
-5. `docs/thread-briefs/`
-
-## Quick Start
-
-From the repo root:
+For the secure pilot container shape:
 
 ```bash
-chmod +x bootstrap.sh setup-dev.sh
-./bootstrap.sh
-./setup-dev.sh
+docker compose --env-file .env.release -f docker-compose.release.yml build
+docker compose --env-file .env.release -f docker-compose.release.yml up -d db
+docker compose --env-file .env.release -f docker-compose.release.yml run --rm migrate
+docker compose --env-file .env.release -f docker-compose.release.yml up -d app worker
 ```
 
-Start local services:
-
-```bash
-docker compose up -d
-```
-
-Run the app:
+For host-side development:
 
 ```bash
 npm install
+npm run prisma:validate
+npm run typecheck
 npm run dev
 ```
 
-## Useful Commands
+Do not use `db push` against pilot or production data.
 
-```bash
-npm run typecheck
-npm run build
-npm run prisma:validate
-npm run db:push
-npm run debug:providers
-npm run debug:workflow
-npm run smoke:deployment
-```
+## Documentation
 
-## Debug Artifacts
+Start here:
 
-- local debug output now goes to `artifacts-local/`
-- keep committed `artifacts/` minimal
-- large debug runs should not be used as permanent documentation
+- [CURRENT_STATE.md](CURRENT_STATE.md)
+- [AGENTS.md](AGENTS.md)
+- [ARCHITECTURE.md](docs/architecture/ARCHITECTURE.md)
+- [EVIDENCE_ENGINE.md](docs/architecture/EVIDENCE_ENGINE.md)
+- [DATA_MODEL_AND_ARTIFACTS.md](docs/architecture/DATA_MODEL_AND_ARTIFACTS.md)
+- [LLM_AND_PROMPT_REGISTRY.md](docs/architecture/LLM_AND_PROMPT_REGISTRY.md)
+- [REPOSITORY_AND_RELEASE_MAP.md](docs/architecture/REPOSITORY_AND_RELEASE_MAP.md)
+- [deployment.md](docs/runbooks/deployment.md)
 
-## Local Infrastructure
-
-Release 0 uses:
-
-- Postgres in Docker Compose
-- app and scripts on host
-
-Not used yet:
-
-- Redis
-- Kubernetes
-- local Supabase stack
-- Nginx
-- Caddy
-
-## Environment Files
-
-- `.env.example`: placeholders only
-- `.env`: local and uncommitted
-
-## Release Flow
-
-### Release 0
-
-- reproducible repo
-- local Postgres
-- project and intake flow
-- source search and selection
-- validated blueprint
-- traceable outputs
-
-### Release 0.5
-
-- simple landing
-- payment
-- delivery email
-
-### Release 1
-
-- subscriptions
-- revisions
-- PDF export
-- more providers
-- larger product expansion
-
-## Operating Principles
-
-- keep scope brutally small
-- prefer deterministic steps
-- document durable decisions once, then reference them
-- isolate debugging from product planning
-- use separate threads and worktrees per subsystem when Git is available
+Historical reports in `docs/quality/` are evidence for how the release was validated; they are not the first source of truth for future work.

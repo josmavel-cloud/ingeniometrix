@@ -1,5 +1,11 @@
 # Secure Pilot Deployment
 
+STATUS: CURRENT - Release 0 secure pilot.
+
+Canonical release branch: `release/secure-pilot`
+
+Canonical release commit: `5442a9ba29abed0aabaa4b882e4ca5a0ca057760`
+
 ## Supported shape
 
 Release 0 runs as one container image with three roles:
