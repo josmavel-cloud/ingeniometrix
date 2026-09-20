@@ -1,4 +1,4 @@
-FROM node:20.20.2-bookworm-slim AS system
+FROM node:24-bookworm-slim AS system
 
 ENV DEBIAN_FRONTEND=noninteractive \
     NEXT_TELEMETRY_DISABLED=1 \

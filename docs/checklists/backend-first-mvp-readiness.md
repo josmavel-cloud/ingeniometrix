@@ -4,7 +4,7 @@ Purpose: keep Ingeniometrix Release 0 focused on a stable backend core while lea
 
 ## Local runtime baseline
 
-- Node: use `.nvmrc` with Node `20.20.2`.
+- Node: use `.nvmrc` with Node 24 LTS.
 - Package manager: npm.
 - Database: local PostgreSQL from `compose.yml` on host port `5433`.
 - Local secrets: `.env` only; never commit.
@@ -99,8 +99,8 @@ Lab/diagnostic APIs should remain internal until promoted intentionally:
 - [ ] Local Postgres starts cleanly from `compose.yml`.
 - [ ] `prisma validate` passes.
 - [ ] `prisma db push` applies schema to local DB.
-- [ ] `typecheck` passes on Node 20.
-- [ ] `build` passes on Node 20.
+- [ ] `typecheck` passes on Node 24 LTS.
+- [ ] `build` passes on Node 24 LTS.
 - [ ] Main project API flow works with local DB.
 - [ ] Search flow has graceful behavior when provider keys are missing.
 - [ ] Blueprint creation has clear blocked/error state when LLM key is missing.

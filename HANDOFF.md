@@ -41,7 +41,7 @@ Archivos que el nuevo agente debe leer primero:
 
 Stack objetivo y observado en `package.json`:
 
-- Runtime: Node.js `20.x`.
+- Runtime: Node.js `24.x` LTS.
 - Package manager: npm.
 - Frontend: Next.js App Router `next@16.2.4`, React `19.2.5`, TypeScript.
 - UI: React components under `components/`; lab UI under `components/labs/`; icons with `lucide-react`; animation support with `framer-motion`.

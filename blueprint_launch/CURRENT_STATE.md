@@ -209,7 +209,7 @@ For LLM-backed execution:
 
 Runtime assumptions:
 
-- Node.js 20.x, matching `package.json`.
+- Node.js 24.x LTS, matching `package.json`.
 - Python available as either the bundled Codex runtime Python or `python` on PATH.
 - Python packages needed by `pdf_extract_runtime.py`: `pypdf` and `PIL`/Pillow.
 

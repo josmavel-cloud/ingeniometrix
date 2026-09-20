@@ -37,6 +37,7 @@ export function ExportPanel({
       : null;
   const exportDownloadUrls = {
     docx: baseExportUrl ? `${baseExportUrl}/docx` : null,
+    pdf: baseExportUrl ? `${baseExportUrl}/pdf` : null,
     bibtex: baseExportUrl ? `${baseExportUrl}/bibtex` : null,
     ris: baseExportUrl ? `${baseExportUrl}/ris` : null,
     evidence: baseExportUrl ? `${baseExportUrl}/evidence-log` : null,
@@ -93,24 +94,45 @@ export function ExportPanel({
           <p className="mt-3 text-sm leading-6 text-slate-600">{copy.body}</p>
         </div>
 
-        {exportDownloadUrls.docx ? (
-          <a
-            className="brand-button-primary px-6 py-3 text-sm font-semibold"
-            href={exportDownloadUrls.docx}
-          >
-            <Download className="mr-2 inline size-4" />
-            {copy.downloadDocx}
-          </a>
-        ) : (
-          <button
-            className="brand-button-primary px-6 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-            disabled
-            type="button"
-          >
-            <Download className="mr-2 size-4" />
-            {copy.downloadDocx}
-          </button>
-        )}
+        <div className="flex flex-col gap-3 sm:flex-row">
+          {exportDownloadUrls.docx ? (
+            <a
+              className="brand-button-primary px-6 py-3 text-sm font-semibold"
+              href={exportDownloadUrls.docx}
+            >
+              <Download className="mr-2 inline size-4" />
+              {copy.downloadDocx}
+            </a>
+          ) : (
+            <button
+              className="brand-button-primary px-6 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              disabled
+              type="button"
+            >
+              <Download className="mr-2 size-4" />
+              {copy.downloadDocx}
+            </button>
+          )}
+          {exportDownloadUrls.pdf ? (
+            <a
+              className="brand-button-secondary px-6 py-3 text-sm font-semibold"
+              href={exportDownloadUrls.pdf}
+              title="PDF listo para ver y compartir"
+            >
+              <Download className="mr-2 inline size-4" />
+              Descargar PDF
+            </a>
+          ) : (
+            <button
+              className="brand-button-secondary px-6 py-3 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+              disabled
+              type="button"
+            >
+              <Download className="mr-2 inline size-4" />
+              Descargar PDF
+            </button>
+          )}
+        </div>
       </div>
 
       <div
