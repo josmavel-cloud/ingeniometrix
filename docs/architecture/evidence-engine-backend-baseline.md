@@ -139,7 +139,7 @@ baseline files are listed separately.
 
 | File | Classification | Action |
 | --- | --- | --- |
-| existing `.nvmrc` pin (`20.20.2`) | SUPPORTING | KEEP_AND_VERSION |
+| existing `.nvmrc` LTS major (`24`) | SUPPORTING | KEEP_AND_VERSION |
 | `.gitignore` Python cache rules | SUPPORTING | KEEP_AND_VERSION |
 | `prisma/migrations/20260918000000_baseline/migration.sql` | CANONICAL | KEEP_AND_VERSION |
 | `prisma/migrations/migration_lock.toml` | CANONICAL | KEEP_AND_VERSION |
@@ -491,7 +491,7 @@ test database and explicit credentials before execution:
 
 ## Reproducible checkout
 
-Use Node 20.x. `.nvmrc` pins `20.20.2`.
+Use Node 24.x LTS. `.nvmrc` selects the current `24` release; the original B0 validation record below remains historical evidence from Node 20.20.2.
 
 ```bash
 git clone <repository>
@@ -565,7 +565,7 @@ check.
 
 ## Next action after B0
 
-Make the safe validation suite self-contained and green under Node 20 and an
+Make the safe validation suite self-contained and green under Node 24 LTS and an
 isolated PostgreSQL database: replace dependencies on missing historical local
 artifacts with committed minimal fixtures and resolve the method-generation
 gate mismatch. Do not implement Step 7 as part of that action.

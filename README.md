@@ -24,7 +24,7 @@ Deep Research code exists but is disabled for the secure pilot with `IMX_ENABLE_
 ## Stack
 
 - Next.js 16, React 19, TypeScript.
-- Node.js 20.x runtime.
+- Node.js 24.x LTS runtime.
 - PostgreSQL 16.
 - Prisma.
 - Docker Compose for release assembly.
