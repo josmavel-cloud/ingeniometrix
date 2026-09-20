@@ -49,6 +49,29 @@ docker compose --env-file .env.release -f docker-compose.release.yml up -d app w
 docker compose --env-file .env.release -f docker-compose.release.yml ps
 ```
 
+## Accepted pilot dependency risk
+
+The Release 0 pilot accepts the `deepmerge-ts` / Prisma advisory
+`GHSA-ggr8-5vv4-36mx` as **ACCEPTED PILOT RISK - MIGRATION TOOLCHAIN ONLY**.
+The current lockfile pins `deepmerge-ts` 7.1.5, and npm audit reports the
+recursive-object stack-exhaustion advisory through `@prisma/config` and Prisma.
+Do not add a major-version override as part of this release.
+
+Required mitigations:
+
+- Run migrations only from the trusted release checkout and reviewed
+  configuration; the `migrate` service has no public port and runs as a
+  one-shot container (`docker compose run --rm migrate`).
+- Do not expose the migration container as an application service or accept
+  Prisma configuration from user requests. The release migration command uses
+  checked-in Prisma schema/migrations and injected database environment.
+- Keep the lockfile unchanged except for reviewed dependency updates, and
+  recheck the advisory before expanding beyond the assisted pilot.
+
+The runtime image removes Prisma CLI/config and `deepmerge-ts`; this mitigation
+does not remove them from the build/migration image. npm audit may also report
+separate development-tool findings, which must be reviewed independently.
+
 Provision pilot users from the same image:
 
 ```bash
