@@ -6,6 +6,7 @@ export type StructuredObjectInput = {
   schema: Record<string, unknown>;
   model?: string;
   maxOutputTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   trackingLabel?: string;
   trackingAttribution?: LlmUsageAttribution;
 };
@@ -19,6 +20,7 @@ export type TextGenerationInput = {
   prompt: string;
   model?: string;
   maxOutputTokens?: number;
+  reasoningEffort?: "low" | "medium" | "high";
   trackingLabel?: string;
   trackingAttribution?: LlmUsageAttribution;
 };

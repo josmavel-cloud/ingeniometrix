@@ -22,12 +22,14 @@ import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-po
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
+import { recommendDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
 
 const ACTIVE_STATUSES = [
   BlueprintJobStatus.QUEUED,
   BlueprintJobStatus.RUNNING,
   BlueprintJobStatus.WAITING_NEXT_STAGE,
 ] as const;
+const INCOMPLETE_STATUSES = [...ACTIVE_STATUSES, BlueprintJobStatus.WAITING_USER_DECISION];
 const STALE_LOCK_MS = Math.max(60_000, Number(process.env.BLUEPRINT_STALE_LOCK_MS ?? 10 * 60 * 1000));
 const DEFAULT_MAX_ATTEMPTS = Math.min(3, Math.max(1, Number(process.env.BLUEPRINT_MAX_ATTEMPTS ?? 3) || 3));
 const HEARTBEAT_MS = Math.max(5_000, Number(process.env.BLUEPRINT_HEARTBEAT_MS ?? 30_000));
@@ -38,11 +40,13 @@ type Step6Result = Awaited<ReturnType<typeof runMvpStep6BlueprintDocx>>;
 export type ReleaseJobExecutor = {
   materialize(input: { userId: string; projectId: string; runId: string }): Promise<Step5Result>;
   generate(input: { userId: string; projectId: string; runId: string }): Promise<Step6Result>;
+  recommend?(input: { jobId: string; userId: string; projectId: string; runId: string; stepRunId: string }): Promise<ScientificDecisionBundle>;
 };
 
 const productionExecutor: ReleaseJobExecutor = {
   materialize: runMvpEvidenceMaterialization,
   generate: runMvpStep6BlueprintDocx,
+  recommend: recommendDesignForJob,
 };
 
 type StoredStep6 = Pick<
@@ -147,6 +151,8 @@ function stageLabel(stage: string | null, language: string) {
   const labels: Record<string, [string, string]> = {
     materializing_evidence: ["Inspeccionando y materializando evidencia", "Inspecting and materializing evidence"],
     generating_plan: ["Generando el plan cientifico", "Generating the scientific plan"],
+    scientific_design: ["Evaluando alternativas de investigación", "Evaluating research alternatives"],
+    awaiting_design_approval: ["Confirma el diseño de tu investigación", "Confirm your research design"],
     persisting_artifacts: ["Guardando entregables privados", "Persisting private deliverables"],
     completed: ["Plan listo", "Plan ready"],
     failed: ["La generacion requiere revision", "Generation requires review"],
@@ -274,10 +280,10 @@ async function persistCanonicalArtifacts(job: BlueprintJob, step6: StoredStep6) 
   }
 }
 
-export async function enqueueBlueprintJobForUser(userId: string, projectId: string, options?: { languageOverride?: string | null }) {
+export async function enqueueBlueprintJobForUser(userId: string, projectId: string, options?: { languageOverride?: string | null; scientificProfile?: "rc4" }) {
   const project = await loadOwnedProject(userId, projectId);
   const existing = await prisma.blueprintJob.findFirst({
-    where: { userId, projectId, status: { in: [...ACTIVE_STATUSES] } },
+    where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } },
     orderBy: { createdAt: "desc" },
   });
   if (existing) return toJobSummary(existing);
@@ -289,7 +295,7 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
   const language = normalizeLanguageCode(options?.languageOverride) ?? normalizeLanguageCode(project.language) ?? "es";
   const job = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
-    const concurrent = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: { in: [...ACTIVE_STATUSES] } }, orderBy: { createdAt: "desc" } });
+    const concurrent = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } }, orderBy: { createdAt: "desc" } });
     if (concurrent) return concurrent;
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     return tx.blueprintJob.create({
@@ -304,7 +310,7 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         runnerKind: "database-worker",
         maxAttempts: DEFAULT_MAX_ATTEMPTS,
         stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint } satisfies JobData),
-        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1" }),
+        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", scientificProfile: options?.scientificProfile ?? "rc3" }),
       },
     });
   });
@@ -374,9 +380,17 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 45, output: data.step5 });
       const updated = await prisma.blueprintJob.update({
         where: { id: jobId, startedAt: job.startedAt },
-        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "generating_plan", progress: 45, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data), errorMessage: null, errorJson: Prisma.DbNull, metadataJson: executionMetadata(job, stage, "COMPLETED") },
+        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: (job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile === "rc4" ? "scientific_design" : "generating_plan", progress: 45, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data), errorMessage: null, errorJson: Prisma.DbNull, metadataJson: executionMetadata(job, stage, "COMPLETED") },
       });
       return { job: toJobSummary(updated), shouldContinue: true, state: "continued" as const };
+    }
+
+    if (stage === "scientific_design") {
+      if (!data.step5 || !executor.recommend) throw new Error("SCIENTIFIC_DESIGN_EXECUTOR_REQUIRED");
+      await withJobHeartbeat(jobId, () => executor.recommend!({ jobId, userId: job.userId, projectId: job.projectId, runId: data.runId, stepRunId: data.step5!.stepRunId }));
+      await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 50 });
+      const updated = await prisma.blueprintJob.update({ where: { id: jobId, startedAt: job.startedAt }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval", progress: 50, lockedAt: null, nextAttemptAt: null, metadataJson: executionMetadata(job, stage, "COMPLETED") } });
+      return { job: toJobSummary(updated), shouldContinue: false, state: "awaiting_user_decision" as const };
     }
 
     if (stage === "generating_plan") {

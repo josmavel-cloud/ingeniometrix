@@ -32,6 +32,7 @@ export async function POST(request: Request, context: RouteContext) {
     const language = await getProjectContentLanguageForUser(user.id, id);
     const job = await enqueueBlueprintJobForUser(user.id, id, {
       languageOverride: language,
+      scientificProfile: "rc4",
     });
 
     return NextResponse.json({ job }, { status: 202 });

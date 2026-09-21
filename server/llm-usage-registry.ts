@@ -95,7 +95,7 @@ export type LlmUsageRegistry = {
 
 const REGISTRY_DIR = path.join(process.cwd(), "artifacts-local", "llm-usage");
 const REGISTRY_FILE = path.join(REGISTRY_DIR, "registry.json");
-const PRICING_VERSION = "openai-api-pricing-2026-04-30";
+const PRICING_VERSION = "openai-api-pricing-2026-09-21-rc4-text";
 const PRICING_SOURCE_URL = "https://openai.com/api/pricing/";
 const FX_SOURCE_URL = "https://www.bankofcanada.ca/rates/exchange/daily-exchange-rates-/";
 const FX_PUBLISHED_DATE = "2026-04-29";
@@ -105,6 +105,8 @@ const MAX_RECENT_CALLS = 500;
 const usageContext = new AsyncLocalStorage<LlmUsageAttribution>();
 
 const MODEL_PRICING: Record<string, PricingRecord> = {
+  "gpt-6-astra": { inputUsdPer1M: 10, cachedInputUsdPer1M: 1, outputUsdPer1M: 50 },
+  "gpt-5.6-sol": { inputUsdPer1M: 4, cachedInputUsdPer1M: 0.4, outputUsdPer1M: 20 },
   "gpt-5.5": { inputUsdPer1M: 5, cachedInputUsdPer1M: 0.5, outputUsdPer1M: 30 },
   "gpt-5.4": { inputUsdPer1M: 2.5, cachedInputUsdPer1M: 0.25, outputUsdPer1M: 15 },
   "gpt-5.4-mini": { inputUsdPer1M: 0.75, cachedInputUsdPer1M: 0.075, outputUsdPer1M: 4.5 },
@@ -349,10 +351,13 @@ export async function recordLlmUsage(input: {
   const pricing = resolvePricing(input.model);
   const cachedInputTokens = input.cachedInputTokens ?? 0;
   const nonCachedInputTokens = Math.max(0, input.inputTokens - cachedInputTokens);
+  const rc4Reasoning = /^(gpt-6-astra|gpt-5\.6-sol)(-20|$)/.test(input.model);
+  const longContext = (/^gpt-5\.4(-20|$)/.test(input.model) || rc4Reasoning) && input.inputTokens > 272000;
+  // Conservative estimate for new-model cache writes, not an invoice amount.
   const costUsd =
-    (nonCachedInputTokens / 1_000_000) * pricing.inputUsdPer1M +
-    (cachedInputTokens / 1_000_000) * pricing.cachedInputUsdPer1M +
-    (input.outputTokens / 1_000_000) * pricing.outputUsdPer1M;
+    ((nonCachedInputTokens / 1_000_000) * pricing.inputUsdPer1M * (rc4Reasoning ? 1.25 : 1) +
+    (cachedInputTokens / 1_000_000) * pricing.cachedInputUsdPer1M) * (longContext ? 2 : 1) +
+    (input.outputTokens / 1_000_000) * pricing.outputUsdPer1M * (longContext ? 1.5 : 1);
   const costCad = costUsd * registry.fxRateUsdToCad;
   const delta: LlmUsageTotals = {
     calls: 1,

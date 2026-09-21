@@ -79,7 +79,8 @@ import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } fr
 import { ensureResearchCoverage } from "./research-fallback";
 import { GENERATION_ORDER } from "./research-plan-contracts";
 import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v4";
-import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce } from "./job-execution-context";
+import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce, currentJobExecution } from "./job-execution-context";
+import { approvedDesignForCurrentJob } from "./scientific-decision-service";
 import { GENERATION_POLICY_VERSION } from "./generation-budgets";
 import { compactDocxWhitespace } from "./docx-layout-compaction";
 import { pageBudgetPolicy, templateHardMaxBodyPages } from "./execution-policy";
@@ -345,8 +346,12 @@ async function loadProjectForStep6(input: { userId: string; projectId: string })
 }
 
 async function loadLatestStep5Ledger(projectId: string) {
+  const execution = currentJobExecution();
+  const job = execution ? await prisma.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId, projectId } }) : null;
+  const pinnedStep = (job?.stageDataJson as { step5?: { stepRunId?: string } } | null)?.step5?.stepRunId;
+  if (job && !pinnedStep) throw new Error("EVIDENCE_CONTINUITY: persistent job has no pinned Step 5");
   const ledgerRow = await prisma.projectEvidenceLedger.findFirst({
-    where: { projectId },
+    where: { projectId, ...(pinnedStep ? { stepRunId: pinnedStep } : {}) },
     orderBy: { createdAt: "desc" },
     include: { stepRun: true },
   });
@@ -3156,9 +3161,10 @@ export async function runMvpStep6BlueprintDocx(input: {
   try {
     const provider = input.providerOverride ?? tryGetProvider(warnings);
     if (!provider) throw new Error("SCIENTIFIC_GENERATION_REQUIRES_PROVIDER");
+    const approvedDesign = await approvedDesignForCurrentJob(project.intake, latestStep5.ledger);
     const scientific = await withLlmUsageContext(
       { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
-      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
+      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
     );
     const finalSectionDrafts = structuredClone(scientific.drafts);
     const assetQuality = attachScientificAssets(finalSectionDrafts, latestStep5.ledger, scientific.usedSources);

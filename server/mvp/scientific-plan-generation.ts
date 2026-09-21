@@ -12,6 +12,8 @@ import { CONSISTENCY_MATRIX_PROMPT } from "./prompts/consistency-matrix.v1";
 import { compactSectionToBudget } from "./section-budget";
 import { stageCheckpoint, stableJson } from "./job-execution-context";
 import { generationBudget, GENERATION_POLICY_VERSION, priorSectionsForPhase, SCIENTIFIC_MODEL } from "./generation-budgets";
+import type { DesignAlternative } from "./scientific-decision-contracts";
+import { APPROVED_SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-approved.v1";
 
 const paragraphSchema = z.object({ text: z.string().min(1), citations: z.array(evidencePointerSchema) });
 const narrativeSchema = z.object({ paragraphs: z.array(paragraphSchema).min(1), assumptions: z.array(z.string()), limitations: z.array(z.string()) });
@@ -41,7 +43,8 @@ export function prepareCitationLabels(ledger: MvpStep5EvidenceLedger) {
   });
 }
 
-export async function generateScientificPlan(input: { provider: LlmProvider; projectId: string; runId: string; intake: unknown; ledger: MvpStep5EvidenceLedger; artifactDir: string }) {
+export async function generateScientificPlan(input: { provider: LlmProvider; projectId: string; runId: string; intake: unknown; ledger: MvpStep5EvidenceLedger; artifactDir: string; approvedDesign?: DesignAlternative }) {
+  const scientificPrompt = input.approvedDesign ? APPROVED_SCIENTIFIC_PLAN_PROMPT : SCIENTIFIC_PLAN_PROMPT;
   const coverage = assessEvidenceCoverage(input.ledger);
   if (coverage.status === "INSUFFICIENT") throw new Error("INSUFFICIENT_EVIDENCE_COVERAGE");
   const sources = prepareCitationLabels(input.ledger);
@@ -49,8 +52,8 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
   const validPointers = new Set(evidence.map((e) => `${e.source_id}:${e.evidence_id}`));
   const checkPointers = (pointers: z.infer<typeof evidencePointerSchema>[]) => { if (pointers.some((p) => !validPointers.has(`${p.source_id}:${p.evidence_id}`))) throw new Error("UNKNOWN_EVIDENCE_POINTER"); };
   const sections: Record<string, z.infer<typeof narrativeSchema>> = {};
-  let definition: Record<string, unknown> = {};
-  let design: unknown = null;
+  let definition: Record<string, unknown> = input.approvedDesign ? structuredClone(input.approvedDesign.definition) : {};
+  let design: unknown = input.approvedDesign?.research_design ?? null;
   const promptInventory: unknown[] = [];
   const sequence: string[] = [];
   await mkdir(input.artifactDir, { recursive: true });
@@ -59,10 +62,10 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
     const upstream = priorSectionsForPhase(phase, sections);
     if (JSON.stringify(evidence).length > sectionBudget.evidence_context_budget || JSON.stringify(upstream).length > sectionBudget.prior_context_budget) throw new Error("USER_ACTION_REQUIRED: scientific context exceeds safe profile; no evidence silently discarded");
     const context = { intake: input.intake, stable_definition: definition, research_design: design, evidence: phase === "final_title" || phase === "executive_summary" ? [] : evidence, coverage, upstream_sections: upstream, word_budget: SECTION_BUDGETS[phase as keyof typeof SECTION_BUDGETS] ?? null, section_budget: sectionBudget, ...extra };
-    const prompt = `${SCIENTIFIC_PLAN_PROMPT.systemPrompt}\n\n${SCIENTIFIC_PLAN_PROMPT.userPromptTemplate.replace("{{task}}", SCIENTIFIC_TASKS[phase]).replace("{{context_json}}", stableJson(context))}`;
+    const prompt = `${scientificPrompt.systemPrompt}\n\n${scientificPrompt.userPromptTemplate.replace("{{task}}", SCIENTIFIC_TASKS[phase]).replace("{{context_json}}", stableJson(context))}`;
     const schemaJson = z.toJSONSchema(schema);
     const maxOutputTokens = sectionBudget.max_output_tokens;
-    const output = schema.parse(await stageCheckpoint(phase === "research_design" ? "RESEARCH_DESIGN" : phase === "cross_section_review" ? "SCIENTIFIC_REVIEW" : `SECTION_DRAFTS:${phase}`, { prompt, schemaJson, model: SCIENTIFIC_MODEL, maxOutputTokens, policy: GENERATION_POLICY_VERSION }, async () => schema.parse(await input.provider.generateStructuredObject({ prompt, schema: schemaJson, schemaName: `b3_${phase}`, model: SCIENTIFIC_MODEL, maxOutputTokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: SCIENTIFIC_PLAN_PROMPT.version, schemaName: `b3_${phase}`, stage: "blueprint_generation" } }))));
+    const output = schema.parse(await stageCheckpoint(phase === "research_design" ? "RESEARCH_DESIGN" : phase === "cross_section_review" ? "SCIENTIFIC_REVIEW" : `SECTION_DRAFTS:${phase}`, { prompt, schemaJson, model: SCIENTIFIC_MODEL, maxOutputTokens, policy: GENERATION_POLICY_VERSION }, async () => schema.parse(await input.provider.generateStructuredObject({ prompt, schema: schemaJson, schemaName: `b3_${phase}`, model: SCIENTIFIC_MODEL, maxOutputTokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: scientificPrompt.version, schemaName: `b3_${phase}`, stage: "blueprint_generation" } }))));
     const budgetKey = phase === "evidence_synthesis" ? "state_of_knowledge" : phase;
     const budget = SECTION_BUDGETS[budgetKey as keyof typeof SECTION_BUDGETS];
     if (budget && output && typeof output === "object" && "paragraphs" in output) {
@@ -79,18 +82,30 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
       }
     }
     sequence.push(phase);
-    promptInventory.push({ phase, ...SCIENTIFIC_PLAN_PROMPT, task: SCIENTIFIC_TASKS[phase], dynamic_variables: Object.keys(context), model: SCIENTIFIC_PLAN_PROMPT.model, max_output_tokens: maxOutputTokens, retry_policy: "provider configured bounded retries; acceptance 0", message_arrangement: "single concatenated Responses input", schema: schemaJson });
+    promptInventory.push({ phase, ...scientificPrompt, task: SCIENTIFIC_TASKS[phase], dynamic_variables: Object.keys(context), model: SCIENTIFIC_MODEL, max_output_tokens: maxOutputTokens, retry_policy: "provider configured bounded retries; acceptance 0", message_arrangement: "single concatenated Responses input", schema: schemaJson });
     await writeFile(path.join(input.artifactDir, `${phase}.json`), JSON.stringify(output, null, 2));
     return output;
   }
   sections.state_of_knowledge = await call("evidence_synthesis", narrativeSchema, { word_budget: SECTION_BUDGETS.state_of_knowledge });
   const problem = await call("problem_definition", problemSchema);
+  if (input.approvedDesign && problem.problem !== input.approvedDesign.definition.problem) throw new Error("DESIGN_APPROVAL_CONTRADICTION: la formulación del problema cambió; revisar de forma localizada.");
   definition.problem = problem.problem; sections.problem_definition = problem;
-  Object.assign(definition, await call("research_questions", questionsSchema));
-  Object.assign(definition, await call("objectives_and_optional_hypotheses", objectivesSchema));
+  if (input.approvedDesign) {
+    // Preserve the approved semantic objects. No paid re-selection of questions,
+    // objectives or design after the researcher has confirmed them.
+    sequence.push("research_questions", "objectives_and_optional_hypotheses");
+    await stageCheckpoint("SECTION_DRAFTS:research_questions", { approved: input.approvedDesign.definition.questions }, async () => ({ questions: input.approvedDesign!.definition.questions }));
+    await stageCheckpoint("SECTION_DRAFTS:objectives_and_optional_hypotheses", { approved: input.approvedDesign.definition }, async () => ({ objectives: input.approvedDesign!.definition.objectives, hypotheses_or_propositions: input.approvedDesign!.definition.hypotheses_or_propositions }));
+    await writeFile(path.join(input.artifactDir, "approved-scientific-design.json"), JSON.stringify(input.approvedDesign, null, 2));
+  } else {
+    Object.assign(definition, await call("research_questions", questionsSchema));
+    Object.assign(definition, await call("objectives_and_optional_hypotheses", objectivesSchema));
+  }
   const stableDefinition = definitionSchema.parse(definition); validateResearchDefinition(stableDefinition);
   sections.conceptual_framework = await call("conceptual_framework", narrativeSchema);
-  const researchDesign = await call("research_design", researchDesignSchema); checkPointers(researchDesign.methodological_support);
+  const researchDesign = input.approvedDesign ? researchDesignSchema.parse(await stageCheckpoint("RESEARCH_DESIGN", { approved: input.approvedDesign }, async () => input.approvedDesign!.research_design)) : await call("research_design", researchDesignSchema);
+  if (input.approvedDesign) sequence.push("research_design");
+  checkPointers(researchDesign.methodological_support);
   const excludedSupport: unknown[] = [];
   const methodSupport = (pointers: z.infer<typeof evidencePointerSchema>[], consumer: string) => pointers.filter((p) => {
     const item = evidence.find((e) => e.source_id === p.source_id && e.evidence_id === p.evidence_id)!;
@@ -146,7 +161,7 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
   const usedSources = sources.filter((s) => citedIds.has(s.source_id));
   const refs = drafts.find((d) => d.section_key === "references")!;
   refs.blocks = [{ kind: "reference_list", items: [...new Set(usedSources.map((s) => s.formatted_reference))] }]; refs.generation_source = "deterministic";
-  const titlePlan: MvpStep6TitlePlan = { artifact_type: "mvp_step6_title_plan", artifact_version: "v1", status: "generated", model: SCIENTIFIC_PLAN_PROMPT.model, prompt_version: SCIENTIFIC_PLAN_PROMPT.version, original_title: "", ...title };
+  const titlePlan: MvpStep6TitlePlan = { artifact_type: "mvp_step6_title_plan", artifact_version: "v1", status: "generated", model: scientificPrompt.model, prompt_version: scientificPrompt.version, original_title: "", ...title };
   await writeFile(path.join(input.artifactDir, "research-definition.json"), JSON.stringify(stableDefinition, null, 2));
   await writeFile(path.join(input.artifactDir, "research-design.json"), JSON.stringify(design, null, 2));
   await writeFile(path.join(input.artifactDir, "PROMPTS_USED.md"), "# Prompts B3\n\n```json\n" + JSON.stringify(promptInventory, null, 2) + "\n```\n");
