@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
 import { ScientificDesignApproval } from "./scientific-design-approval";
+import { flushProjectDraft } from "@/lib/draft-save-queue";
 
 import { getLocaleForLanguage, type SupportedLanguage } from "@/lib/language";
 import {
@@ -367,22 +368,13 @@ export function BlueprintPanel({
   function generateBlueprint() {
     setError(null);
     setMessage(null);
-    setProgress({
-      projectStatus,
-      jobId: null,
-      jobStatus: "QUEUED",
-      stageKey: "queued",
-      label: copy.queued,
-      progress: 6,
-      updatedAt: null,
-      errorMessage: null,
-      shouldNudge: false,
-    });
-
     startTransition(async () => {
       try {
+        const draftRevision = await flushProjectDraft(projectId);
         const response = await fetch(`/api/projects/${projectId}/blueprints`, {
           method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftRevision }),
         });
 
         const payload = (await readJsonPayload(response)) as {
@@ -416,8 +408,8 @@ export function BlueprintPanel({
           });
           setMessage(copy.queued);
         }
-      } catch {
-        setError({ message: copy.generateError });
+      } catch (error) {
+        setError({ message: error instanceof Error ? error.message : copy.generateError });
       }
     });
   }

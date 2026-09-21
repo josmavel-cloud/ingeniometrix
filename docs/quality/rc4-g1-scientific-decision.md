@@ -50,11 +50,11 @@ Full final templates and schemas are linked here, not duplicated:
 
 | Purpose | Template | Model / reasoning | Output ceiling |
 | --- | --- | --- | --- |
-| Select up to three viable alternatives | [selector v1](../../../server/mvp/prompts/scientific-design-selector.v1.ts) | gpt-6-astra / high | 8192 tokens |
-| Independent critical review | [critic v1](../../../server/mvp/prompts/scientific-design-critic.v1.ts) | gpt-5.6-sol / high | 4096 tokens |
-| Draft using approved objects | [approved-plan v1](../../../server/mvp/prompts/scientific-plan-approved.v1.ts) | Existing gpt-5.4 configuration | Existing per-phase B4 limits |
+| Select up to three viable alternatives | [selector v1](../../server/mvp/prompts/scientific-design-selector.v1.ts) | gpt-6-astra / high | 8192 tokens |
+| Independent critical review | [critic v1](../../server/mvp/prompts/scientific-design-critic.v1.ts) | gpt-5.6-sol / high | 4096 tokens |
+| Draft using approved objects | [approved-plan v1](../../server/mvp/prompts/scientific-plan-approved.v1.ts) | Existing gpt-5.4 configuration | Existing per-phase B4 limits |
 
-Selector/critic schemas: [contracts](../../../server/mvp/scientific-decision-contracts.ts).
+Selector/critic schemas: [contracts](../../server/mvp/scientific-decision-contracts.ts).
 Actual arrangement is one concatenated Responses `input`, not invented separate
 system/user roles; strict JSON schema, `store=false`, `reasoning.effort=high`.
 No temperature/top_p. Context over 60000 UTF-8 bytes fails without silent clipping.
@@ -80,6 +80,6 @@ approval, changed-input rejection/revision, preserved cost and approved-object r
 They use synthetic provider output and do NOT establish scientific improvement.
 
 G1 remains PARTIAL until frozen-corpus comparative evaluation and real API checks.
-G2 must add mutable draft revisions and immutable job snapshots: current execution
-still detects concurrent intake changes rather than consuming a frozen input.
+G2 follow-up adds mutable draft revisions and immutable worker inputs; see
+[G2a](rc4-g2-drafts-snapshots.md). Scientific evaluation remains separate.
 No current document is claimed to satisfy the new compact RC4 profile yet.

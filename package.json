@@ -80,6 +80,7 @@
     "test:rc4-prejob-budget": "tsx scripts/test-rc4-prejob-budget.ts",
     "test:rc4-prompt-registry": "tsx scripts/test-rc4-prompt-registry.ts",
     "test:rc4-scientific-decision": "tsx scripts/test-rc4-scientific-decision.ts",
+    "test:rc4-draft-snapshots": "tsx scripts/test-rc4-draft-snapshots.ts",
     "compare:diagnostic-runs": "tsx scripts/compare-diagnostic-runs.ts",
     "diagnose:lab-b-ingestion": "tsx scripts/run-lab-b-diagnostic-ingestion.ts",
     "diagnose:lab-b-full-docx": "tsx scripts/run-lab-b-full-diagnostic-docx.ts --allow-degraded-handoff",

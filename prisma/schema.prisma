@@ -320,6 +320,7 @@ model Project {
   updatedAt                 DateTime                       @updatedAt
   user                      User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
   intake                    Intake?
+  draft                     ProjectDraft?
   projectReferences         ProjectReference[]
   blueprintVersions         BlueprintVersion[]
   blueprintJobs             BlueprintJob[]
@@ -364,6 +365,19 @@ model Intake {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+// Mutable workspace state. Generations consume immutable input snapshots, not this row.
+model ProjectDraft {
+  id                String   @id @default(uuid())
+  projectId         String   @unique
+  revision          Int      @default(1)
+  confirmedRevision Int?
+  contentJson       Json
+  contentHash       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Reference {
@@ -455,6 +469,7 @@ model BlueprintJob {
   project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   stages             BlueprintJobStage[]
+  inputSnapshots     GenerationInputSnapshot[]
   generatedArtifacts GeneratedArtifact[]
 
   @@index([projectId, status])
@@ -480,6 +495,21 @@ model BlueprintJobStage {
 
   @@unique([jobId, stageKey])
   @@index([jobId, status])
+}
+
+// Append-only inputs; revisions never overwrite what a previous plan consumed.
+model GenerationInputSnapshot {
+  id          String       @id @default(uuid())
+  jobId       String
+  revision    Int
+  draftId     String?
+  draftRevision Int?
+  contentHash String
+  payloadJson Json
+  createdAt   DateTime     @default(now())
+  job         BlueprintJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, revision])
 }
 
 model GeneratedArtifact {

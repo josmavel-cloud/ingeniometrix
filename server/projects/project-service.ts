@@ -8,6 +8,7 @@ import {
   resolveProjectStatusFromIntake,
 } from "./project-validation";
 import { resolveAndRecordTopicArea } from "./topic-area-service";
+import { lockCanonicalDraftMutation, syncCanonicalIntakeToDraft } from "./project-draft-service";
 
 export async function createProjectForUser(userId: string, input: CreateProjectInput) {
   const seedText = input.customIdeaText ?? input.title;
@@ -146,7 +147,9 @@ export async function saveIntakeForProject(
 
   const status = resolveProjectStatusFromIntake(input);
 
-  return prisma.project.update({
+  return prisma.$transaction(async (tx) => {
+  await lockCanonicalDraftMutation(tx, project.id);
+  const updated = await tx.project.update({
     where: { id: project.id },
     data: {
       status,
@@ -178,5 +181,8 @@ export async function saveIntakeForProject(
     include: {
       intake: true,
     },
+  });
+  await syncCanonicalIntakeToDraft(tx, project.id);
+  return updated;
   });
 }

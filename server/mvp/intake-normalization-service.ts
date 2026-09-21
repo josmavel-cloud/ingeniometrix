@@ -8,6 +8,8 @@ import { ActorType, Provider } from "@prisma/client";
 
 import { extractSearchTerms, normalizeTitle } from "@/lib/text";
 import { prisma } from "@/lib/prisma";
+import { lockCanonicalDraftMutation, syncCanonicalIntakeToDraft, DraftConflict } from "@/server/projects/project-draft-service";
+import { fingerprint } from "./job-execution-context";
 import { getConfiguredLlmProvider } from "@/llm";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import { buildMvpApiUsageReport, captureMvpApiUsageSnapshot } from "@/server/mvp/api-usage-service";
@@ -693,8 +695,13 @@ function buildFrontendSummary(input: {
 async function persistNormalizedProjectState(input: {
   projectId: string;
   normalized: NormalizedMvpIntake;
+  expectedIntake: unknown;
 }) {
-  await prisma.project.update({
+  await prisma.$transaction(async (tx) => {
+  await lockCanonicalDraftMutation(tx, input.projectId);
+  const current = await tx.intake.findUnique({ where: { projectId: input.projectId } });
+  if (fingerprint(current) !== fingerprint(input.expectedIntake)) throw new DraftConflict();
+  await tx.project.update({
     where: { id: input.projectId },
     data: {
       title: input.normalized.normalizedTopic,
@@ -712,6 +719,8 @@ async function persistNormalizedProjectState(input: {
         },
       },
     },
+  });
+  await syncCanonicalIntakeToDraft(tx, input.projectId);
   });
 }
 
@@ -865,7 +874,7 @@ export async function normalizeIntakeForMvpProject(input: {
 
   const domainProfile = inferDomainProfile(original, normalized);
   if (input.persistNormalizedToProject !== false) {
-    await persistNormalizedProjectState({ projectId: input.projectId, normalized });
+    await persistNormalizedProjectState({ projectId: input.projectId, normalized, expectedIntake: project.intake });
   }
 
   const completedAt = new Date();

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 
 import { requireCurrentUser } from "@/server/auth/session";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
@@ -30,9 +31,11 @@ export async function POST(request: Request, context: RouteContext) {
     const user = await requireCurrentUser();
     const { id } = await context.params;
     const language = await getProjectContentLanguageForUser(user.id, id);
+    const body = z.object({ draftRevision: z.number().int().nonnegative().optional() }).strict().parse(await request.json().catch(() => ({})));
     const job = await enqueueBlueprintJobForUser(user.id, id, {
       languageOverride: language,
       scientificProfile: "rc4",
+      confirmedDraftRevision: body.draftRevision ?? 0,
     });
 
     return NextResponse.json({ job }, { status: 202 });

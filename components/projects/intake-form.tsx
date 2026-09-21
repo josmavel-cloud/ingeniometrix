@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import type { SupportedLanguage } from "@/lib/language";
 import type { IntakePreset } from "@/lib/intake-presets";
+import { usePersistedIntake } from "./use-persisted-intake";
 import { getProjectUiCopy } from "@/lib/project-ui-copy";
 import {
   findProjectPresetByTitle,
@@ -55,11 +56,11 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
   const [activeGeneratedDraftIndex, setActiveGeneratedDraftIndex] = useState(0);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [hasRequestedInitialDraft, setHasRequestedInitialDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isGeneratingDrafts, startDraftTransition] = useTransition();
+  const persisted = usePersistedIntake(project.id, form, setForm);
 
   const relatedProjectPreset = useMemo(
     () =>
@@ -98,13 +99,6 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     form.academicConstraints,
     form.advisorNotes,
   ].some((value) => value.trim().length > 0);
-  const needsGeneratedIntake = [
-    form.problemContext,
-    form.targetPopulation,
-    form.availableData,
-    form.preferredMethodology,
-    form.academicConstraints,
-  ].some((value) => value.trim().length === 0);
 
   function applyPreset(preset: IntakePreset) {
     setActivePresetId(preset.id);
@@ -157,20 +151,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
   }
 
   async function saveIntakePayload(nextForm: IntakeState) {
-    const response = await fetch(`/api/projects/${project.id}/intake`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(toIntakeState(nextForm)),
-    });
-    const payload = (await response.json()) as { error?: string };
-
-    if (!response.ok) {
-      throw new Error(payload.error ?? copy.saveError);
-    }
-
-    return payload;
+    return persisted.confirm(toIntakeState(nextForm));
   }
 
   async function requestGeneratedDrafts(options?: {
@@ -182,6 +163,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
 
     startDraftTransition(async () => {
       try {
+        await persisted.confirm(form);
         const response = await fetch(`/api/projects/${project.id}/intake-drafts`, {
           method: "POST",
           headers: {
@@ -232,21 +214,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     applyPreset(firstPreset);
   }, [intakePresets, project.intake]);
 
-  useEffect(() => {
-    if (hasRequestedInitialDraft || isGeneratingDrafts || !needsGeneratedIntake) {
-      return;
-    }
-
-    if (!form.topic.trim()) {
-      return;
-    }
-
-    setHasRequestedInitialDraft(true);
-    void requestGeneratedDrafts({
-      variantSeed: "Complete every missing intake field for the selected topic.",
-      autoSaveFirstDraft: true,
-    });
-  }, [form.topic, hasRequestedInitialDraft, isGeneratingDrafts, needsGeneratedIntake]);
+  // Opening a saved project only restores it. Suggestions require an explicit click.
 
   function cyclePreset() {
     if (generatedDrafts.length > 0) {
@@ -319,6 +287,10 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
 
   return (
     <form className="grid gap-8" onSubmit={handleSubmit}>
+      <div aria-live="polite" className="text-sm text-[var(--color-muted)]">{persisted.message}
+        {persisted.error && <><p role="alert" className="mt-2 text-rose-700">{persisted.error}</p>{persisted.canRetry && <button type="button" className="mr-4 mt-2 underline" onClick={persisted.retrySaving}>Reintentar guardar</button>}<button type="button" className="mt-2 underline" onClick={() => { if (window.confirm("Cargar lo guardado reemplazará el texto de esta pestaña. Copia antes los cambios que quieras conservar.")) persisted.reloadSaved(); }}>Cargar revisión guardada</button></>}
+      </div>
+      <fieldset disabled={!persisted.ready} className="contents">
       <div className="rounded-[28px] p-5 brand-card-lilac sm:grid sm:grid-cols-[1fr_auto] sm:items-start sm:gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
@@ -601,6 +573,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
           {copy.saveHint}
         </p>
       </div>
+      </fieldset>
     </form>
   );
 }

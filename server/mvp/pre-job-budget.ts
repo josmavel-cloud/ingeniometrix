@@ -54,10 +54,10 @@ export async function withPaidOperation<T>(input: { userId: string; requestId: s
 }
 
 export async function withPaidRequest<T>(request: Request, userId: string, projectId: string | undefined, payload: unknown, work: () => Promise<T>) {
-  const project = projectId ? await prisma.project.findFirst({ where: { id: projectId, userId }, include: { intake: true, projectReferences: { where: { selected: true }, select: { referenceId: true, selectedOrder: true } } } }) : null;
+  const project = projectId ? await prisma.project.findFirst({ where: { id: projectId, userId }, include: { intake: true, draft: true, projectReferences: { where: { selected: true }, select: { referenceId: true, selectedOrder: true } } } }) : null;
   if (projectId && !project) throw new Error("PROJECT_NOT_FOUND");
-  const revision = fingerprint({ intake: project?.intake, selection: project?.projectReferences, payload });
-  return withPaidOperation({ userId, projectId, requestId: request.headers.get("idempotency-key") ?? randomUUID(), revision, purpose: new URL(request.url).pathname, inputs: payload }, work);
+  const revision = fingerprint({ intake: project?.intake, draftRevision: project?.draft?.revision, draftContentHash: project?.draft?.contentHash, selection: project?.projectReferences, payload });
+  return withPaidOperation({ userId, projectId, draftId: project?.draft?.id, requestId: request.headers.get("idempotency-key") ?? randomUUID(), revision, purpose: new URL(request.url).pathname, inputs: payload }, work);
 }
 
 export async function reservePreJobCall(purpose: string, model: string, maximumUsd: number, attribution?: LlmUsageAttribution) {

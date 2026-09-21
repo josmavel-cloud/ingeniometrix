@@ -11,7 +11,7 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | G0 | Isolated branch/worktree; local-only changes | This worktree | Git branch/tag/status | COMPLETE |
 | G1a | Reconcile selected/considered/used/excluded; asset QA; terminal costs | Canonical Step 6, export, job control | Reference run read-only + regressions | IN_PROGRESS |
 | G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Owned decision UI + persistent job pause/approval | Offline contracts PASS; real comparison pending | PARTIAL |
-| G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Additive persistence and canonical routes | Concurrent drafts, sources, SSRF, uploads | PENDING |
+| G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Autosave + immutable worker inputs implemented | Draft/concurrency/snapshot PASS; remaining acquisition/UX pending | PARTIAL |
 | G3 | latam-compact-v1, 7-12 body pages, editable matrix, five assets | Existing document renderers | DOCX/PDF/all-page review | PENDING |
 | G4 | OIDC, credits, sandbox payments, administration | Ubuntu identity + transactional ledgers | Isolation/concurrency/webhooks/OAuth | PENDING |
 | G5 | Vercel UI / Ubuntu backend, portable private storage | Typed API boundary; isolated build targets | Bundles, proxy, restore | PENDING |
@@ -34,13 +34,16 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 G0 verified clean RC3 and created isolated worktree. G1 incident repairs implemented:
 reading-order PDF extraction, exact citation locators, full selected-source snapshot,
 exclusion accounting, rejected-image omission and terminal cost closure.
-52/52 offline suites PASS on new isolated DB (loopback 55440); B4 has 48 assertions.
+53/53 offline suites PASS on new isolated DB (loopback 55440); B4 has 48 assertions.
 Prisma, typecheck, app and worker builds PASS. Pre-job durable budgets, request/revision
 attribution, idempotency and 10 externalized prompt templates now implemented.
 Reports: `docs/quality/rc4-g1-integrity.md`, `docs/quality/rc4-g1-prejob.md`.
 G1b selector/critic/approval implemented: one model repair, approval by input hash,
 explicit bounded revision, fixed approved design consumed by drafting. Report:
 `docs/quality/rc4-g1-scientific-decision.md`. Scientific comparison still pending.
-Draft IDs await G2 persistence; no timestamp-based attribution. RC3 untouched.
+G1b commit: `e16cdde`. G2a draft persistence and immutable worker inputs implemented;
+see `docs/quality/rc4-g2-drafts-snapshots.md`. Draft IDs now feed pre-job attribution.
+Full taxonomy/four-step UX/acquisition, compact documents, commerce and hybrid build
+remain pending. Interactive browser validation NOT_RUN. RC3 untouched.
 Next command: `node --env-file=.env.rc4-test --import tsx scripts/rc4-offline-suite.ts`.
 Paid evaluation spend: USD0. No external acceptance claimed.

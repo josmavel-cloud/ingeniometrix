@@ -12,6 +12,7 @@ import { citationChainLimits, parseCitationCandidates, parsePdfCitationLinks, re
 import { runMvpEvidenceMaterialization } from "./evidence-materialization-service";
 import type { MvpStep5EvidenceLedger } from "./evidence-materialization-types";
 import { RESEARCH_DISCOVERY_PROMPT as prompt } from "./prompts/research-discovery.v1";
+import { currentGenerationInput } from "@/server/projects/generation-input-snapshot";
 
 export const DEEP_RESEARCH_LIMITS = { responses: 1, toolCalls: 3, outputTokens: 5000, wallMs: 120_000, maxSources: 5 } as const;
 // At most four inference segments, each bounded by the documented 200k context.
@@ -54,6 +55,13 @@ export async function runEvidenceTiers<T>(input: { initial: T; assess: (value: T
 }
 
 export async function ensureResearchCoverage(input: { userId: string; projectId: string; runId: string; intake: { topic: string; preferredMethodology: string | null }; ledger: MvpStep5EvidenceLedger; artifactDir: string }) {
+  if (currentGenerationInput()) {
+    const coverage = assessEvidenceCoverage(input.ledger);
+    // RC4 approval is based on a frozen, human-selected corpus. Discovery cannot
+    // silently replace it or turn suggestions into approved sources while drafting.
+    if (coverage.status === "INSUFFICIENT") throw new Error("INSUFFICIENT_EVIDENCE_COVERAGE: selecciona evidencia adicional y solicita una revisión explícita.");
+    return { changed: false, coverage, ledger: input.ledger };
+  }
   const limits = citationChainLimits();
   const audit: { candidates: DiscoveryCandidate[]; added_reference_ids: string[]; warnings: string[]; tiers: string[] } = { candidates: [], added_reference_ids: [], warnings: [], tiers: [] };
   const known = await prisma.projectReference.findMany({ where: { projectId: input.projectId }, include: { reference: true } });

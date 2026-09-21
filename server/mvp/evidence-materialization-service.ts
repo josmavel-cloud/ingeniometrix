@@ -40,6 +40,7 @@ import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/ste
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { excerptSupportedAtAnchor, intakeFingerprint, type RecoveredEvidenceChunk } from "./evidence-continuity";
+import { currentGenerationInput, frozenProject } from "@/server/projects/generation-input-snapshot";
 import { adaptStep5LedgerToBlueprintV2 } from "@/server/mvp/step5-blueprint-v2-adapter";
 import {
   buildStep5LlmCacheKey,
@@ -266,7 +267,8 @@ function buildArtifacts(projectId: string, runId?: string) {
 }
 
 async function loadLatestSourceInspection(projectId: string) {
-  const run = await prisma.mvpStepRun.findFirst({
+  const frozen = currentGenerationInput();
+  const run = frozen ? frozen.inspection : await prisma.mvpStepRun.findFirst({
     where: {
       projectId,
       stepKey: MVP_SOURCE_INSPECTION_KEY,
@@ -294,7 +296,7 @@ async function loadLatestSourceInspection(projectId: string) {
 }
 
 async function loadProjectForStep5(input: { userId: string; projectId: string }) {
-  const project = await prisma.project.findFirst({
+  const project = frozenProject(await prisma.project.findFirst({
     where: {
       id: input.projectId,
       userId: input.userId,
@@ -311,7 +313,7 @@ async function loadProjectForStep5(input: { userId: string; projectId: string })
         ],
       },
     },
-  });
+  }));
 
   if (!project) {
     throw new Error("Project not found for Step 5 evidence materialization.");

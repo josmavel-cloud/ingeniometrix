@@ -23,6 +23,7 @@ import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/st
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
 import { recommendDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
+import { appendGenerationInput, currentGenerationInput, frozenProject, readGenerationInput, researchProjectFingerprint, withGenerationInput } from "@/server/projects/generation-input-snapshot";
 
 const ACTIVE_STATUSES = [
   BlueprintJobStatus.QUEUED,
@@ -57,6 +58,7 @@ type StoredStep6 = Pick<
 type JobData = {
   runId: string;
   inputFingerprint?: string;
+  inputSnapshotId?: string;
   recoveryMode?: "PRESENTATION_ONLY";
   step5?: { status: string; stepRunId: string; artifactManifestPath: string };
   step6?: StoredStep6;
@@ -161,13 +163,13 @@ function stageLabel(stage: string | null, language: string) {
 }
 
 async function loadOwnedProject(userId: string, projectId: string) {
-  const project = await prisma.project.findFirst({
+  const project = frozenProject(await prisma.project.findFirst({
     where: { id: projectId, userId },
     include: {
       intake: true,
       projectReferences: { where: { selected: true }, include: { reference: true }, orderBy: { id: "asc" } },
     },
-  });
+  }));
   if (!project) throw new Error("Proyecto no encontrado.");
   if (!project.intake) throw new Error("Completa el intake antes de generar el plan.");
   if (project.projectReferences.length === 0) throw new Error("Selecciona al menos una fuente antes de generar el plan.");
@@ -175,6 +177,7 @@ async function loadOwnedProject(userId: string, projectId: string) {
 }
 
 function projectFingerprint(project: Awaited<ReturnType<typeof loadOwnedProject>>) {
+  if (currentGenerationInput()) return researchProjectFingerprint(project);
   return fingerprint({ intake: project.intake, references: project.projectReferences.map((item) => ({ id: item.id, referenceId: item.referenceId, order: item.selectedOrder })) });
 }
 
@@ -280,14 +283,14 @@ async function persistCanonicalArtifacts(job: BlueprintJob, step6: StoredStep6) 
   }
 }
 
-export async function enqueueBlueprintJobForUser(userId: string, projectId: string, options?: { languageOverride?: string | null; scientificProfile?: "rc4" }) {
+export async function enqueueBlueprintJobForUser(userId: string, projectId: string, options?: { languageOverride?: string | null; scientificProfile?: "rc4"; confirmedDraftRevision?: number }) {
   const project = await loadOwnedProject(userId, projectId);
   const existing = await prisma.blueprintJob.findFirst({
     where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } },
     orderBy: { createdAt: "desc" },
   });
   if (existing) return toJobSummary(existing);
-  const inputFingerprint = projectFingerprint(project);
+  const inputFingerprint = options?.scientificProfile === "rc4" ? researchProjectFingerprint(project) : projectFingerprint(project);
   const previous = await prisma.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
   if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint)) throw new Error("El intento anterior requiere revision; crear otro job no puede restablecer sus limites.");
 
@@ -295,10 +298,13 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
   const language = normalizeLanguageCode(options?.languageOverride) ?? normalizeLanguageCode(project.language) ?? "es";
   const job = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
+    const draft = await tx.projectDraft.findUnique({ where: { projectId } });
+    if (draft && draft.confirmedRevision !== draft.revision) throw new Error("DRAFT_CONFIRMATION_REQUIRED: confirma el borrador guardado antes de generar.");
+    if (options?.confirmedDraftRevision !== undefined && options.confirmedDraftRevision !== (draft?.revision ?? 0)) throw new Error("DRAFT_REVISION_CONFLICT: la definición cambió en otra sesión; revísala antes de generar.");
     const concurrent = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } }, orderBy: { createdAt: "desc" } });
     if (concurrent) return concurrent;
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
-    return tx.blueprintJob.create({
+    const created = await tx.blueprintJob.create({
       data: {
         id: jobId,
         userId,
@@ -313,6 +319,11 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", scientificProfile: options?.scientificProfile ?? "rc3" }),
       },
     });
+    if (options?.scientificProfile === "rc4") {
+      const frozen = await appendGenerationInput(tx, { jobId, projectId, userId, revision: 1 });
+      await tx.blueprintJob.update({ where: { id: jobId }, data: { stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint: researchProjectFingerprint(frozen.project), inputSnapshotId: frozen.snapshot.id }) } });
+    }
+    return created;
   });
   return toJobSummary(job);
 }
@@ -366,6 +377,8 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
   await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.RUNNING, progress: job.progress });
 
   try {
+    const frozenInput = await readGenerationInput(jobId, data.inputSnapshotId);
+    return await withGenerationInput(frozenInput, async () => {
     if (data.inputFingerprint !== projectFingerprint(await loadOwnedProject(job.userId, job.projectId))) throw new Error("INPUT_CHANGED: intake o seleccion incompatible con el job autorizado.");
     if (stage === "materializing_evidence") {
       const owned = await loadOwnedProject(job.userId, job.projectId);
@@ -430,6 +443,7 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
     }
 
     throw new Error(`Etapa no reconocida: ${stage}`);
+    });
   } catch (error) {
     const lease = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: jobId } });
     if (lease.startedAt?.getTime() !== job.startedAt?.getTime() || lease.status !== "RUNNING") return { job: toJobSummary(lease), shouldContinue: false, state: "locked_or_finished" as const };

@@ -81,6 +81,7 @@ import { GENERATION_ORDER } from "./research-plan-contracts";
 import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v4";
 import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce, currentJobExecution } from "./job-execution-context";
 import { approvedDesignForCurrentJob } from "./scientific-decision-service";
+import { currentGenerationInput, frozenProject } from "@/server/projects/generation-input-snapshot";
 import { GENERATION_POLICY_VERSION } from "./generation-budgets";
 import { compactDocxWhitespace } from "./docx-layout-compaction";
 import { pageBudgetPolicy, templateHardMaxBodyPages } from "./execution-policy";
@@ -314,7 +315,7 @@ function buildArtifacts(projectId: string, runId?: string) {
 }
 
 async function loadProjectForStep6(input: { userId: string; projectId: string }): Promise<ProjectForStep6> {
-  const project = await prisma.project.findFirst({
+  const project = frozenProject(await prisma.project.findFirst({
     where: {
       id: input.projectId,
       userId: input.userId,
@@ -332,7 +333,7 @@ async function loadProjectForStep6(input: { userId: string; projectId: string })
         select: { versionNumber: true },
       },
     },
-  });
+  }));
 
   if (!project) {
     throw new Error("No se encontro el proyecto solicitado para este usuario.");
@@ -3011,6 +3012,7 @@ export function buildBlueprintJson(input: {
       doi: source.doi,
     })),
     source_dispositions: scientific ? sourceDisposition(input.ledger, [...new Set(input.package.section_drafts.flatMap((draft) => draft.used_source_ids))]) : null,
+    generation_input_snapshot_id: currentGenerationInput()?.id ?? null,
     engine_warnings: input.package.coherence_report.warnings,
     publication: {
       body_pages: input.package.page_budget_plan.estimated_pages,

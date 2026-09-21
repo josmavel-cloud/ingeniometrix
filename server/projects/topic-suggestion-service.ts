@@ -8,6 +8,7 @@ import {
 
 import { getPresetDegreeLevelForProject } from "@/lib/degree-levels";
 import { prisma } from "@/lib/prisma";
+import { lockCanonicalDraftMutation, syncCanonicalIntakeToDraft } from "./project-draft-service";
 import {
   buildProjectPresetSuggestionEntries,
   getInterestTokens,
@@ -698,6 +699,7 @@ export async function selectTopicSuggestionForUser(params: {
   } satisfies TopicSuggestionSuggestedIntake;
 
   await prisma.$transaction(async (tx) => {
+    await lockCanonicalDraftMutation(tx, project.id);
     await tx.projectTopicSuggestion.updateMany({
       where: {
         projectId: project.id,
@@ -787,6 +789,7 @@ export async function selectTopicSuggestionForUser(params: {
       },
     });
 
+    await syncCanonicalIntakeToDraft(tx, project.id);
     if (suggestion.primaryConceptId) {
       await tx.projectKnowledgeField.updateMany({
         where: {

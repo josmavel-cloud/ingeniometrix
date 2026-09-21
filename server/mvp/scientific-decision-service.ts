@@ -9,6 +9,7 @@ import type { MvpStep5EvidenceLedger } from "./evidence-materialization-types";
 import { alternativeIsApprovable, buildMethodEvidencePack, decisionContextFingerprint, designCritiqueSchema, intentFromIntake, scientificDecisionSchema, validateDesignCritique, validateScientificDecision, type DesignAlternative, type DesignCritique, type ScientificDecision } from "./scientific-decision-contracts";
 import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT as selector } from "./prompts/scientific-design-selector.v1";
 import { SCIENTIFIC_DESIGN_CRITIC_PROMPT as critic } from "./prompts/scientific-design-critic.v1";
+import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
 export const SCIENTIFIC_DECISION_STAGE = "checkpoint:SCIENTIFIC_DECISION";
 export const SCIENTIFIC_APPROVAL_STAGE = "approval:SCIENTIFIC_DESIGN";
@@ -48,7 +49,7 @@ export async function proposeScientificDecision(input: { projectId: string; runI
 export type ScientificDecisionBundle = Awaited<ReturnType<typeof proposeScientificDecision>>;
 
 export async function recommendDesignForJob(input: { jobId: string; userId: string; projectId: string; runId: string; stepRunId: string }) {
-  const project = await prisma.project.findFirstOrThrow({ where: { id: input.projectId, userId: input.userId }, include: { intake: true } });
+  const project = frozenProject(await prisma.project.findFirstOrThrow({ where: { id: input.projectId, userId: input.userId }, include: { intake: true } }))!;
   const ledgerRow = await prisma.projectEvidenceLedger.findFirstOrThrow({ where: { projectId: input.projectId, stepRunId: input.stepRunId } });
   const ledger = ledgerRow.ledgerJson as unknown as MvpStep5EvidenceLedger;
   if (ledger.project_id !== input.projectId || ledger.step_run_id !== input.stepRunId) throw new Error("EVIDENCE_CONTINUITY");
@@ -83,9 +84,10 @@ export async function approveScientificDecision(input: { userId: string; project
     const option = bundle.decision.alternatives.find((a) => a.id === input.alternativeId);
     if (!option || !alternativeIsApprovable(option, bundle.critique)) throw new Error("DESIGN_REQUIRES_CLARIFICATION");
     if (option.scope_changes.length && !input.acceptScopeChanges) throw new Error("SCOPE_CHANGE_REQUIRES_EXPLICIT_APPROVAL");
+    await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${input.projectId} AND "userId" = ${input.userId} FOR UPDATE`;
     const project = await tx.project.findFirstOrThrow({ where: { id: input.projectId, userId: input.userId }, include: { intake: true, projectReferences: { where: { selected: true }, orderBy: { id: "asc" } } } });
     const jobData = job.stageDataJson as { inputFingerprint: string; step5: { stepRunId: string } };
-    const projectHash = fingerprint({ intake: project.intake, references: project.projectReferences.map((r) => ({ id: r.id, referenceId: r.referenceId, order: r.selectedOrder })) });
+    const projectHash = researchProjectFingerprint(project);
     const ledgerRow = await tx.projectEvidenceLedger.findFirstOrThrow({ where: { projectId: input.projectId, stepRunId: jobData.step5.stepRunId } });
     if (projectHash !== jobData.inputFingerprint || project.degreeLevel !== bundle.academicLevel || decisionContextFingerprint(project.intake, ledgerRow.ledgerJson as unknown as MvpStep5EvidenceLedger) !== bundle.contextFingerprint) throw new Error("INPUT_CHANGED: revisa el diseño con la nueva información.");
     await tx.blueprintJobStage.create({ data: { jobId: job.id, stageKey: SCIENTIFIC_APPROVAL_STAGE, status: "COMPLETED", progress: 50, completedAt: new Date(), outputJson: json({ decisionFingerprint: bundle.decisionFingerprint, contextFingerprint: bundle.contextFingerprint, alternativeId: option.id, alternative: option, userId: input.userId, approvedAt: new Date().toISOString(), scopeChangesAccepted: input.acceptScopeChanges, academicLevel: project.degreeLevel }) } });
@@ -101,7 +103,7 @@ export async function approvedDesignForCurrentJob(intake: unknown, ledger: MvpSt
   if ((job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile !== "rc4") return undefined;
   const approval = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: job.id, stageKey: SCIENTIFIC_APPROVAL_STAGE } } });
   const saved = approval?.outputJson as { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string } | null;
-  if (!saved || saved.academicLevel !== job.project.degreeLevel || saved.contextFingerprint !== decisionContextFingerprint(intake, ledger)) throw new Error("DESIGN_APPROVAL_REQUIRED_OR_STALE");
+  if (!saved || saved.academicLevel !== (currentGenerationInput()?.project.degreeLevel ?? job.project.degreeLevel) || saved.contextFingerprint !== decisionContextFingerprint(intake, ledger)) throw new Error("DESIGN_APPROVAL_REQUIRED_OR_STALE");
   return saved.alternative;
 }
 
@@ -123,16 +125,18 @@ export async function reviseScientificDecision(input: { userId: string; projectI
     const row = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: SCIENTIFIC_DECISION_STAGE } } });
     const bundle = (row.outputJson as unknown as { value: ScientificDecisionBundle }).value;
     if (bundle.decisionFingerprint !== input.decisionFingerprint) throw new Error("DESIGN_REVISION_CONFLICT");
+    await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${input.projectId} AND "userId" = ${input.userId} FOR UPDATE`;
     const project = await tx.project.findFirstOrThrow({ where: { id: input.projectId, userId: input.userId }, include: { intake: true, projectReferences: { where: { selected: true }, orderBy: { id: "asc" } } } });
     if (!project.intake || !project.projectReferences.length) throw new Error("DESIGN_REQUIRES_INTAKE_AND_SOURCES");
-    const hash = fingerprint({ intake: project.intake, references: project.projectReferences.map((r) => ({ id: r.id, referenceId: r.referenceId, order: r.selectedOrder })) });
+    const hash = researchProjectFingerprint(project);
     const previous = job.stageDataJson as { runId: string; inputFingerprint: string };
     if (hash === previous.inputFingerprint && project.degreeLevel === bundle.academicLevel) throw new Error("DESIGN_REVISION_REQUIRES_CHANGED_INPUT");
     // Retain complete audit/checkpoint history; do not erase or overwrite old outputs.
     const affected = await tx.blueprintJobStage.findMany({ where: { jobId: job.id, NOT: [{ stageKey: { startsWith: "control:" } }, { stageKey: { startsWith: "archive:" } }] } });
     for (const stage of affected) await tx.blueprintJobStage.update({ where: { id: stage.id }, data: { stageKey: `archive:design-revision-${history.length + 1}:${stage.stageKey}` } });
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: job.id, stageKey: key } }, create: { jobId: job.id, stageKey: key, status: "COMPLETED", progress: 0, outputJson: json({ requests: [...history, input.decisionFingerprint] }) }, update: { outputJson: json({ requests: [...history, input.decisionFingerprint] }) } });
-    await tx.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_NEXT_STAGE", currentStage: "materializing_evidence", progress: 5, lockedAt: null, nextAttemptAt: null, completedAt: null, errorMessage: null, errorJson: Prisma.DbNull, stageDataJson: json({ runId: `${previous.runId}-design-${history.length + 1}`, inputFingerprint: hash }) } });
+    const frozen = await appendGenerationInput(tx, { jobId: job.id, projectId: job.projectId, userId: job.userId, revision: history.length + 2 });
+    await tx.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_NEXT_STAGE", currentStage: "materializing_evidence", progress: 5, lockedAt: null, nextAttemptAt: null, completedAt: null, errorMessage: null, errorJson: Prisma.DbNull, stageDataJson: json({ runId: `${previous.runId}-design-${history.length + 1}`, inputFingerprint: hash, inputSnapshotId: frozen.snapshot.id }) } });
     await tx.project.update({ where: { id: project.id }, data: { status: "BLUEPRINT_GENERATING" } });
     return { revised: true, jobId: job.id };
   });

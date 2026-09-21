@@ -25,7 +25,7 @@ export function classifyFailure(error: unknown): { category: FailureClass; autoR
   if (e?.status && e.status >= 400 || /insufficient_quota/.test(text)) return { category: "PROVIDER_NONRETRYABLE", autoRetry: false };
   if (/Zod|JSON|schema|structured output/i.test(text)) return { category: "STRUCTURED_OUTPUT", autoRetry: false };
   if (/EAGAIN|temporarily unavailable/.test(text)) return { category: "INFRASTRUCTURE_TRANSIENT", autoRetry: true };
-  if (/LEASE_LOST|INPUT_CHANGED|STAGE_ATTEMPTS|USER_ACTION_REQUIRED|DESIGN_APPROVAL|DESIGN_REQUIRES|MIXED_METHODS|DESIGN_ALTERNATIVE|CRITIQUE_COVERAGE/.test(text)) return { category: "USER_ACTION_REQUIRED", autoRetry: false };
+  if (/LEASE_LOST|INPUT_CHANGED|STAGE_ATTEMPTS|USER_ACTION_REQUIRED|DESIGN_APPROVAL|DESIGN_REQUIRES|MIXED_METHODS|DESIGN_ALTERNATIVE|CRITIQUE_COVERAGE|GENERATION_CONFIGURATION_CHANGED/.test(text)) return { category: "USER_ACTION_REQUIRED", autoRetry: false };
   return { category: "INFRASTRUCTURE_FATAL", autoRetry: false }; // Unknown is not permission to pay again.
 }
 function positive(name: string, fallback: number) {
