@@ -17,7 +17,7 @@ import { prisma } from "@/lib/prisma";
 import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { runMvpEvidenceMaterialization } from "@/server/mvp/evidence-materialization-service";
 import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-service";
-import { currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
+import { closeJobCostControl, currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
 import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-policy";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
@@ -319,12 +319,14 @@ async function claimJob(jobId: string) {
   const current = await tx.blueprintJob.findUnique({ where: { id: jobId } });
   if (!current || !ACTIVE_STATUSES.some((s) => s === current.status) || current.nextAttemptAt && current.nextAttemptAt > now || current.lockedAt && current.lockedAt >= staleBefore) return null;
   if ((current.metadataJson as { executionPolicy?: string } | null)?.executionPolicy !== "b4.v1") {
-    await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", lockedAt: null, errorMessage: "Job anterior a B4: reconciliar costes antes de autorizar recuperacion.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
+    await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", completedAt: now, lockedAt: null, errorMessage: "Job anterior a B4: reconciliar costes antes de autorizar recuperacion.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
+    await closeJobCostControl(tx, jobId, "FAILED");
     return null;
   }
   const attempts = current.attempts + (current.status === BlueprintJobStatus.RUNNING ? 1 : 0);
   if (attempts >= current.maxAttempts) {
     await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", attempts, lockedAt: null, completedAt: now, errorMessage: "Recuperaciones agotadas; se requiere revision.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
+    await closeJobCostControl(tx, jobId, "FAILED");
     await tx.project.update({ where: { id: current.projectId }, data: { status: "SOURCES_SELECTED" } });
     return null;
   }
@@ -402,9 +404,13 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       if (!data.step6) throw new Error("El job no conserva el resultado canonico de Step 6.");
       await withJobHeartbeat(jobId, () => persistCanonicalArtifacts(job, data.step6!));
       await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 100, output: { blueprintVersionId: data.step6.blueprint_version_id } });
-      const updated = await prisma.blueprintJob.update({
+      const updated = await prisma.$transaction(async (tx) => {
+      const updated = await tx.blueprintJob.update({
         where: { id: jobId, startedAt: job.startedAt },
         data: { status: BlueprintJobStatus.COMPLETED, currentStage: "completed", progress: 100, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), completedAt: new Date(), errorMessage: null, errorJson: Prisma.DbNull, stageDataJson: toJson(data), metadataJson: executionMetadata(job, stage, "COMPLETED") },
+      });
+      await closeJobCostControl(tx, jobId, "COMPLETED");
+      return updated;
       });
       return { job: toJobSummary(updated), shouldContinue: false, state: "completed" as const };
     }
@@ -422,7 +428,8 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
     if (!retryable) {
       await prisma.project.update({ where: { id: job.projectId }, data: { status: ProjectStatus.SOURCES_SELECTED } });
     }
-    const updated = await prisma.blueprintJob.update({
+    const updated = await prisma.$transaction(async (tx) => {
+    const updated = await tx.blueprintJob.update({
       where: { id: jobId, startedAt: job.startedAt },
       data: {
         status: retryable ? BlueprintJobStatus.QUEUED : BlueprintJobStatus.FAILED,
@@ -437,6 +444,9 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
         metadataJson: executionMetadata(job, stage, "FAILED", { message, category: failure.category, retryable }),
         stageDataJson: toJson(data),
       },
+    });
+    if (!retryable) await closeJobCostControl(tx, jobId, "FAILED");
+    return updated;
     });
     return { job: toJobSummary(updated), shouldContinue: retryable, state: retryable ? "retry_scheduled" as const : "failed" as const };
   }

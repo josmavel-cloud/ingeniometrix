@@ -26,8 +26,20 @@ async function locked<T>(execution: Execution, work: (tx: Prisma.TransactionClie
   });
 }
 type PaidEntry = { id: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number };
-type CostRecord = { policy: ReturnType<typeof jobCostPolicy>; entries: PaidEntry[] };
+type CostRecord = { policy: ReturnType<typeof jobCostPolicy>; entries: PaidEntry[]; terminal?: { jobStatus: "COMPLETED" | "FAILED"; at: string } };
 const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + (item.estimate ?? item.maximum), 0);
+
+// Call inside the SAME transaction that makes the job terminal. Uncertain/in-flight
+// spend is not refunded: retain its full reservation until late usage reconciliation.
+export async function closeJobCostControl(tx: Prisma.TransactionClient, jobId: string, jobStatus: "COMPLETED" | "FAILED") {
+  const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
+  if (!row) return;
+  const record = row.outputJson as unknown as CostRecord;
+  const at = new Date();
+  record.terminal = { jobStatus, at: at.toISOString() };
+  for (const entry of record.entries) if (entry.status === "reserved") entry.status = "pending_reconciliation";
+  await tx.blueprintJobStage.update({ where: { id: row.id }, data: { status: jobStatus, progress: 100, completedAt: at, outputJson: json(record) } });
+}
 export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0) {
   const execution = context.getStore();
   if (!execution) return null;
@@ -46,7 +58,8 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     const deepSpent = committed(record.entries.filter((entry) => entry.category === "DEEP_RESEARCH_COST"));
     if (!Number.isFinite(maximum) || maximum <= 0 || record.entries.some((entry) => entry.estimate !== null && entry.estimate > entry.maximum) || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
     record.entries.push({ id, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve });
-    await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } }, create: { jobId: execution.jobId, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(record) }, update: { outputJson: json(record) } });
+    delete record.terminal;
+    await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } }, create: { jobId: execution.jobId, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(record) }, update: { status: "RUNNING", completedAt: null, outputJson: json(record) } });
   });
   const finish = async (estimate: number | null, usage: unknown, actualModel?: string) => {
     // Settle the reservation even after a lease expires: the old call can still have incurred cost.

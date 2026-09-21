@@ -39,7 +39,7 @@ import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/ret
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
-import { excerptOccurs, intakeFingerprint } from "./evidence-continuity";
+import { excerptSupportedAtAnchor, intakeFingerprint, type RecoveredEvidenceChunk } from "./evidence-continuity";
 import { adaptStep5LedgerToBlueprintV2 } from "@/server/mvp/step5-blueprint-v2-adapter";
 import {
   buildStep5LlmCacheKey,
@@ -732,7 +732,9 @@ async function materializePdfSources(input: {
     try {
       const pdfBuffer = await readFile(originalPdfPath);
       await copyFile(originalPdfPath, sourcePdfPath);
-      await execFileAsync("pdftotext", ["-layout", sourcePdfPath, fulltextPath], { timeout: 60_000 });
+      // Reading order keeps multi-column prose contiguous. Layout mode interleaves
+      // columns, making genuine quotations impossible to verify (RC4 reference S5).
+      await execFileAsync("pdftotext", [sourcePdfPath, fulltextPath], { timeout: 60_000 });
       const rawText = await readFile(fulltextPath, "utf8");
       const pages = rawText
         .split(/\f/g)
@@ -1610,7 +1612,7 @@ function normalizeSemanticExtraction(input: {
   inputChunkCount: number;
   inputCharCount: number;
   artifactPath: string;
-  recoveredTexts?: string[];
+  recoveredChunks?: RecoveredEvidenceChunk[];
 }) {
   const validDecision = new Set(["sufficient_for_blueprint_preparation", "needs_more_evidence", "insufficient"]);
   const qualityDecision = validDecision.has(input.payload.quality_decision ?? "")
@@ -1650,9 +1652,9 @@ function normalizeSemanticExtraction(input: {
       citation_anchor: normalizeCitationAnchor({ anchor: item.citation_anchor, source: input.source }),
       confidence_100: clampScore(item.confidence_100),
     })),
-    evidence_items: (input.payload.evidence_items ?? []).slice(0, 12).map((item, index) => ({
+    evidence_items: (input.payload.evidence_items ?? []).map((item, index) => ({
       supporting_excerpt: item.supporting_excerpt,
-      support_verified: excerptOccurs(item.supporting_excerpt, input.recoveredTexts ?? []),
+      support_verified: excerptSupportedAtAnchor(item.supporting_excerpt, item.citation_anchor, input.recoveredChunks ?? []),
       evidence_id: item.evidence_id?.trim() || `${input.source.source_id}-EV${String(index + 1).padStart(2, "0")}`,
       source_id: input.source.source_id,
       citation_key: input.source.citation_key,
@@ -1823,7 +1825,7 @@ async function runSemanticSourceExtractions(input: {
           inputChunkCount: recoveredChunks.length,
           inputCharCount,
           artifactPath: input.artifactPath,
-          recoveredTexts: recoveredChunks.map((chunk) => chunk.text),
+          recoveredChunks,
         }));
         continue;
       }
@@ -1866,7 +1868,7 @@ async function runSemanticSourceExtractions(input: {
       });
       extractions.push(normalizeSemanticExtraction({
         payload,
-        recoveredTexts: recoveredChunks.map((chunk) => chunk.text),
+        recoveredChunks,
         source,
         model,
         evidenceBasis,

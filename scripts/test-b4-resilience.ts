@@ -7,7 +7,7 @@ import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
 import { authorizePresentationRecoveryForUser, enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, getBlueprintProgressForUserV2, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { reservePaidCall } from "@/server/mvp/application-budget";
-import { claimJobControlSlot, reserveJobCall, stageCheckpoint, withJobExecution, createBlueprintVersionOnce } from "@/server/mvp/job-execution-context";
+import { claimJobControlSlot, reserveJobCall, stageCheckpoint, withJobExecution, createBlueprintVersionOnce, closeJobCostControl } from "@/server/mvp/job-execution-context";
 import { assessRenderSanity, classifyFailure, maxEditorialCompressionRounds, pageBudgetPolicy } from "@/server/mvp/execution-policy";
 import { findGeneratedArtifactForUserVersion, upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
@@ -101,7 +101,9 @@ async function main() {
     const downloadedDocx = await findGeneratedArtifactForUserVersion({ userId: user.id, projectId: project.id, blueprintVersionId: versionId, kind: "BLUEPRINT_DOCX" });
     ok(downloadedDocx?.jobId === job.id, "authorized download upsert preserves job provenance");
     const recoveredCost = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
-    ok(JSON.stringify(beforeCost.outputJson) === JSON.stringify(recoveredCost.outputJson), "checkpoint-only recovery has zero paid call/token/cost delta");
+    const accounting = (row: typeof beforeCost) => { const value = row.outputJson as { entries: unknown; policy: unknown }; return JSON.stringify({ entries: value.entries, policy: value.policy }); };
+    ok(accounting(beforeCost) === accounting(recoveredCost), "checkpoint-only recovery has zero paid call/token/cost delta");
+    ok(beforeCost.status === "FAILED" && Boolean(beforeCost.completedAt) && recoveredCost.status === "COMPLETED" && Boolean(recoveredCost.completedAt), "cost control terminal state follows job; accounting is unchanged");
     const staleJob = await enqueueBlueprintJobForUser(user.id, project.id);
     await prisma.blueprintJob.update({ where: { id: staleJob.id }, data: { status: "RUNNING", attempts: 2, lockedAt: new Date(0), startedAt: new Date(0) } });
     await runNextBlueprintJobStage(staleJob.id, executor);
@@ -131,6 +133,17 @@ async function main() {
       const versions = await Promise.all([createBlueprintVersionOnce(publication, { science: "same" }), createBlueprintVersionOnce(publication, { science: "same" })]);
       ok(versions[0].id === versions[1].id, "publication transaction prevents duplicate versions after interrupted export");
       await assert.rejects(() => createBlueprintVersionOnce(publication, { science: "changed" }), /INPUT_CHANGED/); checks++;
+      const late = await reserveJobCall("scientific", "gpt-5.4", 0.05);
+      await prisma.$transaction(async (tx) => {
+        await tx.blueprintJob.update({ where: { id: control.id }, data: { status: "FAILED", completedAt: new Date() } });
+        await closeJobCostControl(tx, control.id, "FAILED");
+      });
+      const terminal = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: control.id, stageKey: "control:cost" } } });
+      const pendingEntries = (terminal.outputJson as { entries: { status: string; estimate: number | null; maximum: number }[] }).entries;
+      ok(pendingEntries.some((entry) => entry.status === "pending_reconciliation" && entry.estimate === null && entry.maximum === 0.05), "terminal job retains unknown/in-flight reservation instead of refunding it");
+      await late!.complete(0.01, { input_tokens: 10 }, "gpt-5.4");
+      const settled = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { id: terminal.id } });
+      ok(settled.status === "FAILED" && (settled.outputJson as { entries: { estimate: number | null }[] }).entries.at(-1)?.estimate === 0.01, "late usage settles without reopening terminal job/cost control");
       await prisma.blueprintJob.update({ where: { id: control.id }, data: { startedAt: new Date(control.startedAt!.getTime() + 1000) } });
       await assert.rejects(() => reserveJobCall("scientific", "gpt-5.4", 0.01), /LEASE_LOST/); checks++;
     });

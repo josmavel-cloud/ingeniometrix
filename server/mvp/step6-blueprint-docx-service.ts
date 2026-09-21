@@ -69,7 +69,7 @@ import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/ret
 import { asStepRunJson, createMvpStepRun, updateMvpStepRun } from "@/server/mvp/step-run-service";
 import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report-types";
 
-import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence } from "./evidence-continuity";
+import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence, sourceDisposition } from "./evidence-continuity";
 import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
 import { deterministicInfographic, infographicFingerprint } from "./final-infographic";
 import { buildVisualDeliverables, visualCheckpointPolicy } from "./visual-deliverables";
@@ -3005,6 +3005,7 @@ export function buildBlueprintJson(input: {
       title: source.title,
       doi: source.doi,
     })),
+    source_dispositions: scientific ? sourceDisposition(input.ledger, [...new Set(input.package.section_drafts.flatMap((draft) => draft.used_source_ids))]) : null,
     engine_warnings: input.package.coherence_report.warnings,
     publication: {
       body_pages: input.package.page_budget_plan.estimated_pages,
@@ -3311,7 +3312,7 @@ export async function runMvpStep6BlueprintDocx(input: {
           : "deterministic-fallback",
         promptVersion: MVP_STEP6_PROMPT_VERSION,
         intakeSnapshotJson: asStepRunJson(project.intake),
-        selectedReferencesSnapshotJson: asStepRunJson(selectedReferencesSnapshot({ ...latestStep5.ledger, source_registry: latestStep5.ledger.source_registry.filter((source) => scientific.usedSources.some((used) => used.source_id === source.source_id)) })),
+        selectedReferencesSnapshotJson: asStepRunJson(selectedReferencesSnapshot(latestStep5.ledger)),
         blueprintJson: asStepRunJson(buildBlueprintJson({
           project,
           package: finalPackageWithoutVersion,

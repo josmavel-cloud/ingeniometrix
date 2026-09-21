@@ -31,6 +31,11 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 
 ## Current checkpoint
 
-G0 verified clean RC3 and created isolated worktree. Dependencies installing.
-Next: inspect the reference run read-only and reproduce G1a defects before repair.
+G0 verified clean RC3 and created isolated worktree. G1 incident repairs implemented:
+reading-order PDF extraction, exact citation locators, full selected-source snapshot,
+exclusion accounting, rejected-image omission and terminal cost closure.
+49/49 offline suites PASS on new isolated DB (loopback 55440); B4 has 48 assertions.
+Report: `docs/quality/rc4-g1-integrity.md`. G1 still PARTIAL: pre-job budgets and
+scientific selector/critic/approval remain pending. RC3 runtime remains untouched.
+Next command: `node --env-file=.env.rc4-test --import tsx scripts/rc4-offline-suite.ts`.
 Paid evaluation spend: USD0. No external acceptance claimed.

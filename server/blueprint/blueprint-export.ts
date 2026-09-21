@@ -90,12 +90,14 @@ export function extractExportReferences(blueprintVersion: {
       .filter((value): value is string => Boolean(value)),
   );
 
+  // Explicitly empty usage means no bibliography, not all selected references.
+  // Only legacy versions without a usage contract retain the historical fallback.
   const preferredReferences =
-    referencesUsedIds.size > 0
+    Array.isArray(blueprint?.references_used)
       ? selectedSnapshots.filter((reference) => referencesUsedIds.has(reference.reference_id))
       : selectedSnapshots;
 
-  return preferredReferences.length > 0 ? preferredReferences : selectedSnapshots;
+  return preferredReferences;
 }
 
 export function renderBibtex(referenceSnapshots: ExportReferenceSnapshot[]) {
@@ -160,7 +162,11 @@ export function buildEvidenceLog(blueprintVersion: {
     promptVersion: blueprintVersion.promptVersion,
     generatedAt: new Date().toISOString(),
     intakeSnapshot: blueprintVersion.intakeSnapshotJson,
-    selectedReferences: extractExportReferences(blueprintVersion),
+    selectedReferences: asArray(blueprintVersion.selectedReferencesSnapshotJson),
+    selectionSnapshotCompleteness: Array.isArray(blueprint?.source_dispositions) ? "COMPLETE" : "LEGACY_NOT_VERIFIED",
+    consideredReferences: Array.isArray(blueprint?.source_dispositions) ? blueprint.source_dispositions.filter((value) => asObjectRecord(value)?.considered === true) : null,
+    excludedReferences: Array.isArray(blueprint?.source_dispositions) ? blueprint.source_dispositions.filter((value) => asObjectRecord(value)?.used === false) : null,
+    sourceDispositions: blueprint?.source_dispositions ?? null,
     referencesUsed: asArray(blueprint?.references_used),
     citationPlan: asArray(blueprint?.citation_plan),
     antecedentSynthesis: blueprint?.antecedent_synthesis ?? null,

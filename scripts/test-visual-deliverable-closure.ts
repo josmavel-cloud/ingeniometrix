@@ -49,6 +49,19 @@ async function main() {
   assert.ok(!JSON.stringify(publicVisualBrief(definition, design)).includes("Q1"));
   for (const asset of output.visualPlan.assets.flatMap((item) => item.output_paths).filter((file) => file.endsWith(".png"))) assert.ok((await readFile(asset)).length > 100);
   await writeFile(path.join(artifactDir, "result.json"), `${JSON.stringify({ status: "PASS", visual_plan: output.visualPlan }, null, 2)}\n`);
+  // Regression RC4: a fallback bitmap has not passed pixel QA just because its
+  // source table was valid. Keep the editable table and omit the rejected image.
+  const rejectedDir = path.join(artifactDir, "rejected");
+  const rejectedDrafts = [draft("consistency_matrix", 1)];
+  rejectedDrafts[0].blocks.push({ kind: "table", title: "Matriz editable", rows: [["fixture"]], source_note: "Elaboración propia" });
+  const rejected = await buildVisualDeliverables({ provider: {} as never, definition, design, matrix, ledger, usedSourceIds: ["S1"], drafts: rejectedDrafts, artifactDir: rejectedDir, projectId: "synthetic", runId: "qa-rejection", heroOutputPath: path.join(rejectedDir, "hero.png"),
+    imageGeneratorOverride: async ({ outputPath }) => { await sharp({ create: { width: 1536, height: 1024, channels: 4, background: "#edf4f2" } }).png().toFile(outputPath); return { usage: null, estimated_cost_usd: 0, duration_ms: 1 }; },
+    visionValidatorOverride: async () => ({ ...passQuality, pass: false, issues: ["Unreadable fixture"] }),
+    heroGeneratorOverride: async () => ({ plan: output.heroImage, accepted: false, attempts: [], initialRequests: 0, repairRequests: 0 }) as never,
+  });
+  assert.equal(rejected.visualPlan.assets.find((asset) => asset.asset_id === "consistency-matrix-image")?.status, "failed");
+  assert.ok(!rejectedDrafts[0].blocks.some((block) => block.kind === "figure"));
+  assert.ok(rejectedDrafts[0].blocks.some((block) => block.kind === "table"));
   console.log(JSON.stringify({ status: "PASS visual deliverable closure", artifactDir, required_assets: 7, matrix_order: "image_first_table_second" }));
 }
 
