@@ -53,9 +53,31 @@ type StoredStep6 = Pick<
 type JobData = {
   runId: string;
   inputFingerprint?: string;
+  recoveryMode?: "PRESENTATION_ONLY";
   step5?: { status: string; stepRunId: string; artifactManifestPath: string };
   step6?: StoredStep6;
 };
+
+const PRESENTATION_RECOVERY_CHECKPOINTS = [
+  "checkpoint:EVIDENCE",
+  "checkpoint:SECTION_DRAFTS:evidence_synthesis",
+  "checkpoint:SECTION_DRAFTS:problem_definition",
+  "checkpoint:SECTION_DRAFTS:research_questions",
+  "checkpoint:SECTION_DRAFTS:objectives_and_optional_hypotheses",
+  "checkpoint:SECTION_DRAFTS:conceptual_framework",
+  "checkpoint:RESEARCH_DESIGN",
+  "checkpoint:SECTION_DRAFTS:methodology",
+  "checkpoint:SECTION_DRAFTS:contribution_and_feasibility",
+  "checkpoint:SECTION_DRAFTS:scope_limitations_and_pending_decisions",
+  "checkpoint:CONSISTENCY_MATRIX",
+  "checkpoint:SCIENTIFIC_REVIEW",
+  "checkpoint:SECTION_DRAFTS:final_title",
+  "checkpoint:SECTION_DRAFTS:executive_summary",
+  "checkpoint:VISUALS",
+  "checkpoint:DOCX",
+  "checkpoint:PDF",
+  "checkpoint:FINAL_EXPORT",
+] as const;
 
 export type BlueprintJobSummary = {
   id: string;
@@ -332,7 +354,7 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
 
   const stage = job.currentStage ?? "materializing_evidence";
   const data = readJobData(job);
-  return withJobExecution({ jobId, startedAt: job.startedAt!, stage, recoveryAttempt: job.attempts }, async () => {
+  return withJobExecution({ jobId, startedAt: job.startedAt!, stage, recoveryAttempt: job.attempts, checkpointOnly: data.recoveryMode === "PRESENTATION_ONLY", allowedCheckpointWork: data.recoveryMode === "PRESENTATION_ONLY" ? ["FINAL_EXPORT", "DOCX", "PDF"] : undefined }, async () => {
   await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.RUNNING, progress: job.progress });
 
   try {
@@ -455,10 +477,50 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   const job = await prisma.blueprintJob.findFirst({ where: { userId, projectId }, orderBy: { createdAt: "desc" } });
   if (!job) throw new Error("No hay un job para reanudar.");
   if (job.status === BlueprintJobStatus.COMPLETED) return { job: toJobSummary(job), shouldContinue: false, state: "completed" as const };
+  if (job.status === BlueprintJobStatus.FAILED && (job.errorJson as { category?: string } | null)?.category === "PRESENTATION") return authorizePresentationRecoveryForUser(userId, projectId, job.id);
   // Active jobs already belong to the worker. Resume must not steal a lease, erase
   // backoff, or resurrect a failed/exhausted job. Repeated calls are observational.
   const retryable = job.attempts < job.maxAttempts && ACTIVE_STATUSES.some((status) => status === job.status);
   return { job: toJobSummary(job), shouldContinue: retryable, state: retryable ? "already_scheduled" as const : "not_retryable" as const };
+}
+
+export async function authorizePresentationRecoveryForUser(userId: string, projectId: string, jobId: string) {
+  await loadOwnedProject(userId, projectId);
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
+    const job = await tx.blueprintJob.findFirst({ where: { id: jobId, userId, projectId } });
+    if (!job) throw new Error("Job no encontrado.");
+    const data = readJobData(job);
+    if (job.status === BlueprintJobStatus.COMPLETED) return { job: toJobSummary(job), shouldContinue: false, state: "completed" as const };
+    if (ACTIVE_STATUSES.some((status) => status === job.status) && data.recoveryMode === "PRESENTATION_ONLY") return { job: toJobSummary(job), shouldContinue: true, state: "already_scheduled" as const };
+    const failure = job.errorJson as { category?: string; message?: string } | null;
+    if (job.status !== BlueprintJobStatus.FAILED || failure?.category !== "PRESENTATION") throw new Error("El job no es elegible para recuperacion exclusiva de presentacion.");
+    if (job.attempts >= job.maxAttempts) throw new Error("Recuperaciones agotadas; se requiere revision.");
+    const checkpoints = await tx.blueprintJobStage.findMany({ where: { jobId, stageKey: { in: [...PRESENTATION_RECOVERY_CHECKPOINTS] }, status: BlueprintJobStageStatus.COMPLETED }, select: { stageKey: true, outputJson: true } });
+    const valid = new Set(checkpoints.filter((row) => row.outputJson !== null).map((row) => row.stageKey));
+    const missing = PRESENTATION_RECOVERY_CHECKPOINTS.filter((stageKey) => !valid.has(stageKey));
+    if (missing.length) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${missing.join(",")}`);
+    const nextData: JobData = { ...data, recoveryMode: "PRESENTATION_ONLY" };
+    const previousMetadata = job.metadataJson as Record<string, unknown> | null;
+    const recoveryHistory = Array.isArray(previousMetadata?.presentationRecovery) ? previousMetadata.presentationRecovery : [];
+    const updated = await tx.blueprintJob.update({
+      where: { id: job.id },
+      data: {
+        status: BlueprintJobStatus.QUEUED,
+        currentStage: "generating_plan",
+        progress: 45,
+        nextAttemptAt: null,
+        lockedAt: null,
+        completedAt: null,
+        errorMessage: null,
+        errorJson: Prisma.DbNull,
+        stageDataJson: toJson(nextData),
+        metadataJson: toJson({ ...previousMetadata, presentationRecovery: [...recoveryHistory, { authorizedAt: new Date().toISOString(), previousFailure: failure, mode: "PRESENTATION_ONLY", paidCallsAllowed: false }] }),
+      },
+    });
+    await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
+    return { job: toJobSummary(updated), shouldContinue: true, state: "presentation_recovery_scheduled" as const };
+  });
 }
 
 export async function resumeLatestBlueprintJobDrainForUser(userId: string, projectId: string) {

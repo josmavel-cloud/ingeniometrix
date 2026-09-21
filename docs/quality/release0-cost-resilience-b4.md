@@ -53,9 +53,10 @@ repeticiones y checkpoints aborda el mayor multiplicador; no un downgrade ciego.
   contexto repetido; sin cambiar modelos cientificos ni evidencia/matriz.
 - Visuales: geometria adaptativa y labels deterministas con texto completo
   retenido; fallback de presentacion sin rehacer ciencia.
-- DOCX/PDF: compactacion solo de espacios, soft 18, guarda 24, advertencias
-  editoriales separadas del gate cientifico. PDF fuera de guarda conservado
-  para revision, no reintento cientifico automatico.
+- DOCX/PDF: compactacion solo de espacios, objetivo 12-15 y soft 18. B4.3
+  elimina la guarda academica generica de 24: sin limite institucional, un
+  documento valido se publica con `LENGTH_WARNING`; la sanidad de render se
+  evalua aparte y nunca provoca regeneracion cientifica.
 - Compose y `.env.example`: configuracion de coste/paginacion, sin secretos.
 
 Prisma/schema/migraciones, autenticacion y arquitectura cientifica: sin cambios.
@@ -121,7 +122,7 @@ inspeccion visual humana de un caso real.
 | Matriz | SCIENTIFIC_REASONING | GPT-5.4, consistency-matrix.v1 | Checkpoint; salida 5000 existente |
 | Revision transversal | SCIENTIFIC_REVIEW | GPT-5.4 | v4; todas las secciones; salida 3500 |
 | Titulo / resumen | MECHANICAL / ROUTINE_DRAFTING | GPT-5.4 | v4; documento estable sin extractos repetidos; salidas 1500/4500 |
-| Compresion por seccion | OPTIONAL / REPAIR | GPT-5.4-mini, section-budget.v2 | Una llamada por entrada; rechazo de perdida de citas y original conservado |
+| Compresion por seccion | OPTIONAL / REPAIR | GPT-5.4-mini, section-budget.v2 | Maximo una operacion pagada por intento de publicacion; rechazo de perdida de citas y original conservado |
 | QA de hero/matriz | OPTIONAL | IMX_VISUAL_QA_MODEL / mini, visual-qa.v1 | high explicito; reserva persistente |
 | Hero / composicion matriz visual | OPTIONAL | gpt-image-2.5-sunburst, high | Reserva persistente, fallback transparente |
 | Deep Research | OPTIONAL, DISABLED | o4-mini-deep-research | Subpresupuesto persistente; OFF y sin llamada |
@@ -131,14 +132,32 @@ se introduce en una llamada cientifica sin evaluacion. `PROMPTS_USED.md` de cada
 ejecucion conserva los templates completos y schema real del generador;
 en B4 solo se generaron inventarios de mocks, no de aceptacion pagada.
 
+## B4.3: cierre de publicacion
+
+El job real `09658091-7164-4c68-a06a-cdc070fe7ffe` se recupero desde sus
+checkpoints en modo `PRESENTATION_ONLY`. El documento con 25 paginas de cuerpo
+quedo `ABOVE_SOFT_MAX`, `publication_allowed=true` y render sanity `PASS`.
+Se creo BlueprintVersion `0dcea2dc-01b0-4a93-8f2c-9c65d6fa9e76` y se
+persistieron DOCX, PDF, BibTeX, RIS y evidence log privados.
+
+El libro del job permanecio exactamente en 27 llamadas, 237727 tokens de
+entrada, 3584 cached, 44648 de salida y USD 0.91831205. El StepRun de recovery
+registro cero llamadas. Attempts permanecio 1. Descargas autenticadas DOCX/PDF
+devolvieron 200 al propietario y 400 a un segundo usuario. La descarga DOCX ya
+no elimina `jobId` al actualizar metadatos del artefacto.
+
+Regresion B4.3: 45 checks PASS, mas B2 continuidad/DOCX/download/provider,
+B3 contratos/generacion/export, visual closure y secure-pilot PASS. Prisma,
+TypeScript, app build y worker build PASS. No hubo llamadas pagadas.
+
 ## Limites y estado
 
-`IMPLEMENTATION_STATUS = CANDIDATE_WITH_LIMITATIONS`.
-`LIVE_SCIENTIFIC_ACCEPTANCE = NOT_RUN`.
-`INCIDENT_RECOVERED = NO` (intencional; estado preservado).
+`IMPLEMENTATION_STATUS = B4.3_VALIDATED_CANDIDATE`.
+`LIVE_SCIENTIFIC_ACCEPTANCE = PASS_WITH_LIMITATIONS` (una ejecucion; no media productiva).
+`B4_ACCEPTANCE_JOB_RECOVERED = YES`.
+`ORIGINAL_RC2_INCIDENT_RECOVERED = NO` (intencional; estado preservado).
 
-Pendiente demostrar el perfil de tokens/coste con un plan real nuevo antes de
-promover. No existe aun UI para ampliar presupuesto; un bloqueado no se
+No existe aun UI para ampliar presupuesto; un bloqueado no se
 reanuda a escondidas. El margen de trabajo restante es estimado, no prediccion
 exacta de todo contenido futuro. Para paginas sobrantes se mantiene el unico
 pase editorial previo a revision; no se agrega otro pase LLM posterior.
@@ -149,5 +168,5 @@ y pasos anteriores de descubrimiento, fuera del job, no constituyen este contrat
 Detalles/retencion/failure policy: [arquitectura B4](../architecture/COST_AND_RECOVERY_B4.md).
 Operacion segura: [runbook B4](../runbooks/b4-cost-recovery.md).
 
-Siguiente accion unica: aceptacion real controlada de un proyecto NUEVO con
-este candidato, maximo USD 2.50, antes de promover o reiniciar el piloto.
+Siguiente accion unica: promover el candidato B4 validado a una rama de
+integracion/release mediante fast-forward despues de revisar el commit.

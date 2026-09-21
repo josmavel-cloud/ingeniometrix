@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { jobCostPolicy } from "./execution-policy";
 
-type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number };
+type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
 const context = new AsyncLocalStorage<Execution>();
 export const currentJobExecution = () => context.getStore();
 export function withJobExecution<T>(value: Execution, work: () => Promise<T>) { return context.run(value, work); }
@@ -31,6 +31,7 @@ const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + 
 export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0) {
   const execution = context.getStore();
   if (!execution) return null;
+  if (execution.checkpointOnly) throw new Error(`CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN: ${purpose}`);
   const id = randomUUID();
   await locked(execution, async (tx) => {
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
@@ -62,6 +63,26 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     });
   };
   return { complete: finish, fail: () => finish(null, null) };
+}
+
+export async function claimJobControlSlot(key: string, maximum: number) {
+  const execution = context.getStore();
+  if (!execution) return true;
+  if (!Number.isInteger(maximum) || maximum < 0) throw new Error(`Invalid control slot maximum: ${key}`);
+  return locked(execution, async (tx) => {
+    const stageKey = `control:${key}`;
+    const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } } });
+    const record = row?.outputJson as { used?: number; maximum?: number } | null;
+    const used = record?.used ?? 0;
+    if (used >= maximum) return false;
+    const output = { used: used + 1, maximum, updatedAt: new Date().toISOString() };
+    await tx.blueprintJobStage.upsert({
+      where: { jobId_stageKey: { jobId: execution.jobId, stageKey } },
+      create: { jobId: execution.jobId, stageKey, status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(output) },
+      update: { status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(output) },
+    });
+    return true;
+  });
 }
 
 export async function jobCostSnapshot() {
@@ -105,6 +126,7 @@ export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () 
     for (const file of saved.files) { try { if (fingerprint(await readFile(file.path)) !== file.hash) intact = false; } catch { intact = false; } }
     if (intact) return structuredClone(saved.value);
   }
+  if (execution.checkpointOnly && !execution.allowedCheckpointWork?.includes(key)) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${key}`);
   const oldInput = previous?.inputJson as { fingerprint?: string; attempts?: number } | null;
   const attempts = oldInput?.fingerprint === hash ? (oldInput.attempts ?? 0) + 1 : 1;
   if (attempts > (key.startsWith("EDITORIAL:") ? 1 : 3)) throw new Error(`STAGE_ATTEMPTS_EXHAUSTED: ${key}`);

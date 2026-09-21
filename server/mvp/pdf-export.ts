@@ -3,10 +3,10 @@ import { promisify } from "node:util";
 import { mkdir, mkdtemp, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { pageBudgetPolicy } from "./execution-policy";
+import { assessRenderSanity, pageBudgetPolicy } from "./execution-policy";
 const exec = promisify(execFile);
 
-export async function exportPlanPdf(docxPath: string, pdfPath: string) {
+export async function exportPlanPdf(docxPath: string, pdfPath: string, options: { templateHardMaxBodyPages?: number | null; expectedBodyPages?: number | null } = {}) {
   const directory = path.dirname(pdfPath);
   await mkdir(directory, { recursive: true });
   const profile = await mkdtemp(path.join(directory, ".libreoffice-profile-"));
@@ -19,9 +19,16 @@ export async function exportPlanPdf(docxPath: string, pdfPath: string) {
   const pages = stdout.split("\f").filter((page) => page.trim());
   const referencesPage = pages.findIndex((page, i) => i > 0 && /^\s*\d*\.?\s*Referencias\s*$/m.test(page));
   const bodyPages = referencesPage >= 0 ? referencesPage - 1 : null; // Separate cover and references sections.
-  const policy = pageBudgetPolicy(bodyPages);
-  // Render success and editorial length are separate outcomes. Even guard violations
-  // retain the PDF for targeted rendering review, never scientific regeneration.
-  const result = { pdf_path: pdfPath, page_count: pages.length, body_pages: bodyPages, hard_max_body_pages: policy.guard, soft_max_body_pages: policy.soft, page_budget_pass: policy.status === "PASS", page_budget_status: policy.status, warnings: policy.status === "PASS" ? [] : [`PDF_${policy.status}: ${bodyPages ?? "unknown"} body pages`], text: stdout, rendered_with: "LibreOffice DOCX -> PDF" };
+  const bodyPageTexts = referencesPage >= 0 ? pages.slice(1, referencesPage) : [];
+  const sanity = assessRenderSanity({ bodyPages, bodyPageTexts, expectedBodyPages: options.expectedBodyPages });
+  const policy = pageBudgetPolicy(bodyPages, { templateHardMaxBodyPages: options.templateHardMaxBodyPages, renderSanity: sanity });
+  const warnings = policy.status === "ABOVE_SOFT_MAX"
+    ? ["El plan supera la extensión objetivo. Puedes ajustarlo posteriormente según los requisitos específicos de tu universidad."]
+    : policy.status === "TEMPLATE_LIMIT_EXCEEDED"
+      ? ["El plan supera el máximo definido por la plantilla institucional y requiere ajuste antes de publicarse."]
+      : policy.status === "RENDER_SANITY_FAILURE" || policy.status === "UNMEASURED"
+        ? [`La exportación requiere revisión técnica: ${policy.renderSanity.reasons.join(", ") || "no se pudo medir la extensión"}.`]
+        : [];
+  const result = { pdf_path: pdfPath, page_count: pages.length, body_pages: bodyPages, target_body_pages: policy.target, template_hard_max_body_pages: policy.templateHardMax, hard_max_body_pages: policy.templateHardMax, soft_max_body_pages: policy.soft, length_status: policy.status, publication_allowed: policy.publicationAllowed, render_sanity_status: policy.renderSanity.status, render_sanity_reasons: policy.renderSanity.reasons, render_sanity_emergency_max_body_pages: policy.renderSanity.emergencyMaxBodyPages, page_budget_pass: policy.publicationAllowed, page_budget_status: policy.status, warnings, text: stdout, rendered_with: "LibreOffice DOCX -> PDF" };
   return result;
 }

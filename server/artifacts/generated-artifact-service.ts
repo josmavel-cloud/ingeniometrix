@@ -91,7 +91,7 @@ export async function upsertGeneratedArtifact(input: GeneratedArtifactInput) {
       update: {
         userId: input.userId,
         projectId: input.projectId,
-        jobId: input.jobId ?? null,
+        ...(input.jobId === undefined ? {} : { jobId: input.jobId }),
         mimeType: input.mimeType,
         byteSize: content.byteLength,
         sha256,

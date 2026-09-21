@@ -159,6 +159,11 @@ export function BlueprintPanel({
         research_questions?: string[];
         assumptions?: string[];
         engine_warnings?: string[];
+        publication?: {
+          body_pages?: number | null;
+          length_status?: "WITHIN_TARGET" | "ABOVE_TARGET" | "ABOVE_SOFT_MAX" | "TEMPLATE_LIMIT_EXCEEDED" | "RENDER_SANITY_FAILURE" | "UNMEASURED";
+          publication_allowed?: boolean;
+        };
         references_used?: Array<{ reference_id: string; title: string }>;
         key_constructs_or_variables?: string[];
         antecedent_synthesis?: {
@@ -615,6 +620,12 @@ export function BlueprintPanel({
               )}
             </ul>
           </div>
+
+          {blueprint?.publication?.length_status === "ABOVE_SOFT_MAX" ? (
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5 text-sm leading-7 text-amber-900">
+              El plan supera la extensión objetivo. Puedes ajustarlo posteriormente según los requisitos específicos de tu universidad.
+            </div>
+          ) : null}
 
           {(blueprint?.engine_warnings ?? []).length > 0 ? (
             <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5">

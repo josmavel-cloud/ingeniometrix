@@ -82,7 +82,7 @@ import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v4";
 import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce } from "./job-execution-context";
 import { GENERATION_POLICY_VERSION } from "./generation-budgets";
 import { compactDocxWhitespace } from "./docx-layout-compaction";
-import { pageBudgetPolicy } from "./execution-policy";
+import { pageBudgetPolicy, templateHardMaxBodyPages } from "./execution-policy";
 import { buildEvidenceLog, extractExportReferences, renderBibtex, renderRis } from "@/server/blueprint/blueprint-export";
 const STEP6_ARTIFACT_ROOT = "mvp-step6-blueprint-docx";
 const FONT = "Times New Roman";
@@ -443,7 +443,7 @@ function buildStyleContract(project: ProjectForStep6): MvpStep6AcademicStyleCont
     document_policy: [
       "documento Word editable",
       "tablas nativas",
-      "extension maxima objetivo de 15 páginas",
+      "extensión objetivo de 12 a 15 páginas, ajustable a requisitos institucionales",
       "matriz de consistencia en página horizontal",
       "imagenes sin deformacion y con relación de aspecto conservada",
       "figuras con fuente cuando existan assets",
@@ -3006,6 +3006,14 @@ export function buildBlueprintJson(input: {
       doi: source.doi,
     })),
     engine_warnings: input.package.coherence_report.warnings,
+    publication: {
+      body_pages: input.package.page_budget_plan.estimated_pages,
+      target_body_pages: input.package.page_budget_plan.target_body_pages ?? { min: 12, max: 15 },
+      soft_max_body_pages: input.package.page_budget_plan.soft_max_body_pages ?? input.package.page_budget_plan.max_pages,
+      template_hard_max_body_pages: input.package.page_budget_plan.template_hard_max_body_pages ?? null,
+      length_status: input.package.page_budget_plan.length_status ?? "WITHIN_TARGET",
+      publication_allowed: input.package.page_budget_plan.publication_allowed ?? true,
+    },
     step6_docx: {
       artifact_version: "v1",
       docx_path: input.package.step7_export_contract.docx_path,
@@ -3088,10 +3096,15 @@ export async function runMvpStep6BlueprintDocx(input: {
   warnings.push(...evidenceGate.limitations);
   const sectionPlan = scientificSectionPlan();
   const academicStyleContract = buildStyleContract(project);
-  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: pageBudgetPolicy(null).soft,
+  const initialPagePolicy = pageBudgetPolicy(null);
+  const institutionalHardMax = templateHardMaxBodyPages(project.templateKey);
+  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: initialPagePolicy.soft,
+    target_body_pages: initialPagePolicy.target,
+    soft_max_body_pages: initialPagePolicy.soft,
+    template_hard_max_body_pages: institutionalHardMax,
     max_body_words: sectionPlan.reduce((total, section) => total + section.max_words, 0),
     fixed_page_reservations: [{ label: "Portada (fuera del cuerpo)", pages: 1 }, { label: "Referencias (fuera del cuerpo; extension variable)", pages: 1 }],
-    compression_policy: ["Objetivo 12-15 paginas de cuerpo; maximo 18 verificado sobre PDF.", "No truncar texto ni reducir tipografia; resolver redundancia antes de publicar si excede el maximo."] };
+    compression_policy: ["Objetivo 12-15 paginas de cuerpo; 18 es un umbral blando, no un maximo academico universal.", "Aplicar como maximo una ronda editorial y compactacion determinista; sin limite institucional, publicar el contenido valido con advertencia de longitud."] };
   const sectionGenerationOrder: MvpStep6BlueprintPackage["section_generation_order"] = [{ wave: "core", section_keys: [...GENERATION_ORDER], model_tier: "strong_reasoning" }];
 
   const stepRun = await createMvpStepRun({
@@ -3242,30 +3255,39 @@ export async function runMvpStep6BlueprintDocx(input: {
     };
 
     const renderFingerprint = { drafts: finalSectionDrafts, title: titlePlan, style: academicStyleContract, heroImage, visualPlan, program: project.program, university: project.university, renderer: "b4.v1" };
-    const pdf = await stageCheckpoint("FINAL_EXPORT", { renderFingerprint, soft: process.env.IMX_BODY_SOFT_MAX_PAGES ?? 18, guard: process.env.IMX_BODY_RENDER_GUARD_PAGES ?? 24 }, async () => {
+    const publicationPolicy = { version: "b4.3", target: initialPagePolicy.target, soft: initialPagePolicy.soft, templateHardMax: institutionalHardMax };
+    const pdf = await stageCheckpoint("FINAL_EXPORT", { renderFingerprint, publicationPolicy }, async () => {
     await stageCheckpoint("DOCX", renderFingerprint, async () => { await renderDocx({
       project,
       package: provisionalPackage,
       outputPath: artifacts.docxPath,
     }); return { path: artifacts.docxPath }; }, (value) => [value.path]);
 
-    return stageCheckpoint("PDF", { renderFingerprint, converter: "libreoffice-b4.v1", soft: process.env.IMX_BODY_SOFT_MAX_PAGES ?? 18, guard: process.env.IMX_BODY_RENDER_GUARD_PAGES ?? 24 }, async () => {
-      let rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"));
-      if (!rendered.page_budget_pass) {
+    return stageCheckpoint("PDF", { renderFingerprint, converter: "libreoffice-b4.v1", publicationPolicy }, async () => {
+      const exportOptions = { templateHardMaxBodyPages: institutionalHardMax, expectedBodyPages: finalPageBudgetPlan.estimated_pages };
+      let rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"), exportOptions);
+      if (rendered.length_status === "ABOVE_SOFT_MAX" || rendered.length_status === "TEMPLATE_LIMIT_EXCEEDED") {
         await copyFile(artifacts.docxPath, path.join(artifacts.artifactDir, "pre-layout-thesis-plan.docx"));
         const compaction = await compactDocxWhitespace(artifacts.docxPath);
         const sectionLengths = finalSectionDrafts.map((draft) => ({ section: draft.section_key, words: draft.word_count, max_words: sectionPlan.find((section) => section.section_key === draft.section_key)?.max_words ?? 0 }));
-        await writeJson(path.join(artifacts.artifactDir, "layout-compaction.json"), { ...compaction, before_body_pages: rendered.body_pages, additional_scientific_calls: 0, oversized_sections: sectionLengths.filter((section) => section.max_words > 0 && section.words > section.max_words), editorial_policy: "one targeted pass per oversized section before scientific review; no second pass or scientific regeneration for PDF length" });
-        if (compaction.changes) rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"));
+        await writeJson(path.join(artifacts.artifactDir, "layout-compaction.json"), { ...compaction, before_body_pages: rendered.body_pages, additional_scientific_calls: 0, oversized_sections: sectionLengths.filter((section) => section.max_words > 0 && section.words > section.max_words), editorial_policy: "one publication-wide editorial compression round maximum; deterministic layout compaction does not regenerate scientific content" });
+        if (compaction.changes) rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"), exportOptions);
       }
       return rendered;
     }, (value) => [value.pdf_path, artifacts.docxPath]);
     }, (value) => [value.pdf_path, artifacts.docxPath]);
     warnings.push(...pdf.warnings);
     finalPageBudgetPlan.estimated_pages = pdf.body_pages!;
+    finalPageBudgetPlan.target_body_pages = pdf.target_body_pages;
+    finalPageBudgetPlan.soft_max_body_pages = pdf.soft_max_body_pages;
+    finalPageBudgetPlan.template_hard_max_body_pages = pdf.template_hard_max_body_pages;
+    finalPageBudgetPlan.length_status = pdf.length_status;
+    finalPageBudgetPlan.publication_allowed = pdf.publication_allowed;
+    finalPageBudgetPlan.render_sanity = { status: pdf.render_sanity_status, reasons: pdf.render_sanity_reasons, emergency_max_body_pages: pdf.render_sanity_emergency_max_body_pages };
     await writeJson(path.join(artifacts.artifactDir, "pdf-validation.json"), pdf);
     await writeJson(path.join(artifacts.artifactDir, "application-budget.json"), await jobCostSnapshot() ?? currentApplicationBudget()?.entries);
-    if (pdf.page_budget_status === "RENDER_REVIEW_REQUIRED" || pdf.page_budget_status === "UNMEASURED") throw new Error(`PDF_RENDER_REVIEW_REQUIRED: ${pdf.body_pages ?? "unknown"} body pages; scientific checkpoints and rendered files retained`);
+    if (pdf.length_status === "TEMPLATE_LIMIT_EXCEEDED") throw new Error(`TEMPLATE_PAGE_LIMIT: ${pdf.body_pages ?? "unknown"}/${pdf.template_hard_max_body_pages ?? "unknown"} body pages; scientific checkpoints retained`);
+    if (pdf.length_status === "RENDER_SANITY_FAILURE" || pdf.length_status === "UNMEASURED") throw new Error(`RENDER_SANITY_FAILURE: ${pdf.render_sanity_reasons.join(", ") || "body pages unmeasured"}; scientific checkpoints retained`);
 
     const coherenceReport = buildCoherenceReport({
       sectionPlan,

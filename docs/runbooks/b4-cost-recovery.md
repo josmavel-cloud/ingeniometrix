@@ -24,7 +24,10 @@ detener SOLO su worker local y conservar DB, app y volumen. No ejecutar
 5. Conciliar las llamadas sin usage; su reserva sigue comprometida.
 6. Una recuperacion autorizada debe conservar libro, intentos y checkpoints.
 
-`/resume` no ejecuta generacion ni revive terminales. No existe todavia una
+`/resume` no ejecuta generacion ni revive terminales salvo un fallo
+`PRESENTATION` con el conjunto completo de checkpoints B4. En ese caso agenda
+una recuperacion `PRESENTATION_ONLY`: conserva intentos/coste y el contexto
+rechaza cualquier reserva pagada; solo recompone/publica DOCX/PDF. No existe todavia una
 interfaz administrativa para ampliar presupuesto: ese estado requiere una
 intervencion explicitamente autorizada, auditada y revisada. No se proporciona
 un SQL generico que borre los limites. Jobs anteriores a B4 requieren conciliar

@@ -157,6 +157,12 @@ export type MvpStep6PageBudgetPlan = {
   artifact_version: "v1";
   max_pages: number;
   estimated_pages: number;
+  target_body_pages?: { min: number; max: number };
+  soft_max_body_pages?: number;
+  template_hard_max_body_pages?: number | null;
+  length_status?: "WITHIN_TARGET" | "ABOVE_TARGET" | "ABOVE_SOFT_MAX" | "TEMPLATE_LIMIT_EXCEEDED" | "RENDER_SANITY_FAILURE" | "UNMEASURED";
+  publication_allowed?: boolean;
+  render_sanity?: { status: "PASS" | "RENDER_SANITY_FAILURE"; reasons: string[]; emergency_max_body_pages: number };
   max_body_words: number;
   words_per_page_estimate: number;
   fixed_page_reservations: Array<{

@@ -5,10 +5,11 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
-import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, getBlueprintProgressForUserV2, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { authorizePresentationRecoveryForUser, enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, getBlueprintProgressForUserV2, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { reservePaidCall } from "@/server/mvp/application-budget";
-import { reserveJobCall, stageCheckpoint, withJobExecution, createBlueprintVersionOnce } from "@/server/mvp/job-execution-context";
-import { classifyFailure, pageBudgetPolicy } from "@/server/mvp/execution-policy";
+import { claimJobControlSlot, reserveJobCall, stageCheckpoint, withJobExecution, createBlueprintVersionOnce } from "@/server/mvp/job-execution-context";
+import { assessRenderSanity, classifyFailure, maxEditorialCompressionRounds, pageBudgetPolicy } from "@/server/mvp/execution-policy";
+import { findGeneratedArtifactForUserVersion, upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
 import { renderBoxes } from "@/server/mvp/visual-deliverables";
 import { compactDocxWhitespace } from "@/server/mvp/docx-layout-compaction";
@@ -19,6 +20,7 @@ async function main() {
   if (!process.env.DATABASE_URL?.includes("imx_b4_validation")) throw new Error("B4 dedicated isolated DB required");
   global.fetch = async () => { throw new Error("Paid/network calls forbidden in B4 regression"); };
   const user = await prisma.user.create({ data: { email: `b4-${Date.now()}@example.test` } });
+  const otherUser = await prisma.user.create({ data: { email: `b4-other-${Date.now()}@example.test` } });
   const directory = await mkdtemp(path.join(os.tmpdir(), "imx-b4-"));
   let checks = 0;
   const ok = (condition: unknown, label: string) => { assert.ok(condition, label); checks++; };
@@ -67,9 +69,9 @@ async function main() {
     for (let elapsed = 0; elapsed <= 600000; elapsed += 10000) {
       const progress = await getBlueprintProgressForUserV2(user.id, project.id);
       assert.equal(progress.shouldNudge, false);
-      await resumeLatestBlueprintJobForUser(user.id, project.id);
     }
-    await Promise.all(Array.from({ length: 12 }, () => resumeLatestBlueprintJobForUser(user.id, project.id)));
+    const incompatibleResumes = await Promise.allSettled(Array.from({ length: 12 }, () => resumeLatestBlueprintJobForUser(user.id, project.id)));
+    ok(incompatibleResumes.every((result) => result.status === "rejected"), "presentation recovery without complete checkpoints is rejected without mutation");
     const after = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     const afterCost = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     ok(after.attempts === failed.attempts && after.updatedAt.getTime() === failed.updatedAt.getTime(), "10-minute polling/concurrent resume cannot reset or mutate attempts");
@@ -77,8 +79,12 @@ async function main() {
     await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id), /restablecer/); checks++;
     for (const file of ["components/projects/project-list.tsx", "components/projects/blueprint-panel.tsx"]) ok(!(await readFile(file, "utf8")).includes("/blueprints/resume"), "UI polling has no resume side effect");
     for (const step of [5, 6]) ok((await readFile(`app/api/projects/[id]/mvp/step-${step}/route.ts`, "utf8")).includes('code: "PERSISTENT_JOB_REQUIRED"'), "direct HTTP generation cannot bypass job budget");
-    // Explicit test-only authorization of a repaired presentation; never applied to incident DB.
-    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "QUEUED", nextAttemptAt: null } });
+    for (const stageKey of ["checkpoint:VISUALS", "checkpoint:DOCX", "checkpoint:PDF", "checkpoint:FINAL_EXPORT"]) {
+      await prisma.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: job.id, stageKey } }, create: { jobId: job.id, stageKey, status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: { fixture: true } }, update: { status: "COMPLETED", outputJson: { fixture: true } } });
+    }
+    const authorizations = await Promise.all(Array.from({ length: 12 }, () => authorizePresentationRecoveryForUser(user.id, project.id, job.id)));
+    const authorized = authorizations[0];
+    ok(authorizations.every((result) => result.shouldContinue) && authorized.job.attempts === failed.attempts, "concurrent presentation-only recovery is idempotent and preserves cumulative attempts");
     failPresentation = false;
     await runNextBlueprintJobStage(job.id, executor);
     await runNextBlueprintJobStage(job.id, executor);
@@ -86,6 +92,16 @@ async function main() {
     ok(finished.status === "COMPLETED" && finished.attempts === 1, "successful presentation preserves cumulative failures");
     ok(scientificCalls === 13 && evidenceCalls === 1, "presentation retry adds ZERO scientific or evidence calls");
     ok(await prisma.generatedArtifact.count({ where: { jobId: job.id } }) === 5, "artifact persistence completed");
+    const completedData = finished.stageDataJson as { step6?: { blueprint_version_id?: string } };
+    const versionId = completedData.step6?.blueprint_version_id!;
+    ok(Boolean(await findGeneratedArtifactForUserVersion({ userId: user.id, projectId: project.id, blueprintVersionId: versionId, kind: "BLUEPRINT_DOCX" })), "recovered artifact is downloadable by its owner");
+    ok(!await findGeneratedArtifactForUserVersion({ userId: otherUser.id, projectId: project.id, blueprintVersionId: versionId, kind: "BLUEPRINT_DOCX" }), "recovered artifact remains isolated from another user");
+    const originalDocx = await findGeneratedArtifactForUserVersion({ userId: user.id, projectId: project.id, blueprintVersionId: versionId, kind: "BLUEPRINT_DOCX" });
+    await upsertGeneratedArtifact({ userId: user.id, projectId: project.id, blueprintVersionId: versionId, kind: "BLUEPRINT_DOCX", fileName: originalDocx!.fileName, mimeType: originalDocx!.mimeType, content: originalDocx!.content, metadataJson: { download: true } });
+    const downloadedDocx = await findGeneratedArtifactForUserVersion({ userId: user.id, projectId: project.id, blueprintVersionId: versionId, kind: "BLUEPRINT_DOCX" });
+    ok(downloadedDocx?.jobId === job.id, "authorized download upsert preserves job provenance");
+    const recoveredCost = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
+    ok(JSON.stringify(beforeCost.outputJson) === JSON.stringify(recoveredCost.outputJson), "checkpoint-only recovery has zero paid call/token/cost delta");
     const staleJob = await enqueueBlueprintJobForUser(user.id, project.id);
     await prisma.blueprintJob.update({ where: { id: staleJob.id }, data: { status: "RUNNING", attempts: 2, lockedAt: new Date(0), startedAt: new Date(0) } });
     await runNextBlueprintJobStage(staleJob.id, executor);
@@ -102,6 +118,9 @@ async function main() {
       await assert.rejects(() => reserveJobCall("scientific", "gpt-5.4", 1.0), /COST_LIMIT/); checks++;
       const output = execFileSync("node_modules/.bin/tsx", ["-e", `import {withJobExecution,reserveJobCall} from './server/mvp/job-execution-context'; import {prisma} from './lib/prisma'; (async()=>{try{await withJobExecution({jobId:process.env.B4_JOB!,startedAt:new Date(process.env.B4_STARTED!),stage:'restart'},()=>reserveJobCall('scientific','gpt-5.4',1.0));process.exitCode=1;}catch(e){if(!String(e).includes('COST_LIMIT'))throw e; console.log('PERSISTED_CAP');}finally{await prisma.$disconnect();}})();`], { encoding: "utf8", env: { ...process.env, B4_JOB: control.id, B4_STARTED: control.startedAt!.toISOString() } });
       ok(output.includes("PERSISTED_CAP"), "new process cannot reset existing cost reservation");
+      ok(await claimJobControlSlot("editorial-compression-rounds", maxEditorialCompressionRounds()), "first publication-wide editorial compression round is allowed");
+      ok(!await claimJobControlSlot("editorial-compression-rounds", maxEditorialCompressionRounds()), "second editorial compression round is blocked");
+      await assert.rejects(() => withJobExecution({ jobId: control.id, startedAt: control.startedAt!, stage: "recovery", checkpointOnly: true, allowedCheckpointWork: ["DOCX", "PDF", "FINAL_EXPORT"] }, () => reserveJobCall("scientific", "gpt-5.4", 0.01)), /CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN/); checks++;
       await assert.rejects(() => reserveJobCall("deep_research", "o4-mini-deep-research", 0.51), /COST_LIMIT/); checks++;
       let executions = 0;
       const run = () => stageCheckpoint("TEST", { prompt: "v1" }, async () => { executions++; return { answer: "kept" }; });
@@ -115,8 +134,14 @@ async function main() {
       await prisma.blueprintJob.update({ where: { id: control.id }, data: { startedAt: new Date(control.startedAt!.getTime() + 1000) } });
       await assert.rejects(() => reserveJobCall("scientific", "gpt-5.4", 0.01), /LEASE_LOST/); checks++;
     });
-    ok(pageBudgetPolicy(18).status === "PASS" && pageBudgetPolicy(22).status === "LENGTH_WARNING" && pageBudgetPolicy(26).status === "RENDER_REVIEW_REQUIRED", "page targets distinct from operational guard");
-    ok(!classifyFailure(new Error("PDF_BODY_BUDGET")).autoRetry && !classifyFailure(new Error("unknown failure")).autoRetry && classifyFailure({ status: 503 }).autoRetry, "central retry policy");
+    const generic25 = pageBudgetPolicy(25);
+    ok(pageBudgetPolicy(15).status === "WITHIN_TARGET" && pageBudgetPolicy(18).status === "ABOVE_TARGET" && generic25.status === "ABOVE_SOFT_MAX" && generic25.publicationAllowed, "generic valid 25-page plan publishes with structured length warning");
+    const template25 = pageBudgetPolicy(25, { templateHardMaxBodyPages: 18 });
+    ok(template25.status === "TEMPLATE_LIMIT_EXCEEDED" && !template25.publicationAllowed, "real template hard maximum remains enforceable without scientific regeneration");
+    const repeatedPage = "Contenido científico repetido de manera patológica ".repeat(10);
+    const runaway = assessRenderSanity({ bodyPages: 25, bodyPageTexts: [repeatedPage, repeatedPage, repeatedPage], expectedBodyPages: 15 });
+    ok(runaway.status === "RENDER_SANITY_FAILURE" && !pageBudgetPolicy(25, { renderSanity: runaway }).publicationAllowed, "structural runaway render remains blockable independently from academic length");
+    ok(!classifyFailure(new Error("PDF_BODY_BUDGET")).autoRetry && classifyFailure(new Error("TEMPLATE_PAGE_LIMIT")).category === "USER_ACTION_REQUIRED" && classifyFailure(new Error("RENDER_SANITY_FAILURE")).category === "PRESENTATION" && !classifyFailure(new Error("unknown failure")).autoRetry && classifyFailure({ status: 503 }).autoRetry, "central retry policy");
     const imagePath = path.join(directory, "long-spanish.png");
     await renderBoxes({ outputPath: imagePath, title: "Flujo metodológico", subtitle: "Diseño propuesto, no resultados", boxes: Array.from({ length: 5 }, () => "Priorización de pedidos urgentes y restricciones operativas explícitas, análisis de decisiones pendientes y verificación metodológica. ".repeat(20)), arrows: true });
     const layout = JSON.parse(await readFile(`${imagePath}.layout.json`, "utf8"));
@@ -135,6 +160,6 @@ async function main() {
     ok(imageBound?.imageTokens === 3001 && imageBound.maximumUsd < 0.02, "vision bound counts patches, not a megabyte of base64 as text tokens");
     ok(responseCostBound({ model: "unknown", max_output_tokens: 1000 }) === null && responseCostBound({ model: "gpt-5.4-mini", max_output_tokens: 1000, input: [{ type: "input_image", detail: "original" }] }) === null, "unknown pricing/detail cannot authorize an unbounded call");
     console.log(JSON.stringify({ status: "PASS", checks, polling_simulated_ms: 600000, paid_calls: 0, scientific_calls_added_on_presentation_retry: scientificCalls - 13, artifacts: directory }));
-  } finally { await prisma.user.delete({ where: { id: user.id } }); await prisma.$disconnect(); }
+  } finally { await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: otherUser.id } }); await prisma.$disconnect(); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

@@ -74,7 +74,10 @@ una. El job conserva su contador incluso cuando una fase termina bien.
 Variables configurables, propagadas por Compose:
 `IMX_JOB_TARGET_USD`, `IMX_JOB_SOFT_USD`, `IMX_JOB_HARD_USD`,
 `IMX_JOB_MANDATORY_RESERVE_USD`, `IMX_JOB_DEEP_RESEARCH_USD`,
-`IMX_BODY_SOFT_MAX_PAGES`, `IMX_BODY_RENDER_GUARD_PAGES`.
+`IMX_BODY_TARGET_MIN_PAGES`, `IMX_BODY_TARGET_MAX_PAGES`,
+`IMX_BODY_SOFT_MAX_PAGES`, `IMX_RENDER_SANITY_MAX_BODY_PAGES`,
+`IMX_MAX_EDITORIAL_COMPRESSION_ROUNDS` y, solo para plantillas verificadas,
+`IMX_TEMPLATE_HARD_MAX_BODY_PAGES_JSON`.
 Defaults provisionales: 1.25 / 1.50 / 2.00 USD, reserva restante 0.25 USD;
 0.05 para titulo/resumen finales. El libro guarda la politica inicial: cambiar
 variables no modifica silenciosamente el permiso de un job existente.
@@ -117,14 +120,26 @@ largo incorpora la tarifa ampliada. Fuentes consultadas el 2026-09-21:
 [GPT-5.4](https://developers.openai.com/api/docs/models/gpt-5.4),
 [mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
 
-## Paginacion
+## Paginacion y publicacion
 
-18 paginas de cuerpo es soft; 24 es guarda operativa, no ley universitaria.
-Una compresion editorial dirigida por seccion puede ocurrir antes de la
-revision cientifica; no se repite por fallar PDF. Tras renderizar, un exceso
-activa una unica compactacion determinista de espacio entre parrafos (-25%,
-minimo 2pt), sin tocar fuentes, interlineado, imagenes, citas ni contenido.
-19-24 paginas se entregan con advertencia. Mas de 24 o conteo desconocido
-conserva DOCX/PDF y checkpoints para revision, sin regenerar ciencia.
-No se implementa otro pase LLM posterior a la revision cientifica: evita
-alterar contenido ya revisado; debe evaluarse aparte si aun es necesario.
+El perfil generico separa objetivo (12-15 paginas), umbral blando (18), limite
+duro institucional y sanidad de render. No tiene limite academico duro por
+defecto. Un documento valido por encima de 18 recibe `ABOVE_SOFT_MAX`, se
+compacta deterministamente una vez y se publica con una advertencia breve.
+
+Solo una plantilla institucional verificada puede aportar
+`hardMaxBodyPages=N`; superarlo produce `TEMPLATE_LIMIT_EXCEEDED` y requiere
+accion del usuario, sin regenerar ciencia. `RENDER_SANITY_FAILURE` es distinto:
+detecta paginas sustantivas repetidas, crecimiento extremo incompatible con
+los presupuestos de seccion, PDF invalido o una guarda de emergencia alta y
+configurable (80 por defecto) contra corrupcion/runaway. Esa guarda no es una
+regla universitaria.
+
+El job admite como maximo una operacion editorial pagada por intento de
+publicacion. El prompt actual trabaja por seccion, por lo que no se introdujo
+un batching nuevo durante B4.3; las secciones restantes conservan texto y
+reciben warning. Tras renderizar solo se compacta espaciado de forma
+determinista, sin tocar fuentes, interlineado, imagenes, citas ni contenido.
+La recuperacion `PRESENTATION_ONLY` exige checkpoints compatibles y prohíbe
+cualquier nueva reserva pagada; solo `FINAL_EXPORT`, `DOCX` y `PDF` pueden
+recalcularse deterministamente.
