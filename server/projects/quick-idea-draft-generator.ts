@@ -1,3 +1,5 @@
+import { QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT } from "@/server/mvp/prompts/quick-idea-draft-generator.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import ideaDraftBundleSchema from "@/ai/schemas/idea-draft-bundle.schema.json";
 import { getLanguageInstruction, normalizeLanguageCode } from "@/lib/language";
 import { getConfiguredLlmProvider } from "@/llm";
@@ -35,39 +37,9 @@ export async function generateQuickIdeaDraft(
 
   return provider.generateStructuredObject<IdeaDraftBundle>({
     model: process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini",
-    prompt: `
-Actua como un asesor experto en formulacion rapida de temas de tesis aplicados para programas universitarios en Peru.
-
-Tu tarea en esta etapa es generar solo ideas generales de tema, no el intake ni la metodologia completa.
-
-Reglas:
-- ${getLanguageInstruction(language)}
-- no inventes resultados
-- no generes una tesis completa
-- genera formulaciones cortas, claras, defendibles y actuales
-- prioriza tendencias aplicadas y problemas observables
-- usa la universidad solo como contexto academico y territorial
-- no la uses como filtro rigido
-- la idea principal debe ser nueva respecto de las ya generadas
-- evita repetir, parafrasear demasiado o cambiar solo una palabra
-- los temas relacionados deben seguir cerca de la idea semilla y del area
-
-Contexto:
-- universidad: ${input.university}
-- contexto universitario: ${input.universityContext}
-- nivel: ${input.degreeLevel}
-- programa: ${input.program}
-- area: ${input.areaLabel ?? "No especificada"}
-- idea semilla: ${input.seedText}
-
-Ideas ya generadas que debes evitar repetir:
-${existingIdeas}
-
-Devuelve:
-- 1 generatedIdea principal
-- hasta 4 relatedIdeas cercanas
-    `.trim(),
+    prompt: renderVersionedPrompt(QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT, { var_0: (getLanguageInstruction(language)), var_1: (input.university), var_2: (input.universityContext), var_3: (input.degreeLevel), var_4: (input.program), var_5: (input.areaLabel ?? "No especificada"), var_6: (input.seedText), var_7: (existingIdeas) }).trim(),
     schemaName: "idea_draft_bundle",
+    trackingAttribution: { promptVersion: QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT.version },
     schema: ideaDraftBundleSchema as Record<string, unknown>,
   });
 }

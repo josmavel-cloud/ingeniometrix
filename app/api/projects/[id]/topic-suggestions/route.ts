@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import {
-  ensureTopicSuggestionsForUser,
+  listTopicSuggestionsForUser,
   regenerateTopicSuggestionsForUser,
   selectTopicSuggestionForUser,
 } from "@/server/projects/topic-suggestion-service";
@@ -15,7 +16,7 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const suggestions = await ensureTopicSuggestionsForUser(user.id, id);
+    const suggestions = await listTopicSuggestionsForUser(user.id, id);
 
     return NextResponse.json({ suggestions });
   } catch (error) {
@@ -30,7 +31,7 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
-    const suggestions = await regenerateTopicSuggestionsForUser(user.id, id);
+    const suggestions = await withPaidRequest(_request, user.id, id, {}, () => regenerateTopicSuggestionsForUser(user.id, id));
 
     return NextResponse.json({ suggestions });
   } catch (error) {

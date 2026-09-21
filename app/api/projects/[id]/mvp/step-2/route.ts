@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import {
   applyMvpStep2IntakeChoice,
   runMvpEvidenceInformedTopicRefinement,
@@ -53,11 +54,11 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const result = await runMvpEvidenceInformedTopicRefinement({
+    const result = await withPaidRequest(request, user.id, id, body, () => runMvpEvidenceInformedTopicRefinement({
       userId: user.id,
       projectId: id,
       model: typeof body.model === "string" ? body.model : undefined,
-    });
+    }));
 
     return NextResponse.json(
       {

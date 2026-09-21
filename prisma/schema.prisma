@@ -227,6 +227,49 @@ model User {
   sessions           UserSession[]
   blueprintJobs      BlueprintJob[]
   generatedArtifacts GeneratedArtifact[]
+  paidOperations     PaidOperation[]
+}
+
+// Pre-generation business spend. Customer credits remain a separate ledger.
+model PaidOperation {
+  id                String    @id @default(uuid())
+  userId            String
+  projectId         String?
+  draftId           String?
+  revision          String
+  requestId         String
+  purpose           String
+  inputFingerprint  String
+  status            String    @default("RUNNING")
+  hardCapMicros     Int
+  committedMicros   Int       @default(0)
+  boundBreached     Boolean   @default(false)
+  resultJson        Json?
+  createdAt         DateTime  @default(now())
+  completedAt       DateTime?
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calls             PaidOperationCall[]
+
+  @@unique([userId, requestId])
+  @@index([userId, createdAt])
+}
+
+model PaidOperationCall {
+  id                  String        @id @default(uuid())
+  operationId         String
+  purpose             String
+  model               String
+  actualModel         String?
+  reservedMicros      Int
+  estimatedMicros     Int?
+  status              String        @default("RESERVED")
+  usageJson           Json?
+  attributionJson     Json
+  createdAt           DateTime      @default(now())
+  completedAt         DateTime?
+  operation           PaidOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+
+  @@index([operationId, createdAt])
 }
 
 model UserSession {

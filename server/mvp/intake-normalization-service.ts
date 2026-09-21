@@ -1,3 +1,5 @@
+import { INTAKE_NORMALIZATION_SERVICE_1_PROMPT } from "@/server/mvp/prompts/intake-normalization-service.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -668,27 +670,7 @@ function buildPrompt(input: IntakeInput) {
     `advisorNotes: ${input.advisorNotes ?? ""}`,
   ];
 
-  return `
-Normaliza este intake academico para su uso en el pipeline de investigación.
-
-Objetivos:
-- conservar la intención del usuario
-- corregir ambiguedades y redundancias menores
-- dejar el texto en español claro para el siguiente paso de producto
-- derivar pistas de recuperación reutilizables.
-
-Reglas:
-- no inventes datos, resultados, ubicaciones exactas, normas especificas ni conclusiones
-- emite los campos textuales de UI en español tecnico y claro
-- si falta información, usa formulaciones prudentes sin inventar
-- conserva advertencias eticas o tecnicas relevantes
-    - incluye una version de pistas de recuperación en ingles para consultas de búsqueda en providers: retrievalHints.en
-    - mantener coherencia con los campos en español del bloque principal
-    - no traduzcas \`knowledgeArea.label\` ni \`normalizedTopic\` al inglés
-
-Intake original:
-${originalLines.map((line) => `- ${line}`).join("\n")}
-`.trim();
+  return renderVersionedPrompt(INTAKE_NORMALIZATION_SERVICE_1_PROMPT, { var_0: (originalLines.map((line) => `- ${line}`).join("\n")) }).trim();
 }
 
 function buildFrontendSummary(input: {
@@ -854,6 +836,7 @@ export async function normalizeIntakeForMvpProject(input: {
       schema: normalizedIntakeSchema,
       model: execution.requestedModel,
       trackingAttribution: {
+        promptVersion: INTAKE_NORMALIZATION_SERVICE_1_PROMPT.version,
         projectId: input.projectId,
         userId: input.userId,
         runId: execution.runId,

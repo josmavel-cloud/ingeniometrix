@@ -1,3 +1,5 @@
+import { TOPIC_SUGGESTION_GENERATOR_1_PROMPT } from "@/server/mvp/prompts/topic-suggestion-generator.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import topicSuggestionSchema from "@/ai/schemas/topic-suggestion.schema.json";
 import { getConfiguredLlmProvider } from "@/llm";
 
@@ -38,53 +40,9 @@ export async function generateTopicSuggestionsInRealTime(
       : "Sin hints taxonomicos claros";
 
   const response = await provider.generateStructuredObject<TopicSuggestionBatch>({
-    prompt: `
-Actua como un asesor experto en formulacion de temas de tesis aplicados para programas universitarios en Peru.
-
-Reglas:
-- no generes una tesis completa
-- no inventes resultados
-- devuelve solo ideas de tema defendibles y acotadas
-- deben sonar viables para revision academica
-- prioriza temas de tendencia con valor aplicado y delimitacion realista
-- prioriza cercania a la idea original, no creatividad vacia
-- la primera sugerencia debe ser una version tecnica y mejor redactada de la idea original
-- las otras sugerencias pueden variar el enfoque, pero deben seguir alineadas con la semilla
-- si faltan datos concretos, propone formulaciones prudentes y editables
-- llena tambien una base sugerida de intake para problema, poblacion, metodologia y contexto
-- no uses placeholders como "por definir", "pendiente" o "no disponible"
-- alinea las propuestas con lineas de investigacion plausibles para el area, el programa y el contexto de la universidad elegida
-- usa la universidad solo para contextualizar el ambito de investigacion, su ubicacion y tendencias aplicadas plausibles
-- no la uses como plantilla fija ni como filtro rigido
-- no inventes lineas oficiales de investigacion que no hayan sido provistas
-
-Contexto del proyecto:
-- universidad: ${input.university}
-- contexto universitario: ${input.universityContext}
-- nivel: ${input.degreeLevel}
-- programa: ${input.program}
-- area: ${input.areaLabel ?? "No especificada"}
-- idea semilla del usuario: ${input.seedText}
-- hints taxonomicos: ${taxonomyHints}
-
-Genera exactamente 3 sugerencias.
-Cada variante debe incluir:
-- title
-- researchLine
-- rationale
-- variantKind
-- problemContext
-- targetPopulation
-- preferredMethodology
-- availableData
-- academicConstraints
-- advisorNotes
-
-variantKind:
-- usa TECHNICAL_REWRITE solo en la primera sugerencia, que debe ser la mas cercana a la semilla
-- usa VARIANT en las demas
-    `.trim(),
+    prompt: renderVersionedPrompt(TOPIC_SUGGESTION_GENERATOR_1_PROMPT, { var_0: (input.university), var_1: (input.universityContext), var_2: (input.degreeLevel), var_3: (input.program), var_4: (input.areaLabel ?? "No especificada"), var_5: (input.seedText), var_6: (taxonomyHints) }).trim(),
     schemaName: "topic_suggestion_batch",
+    trackingAttribution: { promptVersion: TOPIC_SUGGESTION_GENERATOR_1_PROMPT.version },
     schema: topicSuggestionSchema as Record<string, unknown>,
   });
 

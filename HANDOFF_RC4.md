@@ -34,8 +34,11 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 G0 verified clean RC3 and created isolated worktree. G1 incident repairs implemented:
 reading-order PDF extraction, exact citation locators, full selected-source snapshot,
 exclusion accounting, rejected-image omission and terminal cost closure.
-49/49 offline suites PASS on new isolated DB (loopback 55440); B4 has 48 assertions.
-Report: `docs/quality/rc4-g1-integrity.md`. G1 still PARTIAL: pre-job budgets and
-scientific selector/critic/approval remain pending. RC3 runtime remains untouched.
+51/51 offline suites PASS on new isolated DB (loopback 55440); B4 has 48 assertions.
+Prisma, typecheck, app and worker builds PASS. Pre-job durable budgets, request/revision
+attribution, idempotency and 10 externalized prompt templates now implemented.
+Reports: `docs/quality/rc4-g1-integrity.md`, `docs/quality/rc4-g1-prejob.md`.
+G1 still PARTIAL: scientific selector/critic/approval and comparative evaluation pending.
+Draft IDs await G2 persistence; no timestamp-based attribution. RC3 untouched.
 Next command: `node --env-file=.env.rc4-test --import tsx scripts/rc4-offline-suite.ts`.
 Paid evaluation spend: USD0. No external acceptance claimed.

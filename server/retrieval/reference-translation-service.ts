@@ -1,3 +1,5 @@
+import { REFERENCE_TRANSLATION_SERVICE_1_PROMPT, REFERENCE_TRANSLATION_SERVICE_2_PROMPT } from "@/server/mvp/prompts/reference-translation-service.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import { Prisma } from "@prisma/client";
 
 import referenceLanguageDetectionBatchSchemaJson from "@/ai/schemas/reference-language-detection-batch.schema.json";
@@ -277,22 +279,7 @@ function buildLanguageDetectionPrompt(input: {
     )
     .join("\n\n");
 
-  return `
-Eres Ingeniometrix y tu tarea es detectar el idioma principal de referencias academicas.
-
-Reglas:
-- decide el idioma principal del titulo y abstract juntos
-- si el contenido esta principalmente en espanol responde es
-- si esta principalmente en ingles responde en
-- usa pt, fr, de o it cuando aplique claramente
-- usa other solo si el idioma no puede mapearse con confianza razonable
-- no traduzcas
-- no inventes contenido
-- confidence debe reflejar cuan claro es el idioma desde el texto
-
-Referencias:
-${referencesBlock}
-`.trim();
+  return renderVersionedPrompt(REFERENCE_TRANSLATION_SERVICE_1_PROMPT, { var_0: (referencesBlock) }).trim();
 }
 
 function buildTranslationPrompt(input: {
@@ -311,21 +298,7 @@ function buildTranslationPrompt(input: {
     )
     .join("\n\n");
 
-  return `
-Eres Ingeniometrix y tu tarea es traducir metadatos bibliograficos al idioma del usuario.
-
-Reglas:
-- traduce al idioma objetivo ${input.targetLanguage}
-- conserva el sentido academico
-- no inventes informacion
-- no resumas
-- si el abstract no existe, devuelve null
-- si el titulo ya esta practicamente en el idioma objetivo, puedes devolverlo con cambios minimos
-- devuelve una traduccion natural y util para interfaz de usuario
-
-Referencias:
-${referencesBlock}
-`.trim();
+  return renderVersionedPrompt(REFERENCE_TRANSLATION_SERVICE_2_PROMPT, { var_0: (input.targetLanguage), var_1: (referencesBlock) }).trim();
 }
 
 export function resolveReferenceSourceLanguage(reference: ReferenceRecordLike) {
@@ -396,7 +369,7 @@ export async function ensureReferenceTranslationsForLanguage(input: {
           }),
           schemaName: "reference_language_detection_batch",
           schema: referenceLanguageDetectionBatchSchemaJson as Record<string, unknown>,
-          trackingAttribution: { stage: "source_translation" },
+          trackingAttribution: { stage: "source_translation", promptVersion: REFERENCE_TRANSLATION_SERVICE_1_PROMPT.version },
         });
       const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
 
@@ -473,7 +446,7 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       }),
       schemaName: "reference_translation_batch",
       schema: referenceTranslationBatchSchemaJson as Record<string, unknown>,
-      trackingAttribution: { stage: "source_translation" },
+      trackingAttribution: { stage: "source_translation", promptVersion: REFERENCE_TRANSLATION_SERVICE_2_PROMPT.version },
     });
   } catch {
     return {

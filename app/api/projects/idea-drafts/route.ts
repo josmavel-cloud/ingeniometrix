@@ -5,6 +5,7 @@ import { APP_DEFAULT_LANGUAGE, normalizeLanguageCode } from "@/lib/language";
 import { resolveTemplateKeyForMvp } from "@/lib/system-master-template";
 import { requireCurrentUser } from "@/server/auth/session";
 import { generateIdeaDrafts } from "@/server/projects/idea-draft-service";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 
 const DEGREE_LEVEL_VALUES = new Set(Object.values(DegreeLevel));
 const UNIVERSITY_VALUES = new Set(Object.values(University));
@@ -20,7 +21,7 @@ function normalizeOptionalText(value: unknown) {
 
 export async function POST(request: Request) {
   try {
-    await requireCurrentUser();
+    const user = await requireCurrentUser();
     const payload = (await request.json()) as Record<string, unknown>;
     const degreeLevel = payload.degreeLevel;
     const university = payload.university;
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       throw new Error("university invalida.");
     }
 
-    const result = await generateIdeaDrafts({
+    const result = await withPaidRequest(request, user.id, undefined, payload, () => generateIdeaDrafts({
       degreeLevel: degreeLevel as DegreeLevel,
       university: university as University,
       program: normalizeOptionalText(payload.program) ?? "Programa de posgrado",
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
       existingTitles: Array.isArray(payload.existingTitles)
         ? payload.existingTitles.filter((item): item is string => typeof item === "string")
         : [],
-    });
+    }));
 
     return NextResponse.json(result);
   } catch (error) {

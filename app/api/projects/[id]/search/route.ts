@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/server/auth/session";
 import { getProjectContentLanguageForUser } from "@/server/projects/project-language-service";
 import { searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -19,10 +20,10 @@ export async function POST(_request: Request, context: RouteContext) {
       desiredTotal?: number;
       batchKind?: "initial" | "more";
     };
-    const result = await searchProjectReferencesV2(user.id, id, {
+    const result = await withPaidRequest(_request, user.id, id, body, () => searchProjectReferencesV2(user.id, id, {
       desiredTotal: body.desiredTotal,
       batchKind: body.batchKind,
-    });
+    }));
 
     return NextResponse.json({ result });
   } catch (error) {

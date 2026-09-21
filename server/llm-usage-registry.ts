@@ -16,6 +16,9 @@ export type LlmUsageStage =
   | "other";
 
 export type LlmUsageAttribution = {
+  draftId?: string | null;
+  requestId?: string | null;
+  revision?: string | null;
   projectId?: string | null;
   runId?: string | null;
   stage?: LlmUsageStage | string | null;
@@ -160,6 +163,9 @@ function normalizeProjectTotals(input?: Partial<LlmUsageProjectTotals>): LlmUsag
 function cleanAttribution(input?: LlmUsageAttribution | null): LlmUsageAttribution | undefined {
   if (!input) return undefined;
   const cleaned: LlmUsageAttribution = {};
+  if (input.draftId) cleaned.draftId = input.draftId;
+  if (input.requestId) cleaned.requestId = input.requestId;
+  if (input.revision) cleaned.revision = input.revision;
   if (input.projectId) cleaned.projectId = input.projectId;
   if (input.runId) cleaned.runId = input.runId;
   if (input.stage) cleaned.stage = input.stage;

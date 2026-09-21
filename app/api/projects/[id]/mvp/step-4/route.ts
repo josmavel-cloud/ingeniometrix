@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import {
   applyMvpStep4FinalSourceSelection,
   requestMvpStep4AdditionalSources,
@@ -50,10 +51,10 @@ export async function POST(request: Request, context: RouteContext) {
       );
     }
 
-    const result = await requestMvpStep4AdditionalSources({
+    const result = await withPaidRequest(request, user.id, id, body, () => requestMvpStep4AdditionalSources({
       userId: user.id,
       projectId: id,
-    });
+    }));
 
     return NextResponse.json(
       {

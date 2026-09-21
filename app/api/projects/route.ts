@@ -6,6 +6,7 @@ import {
   listProjectsForUser,
 } from "@/server/projects/project-service";
 import { parseCreateProjectInput } from "@/server/projects/project-validation";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 
 export async function GET() {
   const user = await requireCurrentUser();
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
   try {
     const user = await requireCurrentUser();
     const input = parseCreateProjectInput(await request.json());
-    const project = await createProjectForUser(user.id, input);
+    const project = await withPaidRequest(request, user.id, undefined, input, () => createProjectForUser(user.id, input));
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {

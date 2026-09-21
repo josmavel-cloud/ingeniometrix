@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import {
   applyMvpStep3SourceSelection,
   prepareMvpStep3SourceSelection,
@@ -39,10 +40,10 @@ export async function POST(request: Request, context: RouteContext) {
     };
 
     if (body.action === "request_more") {
-      const result = await requestMvpStep3MoreSources({
+      const result = await withPaidRequest(request, user.id, id, body, () => requestMvpStep3MoreSources({
         userId: user.id,
         projectId: id,
-      });
+      }));
 
       return NextResponse.json(result);
     }

@@ -4,9 +4,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
-import { recordLlmUsage } from "@/server/llm-usage-registry";
+import { recordLlmUsage, type LlmUsageAttribution } from "@/server/llm-usage-registry";
 import { currentApplicationBudget, reservePaidCall, withPaidCallAttempt } from "@/server/mvp/application-budget";
 import { currentJobExecution } from "@/server/mvp/job-execution-context";
+import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { classifyFailure } from "@/server/mvp/execution-policy";
 import { responseCostBound } from "./openai-cost-bound";
 
@@ -38,7 +39,7 @@ function resolveRetryCount() {
 }
 
 function resolveMaxOutputTokens(explicitValue?: number) {
-  const candidate = explicitValue ?? Number.parseInt(process.env.LLM_MAX_OUTPUT_TOKENS ?? "", 10);
+  const candidate = explicitValue ?? Number.parseInt(process.env.LLM_MAX_OUTPUT_TOKENS ?? (currentPaidOperation() ? "4096" : ""), 10);
   return Number.isFinite(candidate) && candidate > 0 ? Math.floor(candidate) : undefined;
 }
 
@@ -90,7 +91,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   });
   const defaultModel = config.defaultModel;
 
-  async function request(params: Parameters<typeof client.responses.create>[0]) {
+  async function request(params: Parameters<typeof client.responses.create>[0], attribution?: LlmUsageAttribution) {
     const limit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
     const bound = responseCostBound(params as Parameters<typeof responseCostBound>[0]);
     const rates = bound?.rates ?? null;
@@ -99,9 +100,9 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
     if (limit > 0) reservedApiUsd += reserved!;
     const startedAt = new Date().toISOString();
     const budget = currentApplicationBudget();
-    if ((budget || currentJobExecution()) && reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
+    if (reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
     const purpose = (params.text?.format as { name?: string } | undefined)?.name ?? "text";
-    const reservation = reserved === null ? undefined : await reservePaidCall(purpose, String(params.model), reserved);
+    const reservation = await reservePaidCall(purpose, String(params.model), reserved, attribution);
     let response: OpenAI.Responses.Response;
     try { response = await client.responses.create(params as any) as OpenAI.Responses.Response; }
     catch (error) { await reservation?.fail(); throw error; }
@@ -139,7 +140,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
               schema: input.schema,
             },
           },
-        }),
+        }, input.trackingAttribution),
       );
       const usage = requireUsage(response);
 
@@ -185,7 +186,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
               schema: input.schema,
             },
           },
-        } as unknown as Parameters<typeof client.responses.create>[0]),
+        } as unknown as Parameters<typeof client.responses.create>[0], input.trackingAttribution),
       ) as any;
       const usage = requireUsage(response);
 
@@ -218,7 +219,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
           store: false,
           max_output_tokens: resolveMaxOutputTokens(input.maxOutputTokens),
           input: input.prompt,
-        }),
+        }, input.trackingAttribution),
       );
       const usage = requireUsage(response);
 

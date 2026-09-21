@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import {
   listTopicAreaSuggestions,
   normalizeTopicAreaInRealTime,
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    await requireCurrentUser();
+    const user = await requireCurrentUser();
 
     const payload = (await request.json()) as Record<string, unknown>;
     const label = readOptionalText(payload.label);
@@ -47,7 +48,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const normalizedArea = await normalizeTopicAreaInRealTime(label);
+    const normalizedArea = await withPaidRequest(request, user.id, undefined, payload, () => normalizeTopicAreaInRealTime(label));
 
     return NextResponse.json({ normalizedArea });
   } catch (error) {
