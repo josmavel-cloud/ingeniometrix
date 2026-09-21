@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { searchCrossrefWorks, type CrossrefMessage } from "@/server/retrieval/crossref-client";
 import { searchOpenAlexWorks } from "@/server/retrieval/openalex-client";
 import { recordLlmUsage } from "@/server/llm-usage-registry";
-import { currentApplicationBudget } from "./application-budget";
+import { currentApplicationBudget, reservePaidCall } from "./application-budget";
 import { assessEvidenceCoverage, shouldExpandEvidence } from "./evidence-coverage";
 import { citationChainLimits, parseCitationCandidates, parsePdfCitationLinks, resolveDiscoveryCandidate, type DiscoveryCandidate } from "./citation-chaining";
 import { runMvpEvidenceMaterialization } from "./evidence-materialization-service";
@@ -21,7 +21,7 @@ export const DEEP_RESEARCH_MAX_USD = ((DEEP_RESEARCH_LIMITS.toolCalls + 1) * 200
 export async function discoverWithDeepResearch(context: unknown, artifactDir: string, attribution: { projectId: string; runId: string }) {
   const budget = currentApplicationBudget();
   if (!budget) throw new Error("RESEARCH_BUDGET_REQUIRED");
-  const reservation = budget.reserve("deep_research_discovery", prompt.model, DEEP_RESEARCH_MAX_USD);
+  const reservation = await reservePaidCall("deep_research_discovery", prompt.model, DEEP_RESEARCH_MAX_USD);
   const client = new OpenAI({ maxRetries: 0, timeout: DEEP_RESEARCH_LIMITS.wallMs });
   const request = { model: prompt.model, input: `${prompt.systemPrompt}\n\n${prompt.userPromptTemplate.replace("{{context_json}}", JSON.stringify(context))}`, max_output_tokens: DEEP_RESEARCH_LIMITS.outputTokens, max_tool_calls: DEEP_RESEARCH_LIMITS.toolCalls, tools: [{ type: "web_search_preview" as const }], store: false };
   const started = Date.now();
@@ -31,15 +31,15 @@ export async function discoverWithDeepResearch(context: unknown, artifactDir: st
     const toolCalls = result.output.filter((item) => item.type === "web_search_call").length;
     if (usage) {
       const cached = usage.input_tokens_details?.cached_tokens ?? 0;
-      reservation.complete(((usage.input_tokens - cached) * 2 + cached * 0.5 + usage.output_tokens * 8) / 1e6 + toolCalls * 0.01, usage);
+      await reservation.complete(((usage.input_tokens - cached) * 2 + cached * 0.5 + usage.output_tokens * 8) / 1e6 + toolCalls * 0.01, usage);
       await recordLlmUsage({ provider: "openai", model: result.model, operation: "deep_research_discovery", inputTokens: usage.input_tokens, cachedInputTokens: cached, outputTokens: usage.output_tokens, attribution: { ...attribution, promptVersion: prompt.version } });
-    } else reservation.fail();
+    } else await reservation.fail();
     await writeFile(path.join(artifactDir, "deep-research.json"), JSON.stringify({ prompt_registry: prompt, request, response: result, duration_ms: Date.now() - started, retry_policy: "none", tool_cost_estimate_usd: toolCalls * 0.01 }, null, 2));
     if (result.status !== "completed") throw new Error(`DEEP_RESEARCH_INCOMPLETE: ${result.status}`);
     // No prose is promoted. Only independently resolvable DOI candidates leave this adapter.
     return parseCitationCandidates(`References\n${result.output_text}`, "deep-research", 1, DEEP_RESEARCH_LIMITS.maxSources).map((c): DiscoveryCandidate => ({ ...c, parent_reference_id: null, discovery_method: "deep_research" }));
   } catch (error) {
-    reservation.fail();
+    await reservation.fail();
     await writeFile(path.join(artifactDir, "deep-research-failure.json"), JSON.stringify({ configured_model: prompt.model, prompt_version: prompt.version, error: String(error), duration_ms: Date.now() - started, usage: null, reserved_max_usd: DEEP_RESEARCH_MAX_USD }));
     throw error;
   }

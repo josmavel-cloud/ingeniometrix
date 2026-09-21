@@ -5,7 +5,7 @@ import sharp from "sharp";
 import type { LlmProvider } from "@/llm/provider";
 import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
 
-import { currentApplicationBudget } from "./application-budget";
+import { currentApplicationBudget, reservePaidCall } from "./application-budget";
 import { deterministicInfographic, HERO_OUTPUT_TOKEN_BOUND } from "./final-infographic";
 import { HERO_INFOGRAPHIC_PROMPT_V2 } from "./prompts/hero-infographic.v2";
 import { VISUAL_QA_PROMPT } from "./prompts/visual-qa.v1";
@@ -62,7 +62,7 @@ export async function requestGeneratedImage(input: {
   const budget = currentApplicationBudget();
   if (!budget) throw new Error("IMAGE_BUDGET_REQUIRED");
   const outputBound = input.size === "1024x1024" ? HERO_OUTPUT_TOKEN_BOUND : Math.ceil(HERO_OUTPUT_TOKEN_BOUND * 1.5);
-  const reservation = budget.reserve(input.purpose, input.model, ((Buffer.byteLength(input.prompt) + 2048) * 5 + outputBound * 30) / 1e6);
+  const reservation = await reservePaidCall(input.purpose, input.model, ((Buffer.byteLength(input.prompt) + 2048) * 5 + outputBound * 30) / 1e6);
   const started = Date.now();
   try {
     const response = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 180_000 }).images.generate({
@@ -70,7 +70,7 @@ export async function requestGeneratedImage(input: {
     });
     const usage = response.usage ?? null;
     const estimatedCost = usage ? (usage.input_tokens * 5 + usage.output_tokens * 30) / 1e6 : null;
-    if (usage && estimatedCost !== null) reservation.complete(estimatedCost, usage); else reservation.fail();
+    if (usage && estimatedCost !== null) await reservation.complete(estimatedCost, usage); else await reservation.fail();
     const encoded = response.data?.[0]?.b64_json;
     if (!encoded) throw new Error("IMAGE_OUTPUT_MISSING");
     const buffer = Buffer.from(encoded, "base64");
@@ -78,7 +78,7 @@ export async function requestGeneratedImage(input: {
     await writeFile(input.outputPath, buffer);
     return { usage, estimated_cost_usd: estimatedCost, duration_ms: Date.now() - started };
   } catch (error) {
-    reservation.fail();
+    await reservation.fail();
     throw error;
   }
 }

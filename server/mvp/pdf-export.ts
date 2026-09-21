@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { mkdir, mkdtemp, readFile, rename } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { pageBudgetPolicy } from "./execution-policy";
 const exec = promisify(execFile);
 
 export async function exportPlanPdf(docxPath: string, pdfPath: string) {
@@ -18,7 +19,9 @@ export async function exportPlanPdf(docxPath: string, pdfPath: string) {
   const pages = stdout.split("\f").filter((page) => page.trim());
   const referencesPage = pages.findIndex((page, i) => i > 0 && /^\s*\d*\.?\s*Referencias\s*$/m.test(page));
   const bodyPages = referencesPage >= 0 ? referencesPage - 1 : null; // Separate cover and references sections.
-  const result = { pdf_path: pdfPath, page_count: pages.length, body_pages: bodyPages, hard_max_body_pages: 18, page_budget_pass: bodyPages !== null && bodyPages <= 18, text: stdout, rendered_with: "LibreOffice DOCX -> PDF" };
-  if (!result.page_budget_pass) throw new Error(`PDF_BODY_BUDGET: ${bodyPages ?? "unknown"} pages; max 18`);
+  const policy = pageBudgetPolicy(bodyPages);
+  // Render success and editorial length are separate outcomes. Even guard violations
+  // retain the PDF for targeted rendering review, never scientific regeneration.
+  const result = { pdf_path: pdfPath, page_count: pages.length, body_pages: bodyPages, hard_max_body_pages: policy.guard, soft_max_body_pages: policy.soft, page_budget_pass: policy.status === "PASS", page_budget_status: policy.status, warnings: policy.status === "PASS" ? [] : [`PDF_${policy.status}: ${bodyPages ?? "unknown"} body pages`], text: stdout, rendered_with: "LibreOffice DOCX -> PDF" };
   return result;
 }

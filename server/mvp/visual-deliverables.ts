@@ -8,10 +8,13 @@ import type { LlmProvider } from "@/llm/provider";
 import type { MvpStep5EvidenceLedger } from "./evidence-materialization-types";
 import { generateValidatedHero, requestGeneratedImage, validateVisual, type VisualQualityResult } from "./final-infographic-v2";
 import { MATRIX_VISUAL_PROMPT } from "./prompts/matrix-visual.v1";
+import { HERO_INFOGRAPHIC_PROMPT_V2 } from "./prompts/hero-infographic.v2";
+import { VISUAL_QA_PROMPT } from "./prompts/visual-qa.v1";
 import { consistencyTableRows, type ConsistencyMatrix, type ResearchDefinition, type ResearchDesign } from "./research-plan-contracts";
 import type { MvpStep6ContentBlock, MvpStep6HeroImagePlan, MvpStep6SectionDraft, MvpStep6VisualAssetPlan, MvpStep6VisualPlan } from "./step6-blueprint-docx-types";
 
 const COLORS = { dark: "#243c3a", accent: "#467269", pale: "#edf4f2", warm: "#eee9df", border: "#96aaa5" };
+export const visualCheckpointPolicy = () => ({ matrix: MATRIX_VISUAL_PROMPT, hero: HERO_INFOGRAPHIC_PROMPT_V2, qa: VISUAL_QA_PROMPT, qa_model: process.env.IMX_VISUAL_QA_MODEL ?? VISUAL_QA_PROMPT.model, renderer: "b4.v1" });
 
 function hash(value: unknown) { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function xml(value: string) { return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;"); }
@@ -24,7 +27,7 @@ function significantTokens(value: string) {
   return new Set(clean(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9ñ ]/g, " ").split(/\s+/).filter((item) => item.length > 4 && !stop.has(item)));
 }
 function wrap(value: string, maxChars: number) {
-  const words = clean(value).split(" ").filter(Boolean); const lines: string[] = []; let line = "";
+  const words = clean(value).split(" ").filter(Boolean).flatMap((word) => word.match(new RegExp(`.{1,${maxChars}}`, "gu")) ?? []); const lines: string[] = []; let line = "";
   for (const word of words) { const next = line ? `${line} ${word}` : word; if (next.length > maxChars && line) { lines.push(line); line = word; } else line = next; }
   if (line) lines.push(line); return lines;
 }
@@ -40,14 +43,21 @@ function fittedSvgText(input: { text: string; x: number; y: number; width: numbe
   if (lines.length * fontSize * 1.22 > input.height) throw new Error("DECLARATIVE_DIAGRAM_TEXT_OVERFLOW");
   return svgText({ text: input.text, x: input.x, y: input.y, width: input.width, fontSize, bold: input.bold });
 }
-async function renderBoxes(input: { outputPath: string; title: string; subtitle: string; boxes: string[]; arrows?: boolean }) {
-  const width = 1600; const height = 900; const boxWidth = 1260; const boxHeight = Math.floor(560 / Math.max(1, input.boxes.length));
-  const boxes = input.boxes.map((box, index) => {
+export async function renderBoxes(input: { outputPath: string; title: string; subtitle: string; boxes: string[]; arrows?: boolean }) {
+  const width = 1600; const boxWidth = 1260;
+  // Deterministic summaries are labels, not replacements for the complete method.
+  // Keep a readable canvas; the full input is retained in a private sidecar.
+  const labels = input.boxes.map((text) => clean(text).split(/\s+/).slice(0, 12).join(" "));
+  const boxHeight = Math.max(150, ...labels.map((text) => wrap(text, 56).length * 49 + 70));
+  const height = Math.max(900, 260 + labels.length * (boxHeight + 18));
+  if (height > 2400 || 38 * Math.min(520 / width, 500 / height) * 0.75 < 9) throw new Error("DECLARATIVE_DIAGRAM_TEXT_OVERFLOW: optional diagram cannot retain 9pt labels at final page size");
+  const boxes = labels.map((box, index) => {
     const y = 220 + index * (boxHeight + 18);
-    return `<rect x="170" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="18" fill="${index % 2 ? COLORS.pale : COLORS.warm}" stroke="${COLORS.border}" stroke-width="2"/>${fittedSvgText({ text: box, x: 215, y: y + 42, width: boxWidth - 90, height: boxHeight - 52, preferredSize: 30 })}${input.arrows && index < input.boxes.length - 1 ? `<path d="M800 ${y + boxHeight}v18" stroke="${COLORS.accent}" stroke-width="6"/><path d="M786 ${y + boxHeight + 10}l14 14 14-14" fill="none" stroke="${COLORS.accent}" stroke-width="6"/>` : ""}`;
+    return `<rect x="170" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="18" fill="${index % 2 ? COLORS.pale : COLORS.warm}" stroke="${COLORS.border}" stroke-width="2"/>${fittedSvgText({ text: box, x: 215, y: y + 52, width: boxWidth - 90, height: boxHeight - 65, preferredSize: 40 })}${input.arrows && index < input.boxes.length - 1 ? `<path d="M800 ${y + boxHeight}v18" stroke="${COLORS.accent}" stroke-width="6"/><path d="M786 ${y + boxHeight + 10}l14 14 14-14" fill="none" stroke="${COLORS.accent}" stroke-width="6"/>` : ""}`;
   }).join("");
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="white"/>${svgText({ text: input.title, x: 120, y: 90, width: 1360, fontSize: 46, bold: true })}${svgText({ text: input.subtitle, x: 120, y: 145, width: 1360, fontSize: 25 })}${boxes}</svg>`;
   await sharp(Buffer.from(svg)).png().toFile(input.outputPath);
+  await writeFile(`${input.outputPath}.layout.json`, JSON.stringify({ original_labels: input.boxes, display_labels: labels, full_content_location: "ResearchDesign and methodology", fallback: labels.some((label, i) => label !== clean(input.boxes[i])) ? "deterministic_label_summary" : "adaptive_geometry", width, height, minimum_font_px: 38 }, null, 2));
 }
 
 function sourceLabel(ledger: MvpStep5EvidenceLedger, sourceId: string) {

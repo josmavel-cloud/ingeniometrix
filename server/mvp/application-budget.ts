@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { currentJobExecution, reserveJobCall } from "./job-execution-context";
 
 export type BudgetEntry = { purpose: string; model: string; reserved_usd: number; estimated_usd: number | null; provider_usage: unknown; status: "reserved" | "completed" | "failed_unknown_usage" };
 export class ApplicationBudget {
@@ -20,5 +21,21 @@ export class ApplicationBudget {
   }
 }
 const context = new AsyncLocalStorage<ApplicationBudget>();
+const callAttempt = new AsyncLocalStorage<number>();
+export const withPaidCallAttempt = <T>(attempt: number, work: () => Promise<T>) => callAttempt.run(attempt, work);
 export const currentApplicationBudget = () => context.getStore();
 export function withApplicationBudget<T>(budget: ApplicationBudget, work: () => Promise<T>) { return context.run(budget, work); }
+
+// The SQL reservation is authoritative across workers/restarts; the process budget remains
+// an additional evaluation cap. Unknown usage retains both reservations, never zero.
+export async function reservePaidCall(purpose: string, model: string, maximumUsd: number) {
+  const local = currentJobExecution() ? undefined : currentApplicationBudget()?.reserve(purpose, model, maximumUsd);
+  const durable = await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0);
+  return {
+    async complete(cost: number, usage: unknown, actualModel?: string) {
+      await durable?.complete(cost, usage, actualModel);
+      local?.complete(cost, usage);
+    },
+    async fail() { await durable?.fail(); local?.fail(); },
+  };
+}

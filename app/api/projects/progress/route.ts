@@ -1,18 +1,7 @@
 import { NextResponse } from "next/server";
-import { BlueprintJobStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { requireCurrentUser } from "@/server/auth/session";
-
-const ACTIVE_JOB_STATUSES = [
-  BlueprintJobStatus.QUEUED,
-  BlueprintJobStatus.RUNNING,
-  BlueprintJobStatus.WAITING_NEXT_STAGE,
-] as const;
-
-function isActive(status: BlueprintJobStatus) {
-  return ACTIVE_JOB_STATUSES.some((activeStatus) => activeStatus === status);
-}
 
 export const dynamic = "force-dynamic";
 
@@ -51,9 +40,6 @@ export async function GET() {
     return NextResponse.json({
       projects: projects.map((project) => {
         const latestJob = project.blueprintJobs[0] ?? null;
-        const heartbeatAt =
-          latestJob?.lastHeartbeatAt ?? latestJob?.lockedAt ?? latestJob?.updatedAt ?? null;
-        const idleMs = heartbeatAt ? Date.now() - heartbeatAt.getTime() : 0;
 
         return {
           id: project.id,
@@ -67,10 +53,7 @@ export async function GET() {
                 progress: latestJob.progress,
                 errorMessage: latestJob.errorMessage,
                 updatedAt: latestJob.updatedAt.toISOString(),
-                shouldNudge:
-                  isActive(latestJob.status) &&
-                  latestJob.status !== BlueprintJobStatus.RUNNING &&
-                  idleMs > 4_000,
+                shouldNudge: false,
               }
             : null,
           artifactCount: project.generatedArtifacts.length,

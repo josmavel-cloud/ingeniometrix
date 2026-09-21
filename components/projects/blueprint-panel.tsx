@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
 
@@ -147,7 +147,6 @@ export function BlueprintPanel({
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const resumeInFlightRef = useRef(false);
 
   const latestVersion = versions[0] ?? null;
   const latestBlueprintDocxUrl = latestVersion
@@ -235,13 +234,11 @@ export function BlueprintPanel({
     [blueprint?.research_questions, keyConstructs],
   );
 
-  const canRetryInterruptedGeneration =
-    projectStatus === "BLUEPRINT_GENERATING" && versions.length === 0;
   const canGenerate =
+    progress?.jobStatus !== "FAILED" && (
     projectStatus === "SOURCES_SELECTED" ||
     projectStatus === "BLUEPRINT_READY" ||
-    projectStatus === "EXPORT_READY" ||
-    canRetryInterruptedGeneration;
+    projectStatus === "EXPORT_READY");
   const statusMeta = getProjectStatusMetaForLanguage(projectStatus, language);
   const preparationChecklist = [
     {
@@ -312,20 +309,6 @@ export function BlueprintPanel({
 
         if (payload.progress.jobId) {
           setActiveJobId(payload.progress.jobId);
-        }
-
-        if (
-          payload.progress.shouldNudge &&
-          payload.progress.jobId &&
-          !resumeInFlightRef.current
-        ) {
-          resumeInFlightRef.current = true;
-          fetch(`/api/projects/${projectId}/blueprints/resume`, {
-            method: "POST",
-            cache: "no-store",
-          }).finally(() => {
-            resumeInFlightRef.current = false;
-          });
         }
 
         if (
@@ -458,9 +441,7 @@ export function BlueprintPanel({
           <Sparkles className="mr-2 size-4" />
           {isPending || hasActiveGeneration
             ? copy.generating
-            : canRetryInterruptedGeneration
-              ? copy.retry
-              : copy.generate}
+            : copy.generate}
         </button>
       </div>
 
@@ -483,10 +464,8 @@ export function BlueprintPanel({
             : "border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.72)] text-[var(--color-ink)]"
         }`}
       >
-        {canGenerate
-          ? canRetryInterruptedGeneration
-            ? copy.interrupted(selectedReferenceCount)
-            : copy.readyToGenerate(selectedReferenceCount)
+        {hasActiveGeneration ? copy.generating : progress?.jobStatus === "FAILED" ? copy.generateError : canGenerate
+          ? copy.readyToGenerate(selectedReferenceCount)
           : copy.missingSources}
       </div>
 

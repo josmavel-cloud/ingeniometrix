@@ -7,9 +7,11 @@ import type { MvpStep6SectionDraft, MvpStep6SectionPlanItem, MvpStep6TitlePlan }
 import { inspectableEvidence } from "./evidence-continuity";
 import { assessEvidenceCoverage, permitsMethodologicalSupport } from "./evidence-coverage";
 import { consistencyMatrixSchema, consistencyTableRows, definitionSchema, evidencePointerSchema, GENERATION_ORDER, MVP_DOCUMENT_SECTIONS, normalizeConsistencyMatrix, objectiveSchema, questionSchema, researchDesignSchema, SECTION_BUDGETS, validateResearchDefinition } from "./research-plan-contracts";
-import { SCIENTIFIC_PLAN_PROMPT, SCIENTIFIC_TASKS } from "./prompts/scientific-plan.v3";
+import { SCIENTIFIC_PLAN_PROMPT, SCIENTIFIC_TASKS } from "./prompts/scientific-plan.v4";
 import { CONSISTENCY_MATRIX_PROMPT } from "./prompts/consistency-matrix.v1";
 import { compactSectionToBudget } from "./section-budget";
+import { stageCheckpoint, stableJson } from "./job-execution-context";
+import { generationBudget, GENERATION_POLICY_VERSION, priorSectionsForPhase, SCIENTIFIC_MODEL } from "./generation-budgets";
 
 const paragraphSchema = z.object({ text: z.string().min(1), citations: z.array(evidencePointerSchema) });
 const narrativeSchema = z.object({ paragraphs: z.array(paragraphSchema).min(1), assumptions: z.array(z.string()), limitations: z.array(z.string()) });
@@ -53,17 +55,23 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
   const sequence: string[] = [];
   await mkdir(input.artifactDir, { recursive: true });
   async function call<S extends z.ZodType>(phase: keyof typeof SCIENTIFIC_TASKS, schema: S, extra: object = {}): Promise<z.infer<S>> {
-    const context = { intake: input.intake, stable_definition: definition, research_design: design, evidence, coverage, upstream_sections: sections, word_budget: SECTION_BUDGETS[phase as keyof typeof SECTION_BUDGETS] ?? null, ...extra };
-    const prompt = `${SCIENTIFIC_PLAN_PROMPT.systemPrompt}\n\n${SCIENTIFIC_PLAN_PROMPT.userPromptTemplate.replace("{{task}}", SCIENTIFIC_TASKS[phase]).replace("{{context_json}}", JSON.stringify(context))}`;
+    const sectionBudget = generationBudget(phase);
+    const upstream = priorSectionsForPhase(phase, sections);
+    if (JSON.stringify(evidence).length > sectionBudget.evidence_context_budget || JSON.stringify(upstream).length > sectionBudget.prior_context_budget) throw new Error("USER_ACTION_REQUIRED: scientific context exceeds safe profile; no evidence silently discarded");
+    const context = { intake: input.intake, stable_definition: definition, research_design: design, evidence: phase === "final_title" || phase === "executive_summary" ? [] : evidence, coverage, upstream_sections: upstream, word_budget: SECTION_BUDGETS[phase as keyof typeof SECTION_BUDGETS] ?? null, section_budget: sectionBudget, ...extra };
+    const prompt = `${SCIENTIFIC_PLAN_PROMPT.systemPrompt}\n\n${SCIENTIFIC_PLAN_PROMPT.userPromptTemplate.replace("{{task}}", SCIENTIFIC_TASKS[phase]).replace("{{context_json}}", stableJson(context))}`;
     const schemaJson = z.toJSONSchema(schema);
-    const maxOutputTokens = phase === "methodology" ? 8500 : SCIENTIFIC_PLAN_PROMPT.max_output_tokens;
-    const output = schema.parse(await input.provider.generateStructuredObject({ prompt, schema: schemaJson, schemaName: `b3_${phase}`, model: SCIENTIFIC_PLAN_PROMPT.model, maxOutputTokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: SCIENTIFIC_PLAN_PROMPT.version, schemaName: `b3_${phase}`, stage: "blueprint_generation" } }));
+    const maxOutputTokens = sectionBudget.max_output_tokens;
+    const output = schema.parse(await stageCheckpoint(phase === "research_design" ? "RESEARCH_DESIGN" : phase === "cross_section_review" ? "SCIENTIFIC_REVIEW" : `SECTION_DRAFTS:${phase}`, { prompt, schemaJson, model: SCIENTIFIC_MODEL, maxOutputTokens, policy: GENERATION_POLICY_VERSION }, async () => schema.parse(await input.provider.generateStructuredObject({ prompt, schema: schemaJson, schemaName: `b3_${phase}`, model: SCIENTIFIC_MODEL, maxOutputTokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: SCIENTIFIC_PLAN_PROMPT.version, schemaName: `b3_${phase}`, stage: "blueprint_generation" } }))));
     const budgetKey = phase === "evidence_synthesis" ? "state_of_knowledge" : phase;
     const budget = SECTION_BUDGETS[budgetKey as keyof typeof SECTION_BUDGETS];
     if (budget && output && typeof output === "object" && "paragraphs" in output) {
       const original = narrativeSchema.parse(output);
       original.paragraphs.forEach((p) => checkPointers(p.citations));
-      const compacted = await compactSectionToBudget({ provider: input.provider, section: phase, maxWords: budget[1], paragraphs: original.paragraphs, projectId: input.projectId, runId: input.runId });
+      const compacted = await compactSectionToBudget({ provider: input.provider, section: phase, maxWords: budget[1], paragraphs: original.paragraphs, projectId: input.projectId, runId: input.runId }).catch((error) => {
+        if (!(error instanceof Error) || !error.message.includes("CHANGED_EVIDENCE")) throw error;
+        return { paragraphs: original.paragraphs, prompt_record: { phase, warning: "EDITORIAL_REJECTED_CHANGED_EVIDENCE: original scientific text retained", budget_unresolved: true } };
+      });
       if (compacted.prompt_record) {
         await writeFile(path.join(input.artifactDir, `${phase}-before-compaction.json`), JSON.stringify(output, null, 2));
         output.paragraphs = compacted.paragraphs;
@@ -96,8 +104,8 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
   sections.contribution_and_feasibility = await call("contribution_and_feasibility", narrativeSchema);
   sections.scope_limitations_and_pending_decisions = await call("scope_limitations_and_pending_decisions", narrativeSchema);
   const matrixContext = { normalized_intake: input.intake, definition, research_design: design, stabilized_sections: sections, methodological_evidence: evidence };
-  const matrixPrompt = `${CONSISTENCY_MATRIX_PROMPT.systemPrompt}\n\n${CONSISTENCY_MATRIX_PROMPT.userPromptTemplate.replace("{{context_json}}", JSON.stringify(matrixContext))}`;
-  const matrix = normalizeConsistencyMatrix(await input.provider.generateStructuredObject({ prompt: matrixPrompt, schemaName: "b3_consistency_matrix", schema: z.toJSONSchema(consistencyMatrixSchema), model: CONSISTENCY_MATRIX_PROMPT.model, maxOutputTokens: CONSISTENCY_MATRIX_PROMPT.max_output_tokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: CONSISTENCY_MATRIX_PROMPT.version, stage: "blueprint_generation" } }), stableDefinition, researchDesign);
+  const matrixPrompt = `${CONSISTENCY_MATRIX_PROMPT.systemPrompt}\n\n${CONSISTENCY_MATRIX_PROMPT.userPromptTemplate.replace("{{context_json}}", stableJson(matrixContext))}`;
+  const matrix = await stageCheckpoint("CONSISTENCY_MATRIX", { matrixPrompt, schema: z.toJSONSchema(consistencyMatrixSchema), model: CONSISTENCY_MATRIX_PROMPT.model, policy: GENERATION_POLICY_VERSION }, async () => normalizeConsistencyMatrix(await input.provider.generateStructuredObject({ prompt: matrixPrompt, schemaName: "b3_consistency_matrix", schema: z.toJSONSchema(consistencyMatrixSchema), model: CONSISTENCY_MATRIX_PROMPT.model, maxOutputTokens: CONSISTENCY_MATRIX_PROMPT.max_output_tokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: CONSISTENCY_MATRIX_PROMPT.version, stage: "blueprint_generation" } }), stableDefinition, researchDesign));
   matrix.rows.forEach((row) => checkPointers(row.rationale_evidence));
   matrix.rows.forEach((row, index) => { row.rationale_evidence = methodSupport(row.rationale_evidence, `matrix:${index}`); });
   await writeFile(path.join(input.artifactDir, "methodological-evidence-policy.json"), JSON.stringify({ excluded_support: excludedSupport, substantive_context_preserved: true }, null, 2));

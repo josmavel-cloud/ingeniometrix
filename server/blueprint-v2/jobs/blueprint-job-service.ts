@@ -17,6 +17,11 @@ import { prisma } from "@/lib/prisma";
 import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { runMvpEvidenceMaterialization } from "@/server/mvp/evidence-materialization-service";
 import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-service";
+import { currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
+import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-policy";
+import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
+import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
+import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
 
 const ACTIVE_STATUSES = [
   BlueprintJobStatus.QUEUED,
@@ -24,7 +29,7 @@ const ACTIVE_STATUSES = [
   BlueprintJobStatus.WAITING_NEXT_STAGE,
 ] as const;
 const STALE_LOCK_MS = Math.max(60_000, Number(process.env.BLUEPRINT_STALE_LOCK_MS ?? 10 * 60 * 1000));
-const DEFAULT_MAX_ATTEMPTS = Math.max(1, Number(process.env.BLUEPRINT_MAX_ATTEMPTS ?? 3));
+const DEFAULT_MAX_ATTEMPTS = Math.min(3, Math.max(1, Number(process.env.BLUEPRINT_MAX_ATTEMPTS ?? 3) || 3));
 const HEARTBEAT_MS = Math.max(5_000, Number(process.env.BLUEPRINT_HEARTBEAT_MS ?? 30_000));
 
 type Step5Result = Awaited<ReturnType<typeof runMvpEvidenceMaterialization>>;
@@ -47,6 +52,7 @@ type StoredStep6 = Pick<
 
 type JobData = {
   runId: string;
+  inputFingerprint?: string;
   step5?: { status: string; stepRunId: string; artifactManifestPath: string };
   step6?: StoredStep6;
 };
@@ -109,6 +115,11 @@ function readJobData(job: Pick<BlueprintJob, "stageDataJson">): JobData {
   return value as unknown as JobData;
 }
 
+function executionMetadata(job: BlueprintJob, stage: string, outcome: string, failure?: unknown) {
+  const previous = job.metadataJson as { executions?: unknown[] } | null;
+  return toJson({ ...previous, executions: [...(previous?.executions ?? []), { stage, outcome, startedAt: job.startedAt?.toISOString(), finishedAt: new Date().toISOString(), durationMs: job.startedAt && !outcome.includes("UNKNOWN") ? Date.now() - job.startedAt.getTime() : null, cumulativeFailuresBefore: job.attempts, failure }] });
+}
+
 function stageLabel(stage: string | null, language: string) {
   const english = normalizeLanguageCode(language) === "en";
   const labels: Record<string, [string, string]> = {
@@ -126,13 +137,17 @@ async function loadOwnedProject(userId: string, projectId: string) {
     where: { id: projectId, userId },
     include: {
       intake: true,
-      projectReferences: { where: { selected: true }, select: { id: true } },
+      projectReferences: { where: { selected: true }, include: { reference: true }, orderBy: { id: "asc" } },
     },
   });
   if (!project) throw new Error("Proyecto no encontrado.");
   if (!project.intake) throw new Error("Completa el intake antes de generar el plan.");
   if (project.projectReferences.length === 0) throw new Error("Selecciona al menos una fuente antes de generar el plan.");
   return project;
+}
+
+function projectFingerprint(project: Awaited<ReturnType<typeof loadOwnedProject>>) {
+  return fingerprint({ intake: project.intake, references: project.projectReferences.map((item) => ({ id: item.id, referenceId: item.referenceId, order: item.selectedOrder })) });
 }
 
 async function upsertStage(input: {
@@ -182,9 +197,10 @@ async function recoverStepOutput(projectId: string, runId: string, stepKey: stri
 }
 
 async function withJobHeartbeat<T>(jobId: string, operation: () => Promise<T>) {
+  const startedAt = currentJobExecution()?.startedAt;
   const heartbeat = setInterval(() => {
     void prisma.blueprintJob.updateMany({
-      where: { id: jobId, status: BlueprintJobStatus.RUNNING },
+      where: { id: jobId, status: BlueprintJobStatus.RUNNING, startedAt },
       data: { lockedAt: new Date(), lastHeartbeatAt: new Date() },
     }).catch((error) => {
       console.error("Unable to update blueprint job heartbeat.", { jobId, error });
@@ -243,10 +259,16 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
     orderBy: { createdAt: "desc" },
   });
   if (existing) return toJobSummary(existing);
+  const inputFingerprint = projectFingerprint(project);
+  const previous = await prisma.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
+  if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint)) throw new Error("El intento anterior requiere revision; crear otro job no puede restablecer sus limites.");
 
   const jobId = randomUUID();
   const language = normalizeLanguageCode(options?.languageOverride) ?? normalizeLanguageCode(project.language) ?? "es";
   const job = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
+    const concurrent = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: { in: [...ACTIVE_STATUSES] } }, orderBy: { createdAt: "desc" } });
+    if (concurrent) return concurrent;
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     return tx.blueprintJob.create({
       data: {
@@ -259,8 +281,8 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         language,
         runnerKind: "database-worker",
         maxAttempts: DEFAULT_MAX_ATTEMPTS,
-        stageDataJson: toJson({ runId: `secure-pilot-${jobId}` } satisfies JobData),
-        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true }),
+        stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint } satisfies JobData),
+        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1" }),
       },
     });
   });
@@ -270,20 +292,35 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
 async function claimJob(jobId: string) {
   const now = new Date();
   const staleBefore = new Date(now.getTime() - STALE_LOCK_MS);
-  const result = await prisma.blueprintJob.updateMany({
+  return prisma.$transaction(async (tx) => {
+  await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
+  const current = await tx.blueprintJob.findUnique({ where: { id: jobId } });
+  if (!current || !ACTIVE_STATUSES.some((s) => s === current.status) || current.nextAttemptAt && current.nextAttemptAt > now || current.lockedAt && current.lockedAt >= staleBefore) return null;
+  if ((current.metadataJson as { executionPolicy?: string } | null)?.executionPolicy !== "b4.v1") {
+    await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", lockedAt: null, errorMessage: "Job anterior a B4: reconciliar costes antes de autorizar recuperacion.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
+    return null;
+  }
+  const attempts = current.attempts + (current.status === BlueprintJobStatus.RUNNING ? 1 : 0);
+  if (attempts >= current.maxAttempts) {
+    await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", attempts, lockedAt: null, completedAt: now, errorMessage: "Recuperaciones agotadas; se requiere revision.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
+    await tx.project.update({ where: { id: current.projectId }, data: { status: "SOURCES_SELECTED" } });
+    return null;
+  }
+  const result = await tx.blueprintJob.updateMany({
     where: {
       id: jobId,
       status: { in: [...ACTIVE_STATUSES] },
-      attempts: { lt: DEFAULT_MAX_ATTEMPTS },
+      attempts: { lt: current.maxAttempts },
       AND: [
         { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
         { OR: [{ lockedAt: null }, { lockedAt: { lt: staleBefore } }] },
       ],
     },
-    data: { status: BlueprintJobStatus.RUNNING, lockedAt: now, lastHeartbeatAt: now, startedAt: now },
+    data: { status: BlueprintJobStatus.RUNNING, attempts, lockedAt: now, lastHeartbeatAt: now, startedAt: now, errorMessage: null, ...(current.status === "RUNNING" ? { metadataJson: executionMetadata(current, current.currentStage ?? "unknown", "INTERRUPTED_DURATION_UNKNOWN", { staleLease: true }) } : {}) },
   });
   if (result.count === 0) return null;
-  return prisma.blueprintJob.findUnique({ where: { id: jobId } });
+  return tx.blueprintJob.findUnique({ where: { id: jobId } });
+  });
 }
 
 export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJobExecutor = productionExecutor) {
@@ -295,12 +332,16 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
 
   const stage = job.currentStage ?? "materializing_evidence";
   const data = readJobData(job);
+  return withJobExecution({ jobId, startedAt: job.startedAt!, stage, recoveryAttempt: job.attempts }, async () => {
   await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.RUNNING, progress: job.progress });
 
   try {
+    if (data.inputFingerprint !== projectFingerprint(await loadOwnedProject(job.userId, job.projectId))) throw new Error("INPUT_CHANGED: intake o seleccion incompatible con el job autorizado.");
     if (stage === "materializing_evidence") {
-      const recovered = await recoverStepOutput(job.projectId, data.runId, "step_5_evidence_materialization");
-      const result = recovered ?? await withJobHeartbeat(jobId, () => executor.materialize({ userId: job.userId, projectId: job.projectId, runId: data.runId }));
+      const owned = await loadOwnedProject(job.userId, job.projectId);
+      const sourceFingerprint = fingerprint({ intake: owned.intake, selected: owned.projectReferences.map((ref) => ref.id).sort() });
+      const evidencePolicy = { prompts: [STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT, STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT, STEP5_EQUATION_LATEX_OCR_PROMPT], extractionModel: process.env.IMX_STEP5_EXTRACTION_MODEL ?? process.env.LLM_FAST_MODEL ?? process.env.LLM_DEFAULT_MODEL ?? "gpt-5.4-mini", visionModel: process.env.IMX_STEP5_VISION_MODEL ?? process.env.LLM_FAST_MODEL ?? process.env.LLM_DEFAULT_MODEL ?? "gpt-5.4-mini", disableVision: process.env.IMX_STEP5_DISABLE_VISUAL_LOCALIZATION ?? "0" };
+      const result = await withJobHeartbeat(jobId, () => stageCheckpoint("EVIDENCE", { projectId: job.projectId, runId: data.runId, sourceFingerprint, evidencePolicy }, () => executor.materialize({ userId: job.userId, projectId: job.projectId, runId: data.runId })));
       data.step5 = {
         status: String(result.status),
         stepRunId: String(result.step_run_id),
@@ -308,8 +349,8 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       };
       await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 45, output: data.step5 });
       const updated = await prisma.blueprintJob.update({
-        where: { id: jobId },
-        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "generating_plan", progress: 45, attempts: 0, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data) },
+        where: { id: jobId, startedAt: job.startedAt },
+        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "generating_plan", progress: 45, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data), errorMessage: null, errorJson: Prisma.DbNull, metadataJson: executionMetadata(job, stage, "COMPLETED") },
       });
       return { job: toJobSummary(updated), shouldContinue: true, state: "continued" as const };
     }
@@ -329,8 +370,8 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       };
       await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 90, output: data.step6 });
       const updated = await prisma.blueprintJob.update({
-        where: { id: jobId },
-        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "persisting_artifacts", progress: 90, attempts: 0, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data) },
+        where: { id: jobId, startedAt: job.startedAt },
+        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "persisting_artifacts", progress: 90, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data), errorMessage: null, errorJson: Prisma.DbNull, metadataJson: executionMetadata(job, stage, "COMPLETED") },
       });
       return { job: toJobSummary(updated), shouldContinue: true, state: "continued" as const };
     }
@@ -340,16 +381,19 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       await withJobHeartbeat(jobId, () => persistCanonicalArtifacts(job, data.step6!));
       await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 100, output: { blueprintVersionId: data.step6.blueprint_version_id } });
       const updated = await prisma.blueprintJob.update({
-        where: { id: jobId },
-        data: { status: BlueprintJobStatus.COMPLETED, currentStage: "completed", progress: 100, attempts: 0, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), completedAt: new Date(), errorMessage: null, stageDataJson: toJson(data) },
+        where: { id: jobId, startedAt: job.startedAt },
+        data: { status: BlueprintJobStatus.COMPLETED, currentStage: "completed", progress: 100, nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), completedAt: new Date(), errorMessage: null, errorJson: Prisma.DbNull, stageDataJson: toJson(data), metadataJson: executionMetadata(job, stage, "COMPLETED") },
       });
       return { job: toJobSummary(updated), shouldContinue: false, state: "completed" as const };
     }
 
     throw new Error(`Etapa no reconocida: ${stage}`);
   } catch (error) {
+    const lease = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: jobId } });
+    if (lease.startedAt?.getTime() !== job.startedAt?.getTime() || lease.status !== "RUNNING") return { job: toJobSummary(lease), shouldContinue: false, state: "locked_or_finished" as const };
     const attempts = job.attempts + 1;
-    const retryable = attempts < job.maxAttempts;
+    const failure = classifyFailure(error);
+    const retryable = failure.autoRetry && attempts < job.maxAttempts;
     const message = error instanceof Error ? error.message : String(error);
     const retryDelayMs = Math.min(5 * 60 * 1000, 30_000 * 2 ** Math.max(0, attempts - 1));
     await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.FAILED, progress: job.progress, error: { message, attempt: attempts } });
@@ -357,7 +401,7 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       await prisma.project.update({ where: { id: job.projectId }, data: { status: ProjectStatus.SOURCES_SELECTED } });
     }
     const updated = await prisma.blueprintJob.update({
-      where: { id: jobId },
+      where: { id: jobId, startedAt: job.startedAt },
       data: {
         status: retryable ? BlueprintJobStatus.QUEUED : BlueprintJobStatus.FAILED,
         currentStage: stage,
@@ -366,13 +410,15 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
         lockedAt: null,
         lastHeartbeatAt: new Date(),
         completedAt: retryable ? null : new Date(),
-        errorMessage: message,
-        errorJson: toJson({ message, attempt: attempts, retryable }),
+        errorMessage: publicFailureMessage(failure.category),
+        errorJson: toJson({ message, attempt: attempts, retryable, category: failure.category }),
+        metadataJson: executionMetadata(job, stage, "FAILED", { message, category: failure.category, retryable }),
         stageDataJson: toJson(data),
       },
     });
     return { job: toJobSummary(updated), shouldContinue: retryable, state: retryable ? "retry_scheduled" as const : "failed" as const };
   }
+  });
 }
 
 export async function runBlueprintJobDrain(jobId: string, options?: { maxStages?: number; timeBudgetMs?: number }, executor: ReleaseJobExecutor = productionExecutor) {
@@ -395,7 +441,6 @@ export async function claimAndRunNextBlueprintJob(executor: ReleaseJobExecutor =
   const candidate = await prisma.blueprintJob.findFirst({
     where: {
       status: { in: [...ACTIVE_STATUSES] },
-      attempts: { lt: DEFAULT_MAX_ATTEMPTS },
       AND: [
         { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
         { OR: [{ lockedAt: null }, { lockedAt: { lt: staleBefore } }] },
@@ -410,11 +455,10 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   const job = await prisma.blueprintJob.findFirst({ where: { userId, projectId }, orderBy: { createdAt: "desc" } });
   if (!job) throw new Error("No hay un job para reanudar.");
   if (job.status === BlueprintJobStatus.COMPLETED) return { job: toJobSummary(job), shouldContinue: false, state: "completed" as const };
-  const updated = await prisma.blueprintJob.update({
-    where: { id: job.id },
-    data: { status: BlueprintJobStatus.QUEUED, attempts: 0, nextAttemptAt: null, lockedAt: null, completedAt: null, errorMessage: null },
-  });
-  return { job: toJobSummary(updated), shouldContinue: true, state: "queued" as const };
+  // Active jobs already belong to the worker. Resume must not steal a lease, erase
+  // backoff, or resurrect a failed/exhausted job. Repeated calls are observational.
+  const retryable = job.attempts < job.maxAttempts && ACTIVE_STATUSES.some((status) => status === job.status);
+  return { job: toJobSummary(job), shouldContinue: retryable, state: retryable ? "already_scheduled" as const : "not_retryable" as const };
 }
 
 export async function resumeLatestBlueprintJobDrainForUser(userId: string, projectId: string) {

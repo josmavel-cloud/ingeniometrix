@@ -72,13 +72,17 @@ import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report
 import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence } from "./evidence-continuity";
 import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
 import { deterministicInfographic, infographicFingerprint } from "./final-infographic";
-import { buildVisualDeliverables } from "./visual-deliverables";
+import { buildVisualDeliverables, visualCheckpointPolicy } from "./visual-deliverables";
 import { attachScientificAssets } from "./scientific-assets";
 import { exportPlanPdf } from "./pdf-export";
 import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "./application-budget";
 import { ensureResearchCoverage } from "./research-fallback";
 import { GENERATION_ORDER } from "./research-plan-contracts";
-import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v3";
+import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v4";
+import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce } from "./job-execution-context";
+import { GENERATION_POLICY_VERSION } from "./generation-budgets";
+import { compactDocxWhitespace } from "./docx-layout-compaction";
+import { pageBudgetPolicy } from "./execution-policy";
 import { buildEvidenceLog, extractExportReferences, renderBibtex, renderRis } from "@/server/blueprint/blueprint-export";
 const STEP6_ARTIFACT_ROOT = "mvp-step6-blueprint-docx";
 const FONT = "Times New Roman";
@@ -2356,11 +2360,15 @@ async function imageBlock(block: Extract<MvpStep6ContentBlock, { kind: "figure" 
   }
   const image = await readFile(block.image_path);
   const dimensions = dimensionsFromImageBuffer(image, block.image_path);
-  const maxWidth = block.render_hint === "landscape_full" ? 680 : 420;
-  const maxHeight = block.render_hint === "landscape_full" ? 420 : 260;
+  const declarative = block.asset_key === "original:conceptual-system-diagram" || block.asset_key === "original:methodology-workflow";
+  const maxWidth = block.render_hint === "landscape_full" ? 680 : declarative ? 520 : 420;
+  const maxHeight = block.render_hint === "landscape_full" ? 420 : declarative ? 500 : 260;
   const fitted = dimensions
     ? fitDimensions({ originalWidth: dimensions.width, originalHeight: dimensions.height, maxWidth, maxHeight })
     : { width: maxWidth, height: maxHeight };
+  if (declarative && dimensions && 38 * Math.min(fitted.width / dimensions.width, fitted.height / dimensions.height) * 0.75 < 9) {
+    return [paragraph("La representación visual se omite para mantener legibilidad; el diseño completo se conserva en el texto y la tabla metodológica.", { italics: true })];
+  }
   return [
     paragraph(captionText(ref, block.title), { bold: true, align: AlignmentType.CENTER, indent: false, keepNext: true }),
     new Paragraph({
@@ -2907,7 +2915,7 @@ function buildCoherenceReport(input: {
       detail: unknownCrossReferences.length ? unknownCrossReferences.join(", ") : "all visible cross-references are planned",
     },
   ];
-  const failed = checks.filter((check) => !check.passed);
+  const failed = checks.filter((check) => !check.passed && check.key !== "estimated_page_budget_within_limit");
   return {
     status: failed.length > 0 ? "failed" : input.warnings.length > 0 ? "passed_with_warnings" : "passed",
     checks,
@@ -3080,7 +3088,7 @@ export async function runMvpStep6BlueprintDocx(input: {
   warnings.push(...evidenceGate.limitations);
   const sectionPlan = scientificSectionPlan();
   const academicStyleContract = buildStyleContract(project);
-  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: 18,
+  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: pageBudgetPolicy(null).soft,
     max_body_words: sectionPlan.reduce((total, section) => total + section.max_words, 0),
     fixed_page_reservations: [{ label: "Portada (fuera del cuerpo)", pages: 1 }, { label: "Referencias (fuera del cuerpo; extension variable)", pages: 1 }],
     compression_policy: ["Objetivo 12-15 paginas de cuerpo; maximo 18 verificado sobre PDF.", "No truncar texto ni reducir tipografia; resolver redundancia antes de publicar si excede el maximo."] };
@@ -3138,11 +3146,11 @@ export async function runMvpStep6BlueprintDocx(input: {
       { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
       () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
     );
-    const finalSectionDrafts = scientific.drafts;
+    const finalSectionDrafts = structuredClone(scientific.drafts);
     const assetQuality = attachScientificAssets(finalSectionDrafts, latestStep5.ledger, scientific.usedSources);
     await writeJson(path.join(artifacts.artifactDir, "asset-quality.json"), assetQuality);
     await writeJson(path.join(artifacts.artifactDir, "evidence-coverage.json"), scientific.coverage);
-    const finalPageBudgetPlan: MvpStep6PageBudgetPlan = { ...pageBudgetPlan, max_pages: 18,
+    const finalPageBudgetPlan: MvpStep6PageBudgetPlan = { ...pageBudgetPlan,
       estimated_pages: estimateDocumentPages({ drafts: finalSectionDrafts, pageBudget: pageBudgetPlan }) };
     const titlePlan = scientific.titlePlan;
     const editorial = { report: { artifact_type: "mvp_step6_editorial_report" as const, artifact_version: "v1" as const, status: "applied" as const, model: SCIENTIFIC_PLAN_PROMPT.model, prompt_version: SCIENTIFIC_PLAN_PROMPT.version, revised_section_count: 0, warnings: scientific.review.warnings, notes: scientific.review.checked_dimensions } };
@@ -3160,7 +3168,10 @@ export async function runMvpStep6BlueprintDocx(input: {
       }
       await writeJson(`${artifacts.heroImagePath}.json`, { ...heroImage, reused_from: input.heroReuse.plan.image_path, image_fingerprint: imageFingerprint, provider_request_executed: false, cost_this_execution_usd: 0 });
     } else {
-      const visuals = await buildVisualDeliverables({
+      const visuals = await stageCheckpoint("VISUALS", { science: scientific, ledger: latestStep5.ledger, policy: GENERATION_POLICY_VERSION, visualPolicy: visualCheckpointPolicy() }, async () => {
+      const cleanDrafts = structuredClone(finalSectionDrafts);
+      try {
+      const result = await buildVisualDeliverables({
         provider,
         definition: scientific.definition,
         design: scientific.design,
@@ -3173,6 +3184,16 @@ export async function runMvpStep6BlueprintDocx(input: {
         projectId: input.projectId,
         runId: artifacts.runId,
       });
+      return { ...result, drafts: finalSectionDrafts };
+      } catch (error) {
+        const reason = `PRESENTATION_FALLBACK: ${error instanceof Error ? error.message : String(error)}`;
+        finalSectionDrafts.splice(0, finalSectionDrafts.length, ...cleanDrafts);
+        const heroImage: MvpStep6HeroImagePlan = { prompt_version: "b4-deterministic-fallback", placement: "cover", visual_type: "methodological_infographic_cover", prompt: "", negative_prompt: "", summary: "", image_path: null, image_model: null, status: "skipped", warnings: [reason] };
+        await writeJson(path.join(artifacts.artifactDir, "visual-failure.json"), { reason, scientific_content_preserved: true });
+        return { heroImage, visualPlan: undefined, drafts: cleanDrafts };
+      }
+      }, (value) => [...new Set([value.heroImage.image_path, ...(value.visualPlan?.assets.flatMap((asset) => asset.output_paths) ?? [])].filter((file): file is string => Boolean(file && fs.existsSync(file))))]);
+      finalSectionDrafts.splice(0, finalSectionDrafts.length, ...visuals.drafts);
       heroImage = visuals.heroImage;
       visualPlan = visuals.visualPlan;
     }
@@ -3220,16 +3241,31 @@ export async function runMvpStep6BlueprintDocx(input: {
       },
     };
 
-    await renderDocx({
+    const renderFingerprint = { drafts: finalSectionDrafts, title: titlePlan, style: academicStyleContract, heroImage, visualPlan, program: project.program, university: project.university, renderer: "b4.v1" };
+    const pdf = await stageCheckpoint("FINAL_EXPORT", { renderFingerprint, soft: process.env.IMX_BODY_SOFT_MAX_PAGES ?? 18, guard: process.env.IMX_BODY_RENDER_GUARD_PAGES ?? 24 }, async () => {
+    await stageCheckpoint("DOCX", renderFingerprint, async () => { await renderDocx({
       project,
       package: provisionalPackage,
       outputPath: artifacts.docxPath,
-    });
+    }); return { path: artifacts.docxPath }; }, (value) => [value.path]);
 
-    const pdf = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"));
+    return stageCheckpoint("PDF", { renderFingerprint, converter: "libreoffice-b4.v1", soft: process.env.IMX_BODY_SOFT_MAX_PAGES ?? 18, guard: process.env.IMX_BODY_RENDER_GUARD_PAGES ?? 24 }, async () => {
+      let rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"));
+      if (!rendered.page_budget_pass) {
+        await copyFile(artifacts.docxPath, path.join(artifacts.artifactDir, "pre-layout-thesis-plan.docx"));
+        const compaction = await compactDocxWhitespace(artifacts.docxPath);
+        const sectionLengths = finalSectionDrafts.map((draft) => ({ section: draft.section_key, words: draft.word_count, max_words: sectionPlan.find((section) => section.section_key === draft.section_key)?.max_words ?? 0 }));
+        await writeJson(path.join(artifacts.artifactDir, "layout-compaction.json"), { ...compaction, before_body_pages: rendered.body_pages, additional_scientific_calls: 0, oversized_sections: sectionLengths.filter((section) => section.max_words > 0 && section.words > section.max_words), editorial_policy: "one targeted pass per oversized section before scientific review; no second pass or scientific regeneration for PDF length" });
+        if (compaction.changes) rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"));
+      }
+      return rendered;
+    }, (value) => [value.pdf_path, artifacts.docxPath]);
+    }, (value) => [value.pdf_path, artifacts.docxPath]);
+    warnings.push(...pdf.warnings);
     finalPageBudgetPlan.estimated_pages = pdf.body_pages!;
     await writeJson(path.join(artifacts.artifactDir, "pdf-validation.json"), pdf);
-    await writeJson(path.join(artifacts.artifactDir, "application-budget.json"), currentApplicationBudget()?.entries);
+    await writeJson(path.join(artifacts.artifactDir, "application-budget.json"), await jobCostSnapshot() ?? currentApplicationBudget()?.entries);
+    if (pdf.page_budget_status === "RENDER_REVIEW_REQUIRED" || pdf.page_budget_status === "UNMEASURED") throw new Error(`PDF_RENDER_REVIEW_REQUIRED: ${pdf.body_pages ?? "unknown"} body pages; scientific checkpoints and rendered files retained`);
 
     const coherenceReport = buildCoherenceReport({
       sectionPlan,
@@ -3245,12 +3281,11 @@ export async function runMvpStep6BlueprintDocx(input: {
       ...provisionalPackage,
       coherence_report: coherenceReport,
     };
-    const blueprintVersion = await prisma.blueprintVersion.create({
-      data: {
+    const blueprintVersion = await createBlueprintVersionOnce({
         projectId: input.projectId,
         versionNumber,
         model: finalSectionDrafts.some((draft) => draft.generation_source === "llm")
-          ? process.env.IMX_STEP6_SECTION_MODEL?.trim() || process.env.LLM_DEFAULT_MODEL?.trim() || "gpt-5.4"
+          ? SCIENTIFIC_PLAN_PROMPT.model
           : "deterministic-fallback",
         promptVersion: MVP_STEP6_PROMPT_VERSION,
         intakeSnapshotJson: asStepRunJson(project.intake),
@@ -3261,8 +3296,7 @@ export async function runMvpStep6BlueprintDocx(input: {
           ledger: latestStep5.ledger,
         })),
         coherenceReportJson: asStepRunJson(coherenceReport),
-      },
-    });
+    }, { intake: project.intake, scientific, renderFingerprint });
 
     const finalPackage: MvpStep6BlueprintPackage = {
       ...finalPackageWithoutVersion,

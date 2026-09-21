@@ -75,6 +75,7 @@
     "test:b3-generation-export": "tsx scripts/test-b3-generation-export.ts",
     "test:visual-deliverables": "tsx scripts/test-visual-deliverable-closure.ts",
     "test:secure-pilot": "tsx scripts/test-secure-pilot-release.ts",
+    "test:b4-resilience": "tsx scripts/test-b4-resilience.ts",
     "compare:diagnostic-runs": "tsx scripts/compare-diagnostic-runs.ts",
     "diagnose:lab-b-ingestion": "tsx scripts/run-lab-b-diagnostic-ingestion.ts",
     "diagnose:lab-b-full-docx": "tsx scripts/run-lab-b-full-diagnostic-docx.ts --allow-degraded-handoff",

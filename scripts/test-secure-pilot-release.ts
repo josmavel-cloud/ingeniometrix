@@ -169,7 +169,7 @@ async function main() {
     const unavailableProviderExecutor: ReleaseJobExecutor = {
       async materialize() {
         providerFailureCalls += 1;
-        throw new Error("PROVIDER_UNAVAILABLE_TEST");
+        throw Object.assign(new Error("PROVIDER_UNAVAILABLE_TEST"), { status: 503 });
       },
       async generate() {
         throw new Error("generation must not run");

@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import sharp from "sharp";
-import { currentApplicationBudget } from "./application-budget";
+import { currentApplicationBudget, reservePaidCall } from "./application-budget";
 import { HERO_INFOGRAPHIC_PROMPT as prompt } from "./prompts/hero-infographic.v1";
 import type { MvpStep6HeroImagePlan } from "./step6-blueprint-docx-types";
 import type { ResearchDefinition, ResearchDesign } from "./research-plan-contracts";
@@ -27,27 +27,27 @@ export async function deterministicInfographic(outputPath: string) {
 export async function generateFinalInfographic(context: unknown, outputPath: string): Promise<MvpStep6HeroImagePlan> {
   const actualPrompt = `${prompt.systemPrompt}\n\n${prompt.userPromptTemplate.replace("{{context_json}}", JSON.stringify(context))}`;
   const plan: MvpStep6HeroImagePlan = { prompt_version: prompt.version, placement: "cover", visual_type: "methodological_infographic_cover", prompt: actualPrompt, negative_prompt: "", summary: "Relaciones conceptuales y metodo propuesto", image_path: outputPath, image_model: prompt.model, status: "generated", warnings: [] };
-  let reservation: ReturnType<NonNullable<ReturnType<typeof currentApplicationBudget>>["reserve"]> | undefined;
+  let reservation: Awaited<ReturnType<typeof reservePaidCall>> | undefined;
   let usage: unknown = null, estimatedCost: number | null = null;
   const started = Date.now();
   try {
     const budget = currentApplicationBudget();
     if (!budget) throw new Error("IMAGE_BUDGET_REQUIRED");
     // UTF-8 bytes conservatively bound input tokens; no input images, one non-streaming output.
-    reservation = budget.reserve("hero_infographic", prompt.model, ((Buffer.byteLength(actualPrompt) + 2048) * 5 + HERO_OUTPUT_TOKEN_BOUND * 30) / 1e6);
+    reservation = await reservePaidCall("hero_infographic", prompt.model, ((Buffer.byteLength(actualPrompt) + 2048) * 5 + HERO_OUTPUT_TOKEN_BOUND * 30) / 1e6);
     const response = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 180_000 }).images.generate({ model: prompt.model, prompt: actualPrompt, quality: "high", size: "1024x1024", n: 1, output_format: "png" });
     usage = response.usage ?? null;
     if (response.usage) {
       estimatedCost = (response.usage.input_tokens * 5 + response.usage.output_tokens * 30) / 1e6;
-      reservation.complete(estimatedCost, response.usage);
-    } else reservation.fail();
+      await reservation.complete(estimatedCost, response.usage);
+    } else await reservation.fail();
     const encoded = response.data?.[0]?.b64_json;
     if (!encoded) throw new Error("IMAGE_OUTPUT_MISSING");
     const buffer = Buffer.from(encoded, "base64");
     await sharp(buffer).metadata();
     await writeFile(outputPath, buffer);
   } catch (error) {
-    reservation?.fail();
+    await reservation?.fail();
     plan.status = "svg_fallback"; plan.image_model = null;
     plan.warnings.push(`Infografia determinista: ${error instanceof Error ? error.message : "image_failure"}`);
     await deterministicInfographic(outputPath);

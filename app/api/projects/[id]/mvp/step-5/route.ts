@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
 import { runMvpEvidenceMaterialization } from "@/server/mvp/evidence-materialization-service";
+import { currentJobExecution } from "@/server/mvp/job-execution-context";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -10,6 +11,7 @@ type RouteContext = {
 export async function POST(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
+    if (!currentJobExecution()) return NextResponse.json({ error: "Inicia la generación desde el proyecto para conservar su presupuesto y progreso.", code: "PERSISTENT_JOB_REQUIRED" }, { status: 409 });
     const { id } = await context.params;
     const result = await runMvpEvidenceMaterialization({
       userId: user.id,

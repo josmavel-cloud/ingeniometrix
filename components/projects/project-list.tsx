@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { University } from "@prisma/client";
@@ -96,7 +96,6 @@ export function ProjectList({
   const router = useRouter();
   const t = copy[language];
   const [projects, setProjects] = useState(initialProjects);
-  const resumeInFlight = useRef(new Set<string>());
   const hasActiveProject = useMemo(
     () => projects.some((project) => isActiveJob(project.latestJob?.status)),
     [projects],
@@ -140,20 +139,6 @@ export function ProjectList({
           };
         }),
       );
-
-      for (const update of payload.projects) {
-        if (!update.job?.shouldNudge || resumeInFlight.current.has(update.id)) {
-          continue;
-        }
-
-        resumeInFlight.current.add(update.id);
-        fetch(`/api/projects/${update.id}/blueprints/resume`, {
-          method: "POST",
-          cache: "no-store",
-        }).finally(() => {
-          resumeInFlight.current.delete(update.id);
-        });
-      }
 
       if (payload.projects.some((project) => project.status === "BLUEPRINT_READY")) {
         router.refresh();

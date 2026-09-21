@@ -5,7 +5,10 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 
 import { recordLlmUsage } from "@/server/llm-usage-registry";
-import { currentApplicationBudget } from "@/server/mvp/application-budget";
+import { currentApplicationBudget, reservePaidCall, withPaidCallAttempt } from "@/server/mvp/application-budget";
+import { currentJobExecution } from "@/server/mvp/job-execution-context";
+import { classifyFailure } from "@/server/mvp/execution-policy";
+import { responseCostBound } from "./openai-cost-bound";
 
 import type {
   LlmProvider,
@@ -31,7 +34,7 @@ function resolveTimeoutMs() {
 
 function resolveRetryCount() {
   const rawValue = Number.parseInt(process.env.LLM_REQUEST_MAX_RETRIES ?? "", 10);
-  return Number.isFinite(rawValue) && rawValue >= 0 ? rawValue : DEFAULT_OPENAI_RETRIES;
+  return Number.isFinite(rawValue) && rawValue >= 0 ? Math.min(rawValue, 2) : DEFAULT_OPENAI_RETRIES;
 }
 
 function resolveMaxOutputTokens(explicitValue?: number) {
@@ -62,11 +65,11 @@ async function runWithTimeoutAndRetry<T>(work: () => Promise<T>) {
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      return await work(); // SDK timeout aborts the request; no orphan Promise.race request.
+      return await withPaidCallAttempt(attempt, work); // SDK timeout aborts; each retry reserves independently.
     } catch (error) {
       lastError = error;
 
-      if (attempt === maxRetries) {
+      if (attempt === maxRetries || !classifyFailure(error).autoRetry) {
         throw error;
       }
 
@@ -89,23 +92,27 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
   async function request(params: Parameters<typeof client.responses.create>[0]) {
     const limit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
-    const rates = params.model === "gpt-5.4" ? [2.5, 15] : params.model === "gpt-5.4-mini" ? [0.75, 4.5] : params.model === "gpt-5.4-nano" ? [0.2, 1.25] : null;
-    // UTF-8 bytes conservatively bound input tokens, plus schema/request overhead.
-    const reserved = rates && params.max_output_tokens ? ((Buffer.byteLength(JSON.stringify(params)) + 2048) * rates[0] + params.max_output_tokens * rates[1]) / 1e6 : null;
+    const bound = responseCostBound(params as Parameters<typeof responseCostBound>[0]);
+    const rates = bound?.rates ?? null;
+    const reserved = bound?.maximumUsd ?? null;
     if (limit > 0 && (reserved === null || reservedApiUsd + reserved > limit)) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
     if (limit > 0) reservedApiUsd += reserved!;
     const startedAt = new Date().toISOString();
     const budget = currentApplicationBudget();
-    if (budget && reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
-    const reservation = budget?.reserve("text", String(params.model), reserved!);
+    if ((budget || currentJobExecution()) && reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
+    const purpose = (params.text?.format as { name?: string } | undefined)?.name ?? "text";
+    const reservation = reserved === null ? undefined : await reservePaidCall(purpose, String(params.model), reserved);
     let response: OpenAI.Responses.Response;
     try { response = await client.responses.create(params as any) as OpenAI.Responses.Response; }
-    catch (error) { reservation?.fail(); throw error; }
+    catch (error) { await reservation?.fail(); throw error; }
+    let estimatedUsd: number | null = null;
     if (reservation && rates && response.usage) {
       const cached = response.usage.input_tokens_details?.cached_tokens ?? 0;
-      reservation.complete(((response.usage.input_tokens - cached) * rates[0] + cached * rates[0] / 10 + response.usage.output_tokens * rates[1]) / 1e6, response.usage);
-    } else reservation?.fail();
-    if (limit > 0 && rates && response.usage) reservedApiUsd += (response.usage.input_tokens * rates[0] + response.usage.output_tokens * rates[1]) / 1e6 - reserved!;
+      const longContext = params.model === "gpt-5.4" && response.usage.input_tokens > 272000;
+      estimatedUsd = ((response.usage.input_tokens - cached + cached / 10) * rates[0] * (longContext ? 2 : 1) + response.usage.output_tokens * rates[1] * (longContext ? 1.5 : 1)) / 1e6;
+      await reservation.complete(estimatedUsd, response.usage, response.model);
+    } else await reservation?.fail();
+    if (limit > 0 && estimatedUsd !== null) reservedApiUsd += estimatedUsd - reserved!;
     const auditDir = process.env.IMX_LLM_AUDIT_DIR;
     if (auditDir) {
       await mkdir(auditDir, { recursive: true });
@@ -166,7 +173,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
               role: "user",
               content: [
                 { type: "input_text", text: input.prompt },
-                { type: "input_image", image_url: `data:${mimeType};base64,${imageBuffer.toString("base64")}` },
+                { type: "input_image", detail: "high", image_url: `data:${mimeType};base64,${imageBuffer.toString("base64")}` },
               ],
             },
           ],
