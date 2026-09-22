@@ -447,6 +447,10 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
   } catch (error) {
     const lease = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: jobId } });
     if (lease.startedAt?.getTime() !== job.startedAt?.getTime() || lease.status !== "RUNNING") return { job: toJobSummary(lease), shouldContinue: false, state: "locked_or_finished" as const };
+    if (error instanceof Error && error.name === "ProviderResponsePendingError") {
+      const updated = await prisma.blueprintJob.update({ where: { id: jobId, startedAt: job.startedAt }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: stage, nextAttemptAt: new Date(Date.now() + 15_000), lockedAt: null, lastHeartbeatAt: new Date(), errorMessage: null, errorJson: toJson({ message: error.message, category: "PROVIDER_RESPONSE_PENDING", retryable: false }), metadataJson: executionMetadata(job, stage, "PROVIDER_RESPONSE_PENDING") } });
+      return { job: toJobSummary(updated), shouldContinue: false, state: "provider_response_pending" as const };
+    }
     const attempts = job.attempts + 1;
     const failure = classifyFailure(error);
     const retryable = failure.autoRetry && attempts < job.maxAttempts;

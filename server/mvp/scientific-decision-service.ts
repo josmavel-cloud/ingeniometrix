@@ -2,6 +2,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getConfiguredLlmProvider } from "@/llm";
+import { openAiBackgroundRequestFingerprint } from "@/llm/providers/openai";
 import type { LlmProvider } from "@/llm/provider";
 import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { currentJobExecution, fingerprint, stageCheckpoint, stableJson } from "./job-execution-context";
@@ -59,8 +60,12 @@ export async function proposeScientificDecision(input: { projectId: string; runI
       const prompt = `${record.systemPrompt}\n\n${record.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable]))}`;
       if (Buffer.byteLength(prompt) > 60000) throw new Error("USER_ACTION_REQUIRED: el contexto de diseño necesita una selección más acotada; no se truncó evidencia.");
       const schemaJson = z.toJSONSchema(schema);
-      const result = schema.parse(await stageCheckpoint(key, { prompt, schemaJson, model: record.model, effort: record.reasoning_effort, output: record.max_output_tokens }, () => provider.generateStructuredObject({ prompt, schema: schemaJson, schemaName: key.toLowerCase(), model: record.model, reasoningEffort: record.reasoning_effort, maxOutputTokens: record.max_output_tokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "scientific_design", promptVersion: record.version, schemaName: key.toLowerCase() } })));
-      promptRecords.push({ ...record, actual_roles: "single concatenated Responses input", schema: schemaJson, retry_policy: "one selector, one critic, at most one targeted repair; evaluation transport retries disabled", request_hash: fingerprint(prompt) });
+      const request = { prompt, schema: schemaJson, schemaName: key.toLowerCase(), model: record.model, reasoningEffort: record.reasoning_effort, maxOutputTokens: record.max_output_tokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "scientific_design", promptVersion: record.version, schemaName: key.toLowerCase() } } as const;
+      const background = key === "DESIGN_SELECTOR_0" && provider.generateBackgroundStructuredObject;
+      const result = schema.parse(await stageCheckpoint(key, { prompt, schemaJson, model: record.model, effort: record.reasoning_effort, output: record.max_output_tokens }, () => background
+        ? background({ ...request, logicalAttemptKey: fingerprint({ evaluationCase: `${input.projectId}:${input.runId}:scientific-design`, frozenInputFingerprint: contextFingerprint, promptVersion: record.version, model: record.model, reasoning: record.reasoning_effort, attempt: 0 }), requestFingerprint: openAiBackgroundRequestFingerprint({ ...request, model: record.model }) })
+        : provider.generateStructuredObject(request)));
+      promptRecords.push({ ...record, actual_roles: "single concatenated Responses input", schema: schemaJson, transport: background ? "Responses background create once + retrieve by response_id" : "foreground Responses", retry_policy: "one selector, one critic, at most one targeted repair; evaluation transport retries disabled", request_hash: fingerprint(prompt) });
       return result;
     }
     let round = 0;

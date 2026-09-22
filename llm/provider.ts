@@ -11,6 +11,14 @@ export type StructuredObjectInput = {
   trackingAttribution?: LlmUsageAttribution;
 };
 
+export type BackgroundStructuredObjectInput = StructuredObjectInput & {
+  logicalAttemptKey: string;
+  requestFingerprint: string;
+  initialPollSeconds?: number;
+  maxPollSeconds?: number;
+  totalWaitSeconds?: number;
+};
+
 export type VisionStructuredObjectInput = StructuredObjectInput & {
   imagePath: string;
   imageMimeType?: "image/png" | "image/jpeg" | "image/webp";
@@ -43,6 +51,7 @@ export type TextGenerationResult = {
 export interface LlmProvider {
   readonly name: string;
   generateStructuredObject<T>(input: StructuredObjectInput): Promise<T>;
+  generateBackgroundStructuredObject?<T>(input: BackgroundStructuredObjectInput): Promise<T>;
   generateVisionStructuredObject?<T>(input: VisionStructuredObjectInput): Promise<T>;
   generateText(input: TextGenerationInput): Promise<string>;
   generateTextDetailed(input: TextGenerationInput): Promise<TextGenerationResult>;

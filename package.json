@@ -80,6 +80,7 @@
     "test:rc4-prejob-budget": "tsx scripts/test-rc4-prejob-budget.ts",
     "test:rc4-prompt-registry": "tsx scripts/test-rc4-prompt-registry.ts",
     "test:rc4-scientific-decision": "tsx scripts/test-rc4-scientific-decision.ts",
+    "test:rc4-background-responses": "tsx scripts/test-rc4-background-responses.ts",
     "test:rc4-draft-snapshots": "tsx scripts/test-rc4-draft-snapshots.ts",
     "test:rc4-g2": "tsx scripts/test-rc4-g2.ts",
     "compare:diagnostic-runs": "tsx scripts/compare-diagnostic-runs.ts",

@@ -38,6 +38,7 @@ export async function reservePaidCall(purpose: string, model: string, maximumUsd
       : await reservePreJobCall(purpose, model, maximumUsd, attribution);
   } catch (error) { local?.cancelBeforeDispatch(); throw error; }
   return {
+    durableReservationId: durable && "id" in durable && typeof durable.id === "string" ? durable.id : null,
     async complete(cost: number, usage: unknown, actualModel?: string) {
       await durable?.complete(cost, usage, actualModel);
       local?.complete(cost, usage);

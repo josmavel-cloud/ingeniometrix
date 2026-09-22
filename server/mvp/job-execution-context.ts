@@ -40,6 +40,28 @@ export async function closeJobCostControl(tx: Prisma.TransactionClient, jobId: s
   for (const entry of record.entries) if (entry.status === "reserved") entry.status = "pending_reconciliation";
   await tx.blueprintJobStage.update({ where: { id: row.id }, data: { status: jobStatus, progress: 100, completedAt: at, outputJson: json(record) } });
 }
+async function settleJobCall(jobId: string, id: string, estimate: number | null, usage: unknown, actualModel?: string) {
+  // Settle even after a lease expires: the already-dispatched call can still incur cost.
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
+    const row = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
+    const record = row.outputJson as unknown as CostRecord;
+    const entry = record.entries.find((item) => item.id === id);
+    if (!entry) throw new Error("PAID_RESERVATION_NOT_FOUND");
+    if (entry.status === "completed" || entry.status === "failed_unknown_usage") return;
+    if (estimate !== null && (!Number.isFinite(estimate) || estimate < 0)) throw new Error("Invalid usage estimate");
+    Object.assign(entry, { estimate, usage, actualModel: actualModel ?? null, status: estimate === null ? "failed_unknown_usage" : "completed", finishedAt: new Date().toISOString() });
+    if (estimate === null) entry.category = "FAILED_CALL_COST";
+    await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(record) } });
+  });
+}
+
+export async function settleCurrentJobCall(id: string, estimate: number | null, usage: unknown, actualModel?: string) {
+  const execution = context.getStore();
+  if (!execution) throw new Error("PERSISTENT_PAID_CONTEXT_REQUIRED");
+  return settleJobCall(execution.jobId, id, estimate, usage, actualModel);
+}
+
 export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0) {
   const execution = context.getStore();
   if (!execution) return null;
@@ -61,21 +83,64 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     delete record.terminal;
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } }, create: { jobId: execution.jobId, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(record) }, update: { status: "RUNNING", completedAt: null, outputJson: json(record) } });
   });
-  const finish = async (estimate: number | null, usage: unknown, actualModel?: string) => {
-    // Settle the reservation even after a lease expires: the old call can still have incurred cost.
-    await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${execution.jobId} FOR UPDATE`;
-      const row = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
-      const record = row.outputJson as unknown as CostRecord;
-      const entry = record.entries.find((item) => item.id === id)!;
-      if (entry.status === "completed") return;
-      if (estimate !== null && (!Number.isFinite(estimate) || estimate < 0)) throw new Error("Invalid usage estimate");
-      Object.assign(entry, { estimate, usage, actualModel: actualModel ?? null, status: estimate === null ? "failed_unknown_usage" : "completed", finishedAt: new Date().toISOString() });
-      if (estimate === null) entry.category = "FAILED_CALL_COST";
-      await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(record) } });
-    });
-  };
-  return { complete: finish, fail: () => finish(null, null) };
+  const finish = (estimate: number | null, usage: unknown, actualModel?: string) => settleJobCall(execution.jobId, id, estimate, usage, actualModel);
+  return { id, complete: finish, fail: () => finish(null, null) };
+}
+
+export type BackgroundProviderResponseRecord = {
+  version: "background-response.v1";
+  provider: string;
+  model: string;
+  localCallId: string;
+  logicalAttemptKey: string;
+  requestFingerprint: string;
+  reservedCost: number;
+  reservationId: string | null;
+  responseId: string | null;
+  status: "CLAIMED" | "DISPATCHING" | "PENDING" | "COMPLETED" | "FAILED" | "CANCELLED" | "INCOMPLETE" | "CREATE_UNCERTAIN";
+  providerStatus: string | null;
+  correlation: unknown;
+  createdAt: string;
+  updatedAt: string;
+  outputText?: string | null;
+  usage?: unknown;
+  actualModel?: string | null;
+  error?: string | null;
+};
+
+const backgroundStageKey = (logicalAttemptKey: string) => `provider:background:${logicalAttemptKey}`;
+
+export async function claimBackgroundProviderResponse(input: Omit<BackgroundProviderResponseRecord, "version" | "localCallId" | "reservationId" | "responseId" | "status" | "providerStatus" | "createdAt" | "updatedAt">) {
+  const execution = context.getStore();
+  if (!execution) throw new Error("PERSISTENT_BACKGROUND_CONTEXT_REQUIRED");
+  return locked(execution, async (tx) => {
+    const stageKey = backgroundStageKey(input.logicalAttemptKey);
+    const existing = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } } });
+    if (existing) {
+      const record = existing.outputJson as unknown as BackgroundProviderResponseRecord;
+      if (record.requestFingerprint !== input.requestFingerprint || record.model !== input.model || record.provider !== input.provider) throw new Error("BACKGROUND_LOGICAL_ATTEMPT_CONFLICT");
+      return { created: false, record };
+    }
+    const now = new Date().toISOString();
+    const record: BackgroundProviderResponseRecord = { ...input, version: "background-response.v1", localCallId: randomUUID(), reservationId: null, responseId: null, status: "CLAIMED", providerStatus: null, createdAt: now, updatedAt: now };
+    await tx.blueprintJobStage.create({ data: { jobId: execution.jobId, stageKey, status: "RUNNING", progress: 0, startedAt: new Date(), inputJson: json({ logicalAttemptKey: input.logicalAttemptKey, requestFingerprint: input.requestFingerprint }), outputJson: json(record) } });
+    return { created: true, record };
+  });
+}
+
+export async function updateBackgroundProviderResponse(logicalAttemptKey: string, patch: Partial<BackgroundProviderResponseRecord>) {
+  const execution = context.getStore();
+  if (!execution) throw new Error("PERSISTENT_BACKGROUND_CONTEXT_REQUIRED");
+  return locked(execution, async (tx) => {
+    const row = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: backgroundStageKey(logicalAttemptKey) } } });
+    const current = row.outputJson as unknown as BackgroundProviderResponseRecord;
+    if (patch.responseId && current.responseId && patch.responseId !== current.responseId) throw new Error("BACKGROUND_RESPONSE_ID_IMMUTABLE");
+    if (current.status === "COMPLETED" && patch.status && patch.status !== "COMPLETED") throw new Error("BACKGROUND_TERMINAL_STATE_IMMUTABLE");
+    const record = { ...current, ...patch, logicalAttemptKey: current.logicalAttemptKey, requestFingerprint: current.requestFingerprint, localCallId: current.localCallId, updatedAt: new Date().toISOString() };
+    const terminal = ["COMPLETED", "FAILED", "CANCELLED", "INCOMPLETE"].includes(record.status);
+    await tx.blueprintJobStage.update({ where: { id: row.id }, data: { status: terminal ? record.status === "COMPLETED" ? "COMPLETED" : "FAILED" : "RUNNING", progress: terminal ? 100 : 1, completedAt: terminal ? new Date() : null, outputJson: json(record), errorJson: record.error ? json({ message: record.error }) : Prisma.DbNull } });
+    return record;
+  });
 }
 
 export async function claimJobControlSlot(key: string, maximum: number) {
@@ -187,7 +252,9 @@ export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () 
   }
   if (execution.checkpointOnly && !execution.allowedCheckpointWork?.includes(key)) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${key}`);
   const oldInput = previous?.inputJson as { fingerprint?: string; attempts?: number } | null;
-  const attempts = oldInput?.fingerprint === hash ? (oldInput.attempts ?? 0) + 1 : 1;
+  const oldError = previous?.errorJson as { category?: string } | null;
+  const providerRetrievalContinuation = previous?.status === "RUNNING" && oldError?.category === "PROVIDER_RESPONSE_PENDING";
+  const attempts = oldInput?.fingerprint === hash ? providerRetrievalContinuation ? (oldInput.attempts ?? 1) : (oldInput.attempts ?? 0) + 1 : 1;
   if (attempts > (key.startsWith("EDITORIAL:") ? 1 : 3)) throw new Error(`STAGE_ATTEMPTS_EXHAUSTED: ${key}`);
   await locked(execution, (tx) => tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } }, create: { jobId: execution.jobId, stageKey, status: "RUNNING", progress: 0, startedAt: new Date(), inputJson: json({ fingerprint: hash, attempts }) }, update: { status: "RUNNING", startedAt: new Date(), completedAt: null, inputJson: json({ fingerprint: hash, attempts }), errorJson: Prisma.DbNull } }));
   try {
@@ -197,7 +264,8 @@ export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () 
     await locked(execution, (tx) => tx.blueprintJobStage.update({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } }, data: { status: "COMPLETED", completedAt: new Date(), outputJson: json(checkpoint) } }));
     return value;
   } catch (error) {
-    await locked(execution, (tx) => tx.blueprintJobStage.update({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } }, data: { status: "FAILED", completedAt: new Date(), errorJson: json({ message: error instanceof Error ? error.message : String(error) }) } })).catch(() => undefined);
+    const pending = error instanceof Error && error.name === "ProviderResponsePendingError";
+    await locked(execution, (tx) => tx.blueprintJobStage.update({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } }, data: { status: pending ? "RUNNING" : "FAILED", completedAt: pending ? null : new Date(), errorJson: json({ message: error instanceof Error ? error.message : String(error), ...(pending ? { category: "PROVIDER_RESPONSE_PENDING" } : {}) }) } })).catch(() => undefined);
     throw error;
   }
 }

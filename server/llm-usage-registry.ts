@@ -369,6 +369,10 @@ export async function recordLlmUsage(input: {
     costCad: roundMoney(costCad),
   };
   const attribution = mergeAttribution(input.attribution);
+  if (attribution?.requestId) {
+    const existing = registry.recentCalls.find((call) => call.provider === input.provider && call.attribution?.requestId === attribution.requestId);
+    if (existing) return { registry, callRecord: existing };
+  }
 
   if (!registry.byDate[date]) registry.byDate[date] = emptyTotals();
 
