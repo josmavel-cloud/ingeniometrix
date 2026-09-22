@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import { QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT } from "@/server/mvp/prompts/quick-idea-draft-generator.v1";
+import { QUICK_IDEA_DRAFT_GENERATOR_2_PROMPT } from "@/server/mvp/prompts/quick-idea-draft-generator.v2";
 import { TOPIC_SUGGESTION_GENERATOR_1_PROMPT } from "@/server/mvp/prompts/topic-suggestion-generator.v1";
+import { TOPIC_SUGGESTION_GENERATOR_2_PROMPT } from "@/server/mvp/prompts/topic-suggestion-generator.v2";
 import { TOPIC_AREA_NORMALIZER_1_PROMPT } from "@/server/mvp/prompts/topic-area-normalizer.v1";
 import { INTAKE_DRAFT_SERVICE_1_PROMPT } from "@/server/mvp/prompts/intake-draft-service.v1";
 import { INTAKE_NORMALIZATION_SERVICE_1_PROMPT } from "@/server/mvp/prompts/intake-normalization-service.v1";
@@ -14,7 +16,9 @@ import { RETRIEVAL_LLM_JSON_1_PROMPT } from "@/server/mvp/prompts/retrieval-llm-
 // No dependency on historical Git objects or developer artifacts at test runtime.
 const cases = [
   [QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT, "6766cb266816eaf2544d01b796ae4399ca96bb219ce6ee7d95751d49f1f79ac2"],
+  [QUICK_IDEA_DRAFT_GENERATOR_2_PROMPT, "8d65b049a194af7649e8d053d5faf2520bf376a0ddfceaa5814e9585dba22aeb"],
   [TOPIC_SUGGESTION_GENERATOR_1_PROMPT, "57452eedc18584badd551d02cb89a422783547432e4c92d7f064e27a0b8535e9"],
+  [TOPIC_SUGGESTION_GENERATOR_2_PROMPT, "0ea64e32c8e61f9950a3c44d3749617938fee03a28f1e254a5fa84257670e063"],
   [TOPIC_AREA_NORMALIZER_1_PROMPT, "1e1779452169ce06205a93b0e15eb00bc84fa5319ddae42b3f1721ed17a5497f"],
   [INTAKE_DRAFT_SERVICE_1_PROMPT, "fd0663f5e5dfb767fc3ca57db679d952976cc5e1b9a70fed8e3130f29d450681"],
   [INTAKE_NORMALIZATION_SERVICE_1_PROMPT, "5cf005045ed97ee11d745adad6c4ffa569c033dd2b62d092ccbe6569d00c4784"],
@@ -31,4 +35,6 @@ for (const [prompt, expectedHash] of cases) {
   assert.ok(result.includes("Dato {{var_0}} no reinterpretar"));
   assert.throws(() => renderVersionedPrompt(prompt, {}), /PROMPT_VARIABLE/);
 }
-console.log("PASS RC4 prompt registry: 10 instruction templates preserved; strict single-pass variable substitution.");
+assert.ok(!QUICK_IDEA_DRAFT_GENERATOR_2_PROMPT.template.toLowerCase().includes("universidad:"));
+assert.ok(!TOPIC_SUGGESTION_GENERATOR_2_PROMPT.template.toLowerCase().includes("universidad:"));
+console.log("PASS RC4 prompt registry: 12 instruction templates preserved; G2 idea prompts are university-agnostic; strict single-pass variable substitution.");

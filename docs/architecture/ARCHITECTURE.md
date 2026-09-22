@@ -25,7 +25,11 @@ Release 0 preserves one Next.js application. The deployable container image has 
 
 ## Browser / UI
 
-The UI is in `app/` and `components/`. Current user-facing flows include workspace/login, projects, topic/intake, source search/selection, generation progress and export/download panels. Frontend and backend are same-origin in the release shape.
+The UI is in `app/` and `components/`. RC4 exposes exactly four project steps:
+`Idea -> Define tu investigación -> Evidencia -> Plan de tesis`. Internal job,
+materialization and engine stages are not navigation steps. Steps 2-4 include a
+deterministic summary derived from persisted project state. Frontend and backend
+remain same-origin in the current release shape.
 
 ## API Routes
 
@@ -35,12 +39,14 @@ Production-relevant API routes live under `app/api/`:
 - `projects`
 - `projects/[id]`
 - `projects/[id]/intake`
+- `projects/[id]/draft` (revision/ETag autosave and explicit confirmation)
 - `projects/[id]/search`
 - `projects/[id]/references`
 - `projects/[id]/source-selection`
 - `projects/[id]/blueprints`
 - `projects/[id]/blueprints/progress`
 - `projects/[id]/blueprints/[versionId]/docx|pdf|bibtex|ris|evidence-log`
+- `projects/[id]/documents` (RC4 contract-only; upload disabled until storage/inspection gate)
 - `internal/blueprint-jobs/[jobId]/run-stage`
 
 Project APIs call `requireCurrentUser()` and service-layer ownership checks. The internal worker route requires a bearer secret.
@@ -64,8 +70,15 @@ Prisma schema is in `prisma/schema.prisma`. Migration history:
 
 - `20260918000000_baseline`
 - `20260919000000_secure_pilot`
+- `20260921234000_rc4_project_drafts`
+- `20260922001000_rc4_generation_inputs`
+- `20260922120000_rc4_g2_taxonomy_versions`
+- `20260922123000_rc4_g2_draft_fields`
 
-The secure pilot migration is additive.
+RC4 G2 migrations are additive. `university` becomes nullable without rewriting
+historical values. Rollback is forward-only: restore the pre-migration database
+backup or deploy a compensating migration; do not drop G2 columns after plan
+versions have been published.
 
 ## Worker / Jobs
 

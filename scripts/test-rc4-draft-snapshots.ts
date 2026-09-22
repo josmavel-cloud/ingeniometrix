@@ -12,15 +12,15 @@ async function main() {
   global.fetch = async () => { throw new Error("No network allowed"); };
   const initial = draftIntakeFrom({ topic: "Original", academicConstraints: "Tiempo limitado", advisorNotes: "Mantener alcance" });
   let sends = 0;
-  const queue = new DraftSaveQueue({ id: "fixture", revision: 1, confirmedRevision: 1, intake: initial, updatedAt: "fixture" }, async (revision, intake) => {
+  const queue = new DraftSaveQueue({ id: "fixture", revision: 1, confirmedRevision: 1, etag: "fixture-1", staleScopes: [], intake: initial, updatedAt: "fixture" }, async (revision, intake) => {
     sends++; assert.equal(revision, sends); await new Promise((resolve) => setTimeout(resolve, 5));
-    return { id: "fixture", revision: revision + 1, confirmedRevision: 1, intake, updatedAt: "fixture" };
+    return { id: "fixture", revision: revision + 1, confirmedRevision: 1, etag: `fixture-${revision + 1}`, staleScopes: [], intake, updatedAt: "fixture" };
   });
   await Promise.all([queue.save({ ...initial, topic: "A" }), queue.save({ ...initial, topic: "B" })]);
   assert.ok(queue.matches({ ...initial, topic: "B" })); assert.equal(sends, 2);
   await queue.save({ ...initial, topic: "B" }); assert.equal(sends, 2);
   let rejectedSends = 0;
-  const conflictQueue = new DraftSaveQueue({ id: "fixture", revision: 1, confirmedRevision: 1, intake: initial, updatedAt: "fixture" }, async () => { rejectedSends++; throw new Error("CONFLICT"); });
+  const conflictQueue = new DraftSaveQueue({ id: "fixture", revision: 1, confirmedRevision: 1, etag: "fixture-1", staleScopes: [], intake: initial, updatedAt: "fixture" }, async () => { rejectedSends++; throw new Error("CONFLICT"); });
   await assert.rejects(() => conflictQueue.save({ ...initial, topic: "C" }), /CONFLICT/);
   await assert.rejects(() => conflictQueue.save({ ...initial, topic: "D" }), /CONFLICT/);
   assert.equal(rejectedSends, 1, "Conflict cannot silently overwrite with another revision");

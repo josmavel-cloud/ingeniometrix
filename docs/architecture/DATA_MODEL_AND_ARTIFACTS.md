@@ -11,8 +11,10 @@ Prisma schema: `prisma/schema.prisma`. Database engine: PostgreSQL.
 | `User` | Account owner. | Admin provisioning/login setup. | Auth, projects, artifacts, jobs. | YES | NO | NO | YES | Retain while account exists. | NO |
 | `UserSession` | Opaque session token hash, expiry and revocation. | `createSession`. | `requireCurrentUser`. | YES for sessions | NO | YES | YES | Expired/revoked sessions are cleaned opportunistically. | NO |
 | `AuthThrottle` | Persistent login abuse control. | Login failures. | Login route. | YES for throttling | PARTIAL | YES | YES | Can expire by policy later. | MONITOR |
-| `Project` | User workspace and status. | Project creation. | Intake, references, jobs, exports. | YES | NO | NO | YES | Owner-scoped. | NO |
-| `Intake` | Structured research input. | Intake API/UI. | Discovery, normalization, generation. | YES | NO | NO | YES | Retain with project. | NO |
+| `Project` | User workspace, optional university and active plan version. | Project creation/version selection. | Draft, references, jobs, exports. | YES | NO | NO | YES | Owner-scoped; historical university values remain. | NO |
+| `Intake` | Confirmed canonical research definition, including RC4 advanced fields. | Draft confirmation/intake API. | Discovery, normalization, generation. | YES for confirmed definition | NO | NO | YES | Retain with project. | NO |
+| `ProjectDraft` | Mutable resumable workspace with revision, content hash, stale scopes and ETag contract. | Autosave/source selection. | UI, confirmation, generation freeze. | YES for current work | NO | NO | YES | Never overwrite a newer revision silently. | NO |
+| `GenerationInputSnapshot` | Immutable generation-time project, references, evidence/materialization metadata, policies and approvals. | Persistent job enqueue. | Worker/checkpoint recovery and plan manifest. | YES for generation inputs | NO | NO | YES | DB trigger rejects mutation. | NO |
 | `Reference` | Deduplicated bibliographic/source metadata. | OpenAlex/Crossref/enrichment. | Project references, inspection, citations. | YES for metadata | NO | NO | Mostly public metadata | Raw provider JSON retained for provenance. | NO |
 | `ProjectReference` | Project-specific source candidate and selection. | Search/selection. | Source inspection and Step 5. | YES | NO | NO | YES | `selected` and `selectedOrder` are critical. | NO |
 | `MvpStepRun` | Execution tracking for engine steps. | Step services. | Diagnostics, continuity, audit. | YES for runs | YES | NO | YES | Preserve run snapshots; not public. | NO |
@@ -20,12 +22,24 @@ Prisma schema: `prisma/schema.prisma`. Database engine: PostgreSQL.
 | `ProjectEvidenceCard` | Structured evidence item/card. | Step 5 LLM extraction and validation. | Sufficiency, plan generation, citations. | YES | NO | NO | YES | Evidence level and support matter. | NO |
 | `ProjectSourceMaterialization` | Source/PDF/text/chunk status and provenance. | Source inspection/materialization. | Extraction, asset pipeline, audit. | YES for materialization metadata | NO | NO | YES | Heavy files stored outside DB. | NO |
 | `ProjectSourceAsset` | Extracted candidate figures/tables/equations and curation. | Asset inspection. | Visual/document render if accepted. | YES for assets | PARTIAL | NO | YES | Rejected assets can remain for audit. | MONITOR |
-| `BlueprintVersion` | Versioned plan JSON and snapshots. | Step 6. | Export/download routes. | YES for generated plan version | NO | NO | YES | Keep with project. | NO |
+| `BlueprintVersion` | Immutable published plan version, origin draft revision, job/input lineage and manifest. | Step 6 publication transaction. | Version list, active selection, export/download. | YES for generated plan version | NO | NO | YES | New draft edits create a later version; DB trigger protects scientific payload. | NO |
+| `PlanSourceDisposition` | Terminal per-version outcome for every selected source. | Plan publication. | Evidence log/audit. | YES | NO | NO | YES | Exactly `USED`, `CONSIDERED_NOT_USED` or `REJECTED_AFTER_INSPECTION`, with reason. | NO |
+| `TaxonomyScheme` / `TaxonomyConcept` | Versioned OECD FORD hierarchy, localized labels and aliases. | Reproducible seed. | Idea UI/project mapping. | YES for canonical classification | NO | NO | Public taxonomy metadata | Free text never mutates the catalog. | NO |
+| `ProjectKnowledgeField` | Project mapping to canonical concept or `CUSTOM_UNRESOLVED`. | Project creation/classification. | Snapshot/sidebar/retrieval context. | YES for project classification | NO | NO | YES | Preserve submitted label and taxonomy version. | NO |
 | `BlueprintJob` | Persistent generation job state. | `enqueueBlueprintJobForUser`. | Worker/progress/resume. | YES for jobs | NO | NO | YES | Completed/failed jobs retained for audit. | NO |
 | `BlueprintJobStage` | Per-stage execution state. | Worker. | Recovery/diagnostics. | YES for job stages | YES | NO | YES | Retain with job. | NO |
 | `GeneratedArtifact` | Final private files in DB. | Worker/export routes. | Owner-scoped downloads. | YES for final downloadable artifacts | NO | NO | YES | DB backup includes final artifacts. | NO |
 | `AuditLog` | Event audit. | Audit service. | Diagnostics/compliance. | YES for audit | YES | NO | YES | Retention policy not finalized. | MONITOR |
 | Taxonomy/template models | Topic/template support. | Catalog/template tooling. | UI suggestions/template runtime. | PARTIAL | PARTIAL | NO | Mixed | Some are planning/runtime support. | REVIEW_BEFORE_PRODUCTION |
+
+## Draft And Version Producers/Consumers
+
+`ProjectDraft.contentJson.intake` is produced by autosave. Confirmation copies it
+to `Intake`. Job enqueue freezes it in `GenerationInputSnapshot`; plan publication
+links that snapshot and revision to a new `BlueprintVersion`. The project's
+`activeBlueprintVersionId` is a pointer only and does not mutate older versions.
+Source selection increments the draft revision and invalidates evidence/design
+downstream scopes conservatively.
 
 ## Heavy Artifacts
 
