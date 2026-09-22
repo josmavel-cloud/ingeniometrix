@@ -1,5 +1,9 @@
 # RC4 G1b: approval-bound scientific design
 
+STATUS: HISTORICAL implementation checkpoint. Current evaluation and known failures:
+[G1 design acceptance](rc4-g1-design-acceptance.md). The v1 call-count and prompt
+descriptions below are retained as history, not the current runtime contract.
+
 Status: IMPLEMENTED / OFFLINE VALIDATED; scientific improvement NOT YET VERIFIED.
 RC3 is unchanged. No paid calls, production migrations or deployment.
 

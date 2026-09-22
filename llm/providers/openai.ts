@@ -10,6 +10,7 @@ import { currentJobExecution } from "@/server/mvp/job-execution-context";
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { classifyFailure } from "@/server/mvp/execution-policy";
 import { responseCostBound } from "./openai-cost-bound";
+import { IncompleteStructuredOutputError } from "../structured-output-error";
 
 import type {
   LlmProvider,
@@ -155,6 +156,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         attribution: input.trackingAttribution,
       });
 
+      if (response.status === "incomplete") throw new IncompleteStructuredOutputError(response.output_text ?? "", response.incomplete_details?.reason ?? "unknown");
       if (!response.output_text) {
         throw new Error("OpenAI no devolvio contenido estructurado.");
       }

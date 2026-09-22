@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 // Client-only view of the public contract; never import a DB/scientific service.
-type Alternative = { id: string; label: string; scope_fulfilled: string; feasibility: string; approvable: boolean; scope_changes: { proposed_change: string; reason: string }[]; definition: { questions: { id: string; text: string }[]; objectives: { id: string; text: string }[] }; research_design: { design: string; procedure: string[]; analysis_method: string; quality_criteria: string[]; limitations: string[] }; pending_user_decisions: { question: string; blocking: boolean }[]; review?: { issues: { finding: string; required_action: string }[] } };
+type Alternative = { id: string; label: string; scope_fulfilled: string; feasibility: string; approvable: boolean; scope_changes: { proposed_change: string; reason: string }[]; scope_change_impact?: { original_intent: string; proposed_change: string; why_needed: string; what_is_lost: string; what_is_gained: string } | null; definition: { questions: { id: string; text: string }[]; objectives: { id: string; text: string }[] }; research_design: { design: string; procedure: string[]; analysis_method: string; quality_criteria: string[]; limitations: string[] }; pending_user_decisions: { question: string; blocking: boolean }[]; review?: { issues: { finding: string; required_action: string }[] } };
 type Decision = { fingerprint: string; expected_outcome: string; recommendation: string; alternatives: Alternative[]; clarification_questions: string[] };
 export function ScientificDesignApproval({ projectId, jobId, onApproved }: { projectId: string; jobId: string; onApproved: () => void }) {
   const [decision, setDecision] = useState<Decision | null>(null);
@@ -59,6 +59,13 @@ export function ScientificDesignApproval({ projectId, jobId, onApproved }: { pro
           <ul className="my-3 list-disc pl-5">{option.research_design.limitations.map((q) => <li key={q}>{q}</li>)}</ul>
         </details>
         {option.pending_user_decisions.map((p) => <p className="mt-2" key={p.question}>{p.question}</p>)}
+        {option.scope_change_impact && <div className="mt-3 rounded-lg border border-amber-200 p-3 text-sm">
+          <p><strong>Intención original:</strong> {option.scope_change_impact.original_intent}</p>
+          <p><strong>Cambio propuesto:</strong> {option.scope_change_impact.proposed_change}</p>
+          <p><strong>Motivo:</strong> {option.scope_change_impact.why_needed}</p>
+          <p><strong>Qué se deja fuera:</strong> {option.scope_change_impact.what_is_lost}</p>
+          <p><strong>Qué se gana:</strong> {option.scope_change_impact.what_is_gained}</p>
+        </div>}
         {option.review?.issues.map((issue, i) => <p className="mt-2 text-sm" key={i}>{issue.finding} {issue.required_action}</p>)}
         {option.scope_changes.length > 0 && <label className="mt-4 flex items-start gap-2"><input type="checkbox" checked={Boolean(scopeAccepted[option.id])} onChange={(event) => setScopeAccepted({ ...scopeAccepted, [option.id]: event.target.checked })} /><span>Acepto expresamente estos cambios de alcance: {option.scope_changes.map((c) => `${c.proposed_change} (${c.reason})`).join("; ")}</span></label>}
         <button type="button" disabled={pending || !option.approvable || Boolean(option.scope_changes.length && !scopeAccepted[option.id])} className="brand-button-primary mt-4 px-4 py-2 disabled:opacity-50" onClick={() => approve(option)}>Confirmar este diseño</button>

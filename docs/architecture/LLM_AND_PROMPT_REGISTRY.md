@@ -1,6 +1,27 @@
 # LLM And Prompt Registry
 
-STATUS: CURRENT - Release 0 secure pilot.
+STATUS: RC4 working branch, with retained Release 0 registry below. RC4 design gate
+is NOT scientifically accepted; see [G1 evaluation](../quality/rc4-g1-design-acceptance.md).
+
+## RC4 scientific selector (before approved drafting)
+
+All use a single concatenated Responses input, strict JSON schema, store=false and
+high reasoning. Inputs are whitelisted user intent and a bounded inspected evidence
+pack; the critic additionally receives proposed alternatives. Paid evaluation uses
+zero transport retries and persistent B4 reservations, without retrieval or documents.
+
+| Call | Prompt / model configuration | Output / consumer | Limit and failure policy |
+| --- | --- | --- | --- |
+| DESIGN_SELECTOR_0 | `server/mvp/prompts/scientific-design-selector.v3.ts`, Astra `gpt-6-astra` | `scientificDecisionV2Schema` -> critic | 12288 tokens; one logical selector |
+| DESIGN_CRITIC_0 | `server/mvp/prompts/scientific-design-critic.v2.ts`, Sol `gpt-5.6-sol` | `designCritiqueSchema` -> approval eligibility | 4096 tokens; one critic; live qualitative truncation remains a G1 blocker |
+| DESIGN_REPAIR_1 (conditional critique repair) | `scientific-design-repair.v1.ts`, Astra | `designRepairSchema` -> targeted replacements | 8192 tokens; original independent findings retained, no self-certification |
+| DESIGN_REPAIR_1 (conditional incomplete selector recovery) | `scientific-design-output-repair.v1.ts`, Astra | `scientificDecisionV2Schema` -> first critic | 12288 tokens; shares one repair allowance, private incomplete response checkpoint |
+
+Selector v2 (8192 tokens) is retained for the first geospatial evaluation; v1 is
+historical. Snapshot policy hashes current selector, critic and both repair templates.
+Actual model/usage and failures stay in B4 cost entries and provider audit records.
+See [field authority and consumers](RC4_SCIENTIFIC_DECISION.md) and the private
+`artifacts-local/rc4/scientific-design-evaluation-v1/PROMPTS_USED.md` full inventory.
 
 Prompt source of truth for the MVP engine is `server/mvp/prompts/`. Do not embed new important behavioral prompts directly in service logic.
 

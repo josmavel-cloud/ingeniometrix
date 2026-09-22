@@ -10,7 +10,7 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | --- | --- | --- | --- | --- |
 | G0 | Isolated branch/worktree; local-only changes | This worktree | Git branch/tag/status | COMPLETE |
 | G1a | Reconcile selected/considered/used/excluded; asset QA; terminal costs | Canonical Step 6, export, job control | Reference run read-only + regressions | IN_PROGRESS |
-| G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Owned decision UI + persistent job pause/approval | Offline contracts PASS; real comparison pending | PARTIAL |
+| G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | v2 scientific contract, selector v3, critic v2, bounded repair and approval | Geo improves conditionally; qualitative critic truncated; applied NOT_RUN; insufficient PASS | FAIL / NOT ACCEPTED |
 | G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Revisioned draft, FORD catalog, immutable versions, four-step UI; PDF upload is contract-only | 54/54 offline suites; fresh/RC3 migrations; Prisma, typecheck and builds | COMPLETE |
 | G3 | latam-compact-v1, 7-12 body pages, editable matrix, five assets | Existing document renderers | DOCX/PDF/all-page review | PENDING |
 | G4 | OIDC, credits, sandbox payments, administration | Ubuntu identity + transactional ledgers | Isolation/concurrency/webhooks/OAuth | PENDING |
@@ -39,8 +39,9 @@ Prisma, typecheck, app and worker builds PASS. Pre-job durable budgets, request/
 attribution, idempotency and 10 externalized prompt templates now implemented.
 Reports: `docs/quality/rc4-g1-integrity.md`, `docs/quality/rc4-g1-prejob.md`.
 G1b selector/critic/approval implemented: one model repair, approval by input hash,
-explicit bounded revision, fixed approved design consumed by drafting. Report:
-`docs/quality/rc4-g1-scientific-decision.md`. Scientific comparison still pending.
+explicit bounded revision, fixed approved design consumed by drafting. Historical report:
+`docs/quality/rc4-g1-scientific-decision.md`. Current scientific evaluation:
+`docs/quality/rc4-g1-design-acceptance.md` (FAIL, do not treat as accepted).
 G1b commit: `e16cdde`. G2a draft persistence and immutable worker inputs commit:
 `8229393`; see `docs/quality/rc4-g2-drafts-snapshots.md`. G2 now adds the
 versioned `FORD-2015` catalog, accent/alias/code lookup, explicit
@@ -50,5 +51,24 @@ visible steps and a deterministic research summary. User PDF upload remains an
 honest disabled contract for G3/G4 (maximum two, hash/provenance/consent fields);
 no file is accepted yet. Interactive browser validation NOT_RUN. RC3 untouched.
 Final G2 suite: `node --env-file=.env.rc4-test --import tsx scripts/rc4-offline-suite.ts`.
-Paid evaluation spend: USD0. No external acceptance claimed. Next gate after G2:
-G1 scientific evaluation or G3 compact document profile; do not start payments here.
+G1 evaluation spent estimated USD1.580950 across five provider calls / 65123 tokens.
+Geospatial: selector v2 truncated at 8192; ONE repair completed it, ONE Sol critique
+found a conditional implementation design superior to RC3's feasibility-oriented
+proposal, but access/parameters/validation still block approval. No evidence enrichment.
+Qualitative: selector v3 preserved methodology, no sample/hypothesis invention; Sol
+critic v2 exhausted 4096 tokens (3865 reasoning). Its JSON was rejected, not certified.
+There is also an unresolved representation issue: a proposed single case is marked
+scope-preserving while awaiting user acceptance. Applied case NOT_RUN under systemic
+failure stop rule. Insufficient case blocks at USD0. Existing harness locks prevent
+duplicate case runs; paid evaluation was stopped, do not resume it blindly.
+
+New source accounting/DAG/data-availability/scope-impact contracts and one shared
+repair allowance are documented in `docs/architecture/RC4_SCIENTIFIC_DECISION.md`.
+Prompts/inputs/results remain private under
+`artifacts-local/rc4/scientific-design-evaluation-v1/`; complete `PROMPTS_USED.md` there.
+Frozen source S5 remains explicitly excluded for unverified RC3 excerpts; its newer
+extraction is not used to make the comparison appear better.
+
+Next action: bounded correction/evaluation of critic completeness and qualitative
+scope declaration using frozen inputs. Do not advance to G3 or payments on a G1 PASS
+claim. RC3 and production remain untouched; no push, merge, deployment or document run.

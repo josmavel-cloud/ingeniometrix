@@ -5,8 +5,10 @@ import { fingerprint } from "@/server/mvp/job-execution-context";
 import { jobCostPolicy, pageBudgetPolicy } from "@/server/mvp/execution-policy";
 import { GENERATION_POLICY_VERSION, SCIENTIFIC_MODEL } from "@/server/mvp/generation-budgets";
 import { MVP_SOURCE_INSPECTION_KEY } from "@/server/mvp/source-inspection-service";
-import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT } from "@/server/mvp/prompts/scientific-design-selector.v1";
-import { SCIENTIFIC_DESIGN_CRITIC_PROMPT } from "@/server/mvp/prompts/scientific-design-critic.v1";
+import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT } from "@/server/mvp/prompts/scientific-design-selector.v3";
+import { SCIENTIFIC_DESIGN_CRITIC_PROMPT } from "@/server/mvp/prompts/scientific-design-critic.v2";
+import { SCIENTIFIC_DESIGN_REPAIR_PROMPT } from "@/server/mvp/prompts/scientific-design-repair.v1";
+import { SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT } from "@/server/mvp/prompts/scientific-design-output-repair.v1";
 import { APPROVED_SCIENTIFIC_PLAN_PROMPT } from "@/server/mvp/prompts/scientific-plan-approved.v1";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { CONSISTENCY_MATRIX_PROMPT } from "@/server/mvp/prompts/consistency-matrix.v1";
@@ -15,7 +17,7 @@ type FrozenInput = { id: string; jobId: string; project: Record<string, any>; re
 const context = new AsyncLocalStorage<FrozenInput | null>();
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 function scientificRuntimePolicy() {
-  return { version: GENERATION_POLICY_VERSION, cost: jobCostPolicy(), pages: pageBudgetPolicy(null), promptHash: fingerprint([SCIENTIFIC_DESIGN_SELECTOR_PROMPT, SCIENTIFIC_DESIGN_CRITIC_PROMPT, APPROVED_SCIENTIFIC_PLAN_PROMPT, STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT, CONSISTENCY_MATRIX_PROMPT]), configuredModels: { extraction: process.env.IMX_STEP5_EXTRACTION_MODEL ?? process.env.LLM_FAST_MODEL ?? process.env.LLM_DEFAULT_MODEL ?? "gpt-5.4-mini", scientific: SCIENTIFIC_MODEL } };
+  return { version: GENERATION_POLICY_VERSION, cost: jobCostPolicy(), pages: pageBudgetPolicy(null), promptHash: fingerprint([SCIENTIFIC_DESIGN_SELECTOR_PROMPT, SCIENTIFIC_DESIGN_CRITIC_PROMPT, SCIENTIFIC_DESIGN_REPAIR_PROMPT, SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT, APPROVED_SCIENTIFIC_PLAN_PROMPT, STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT, CONSISTENCY_MATRIX_PROMPT]), configuredModels: { extraction: process.env.IMX_STEP5_EXTRACTION_MODEL ?? process.env.LLM_FAST_MODEL ?? process.env.LLM_DEFAULT_MODEL ?? "gpt-5.4-mini", scientific: SCIENTIFIC_MODEL } };
 }
 export const currentGenerationInput = () => context.getStore();
 export function researchProjectFingerprint(project: Record<string, any>) {

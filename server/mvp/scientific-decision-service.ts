@@ -3,46 +3,68 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getConfiguredLlmProvider } from "@/llm";
 import type { LlmProvider } from "@/llm/provider";
+import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { currentJobExecution, fingerprint, stageCheckpoint, stableJson } from "./job-execution-context";
 import { assessEvidenceCoverage } from "./evidence-coverage";
 import type { MvpStep5EvidenceLedger } from "./evidence-materialization-types";
-import { alternativeIsApprovable, buildMethodEvidencePack, decisionContextFingerprint, designCritiqueSchema, intentFromIntake, scientificDecisionSchema, validateDesignCritique, validateScientificDecision, type DesignAlternative, type DesignCritique, type ScientificDecision } from "./scientific-decision-contracts";
-import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT as selector } from "./prompts/scientific-design-selector.v1";
-import { SCIENTIFIC_DESIGN_CRITIC_PROMPT as critic } from "./prompts/scientific-design-critic.v1";
+import { accountDecisionSources, alternativeIsApprovable, buildMethodEvidencePack, decisionContextFingerprint, designCritiqueSchema, designRepairSchema, intentFromIntake, scientificDecisionV2Schema, validateDesignCritique, validateScientificDecision, type DesignAlternative, type DesignCritique, type ScientificDecision } from "./scientific-decision-contracts";
+import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT as selector } from "./prompts/scientific-design-selector.v3";
+import { SCIENTIFIC_DESIGN_CRITIC_PROMPT as critic } from "./prompts/scientific-design-critic.v2";
+import { SCIENTIFIC_DESIGN_REPAIR_PROMPT as repair } from "./prompts/scientific-design-repair.v1";
+import { SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT as outputRepair } from "./prompts/scientific-design-output-repair.v1";
 import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
 export const SCIENTIFIC_DECISION_STAGE = "checkpoint:SCIENTIFIC_DECISION";
 export const SCIENTIFIC_APPROVAL_STAGE = "approval:SCIENTIFIC_DESIGN";
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 export async function proposeScientificDecision(input: { projectId: string; runId: string; intake: Record<string, unknown>; academicLevel: string; ledger: MvpStep5EvidenceLedger; provider?: LlmProvider }) {
-  if (assessEvidenceCoverage(input.ledger).status === "INSUFFICIENT") throw new Error("INSUFFICIENT_EVIDENCE_COVERAGE");
+  const coverage = assessEvidenceCoverage(input.ledger);
+  if (coverage.status === "INSUFFICIENT") throw new Error(`INSUFFICIENT_EVIDENCE_COVERAGE: aporta extractos verificables para ${coverage.uncovered_dimensions.join(", ")}; concreta problema, unidad de estudio, datos disponibles y validación antes de proponer metodología.`);
   const intent = intentFromIntake({ ...input.intake, degreeLevel: input.academicLevel });
   const pack = buildMethodEvidencePack(input.ledger);
   const contextFingerprint = decisionContextFingerprint(input.intake, input.ledger);
-  const policy = { selector, critic, repair_rounds: 1, contextFingerprint, academicLevel: input.academicLevel };
+  const policy = { selector, critic, repair, outputRepair, repair_rounds: 1, critic_calls: 1, contextFingerprint, academicLevel: input.academicLevel };
   return stageCheckpoint("SCIENTIFIC_DECISION", policy, async () => {
     const provider = input.provider ?? getConfiguredLlmProvider();
     const promptRecords: unknown[] = [];
-    async function call<S extends z.ZodType>(key: string, schema: S, record: typeof selector | typeof critic, variables: Record<string, unknown>): Promise<z.infer<S>> {
+    async function call<S extends z.ZodType>(key: string, schema: S, record: typeof selector | typeof critic | typeof repair | typeof outputRepair, variables: Record<string, unknown>): Promise<z.infer<S>> {
       const prompt = `${record.systemPrompt}\n\n${record.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable]))}`;
       if (Buffer.byteLength(prompt) > 60000) throw new Error("USER_ACTION_REQUIRED: el contexto de diseño necesita una selección más acotada; no se truncó evidencia.");
       const schemaJson = z.toJSONSchema(schema);
       const result = schema.parse(await stageCheckpoint(key, { prompt, schemaJson, model: record.model, effort: record.reasoning_effort, output: record.max_output_tokens }, () => provider.generateStructuredObject({ prompt, schema: schemaJson, schemaName: key.toLowerCase(), model: record.model, reasoningEffort: record.reasoning_effort, maxOutputTokens: record.max_output_tokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "scientific_design", promptVersion: record.version, schemaName: key.toLowerCase() } })));
-      promptRecords.push({ ...record, actual_roles: "single concatenated Responses input", schema: schemaJson, retry_policy: "provider bounded retries + at most one explicit scientific repair", request_hash: fingerprint(prompt) });
+      promptRecords.push({ ...record, actual_roles: "single concatenated Responses input", schema: schemaJson, retry_policy: "one selector, one critic, at most one targeted repair; evaluation transport retries disabled", request_hash: fingerprint(prompt) });
       return result;
     }
-    let decision: ScientificDecision;
-    let critique: DesignCritique = { assessments: [], summary: "No hay alternativa evaluable." };
     let round = 0;
-    for (; round <= 1; round++) {
-      decision = await call(`DESIGN_SELECTOR_${round}`, scientificDecisionSchema, selector, { intent_json: intent, method_evidence_pack_json: pack, critique_json: round ? critique : null });
-      validateScientificDecision(decision, intent, pack);
-      if (!decision.alternatives.length) { critique = { assessments: [], summary: "Se requiere aclaración antes de proponer un diseño." }; break; }
-      critique = await call(`DESIGN_CRITIC_${round}`, designCritiqueSchema, critic, { intent_json: intent, method_evidence_pack_json: pack, decision_json: decision });
+    // Persist the incomplete response as an envelope so restart cannot pay for the
+    // initial selector again. Output repair and critique repair share ONE allowance.
+    const selected = await stageCheckpoint("DESIGN_SELECTOR_RESPONSE", { selector, contextFingerprint, academicLevel: input.academicLevel }, async () => {
+      try { return { decision: await call("DESIGN_SELECTOR_0", scientificDecisionV2Schema, selector, { intent_json: intent, method_evidence_pack_json: pack }), partial: null as string | null }; }
+      catch (error) { if (!(error instanceof IncompleteStructuredOutputError) || error.reason !== "max_output_tokens" || !error.partialOutput) throw error; return { decision: null, partial: error.partialOutput }; }
+    });
+    let decision: ScientificDecision;
+    if (selected.partial !== null) {
+      round = 1;
+      decision = await call("DESIGN_REPAIR_1", scientificDecisionV2Schema, outputRepair, { intent_json: intent, method_evidence_pack_json: pack, partial_output_json: selected.partial });
+    } else decision = selected.decision!;
+    validateScientificDecision(decision, intent, pack);
+    let critique: DesignCritique = { assessments: [], summary: "No hay alternativa evaluable." };
+    if (decision.alternatives.length) {
+      critique = await call("DESIGN_CRITIC_0", designCritiqueSchema, critic, { intent_json: intent, method_evidence_pack_json: pack, decision_json: decision });
       validateDesignCritique(decision, critique);
-      if (decision.alternatives.some((a) => alternativeIsApprovable(a, critique))) break;
+      const correctable = decision.alternatives.filter((a) => !alternativeIsApprovable(a, critique) && !a.pending_user_decisions.some((d) => d.blocking));
+      if (round === 0 && !decision.alternatives.some((a) => alternativeIsApprovable(a, critique)) && correctable.length) {
+        const patch = await call("DESIGN_REPAIR_1", designRepairSchema, repair, { intent_json: intent, method_evidence_pack_json: pack, decision_json: decision, critique_json: critique });
+        const allowed = new Set(correctable.map((a) => a.id));
+        if (new Set(patch.replacements.map((a) => a.id)).size !== patch.replacements.length || patch.replacements.some((a) => !allowed.has(a.id))) throw new Error("DESIGN_REPAIR_SCOPE_INVALID");
+        decision = { ...decision, alternatives: decision.alternatives.map((a) => patch.replacements.find((replacement) => replacement.id === a.id) ?? a) };
+        validateScientificDecision(decision, intent, pack);
+        // The original independent criticism is retained. A repair cannot self-certify.
+        for (const a of patch.replacements) a.pending_user_decisions.push({ question: "La corrección requiere revisar los hallazgos del dictamen antes de confirmar el diseño.", blocking: true });
+        round = 1;
+      }
     }
-    const value = { intent, evidence_pack: pack, decision: decision!, critique, repair_rounds: Math.min(round, 1), contextFingerprint, academicLevel: input.academicLevel, prompt_records: promptRecords };
+    const value = { intent, evidence_pack: pack, source_decisions: accountDecisionSources(pack, decision), decision, critique, repair_rounds: Math.min(round, 1), contextFingerprint, academicLevel: input.academicLevel, prompt_records: promptRecords };
     return { ...value, decisionFingerprint: fingerprint(value) };
   });
 }
