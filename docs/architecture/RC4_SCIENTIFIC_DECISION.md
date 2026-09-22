@@ -52,10 +52,18 @@ and require explicit revision before replay with incompatible configuration.
 
 Templates are in `server/mvp/prompts/`; schemas in
 `server/mvp/scientific-decision-contracts.ts`. Actual API arrangement: one concatenated
-Responses input string, strict JSON schema, store=false, reasoning=high; no tools,
-temperature, images or retrieval. Prompt byte ceiling is 60000; oversized input fails
-explicitly rather than silently clipping evidence. Transport retries are zero for
-this evaluation. Production retains the existing bounded provider transport policy.
+Responses input string, strict JSON schema, reasoning=high; no tools, temperature,
+images or retrieval. The selector runs as `background=true, store=true`: its logical
+attempt, request fingerprint, reservation and `response_id` are persisted in the job,
+then the same response is retrieved until terminal. Polling creates no inference, cost
+reservation or attempt. A local 900-second window may end as `PROVIDER_RESPONSE_PENDING`;
+restart resumes retrieval, never selector creation. A create whose response ID was not
+captured is `CREATE_UNCERTAIN` and cannot be repeated automatically. Critic calls remain
+foreground and `store=false`. See the official [background-mode guide](https://developers.openai.com/api/docs/guides/background)
+and [Responses create reference](https://developers.openai.com/api/reference/resources/responses/methods/create).
+Prompt byte ceiling is 60000; oversized input fails explicitly rather than silently
+clipping evidence. Provider terminal `completed`, `failed`, `cancelled` and `incomplete`
+states are explicit; only complete, schema-valid output advances.
 
 Reservations use `responseCostBound` and the durable B4 `control:cost` ledger. Failed
 calls with unknown usage retain reservation. Rates checked against official model

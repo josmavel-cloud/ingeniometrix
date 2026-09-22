@@ -10,7 +10,7 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | --- | --- | --- | --- | --- |
 | G0 | Isolated branch/worktree; local-only changes | This worktree | Git branch/tag/status | COMPLETE |
 | G1a | Reconcile selected/considered/used/excluded; asset QA; terminal costs | Canonical Step 6, export, job control | Reference run read-only + regressions | IN_PROGRESS |
-| G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Explicit scope semantics; compact critic v3; one recovery; bounded repair and approval | Geo improves conditionally; qualitative recovery COMPLETE; applied selector timed out; insufficient PASS | FAIL / NOT ACCEPTED |
+| G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Explicit scope semantics; compact critic v3; persistent background selector; bounded recovery and approval | Geo and qualitative PASS_WITH_LIMITATIONS; applied cross-domain PASS_WITH_LIMITATIONS; insufficient PASS | COMPLETE / ACCEPTED |
 | G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Revisioned draft, FORD catalog, immutable versions, four-step UI; PDF upload is contract-only | 54/54 offline suites; fresh/RC3 migrations; Prisma, typecheck and builds | COMPLETE |
 | G3 | latam-compact-v1, 7-12 body pages, editable matrix, five assets | Existing document renderers | DOCX/PDF/all-page review | PENDING |
 | G4 | OIDC, credits, sandbox payments, administration | Ubuntu identity + transactional ledgers | Isolation/concurrency/webhooks/OAuth | PENDING |
@@ -41,7 +41,7 @@ Reports: `docs/quality/rc4-g1-integrity.md`, `docs/quality/rc4-g1-prejob.md`.
 G1b selector/critic/approval implemented: one model repair, approval by input hash,
 explicit bounded revision, fixed approved design consumed by drafting. Historical report:
 `docs/quality/rc4-g1-scientific-decision.md`. Current scientific evaluation:
-`docs/quality/rc4-g1-design-acceptance.md` (FAIL, do not treat as accepted).
+`docs/quality/rc4-g1-design-acceptance.md` (PASS as a selector gate; not universal scientific validation).
 G1b commit: `e16cdde`. G2a draft persistence and immutable worker inputs commit:
 `8229393`; see `docs/quality/rc4-g2-drafts-snapshots.md`. G2 now adds the
 versioned `FORD-2015` catalog, accent/alias/code lookup, explicit
@@ -79,9 +79,18 @@ out after 240 seconds with no JSON or provider usage. Its USD0.9490875 maximum r
 reserved as UNKNOWN usage, never zero. No critic or retry followed. New calls 2/3;
 known tokens 11331; known estimate USD0.117750; conservative committed USD1.0668375.
 Private closure evidence: `artifacts-local/rc4/scientific-design-evaluation-g1-1/`.
-Final offline suite remains 54/54; Prisma, typecheck and both builds PASS. No commit was
-created because G1 acceptance did not pass.
+The independently valid G1.1 changes were committed as `7ba51f3`; background transport
+hardening is `aa2543c`. G1.2 replaced
+foreground timeout semantics for the long selector with one persisted Responses
+background create plus retrieval by the same `response_id`. The applied education case
+completed with exactly one Astra selector and one Sol critic, no recovery: 21567 tokens,
+estimated USD0.4848225. The old timed-out request remains UNKNOWN with its USD0.9490875
+maximum commitment; conservative combined commitment is USD1.43391. The design preserved
+scope, avoided mixed/engineering overfit and correctly remained unapprovable until five
+user decisions, evidence support per criterion and validation separation are resolved.
+All sources were considered; S1/S2 exclusions are explicit and S3 is the sole cited
+full-text support. Final suite: 55/55; Prisma, typecheck and both builds PASS. Private
+evidence: `artifacts-local/rc4/scientific-design-evaluation-g1-2/`.
 
-Next action: authorize one isolated applied-selector retry with a longer transport
-timeout and run its critic only if complete. Do not rerun geospatial or qualitative;
-do not advance to G3 or payments on a G1 PASS claim. RC3 remains untouched.
+Next action: implement and validate the G3 compact document profile using the accepted
+scientific-decision gate; do not rerun G1 or alter its frozen evidence.

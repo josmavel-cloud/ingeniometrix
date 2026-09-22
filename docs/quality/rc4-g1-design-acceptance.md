@@ -1,7 +1,7 @@
 # RC4 G1: evaluación del selector científico
 
-G1_STATUS: FAIL. G1.1 cerró completitud cualitativa y semántica de alcance, pero el
-selector del caso aplicado agotó el timeout sin respuesta; el gate comparativo sigue incompleto.
+G1_STATUS: PASS. Los cuatro casos cumplen el gate del selector científico, con
+limitaciones explícitas y decisiones de usuario bloqueantes donde corresponden.
 Esta evaluación no certifica una tesis ni sustituye revisión humana.
 Base G2: `7edc5b0ded59eed1bdd772b6dd04b06a66983363`; incluye `5abe888`.
 Worktree RC4, rama `feat/rc4-scientific-commercial`. RC3 no se modifica.
@@ -339,5 +339,84 @@ autorizada no se despachó porque no existía selector aplicado que criticar.
 G1.1 no crea commit porque la condición explícita era commit solo después de aceptación.
 Las mejoras quedan revisables en el working tree; no hay push ni deploy.
 
-NEXT_ACTION: autorizar una única repetición aislada del selector aplicado con timeout de
-transporte mayor y, solo si completa, ejecutar su crítico sin repetir geoespacial ni cualitativo.
+G1.1_NEXT_ACTION_SUPERSEDED: autorizar una única repetición aislada del selector aplicado
+con transporte recuperable y, solo si completa, ejecutar su crítico.
+
+## G1.2 — transporte persistente y cierre aplicado (2026-09-22)
+
+G1.2 no repitió geoespacial, cualitativo ni insuficiente. Los cambios G1.1 se congelaron
+primero en `7ba51f308685182f83b6eda7ac873558d1b9ac0d`.
+
+### Diagnóstico del timeout anterior
+
+- endpoint: `POST /v1/responses`;
+- modelo: `gpt-6-astra`, razonamiento `high`, máximo 12288 output tokens;
+- modo anterior: foreground, sin streaming ni background;
+- timeout cliente: 240000 ms, impuesto por `LLM_REQUEST_TIMEOUT_MS` al SDK;
+- error local: `APIConnectionTimeoutError` (`Request timed out.`); el SDK abortó la solicitud;
+- timeout del servidor/proveedor: UNKNOWN; no hubo respuesta terminal observable;
+- input estimado: 26775 tokens; reserva máxima USD0.9490875;
+- `response_id`, JSON parcial y usage: no capturados.
+
+No se interpreta ese evento como fallo de Astra. Su usage continúa UNKNOWN y su reserva
+máxima no se libera ni se presenta como factura. El nuevo transporte usa un intento lógico
+determinístico, un único create `background=true`, persistencia inmediata del `response_id`
+y retrieval adaptativo 2–15 s durante un máximo local de 900 s. Reinicio y polling reutilizan
+el mismo ID. `queued`, `in_progress`, `completed`, `failed`, `cancelled`, `incomplete`, ventana
+local agotada y reinicio fueron cubiertos offline; la API no documenta `expired` como estado
+de Responses y no se inventó esa semántica.
+
+### Resultado aplicado y revisión científica
+
+`response_id`: `resp_075c8835959c2ef7006ab20b066e6487d29cd5eb771c502394`.
+Selector Astra y crítico Sol terminaron COMPLETE. Hubo un create de selector, un crítico,
+cero recuperaciones y cero Deep Research. El dictamen conserva el alcance documental y
+la evaluación técnica sin estudiantes ni inferencia causal. Distingue principio, técnica,
+instrumento y métodos; no llama “mixto” al uso de proporciones descriptivas, no impone una
+teoría nombrada y no introduce validación ingenieril impropia.
+
+El caso es `PASS_WITH_LIMITATIONS` como evaluación del selector, no como diseño ejecutable.
+El crítico devuelve `REPAIR_REQUIRED`: exige cerrar nivel/actividades/entorno/criterios/
+evaluadores, sustentar o declarar como normativos los criterios específicos y separar
+escenarios de confirmación. Ese bloqueo es el comportamiento científicamente correcto.
+
+Las tres fuentes seleccionadas fueron inspeccionadas, extraídas y consideradas. S3/E1
+(`PDF_FULLTEXT`) sustenta únicamente el principio formativo. S1 y S2 quedan explícitamente
+`CONSIDERED_NOT_REFERENCED_IN_DECISION`; no desaparecen ni se promueven sus abstracts a
+soporte sustantivo.
+
+### Matriz final de aceptación
+
+| Caso | Selector | Crítico | Intención | Alcance | Teoría/marco | Método/integración | Mixto | Datos/validación/ejecución | Confirmación | Estado |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Geoespacial | COMPLETE almacenado | COMPLETE migrado offline | Preservada frente a RC3 | Condicional; decisiones explícitas | PWL | PWL, mejor que RC3 | Correcto: computational | PWL/PWL/PWL | Requerida | PASS_WITH_LIMITATIONS |
+| Cualitativo | COMPLETE reutilizado | COMPLETE, recuperación G1.1 | Preservada | PENDING_USER_DECISION | PWL | Cualitativo preservado | Correcto: qualitative | FAIL/PASS/FAIL hasta resolver acceso | Bloqueante | PASS_WITH_LIMITATIONS como selector |
+| Aplicado educativo | COMPLETE | COMPLETE, sin recuperación | Preservada | PRESERVED | PASS | PASS/PASS | Correcto: no mixed | PWL/PWL/FAIL hasta decisiones | Bloqueante | PASS_WITH_LIMITATIONS como selector |
+| Insuficiente | Bloqueo determinístico | No corresponde | No inventada | Pendiente | No inventado | No inventado | No inventado | Faltantes explícitos | Requerida | PASS |
+
+No hay clasificación mixta inválida, cambio oculto de alcance, fuente seleccionada sin
+estado terminal ni respuesta incompleta aceptada. La generalidad cruzada queda demostrada
+para este conjunto pequeño; no equivale a validación universal ni revisión humana.
+
+### Uso, coste y verificación
+
+| Llamada nueva G1.2 | Input | Cached | Output | Total | Costo estimado |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Astra selector | 4621 | 0 | 6172 | 10793 | USD0.3663625 |
+| Sol critic | 6468 | 0 | 4306 | 10774 | USD0.1184600 |
+| Total nuevo | 11089 | 0 | 10478 | 21567 | USD0.4848225 |
+
+Preflight máximo nuevo: USD2.136035, por debajo de USD3.00. Compromiso conservador
+total: USD0.9490875 anterior UNKNOWN + USD0.4848225 nuevo conocido = USD1.4339100.
+No se reservó ni cobró la recuperación crítica no utilizada. Los importes son estimaciones
+por usage reportado, no una factura del proveedor.
+
+- 55/55 suites offline PASS: `artifacts-local/rc4/offline/2026-09-22T05-09-01-552Z`.
+- Prisma PASS; TypeScript PASS; app build PASS; worker build PASS.
+- Persistencia/reinicio, create único, retrieval repetible, intentos invariantes y uso
+  desconocido conservado: PASS.
+- Dos advertencias de tracing de `artifacts-local` permanecen conocidas y ajenas a G1.2.
+- Prompts, modelos, schema Prisma, G2, G3, auth, pagos y RC3 no cambiaron.
+
+NEXT_ACTION: implementar y validar G3 `latam-compact-v1` consumiendo la decisión
+científica aprobada, sin repetir los cuatro casos G1.

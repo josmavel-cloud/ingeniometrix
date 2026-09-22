@@ -1,18 +1,19 @@
 # LLM And Prompt Registry
 
-STATUS: RC4 working branch, with retained Release 0 registry below. RC4 design gate
-is NOT scientifically accepted; see [G1 evaluation](../quality/rc4-g1-design-acceptance.md).
+STATUS: RC4 working branch, with retained Release 0 registry below. RC4 design gate is
+accepted for the bounded cases; see [G1 evaluation](../quality/rc4-g1-design-acceptance.md).
 
 ## RC4 scientific selector (before approved drafting)
 
-All use a single concatenated Responses input, strict JSON schema, store=false and
-high reasoning. Inputs are whitelisted user intent and a bounded inspected evidence
+All use a single concatenated Responses input, strict JSON schema and high reasoning.
+The long selector uses Responses background mode with `store=true`; critic calls remain
+foreground with `store=false`. Inputs are whitelisted user intent and a bounded inspected evidence
 pack; the critic additionally receives proposed alternatives. Paid evaluation uses
 zero transport retries and persistent B4 reservations, without retrieval or documents.
 
 | Call | Prompt / model configuration | Output / consumer | Limit and failure policy |
 | --- | --- | --- | --- |
-| DESIGN_SELECTOR_0 | `server/mvp/prompts/scientific-design-selector.v3.ts`, Astra `gpt-6-astra` | `scientificDecisionV2Schema` -> critic | 12288 tokens; one logical selector |
+| DESIGN_SELECTOR_0 | `server/mvp/prompts/scientific-design-selector.v3.ts`, Astra `gpt-6-astra` | `scientificDecisionV2Schema` -> critic | 12288 tokens; one persisted background create; retrieve same `response_id`; no inference retry while pending |
 | DESIGN_CRITIC_0 | `server/mvp/prompts/scientific-design-critic.v3.ts`, Sol `gpt-5.6-sol` | Compact `designCritiqueSchema` -> approval eligibility | 8192 tokens; only COMPLETE accepted; high retained after successful bounded qualitative recovery |
 | DESIGN_CRITIC_RECOVERY_1 | `server/mvp/prompts/scientific-design-critic-recovery.v1.ts`, Sol `gpt-5.6-sol` | Same complete critique schema; alternatives immutable | Only after INCOMPLETE_TOKEN_LIMIT; one recovery maximum; never reruns selector |
 | DESIGN_REPAIR_1 (conditional critique repair) | `scientific-design-repair.v1.ts`, Astra | `designRepairSchema` -> targeted replacements | 8192 tokens; original independent findings retained, no self-certification |
@@ -24,6 +25,7 @@ Actual model/usage and failures stay in B4 cost entries and provider audit recor
 See [field authority and consumers](RC4_SCIENTIFIC_DECISION.md) and the private
 `artifacts-local/rc4/scientific-design-evaluation-v1/PROMPTS_USED.md` holds G1 history;
 `artifacts-local/rc4/scientific-design-evaluation-g1-1/PROMPTS_USED.md` holds G1.1 templates.
+G1.2 changed transport only and reused selector v3 plus critic v3 unchanged.
 
 Prompt source of truth for the MVP engine is `server/mvp/prompts/`. Do not embed new important behavioral prompts directly in service logic.
 
