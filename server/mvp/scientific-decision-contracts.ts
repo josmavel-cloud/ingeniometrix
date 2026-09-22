@@ -79,12 +79,60 @@ export const designAlternativeV2Schema = designAlternativeSchema.extend({
 export const scientificDecisionV2Schema = scientificDecisionSchema.extend({ alternatives: z.array(designAlternativeV2Schema).max(3) });
 export const designRepairSchema = z.object({ replacements: z.array(designAlternativeV2Schema).max(3), corrected_findings: list, unresolved_findings: list });
 export const CRITIQUE_DIMENSIONS = ["intent", "feasibility", "evidence", "coherence", "transferability", "causal_identification", "measurement", "evaluation", "theory_framework_fit", "method_integration", "mixed_methods_validity", "uncertainty", "question_objective_alignment", "complexity", "novelty"] as const;
-export const designCritiqueSchema = z.object({
+// Historical G1 critic payloads remain readable for deterministic migration only.
+export const legacyDesignCritiqueSchema = z.object({
   assessments: z.array(z.object({ alternative_id: text, intent_preserved: z.boolean(), method_supported: z.boolean(), executable: z.boolean(), checked_dimensions: z.array(z.enum(CRITIQUE_DIMENSIONS)), issues: z.array(z.object({ severity: z.enum(["BLOCKING", "WARNING"]), dimension: z.enum(CRITIQUE_DIMENSIONS), finding: text, required_action: text })) })),
   summary: text,
 });
+export const rubricStatusSchema = z.enum(["PASS", "PASS_WITH_LIMITATIONS", "FAIL"]);
+export const scopeStatusSchema = z.enum(["PRESERVED", "CLARIFIED", "NARROWED", "EXPANDED", "MATERIAL_CHANGE_PROPOSED", "PENDING_USER_DECISION"]);
+export const scopeAssessmentSchema = z.object({
+  status: scopeStatusSchema,
+  current_user_intent: text,
+  recommended_scope: text,
+  difference: text,
+  rationale: text,
+  confirmation_required: z.boolean(),
+  confirmed: z.boolean(),
+});
+const criticalFindingSchema = z.object({ code: text, severity: z.enum(["BLOCKING", "WARNING"]), affected_field: text, issue: text, evidence_or_reason: text, required_action: text });
+export const designCritiqueSchema = z.object({
+  assessments: z.array(z.object({
+    alternative_id: text,
+    decision: z.enum(["ACCEPT", "ACCEPT_WITH_USER_CONFIRMATION", "REPAIR_REQUIRED", "REJECT"]),
+    intent_preserved: z.boolean(),
+    scope: scopeAssessmentSchema,
+    theory_framework_fit: rubricStatusSchema,
+    method_fit: rubricStatusSchema,
+    method_integration: rubricStatusSchema,
+    mixed_methods_validity: rubricStatusSchema,
+    data_feasibility: rubricStatusSchema,
+    validation_strategy: rubricStatusSchema,
+    procedural_executability: rubricStatusSchema,
+    evidence_support: rubricStatusSchema,
+    transferability: rubricStatusSchema,
+    uncertainty_disclosure: rubricStatusSchema,
+    question_objective_method_alignment: rubricStatusSchema,
+    complexity_discipline: rubricStatusSchema,
+    novelty_discipline: rubricStatusSchema,
+    academic_level_fit: rubricStatusSchema,
+    critical_findings: z.array(criticalFindingSchema).max(10),
+    user_decisions_required: list,
+    repair_targets: list,
+  })),
+});
+export const criticCompletionStatusSchema = z.enum(["COMPLETE", "INCOMPLETE_TOKEN_LIMIT", "INCOMPLETE_PROVIDER", "INVALID_SCHEMA", "FAILED"]);
+export const criticAttemptEnvelopeSchema = z.object({
+  status: criticCompletionStatusSchema,
+  critique: designCritiqueSchema.nullable(),
+  incomplete_output: z.string().nullable(),
+  incomplete_reason: z.string().nullable(),
+  missing_schema_fields: list,
+});
 export type ScientificDecision = z.infer<typeof scientificDecisionSchema>;
 export type DesignCritique = z.infer<typeof designCritiqueSchema>;
+export type LegacyDesignCritique = z.infer<typeof legacyDesignCritiqueSchema>;
+export type ScopeAssessment = z.infer<typeof scopeAssessmentSchema>;
 export type DesignAlternative = z.infer<typeof designAlternativeSchema>;
 export function validateScientificDecision(decision: ScientificDecision, intent: ResearchIntentContract, pack: MethodEvidencePack) {
   const ids = new Set(decision.alternatives.map((a) => a.id));
@@ -135,10 +183,77 @@ export function validateAlternativeV2(a: z.infer<typeof designAlternativeV2Schem
 export function validateDesignCritique(decision: ScientificDecision, critique: DesignCritique) {
   const ids = critique.assessments.map((a) => a.alternative_id);
   if (new Set(ids).size !== ids.length || ids.length !== decision.alternatives.length || decision.alternatives.some((a) => !ids.includes(a.id))) throw new Error("CRITIQUE_COVERAGE_MISMATCH");
-  if (critique.assessments.some((a) => CRITIQUE_DIMENSIONS.some((dimension) => !a.checked_dimensions.includes(dimension)))) throw new Error("CRITIQUE_DIMENSION_MISSING");
+  for (const assessment of critique.assessments) {
+    const scope = assessment.scope;
+    const pending = scope.status === "PENDING_USER_DECISION";
+    const changed = ["NARROWED", "EXPANDED", "MATERIAL_CHANGE_PROPOSED"].includes(scope.status);
+    if ((pending || changed) && (!scope.confirmation_required || scope.confirmed)) throw new Error("SCOPE_CONFIRMATION_SEMANTICS_INVALID");
+    if (["PRESERVED", "CLARIFIED"].includes(scope.status) && (scope.confirmation_required || scope.confirmed)) throw new Error("SCOPE_CONFIRMATION_SEMANTICS_INVALID");
+    if (pending && (!assessment.user_decisions_required.length || assessment.decision !== "REPAIR_REQUIRED")) throw new Error("PENDING_SCOPE_REQUIRES_USER_DECISION");
+    if (changed && assessment.decision === "ACCEPT") throw new Error("SCOPE_CHANGE_CANNOT_BE_SILENTLY_ACCEPTED");
+    const statuses = [assessment.theory_framework_fit, assessment.method_fit, assessment.method_integration, assessment.mixed_methods_validity, assessment.data_feasibility, assessment.validation_strategy, assessment.procedural_executability, assessment.evidence_support, assessment.transferability, assessment.uncertainty_disclosure, assessment.question_objective_method_alignment, assessment.complexity_discipline, assessment.novelty_discipline, assessment.academic_level_fit];
+    if (assessment.decision === "ACCEPT" && (statuses.includes("FAIL") || assessment.critical_findings.some((finding) => finding.severity === "BLOCKING") || assessment.user_decisions_required.length)) throw new Error("CRITIC_ACCEPTANCE_CONTRADICTION");
+    if (assessment.decision === "REPAIR_REQUIRED" && !assessment.repair_targets.length && !assessment.user_decisions_required.length) throw new Error("CRITIC_REPAIR_TARGET_REQUIRED");
+  }
 }
-export function alternativeIsApprovable(alternative: DesignAlternative, critique: DesignCritique) {
+export function alternativeCanBeConfirmed(alternative: DesignAlternative, critique: DesignCritique) {
   const review = critique.assessments.find((a) => a.alternative_id === alternative.id);
-  return Boolean(review && review.intent_preserved && review.method_supported && review.executable && !review.issues.some((i) => i.severity === "BLOCKING") && !alternative.pending_user_decisions.some((d) => d.blocking));
+  return Boolean(review && review.intent_preserved && ["ACCEPT", "ACCEPT_WITH_USER_CONFIRMATION"].includes(review.decision) && review.scope.status !== "PENDING_USER_DECISION" && !review.critical_findings.some((finding) => finding.severity === "BLOCKING") && !alternative.pending_user_decisions.some((decision) => decision.blocking));
+}
+export function alternativeIsApprovable(alternative: DesignAlternative, critique: DesignCritique, scopeConfirmed = false) {
+  const review = critique.assessments.find((a) => a.alternative_id === alternative.id);
+  if (!review || !alternativeCanBeConfirmed(alternative, critique)) return false;
+  return !review.scope.confirmation_required || scopeConfirmed;
+}
+export function migrateLegacyScopeSemantics(intent: ResearchIntentContract, alternative: z.infer<typeof designAlternativeV2Schema>): ScopeAssessment {
+  const scopeQuestions = alternative.pending_user_decisions.filter((decision) => decision.blocking && /alcance|delimit|territor|regi[oó]n|instituci[oó]n|casos?\b|poblaci[oó]n|unidad|corpus|context|cobertura|[aá]mbito|scope|site|institution|population/i.test(decision.question));
+  const original = intent.scope || intent.unit_population_corpus || intent.expected_outcome;
+  const recommended = alternative.scope_fulfilled;
+  if (scopeQuestions.length) return { status: "PENDING_USER_DECISION", current_user_intent: original, recommended_scope: recommended, difference: "La delimitación final depende de una decisión explícita del usuario.", rationale: scopeQuestions.map((decision) => decision.question).join(" "), confirmation_required: true, confirmed: false };
+  if (alternative.scope_effect === "narrows" || alternative.scope_effect === "expands" || alternative.scope_effect === "materially_changes") return { status: alternative.scope_effect === "narrows" ? "NARROWED" : alternative.scope_effect === "expands" ? "EXPANDED" : "MATERIAL_CHANGE_PROPOSED", current_user_intent: alternative.scope_change_impact?.original_intent ?? original, recommended_scope: alternative.scope_change_impact?.proposed_change ?? recommended, difference: alternative.scope_change_impact?.what_is_lost ?? alternative.scope_changes.map((change) => change.proposed_change).join("; "), rationale: alternative.scope_change_impact?.why_needed ?? alternative.scope_changes.map((change) => change.reason).join("; "), confirmation_required: true, confirmed: false };
+  return { status: "PRESERVED", current_user_intent: original, recommended_scope: recommended, difference: "No se detectó reducción o ampliación sustantiva en el contrato histórico.", rationale: alternative.scope_fulfilled, confirmation_required: false, confirmed: false };
+}
+export function migrateLegacyCritique(intent: ResearchIntentContract, decision: z.infer<typeof scientificDecisionV2Schema>, legacy: LegacyDesignCritique): DesignCritique {
+  const statusFor = (assessment: LegacyDesignCritique["assessments"][number], dimensions: readonly (typeof CRITIQUE_DIMENSIONS)[number][]) => {
+    const issues = assessment.issues.filter((issue) => dimensions.includes(issue.dimension));
+    return issues.some((issue) => issue.severity === "BLOCKING") ? "FAIL" as const : issues.length ? "PASS_WITH_LIMITATIONS" as const : "PASS" as const;
+  };
+  const assessments = decision.alternatives.map((alternative) => {
+    const old = legacy.assessments.find((assessment) => assessment.alternative_id === alternative.id);
+    if (!old) throw new Error("LEGACY_CRITIQUE_COVERAGE_MISMATCH");
+    const scope = migrateLegacyScopeSemantics(intent, alternative);
+    const userDecisions = alternative.pending_user_decisions.filter((item) => item.blocking).map((item) => item.question);
+    const findings = old.issues.slice(0, 10).map((issue, index) => ({ code: `LEGACY_${issue.dimension.toUpperCase()}_${index + 1}`, severity: issue.severity, affected_field: issue.dimension, issue: issue.finding, evidence_or_reason: "Migrado sin reinterpretar desde el dictamen G1 almacenado.", required_action: issue.required_action }));
+    const blocking = findings.some((finding) => finding.severity === "BLOCKING");
+    const decisionStatus = scope.status === "PENDING_USER_DECISION" || blocking || !old.intent_preserved || !old.method_supported || !old.executable
+      ? "REPAIR_REQUIRED" as const
+      : scope.confirmation_required ? "ACCEPT_WITH_USER_CONFIRMATION" as const : "ACCEPT" as const;
+    return {
+      alternative_id: alternative.id,
+      decision: decisionStatus,
+      intent_preserved: old.intent_preserved,
+      scope,
+      theory_framework_fit: statusFor(old, ["theory_framework_fit"]),
+      method_fit: old.method_supported ? statusFor(old, ["evidence", "coherence"]) : "FAIL" as const,
+      method_integration: statusFor(old, ["method_integration"]),
+      mixed_methods_validity: statusFor(old, ["mixed_methods_validity"]),
+      data_feasibility: statusFor(old, ["feasibility", "measurement"]),
+      validation_strategy: statusFor(old, ["evaluation", "causal_identification"]),
+      procedural_executability: old.executable ? statusFor(old, ["coherence"]) : "FAIL" as const,
+      evidence_support: statusFor(old, ["evidence"]),
+      transferability: statusFor(old, ["transferability"]),
+      uncertainty_disclosure: statusFor(old, ["uncertainty"]),
+      question_objective_method_alignment: statusFor(old, ["question_objective_alignment"]),
+      complexity_discipline: statusFor(old, ["complexity"]),
+      novelty_discipline: statusFor(old, ["novelty"]),
+      academic_level_fit: statusFor(old, ["feasibility", "complexity"]),
+      critical_findings: findings,
+      user_decisions_required: userDecisions,
+      repair_targets: Array.from(new Set([...findings.filter((finding) => finding.severity === "BLOCKING").map((finding) => finding.affected_field), ...(scope.status === "PENDING_USER_DECISION" ? ["scope"] : [])])),
+    };
+  });
+  const migrated = designCritiqueSchema.parse({ assessments });
+  validateDesignCritique(decision, migrated);
+  return migrated;
 }
 export const decisionContextFingerprint = (intake: unknown, ledger: MvpStep5EvidenceLedger) => fingerprint({ intake, selected: ledger.source_registry, evidence: ledger.semantic_extractions });

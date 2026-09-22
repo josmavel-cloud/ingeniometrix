@@ -1,6 +1,7 @@
 # RC4 G1: evaluación del selector científico
 
-G1_STATUS: FAIL. Hay mejora geoespacial, pero el gate comparativo está incompleto.
+G1_STATUS: FAIL. G1.1 cerró completitud cualitativa y semántica de alcance, pero el
+selector del caso aplicado agotó el timeout sin respuesta; el gate comparativo sigue incompleto.
 Esta evaluación no certifica una tesis ni sustituye revisión humana.
 Base G2: `7edc5b0ded59eed1bdd772b6dd04b06a66983363`; incluye `5abe888`.
 Worktree RC4, rama `feat/rc4-scientific-commercial`. RC3 no se modifica.
@@ -250,3 +251,93 @@ Total: 20 archivos. Artifacts privados y credenciales no se incluyen en Git.
 
 NEXT_ACTION: corregir y validar de forma acotada la completitud del crítico y la
 declaración de alcance cualitativa, conservando entradas congeladas y sin avanzar a G3.
+
+## G1.1 — cierre de crítico y semántica de alcance (2026-09-22)
+
+Esta sección es la actualización autoritativa de G1. No modifica los artifacts crudos
+anteriores. Las representaciones derivadas están en
+`artifacts-local/rc4/scientific-design-evaluation-g1-1/` y conservan hashes de sus
+entradas. Geoespacial no volvió a llamar selector ni crítico.
+
+### Diagnóstico exacto de la truncación
+
+| Campo | Valor observado |
+| --- | --- |
+| Modelo / razonamiento | `gpt-5.6-sol` / `high` |
+| Máximo configurado | 4096 output tokens |
+| Razonamiento | 3865 tokens |
+| Salida visible calculada | 231 tokens |
+| Salida total | 4096 tokens |
+| Estado / motivo | `incomplete` / `max_output_tokens` |
+| Parseo | Rechazado antes de certificación; el fragmento no es un dictamen |
+
+El proveedor informó explícitamente la incompletitud. La producción ahora persiste un
+sobre `COMPLETE | INCOMPLETE_TOKEN_LIMIT | INCOMPLETE_PROVIDER | INVALID_SCHEMA |
+FAILED`; solo `COMPLETE` puede avanzar. `INCOMPLETE_TOKEN_LIMIT` permite una única
+recuperación del crítico, nunca del selector. El nuevo crítico v3 usa un esquema compacto,
+`high` y 8192 tokens; no pide ensayo ni cadena de razonamiento. La reserva preventiva
+incluye el techo completo. `medium` no se adoptó: una recuperación `high` completó el
+caso con margen (4073/8192 tokens totales) y dictamen científicamente accionable.
+
+### Semántica de alcance y confirmación
+
+El contrato diferencia `PRESERVED`, `CLARIFIED`, `NARROWED`, `EXPANDED`,
+`MATERIAL_CHANGE_PROPOSED` y `PENDING_USER_DECISION`. La confirmación es separada,
+revision-specific y auditable. Una delimitación pendiente nunca se migra como reducción
+confirmada. `PENDING_USER_DECISION` exige pregunta concreta, `REPAIR_REQUIRED` y bloquea
+la estabilización de `ResearchDesign`. La migración de outputs G1 es determinística,
+derivada y no reescribe el JSON original.
+
+### Evaluación de cierre
+
+| Caso | Selector completo | Crítico completo | Intención | Alcance | Teoría/marco | Método e integración | Mixto | Datos / validación / ejecución | Confirmación | Resultado |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Geoespacial | Sí, almacenado | Sí, migrado offline | Preservada | Decisiones explícitas | L | Mejora frente a RC3; condicional | Correcto: computational | L / L / L | Requerida antes de estabilizar | PASS_WITH_LIMITATIONS |
+| Cualitativo | Sí, reutilizado; 0 nuevas llamadas | Sí, recuperación única | Preservada | `PENDING_USER_DECISION`; no estrechamiento confirmado | L | Cualitativo interpretativo preservado; sin hipótesis ni muestra numérica | Correcto: qualitative | F por acceso/evidencia; validación P; ejecución F | Requerida y bloqueante | PASS_WITH_LIMITATIONS como evaluación; diseño aún no aprobable |
+| Aplicado educativo | No: timeout de transporte | No ejecutado | NOT_EVALUATED | NOT_EVALUATED | NOT_EVALUATED | NOT_EVALUATED | NOT_EVALUATED | NOT_EVALUATED | NOT_EVALUATED | FAIL |
+| Insuficiente | Bloqueo determinístico | No corresponde | No se inventa intención | Pendiente | No inventada | No inventado | No inventado | Información faltante explícita | Requerida | PASS |
+
+El caso aplicado no es una copia del cualitativo: propone diseñar y evaluar técnicamente
+un protocolo para actividades matemáticas digitales, sin participantes ni inferencia
+causal, frente al estudio interpretativo de experiencias docentes rurales. Mantiene el
+mismo corpus congelado para evitar ventaja por recuperación. Su única llamada Astra
+agotó 240 segundos sin JSON, respuesta parcial ni ID recuperable en el audit local.
+No se hizo una segunda llamada porque `MAX_SELECTOR_CALLS_NEW=1`. El crítico aplicado
+no se despachó. Por tanto no existe evidencia para descartar sobreajuste y G1 no pasa.
+
+### Fuentes y continuidad cualitativa
+
+S1, S2 y S3 permanecen seleccionadas, inspeccionadas, extraídas y consideradas. S1 y
+S3 justifican decisiones; S2 queda `CONSIDERED_NOT_REFERENCED_IN_DECISION` con motivo
+explícito. El crítico señala que los extractos no sustentan por sí solos secundaria
+rural peruana, estudio de caso ni análisis temático reflexivo. No hay promoción de
+metadata a soporte sustantivo ni caída silenciosa de fuentes.
+
+### Presupuesto y uso nuevo
+
+Preflight máximo para las tres llamadas: USD1.5706425 frente a USD3.00. Dos llamadas
+se despacharon; no hubo transport retries, Deep Research, imágenes ni documentos.
+
+| Llamada | Modelo | Input | Cached | Output | Tokens totales | Costo |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Recuperación crítica cualitativa | Sol/high | 7258 | 0 | 4073 | 11331 | USD0.117750 estimado por uso reportado |
+| Selector aplicado | Astra/high | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN | UNKNOWN; reserva máxima USD0.9490875 retenida |
+
+Uso conocido total: 11331 tokens. El total real no puede calcularse porque la llamada
+Astra terminó por timeout sin usage. El costo conocido es USD0.117750; costo comprometido
+conservador USD1.0668375. No se registra el uso faltante como cero. La tercera llamada
+autorizada no se despachó porque no existía selector aplicado que criticar.
+
+### Verificación G1.1
+
+- 54/54 suites offline PASS: `artifacts-local/rc4/offline/2026-09-22T03-59-33-207Z`.
+- Prisma validate PASS; TypeScript PASS; app build PASS; worker build PASS.
+- G2, B4, ownership, decisión/aprobación y caso insuficiente siguen verdes.
+- Build conserva las dos advertencias conocidas de tracing amplio de `artifacts-local`.
+- Prisma, auth, pagos, modelos y documentos G3 no cambiaron.
+
+G1.1 no crea commit porque la condición explícita era commit solo después de aceptación.
+Las mejoras quedan revisables en el working tree; no hay push ni deploy.
+
+NEXT_ACTION: autorizar una única repetición aislada del selector aplicado con timeout de
+transporte mayor y, solo si completa, ejecutar su crítico sin repetir geoespacial ni cualitativo.

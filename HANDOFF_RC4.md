@@ -10,7 +10,7 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | --- | --- | --- | --- | --- |
 | G0 | Isolated branch/worktree; local-only changes | This worktree | Git branch/tag/status | COMPLETE |
 | G1a | Reconcile selected/considered/used/excluded; asset QA; terminal costs | Canonical Step 6, export, job control | Reference run read-only + regressions | IN_PROGRESS |
-| G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | v2 scientific contract, selector v3, critic v2, bounded repair and approval | Geo improves conditionally; qualitative critic truncated; applied NOT_RUN; insufficient PASS | FAIL / NOT ACCEPTED |
+| G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Explicit scope semantics; compact critic v3; one recovery; bounded repair and approval | Geo improves conditionally; qualitative recovery COMPLETE; applied selector timed out; insufficient PASS | FAIL / NOT ACCEPTED |
 | G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Revisioned draft, FORD catalog, immutable versions, four-step UI; PDF upload is contract-only | 54/54 offline suites; fresh/RC3 migrations; Prisma, typecheck and builds | COMPLETE |
 | G3 | latam-compact-v1, 7-12 body pages, editable matrix, five assets | Existing document renderers | DOCX/PDF/all-page review | PENDING |
 | G4 | OIDC, credits, sandbox payments, administration | Ubuntu identity + transactional ledgers | Isolation/concurrency/webhooks/OAuth | PENDING |
@@ -69,6 +69,19 @@ Prompts/inputs/results remain private under
 Frozen source S5 remains explicitly excluded for unverified RC3 excerpts; its newer
 extraction is not used to make the comparison appear better.
 
-Next action: bounded correction/evaluation of critic completeness and qualitative
-scope declaration using frozen inputs. Do not advance to G3 or payments on a G1 PASS
-claim. RC3 and production remain untouched; no push, merge, deployment or document run.
+G1.1 repaired critic completeness and scope semantics without rerunning the geospatial
+selector. Qualitative used the frozen selector and one Sol/high recovery: COMPLETE,
+11331 tokens, estimated USD0.117750. It preserved qualitative methodology, introduced
+no hypothesis or numeric sample and correctly classified the unresolved case boundary
+as `PENDING_USER_DECISION`; the design remains blocked pending user/access/evidence.
+The distinct applied-education selector used the single allowed Astra call but timed
+out after 240 seconds with no JSON or provider usage. Its USD0.9490875 maximum remains
+reserved as UNKNOWN usage, never zero. No critic or retry followed. New calls 2/3;
+known tokens 11331; known estimate USD0.117750; conservative committed USD1.0668375.
+Private closure evidence: `artifacts-local/rc4/scientific-design-evaluation-g1-1/`.
+Final offline suite remains 54/54; Prisma, typecheck and both builds PASS. No commit was
+created because G1 acceptance did not pass.
+
+Next action: authorize one isolated applied-selector retry with a longer transport
+timeout and run its critic only if complete. Do not rerun geospatial or qualitative;
+do not advance to G3 or payments on a G1 PASS claim. RC3 remains untouched.

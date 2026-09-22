@@ -13,15 +13,17 @@ zero transport retries and persistent B4 reservations, without retrieval or docu
 | Call | Prompt / model configuration | Output / consumer | Limit and failure policy |
 | --- | --- | --- | --- |
 | DESIGN_SELECTOR_0 | `server/mvp/prompts/scientific-design-selector.v3.ts`, Astra `gpt-6-astra` | `scientificDecisionV2Schema` -> critic | 12288 tokens; one logical selector |
-| DESIGN_CRITIC_0 | `server/mvp/prompts/scientific-design-critic.v2.ts`, Sol `gpt-5.6-sol` | `designCritiqueSchema` -> approval eligibility | 4096 tokens; one critic; live qualitative truncation remains a G1 blocker |
+| DESIGN_CRITIC_0 | `server/mvp/prompts/scientific-design-critic.v3.ts`, Sol `gpt-5.6-sol` | Compact `designCritiqueSchema` -> approval eligibility | 8192 tokens; only COMPLETE accepted; high retained after successful bounded qualitative recovery |
+| DESIGN_CRITIC_RECOVERY_1 | `server/mvp/prompts/scientific-design-critic-recovery.v1.ts`, Sol `gpt-5.6-sol` | Same complete critique schema; alternatives immutable | Only after INCOMPLETE_TOKEN_LIMIT; one recovery maximum; never reruns selector |
 | DESIGN_REPAIR_1 (conditional critique repair) | `scientific-design-repair.v1.ts`, Astra | `designRepairSchema` -> targeted replacements | 8192 tokens; original independent findings retained, no self-certification |
 | DESIGN_REPAIR_1 (conditional incomplete selector recovery) | `scientific-design-output-repair.v1.ts`, Astra | `scientificDecisionV2Schema` -> first critic | 12288 tokens; shares one repair allowance, private incomplete response checkpoint |
 
-Selector v2 (8192 tokens) is retained for the first geospatial evaluation; v1 is
-historical. Snapshot policy hashes current selector, critic and both repair templates.
+Selector v2 (8192 tokens) and critic v2 (4096) are retained as evaluation history; v1 is
+historical. Snapshot policy hashes current selector, critic, critic recovery and both repair templates.
 Actual model/usage and failures stay in B4 cost entries and provider audit records.
 See [field authority and consumers](RC4_SCIENTIFIC_DECISION.md) and the private
-`artifacts-local/rc4/scientific-design-evaluation-v1/PROMPTS_USED.md` full inventory.
+`artifacts-local/rc4/scientific-design-evaluation-v1/PROMPTS_USED.md` holds G1 history;
+`artifacts-local/rc4/scientific-design-evaluation-g1-1/PROMPTS_USED.md` holds G1.1 templates.
 
 Prompt source of truth for the MVP engine is `server/mvp/prompts/`. Do not embed new important behavioral prompts directly in service logic.
 

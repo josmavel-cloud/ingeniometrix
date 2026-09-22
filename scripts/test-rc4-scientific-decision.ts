@@ -4,19 +4,23 @@ import os from "node:os";
 import path from "node:path";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { accountDecisionSources, alternativeIsApprovable, buildMethodEvidencePack, intentFromIntake, validateScientificDecision, validateDesignCritique, CRITIQUE_DIMENSIONS, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
-import { approveScientificDecision, approvedDesignForCurrentJob, decisionForUser, proposeScientificDecision, reviseScientificDecision } from "@/server/mvp/scientific-decision-service";
+import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, buildMethodEvidencePack, intentFromIntake, migrateLegacyCritique, migrateLegacyScopeSemantics, validateScientificDecision, validateDesignCritique, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
+import { approveScientificDecision, approvedDesignForCurrentJob, critiqueScientificDecision, decisionForUser, proposeScientificDecision, reviseScientificDecision } from "@/server/mvp/scientific-decision-service";
 import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
 import { definition, design, ledger, matrix } from "./test-b3-scientific-contracts";
 import { responseCostBound } from "@/llm/providers/openai-cost-bound";
 import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
+import { SCIENTIFIC_DESIGN_CRITIC_PROMPT } from "@/server/mvp/prompts/scientific-design-critic.v3";
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const alternative: DesignAlternative = { id: "option-1", label: "Propuesta cualitativa sintética", scope_fulfilled: "Preserva intención de prueba", definition, research_design: design, components: [{ name: "Análisis temático", kind: "method", role: "Interpretación", inputs: ["Corpus propuesto"], outputs: ["Categorías propuestas"], dependencies: [], support: [{ source_id: "S1", evidence_id: "E3" }] }], scope_changes: [], applicability_conditions: ["Acceso por confirmar"], baselines_or_comparisons: [], transfer_limits: ["Caso único"], feasibility: "Propuesta sintética", discarded_alternative_reasons: [], qualitative_component: "Análisis temático", quantitative_component: null, integration_strategy: null, pending_user_decisions: [] };
 const alternativeV2 = { ...alternative, primary_method: "Análisis temático", scope_effect: "preserves" as const, scope_change_impact: null, integration_purpose: null as string | null, method_handoffs: [], data_requirements: [{ description: "Corpus de entrevistas por producir", availability: "PROPOSED" as const, confirmation_or_action: "Confirmar acceso antes del trabajo de campo" }] };
 const decision = { alternatives: [alternativeV2], recommended_id: alternative.id, recommendation_rationale: "Fixture de contrato, no evaluación científica real", clarification_questions: [] };
-const critique = { assessments: [{ alternative_id: alternative.id, intent_preserved: true, method_supported: true, executable: true, checked_dimensions: [...CRITIQUE_DIMENSIONS], issues: [] }], summary: "Crítica sintética, no humana" };
+const pass = "PASS" as const;
+const scope = { status: "PRESERVED" as const, current_user_intent: "Comprender experiencias", recommended_scope: "Comprender experiencias", difference: "Precisión operacional sin reducción", rationale: "Mismo objeto y resultado", confirmation_required: false, confirmed: false };
+const critique = { assessments: [{ alternative_id: alternative.id, decision: "ACCEPT" as const, intent_preserved: true, scope, theory_framework_fit: pass, method_fit: pass, method_integration: pass, mixed_methods_validity: pass, data_feasibility: pass, validation_strategy: pass, procedural_executability: pass, evidence_support: pass, transferability: pass, uncertainty_disclosure: pass, question_objective_method_alignment: pass, complexity_discipline: pass, novelty_discipline: pass, academic_level_fit: pass, critical_findings: [], user_decisions_required: [], repair_targets: [] }] };
+const rejectedCritique = { assessments: [{ ...critique.assessments[0], decision: "REPAIR_REQUIRED" as const, validation_strategy: "FAIL" as const, critical_findings: [{ code: "VALIDATION_MISSING", severity: "BLOCKING" as const, affected_field: "research_design.quality_criteria", issue: "Falta criterio", evidence_or_reason: "El diseño no lo define", required_action: "Definirlo" }], repair_targets: ["research_design.quality_criteria"] }] };
 
 async function main() {
   if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("RC4 isolated DB required");
@@ -35,7 +39,7 @@ async function main() {
   assert.doesNotThrow(() => validateScientificDecision(mixed, intent, pack));
   const badEvidence = structuredClone(decision); badEvidence.alternatives[0].research_design.methodological_support[0].evidence_id = "invented";
   assert.throws(() => validateScientificDecision(badEvidence, intent, pack), /UNSUPPORTED/);
-  assert.throws(() => validateDesignCritique(decision, { assessments: [], summary: "Incomplete" }), /CRITIQUE_COVERAGE/);
+  assert.throws(() => validateDesignCritique(decision, { assessments: [] }), /CRITIQUE_COVERAGE/);
   assert.ok(!alternativeIsApprovable({ ...alternative, pending_user_decisions: [{ question: "¿Hay acceso indispensable?", blocking: true }] }, critique));
   assert.equal(buildMethodEvidencePack(ledger, 1).excluded.length, ledger.semantic_extractions[0].evidence_items.length);
   assert.ok(buildMethodEvidencePack(ledger, 1).source_accounting.every((s) => s.exclusion_reason), "Budget exclusion is explicit per selected source");
@@ -63,12 +67,34 @@ async function main() {
   assert.throws(() => validateScientificDecision(noValidation, intent, pack), /NOT_EXECUTABLE/);
   const changed = { ...alternativeV2, scope_effect: "narrows" as const };
   assert.throws(() => validateScientificDecision({ ...decision, alternatives: [changed] }, intent, pack), /SCOPE_CHANGE_DISCLOSURE/);
+  const scopeCritique = (status: typeof scope.status | "CLARIFIED" | "NARROWED" | "EXPANDED" | "MATERIAL_CHANGE_PROPOSED" | "PENDING_USER_DECISION", decisionStatus: "ACCEPT" | "ACCEPT_WITH_USER_CONFIRMATION" | "REPAIR_REQUIRED", confirmationRequired: boolean, decisions: string[] = []) => ({ assessments: [{ ...critique.assessments[0], decision: decisionStatus, scope: { ...scope, status, confirmation_required: confirmationRequired, confirmed: false }, user_decisions_required: decisions, repair_targets: decisionStatus === "REPAIR_REQUIRED" ? ["scope"] : [] }] });
+  assert.doesNotThrow(() => validateDesignCritique(decision, scopeCritique("PRESERVED", "ACCEPT", false)));
+  assert.doesNotThrow(() => validateDesignCritique(decision, scopeCritique("CLARIFIED", "ACCEPT", false)));
+  for (const status of ["NARROWED", "EXPANDED", "MATERIAL_CHANGE_PROPOSED"] as const) {
+    const review = scopeCritique(status, "ACCEPT_WITH_USER_CONFIRMATION", true);
+    assert.doesNotThrow(() => validateDesignCritique(decision, review));
+    assert.ok(alternativeCanBeConfirmed(alternativeV2, review));
+    assert.ok(!alternativeIsApprovable(alternativeV2, review));
+    assert.ok(alternativeIsApprovable(alternativeV2, review, true));
+  }
+  const pendingScope = scopeCritique("PENDING_USER_DECISION", "REPAIR_REQUIRED", true, ["Elegir caso único o múltiple"]);
+  assert.doesNotThrow(() => validateDesignCritique(decision, pendingScope));
+  assert.ok(!alternativeCanBeConfirmed(alternativeV2, pendingScope));
+  assert.throws(() => validateDesignCritique(decision, scopeCritique("PENDING_USER_DECISION", "ACCEPT_WITH_USER_CONFIRMATION", true, ["Elegir"])), /PENDING_SCOPE/);
+  const ambiguous = { ...alternativeV2, pending_user_decisions: [{ question: "¿Se estudiará una institución o casos múltiples?", blocking: true }] };
+  assert.equal(migrateLegacyScopeSemantics(intent, ambiguous).status, "PENDING_USER_DECISION", "A pending delimitation is not a confirmed narrowing");
+  const migrated = migrateLegacyCritique(intent, { ...decision, alternatives: [ambiguous] }, { assessments: [{ alternative_id: ambiguous.id, intent_preserved: true, method_supported: true, executable: true, checked_dimensions: ["intent"], issues: [] }], summary: "Salida histórica" });
+  assert.equal(migrated.assessments[0].scope.status, "PENDING_USER_DECISION");
+  assert.equal(migrated.assessments[0].decision, "REPAIR_REQUIRED");
+  assert.deepEqual(migrated.assessments[0].repair_targets, ["scope"]);
   assert.ok(responseCostBound({ model: "gpt-6-astra", max_output_tokens: 8192, input: "fixture" })!.maximumUsd < 0.5);
+  assert.equal(SCIENTIFIC_DESIGN_CRITIC_PROMPT.max_output_tokens, 8192);
+  assert.ok(responseCostBound({ model: "gpt-5.6-sol", max_output_tokens: SCIENTIFIC_DESIGN_CRITIC_PROMPT.max_output_tokens, input: "fixture" })!.maximumUsd > responseCostBound({ model: "gpt-5.6-sol", max_output_tokens: 4096, input: "fixture" })!.maximumUsd, "Reservation includes the configured critic ceiling");
   assert.equal(responseCostBound({ model: "gpt-6-astra", max_output_tokens: 8192, input: [{ type: "input_image", detail: "high" }] }), null, "New text model support does not imply verified vision billing");
   let repairCalls = 0;
   const rejected = await proposeScientificDecision({ projectId: "fixture", runId: "fixture", intake: { topic: "Fixture" }, academicLevel: "MAESTRIA", ledger, provider: { generateStructuredObject: async (request: any) => {
     repairCalls++;
-    return request.schemaName.startsWith("design_selector") ? decision : request.schemaName.startsWith("design_repair") ? { replacements: [structuredClone(alternativeV2)], corrected_findings: ["Procedimiento aclarado"], unresolved_findings: [] } : { ...critique, assessments: [{ ...critique.assessments[0], executable: false }] };
+    return request.schemaName.startsWith("design_selector") ? decision : request.schemaName.startsWith("design_repair") ? { replacements: [structuredClone(alternativeV2)], corrected_findings: ["Procedimiento aclarado"], unresolved_findings: [] } : rejectedCritique;
   } } as any });
   assert.equal(repairCalls, 3, "One selector, ONE critic, at most ONE targeted repair");
   assert.equal(rejected.repair_rounds, 1);
@@ -81,6 +107,25 @@ async function main() {
   } } as any });
   assert.deepEqual(outputCalls, ["design_selector_0", "design_repair_1", "design_critic_0"]);
   assert.equal(restored.repair_rounds, 1);
+  const criticRecoveryCalls: string[] = [];
+  const recoveredCritic = await proposeScientificDecision({ projectId: "fixture", runId: "critic-recovery", intake: { topic: "Fixture" }, academicLevel: "MAESTRIA", ledger, provider: { generateStructuredObject: async (request: any) => {
+    criticRecoveryCalls.push(request.schemaName);
+    if (request.schemaName.startsWith("design_selector")) return decision;
+    if (request.schemaName === "design_critic_0") throw new IncompleteStructuredOutputError(JSON.stringify(critique), "max_output_tokens");
+    return critique;
+  } } as any });
+  assert.deepEqual(criticRecoveryCalls, ["design_selector_0", "design_critic_0", "design_critic_recovery_1"]);
+  assert.deepEqual(recoveredCritic.critic_completion, { first: "INCOMPLETE_TOKEN_LIMIT", recovery: "COMPLETE", recoveryCalls: 1 });
+  const twiceIncomplete: string[] = [];
+  await assert.rejects(() => proposeScientificDecision({ projectId: "fixture", runId: "critic-fails-closed", intake: { topic: "Fixture" }, academicLevel: "MAESTRIA", ledger, provider: { generateStructuredObject: async (request: any) => {
+    twiceIncomplete.push(request.schemaName);
+    if (request.schemaName.startsWith("design_selector")) return decision;
+    throw new IncompleteStructuredOutputError(JSON.stringify(critique), "max_output_tokens");
+  } } as any }), /SCIENTIFIC_CRITIC_INCOMPLETE_TOKEN_LIMIT/);
+  assert.deepEqual(twiceIncomplete, ["design_selector_0", "design_critic_0", "design_critic_recovery_1"], "A valid-looking partial JSON cannot pass and recovery never reruns the selector");
+  let closureCalls = 0;
+  await assert.rejects(() => critiqueScientificDecision({ projectId: "fixture", runId: "critic-global-cap", intent, pack, decision, allowRecovery: false, provider: { generateStructuredObject: async () => { closureCalls++; throw new IncompleteStructuredOutputError("{}", "max_output_tokens"); } } as any }), /SCIENTIFIC_CRITIC_INCOMPLETE_TOKEN_LIMIT/);
+  assert.equal(closureCalls, 1, "An evaluation-wide cap may disable recovery without weakening production's one-recovery default");
   const insufficient = structuredClone(ledger); insufficient.semantic_extractions = [];
   await assert.rejects(() => proposeScientificDecision({ projectId: "fixture", runId: "fixture", intake: {}, academicLevel: "MAESTRIA", ledger: insufficient, provider: { generateStructuredObject: async () => { throw new Error("Must not call provider"); } } as any }), /INSUFFICIENT_EVIDENCE/);
 

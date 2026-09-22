@@ -25,7 +25,9 @@ G2 immutable inputs and B4 persistent jobs/cost controls remain authoritative.
 | data_requirements | Alternative | Feasibility critique and approval | USER_CONFIRMED / PROPOSED / PENDING and confirmation/action | Design |
 | applicability_conditions / baselines_or_comparisons / transfer_limits / feasibility / discarded_alternative_reasons | Alternative | Critic, approval/review | Clear local applicability and level/complexity limits; no automatic transfer | Approval eligibility |
 | pending_user_decisions | Alternative | Approval UI/gate | Critical items block; no LLM substitutes for user response | Explicit user revision |
-| DesignCritique.assessments / issues / summary | Independent Sol critic | Repair selection, approval gate and evaluation rubric | Full dimension coverage; findings not private chain of thought | Approval eligibility |
+| DesignCritique.assessments / critical_findings / rubric states | Independent Sol critic | Repair selection, approval gate and evaluation rubric | Compact full coverage; decision-relevant rationale only, never private chain of thought | Approval eligibility |
+| scope.status / confirmation_required / confirmed | Independent critic + explicit user approval | Approval gate and audit | Pending is distinct from narrowed; material changes are revision-specific and never LLM-confirmed | No stable design while pending/unconfirmed |
+| critic completion envelope | Provider adapter/coordinator | Recovery gate and audit | Only COMPLETE accepted; token-limit incompleteness gets at most one critic-only recovery | Critique/approval |
 | repair replacements / findings | One Astra targeted repair | Decision validator, private audit | Only defective IDs; unchanged alternatives retained; original criticism stays authoritative | No self-certification |
 | prompt_records / fingerprints | Coordinator | Reproduction and snapshot compatibility | Version, model, schema, parameters, roles, hash | Changed config blocks stale input reuse |
 | approval:SCIENTIFIC_DESIGN | Authenticated user after checks | approvedDesignForCurrentJob -> scientific-plan-generation | Owner, exact intake/evidence hash and academic level | Explicit changed-input revision only |
@@ -33,7 +35,7 @@ G2 immutable inputs and B4 persistent jobs/cost controls remain authoritative.
 Private `BlueprintJobStage` checkpoints contain `SCIENTIFIC_DECISION`,
 `DESIGN_SELECTOR_0`, `DESIGN_CRITIC_0`, optional `DESIGN_REPAIR_1`, and approval.
 Heavy original documents stay at their existing artifact references. No DB migration.
-Historical v1 payloads remain readable; new input policy hashes reference current prompts
+Historical v1/v2 payloads remain readable or deterministically migrated; new input policy hashes reference current prompts
 and require explicit revision before replay with incompatible configuration.
 
 ## Calls and boundaries
@@ -42,7 +44,9 @@ and require explicit revision before replay with incompatible configuration.
 | --- | --- | --- | --- |
 | scientific-design-selector v3 (active) | gpt-6-astra / high | 12288 | Strict scientificDecisionV2Schema -> critic; normally one concise alternative |
 | scientific-design-selector v2 (evaluation history) | gpt-6-astra / high | 8192 | First geospatial response; incomplete, recovered once |
-| scientific-design-critic v2 | gpt-5.6-sol / high | 4096 | Strict designCritiqueSchema -> approval/repair |
+| scientific-design-critic v3 (active) | gpt-5.6-sol / high | 8192 | Compact strict designCritiqueSchema -> approval/repair; incomplete output cannot pass |
+| scientific-design-critic-recovery v1 | gpt-5.6-sol / high | 8192 | One INCOMPLETE_TOKEN_LIMIT response -> complete critic only; selector is immutable |
+| scientific-design-critic v2 (evaluation history) | gpt-5.6-sol / high | 4096 | Qualitative G1 response ended incomplete after 3865 reasoning tokens |
 | scientific-design-repair v1 | gpt-6-astra / high | 8192 | Strict designRepairSchema -> deterministic validation, existing critique retained |
 | scientific-design-output-repair v1 | gpt-6-astra / high | 12288 | One incomplete selector response -> complete scientificDecisionV2Schema -> first independent critic |
 
