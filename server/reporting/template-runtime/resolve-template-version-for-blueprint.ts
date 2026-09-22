@@ -3,7 +3,7 @@ import { extractSearchTerms, normalizeTitle } from "@/lib/text";
 
 type BlueprintTemplateResolutionInput = {
   projectTemplateKey: string;
-  projectUniversity: string;
+  projectUniversity: string | null;
   projectDegreeLevel: string;
   projectProgram: string;
 };

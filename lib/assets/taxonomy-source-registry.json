@@ -1,5 +1,5 @@
 {
-  "assetVersion": "2026-04-20",
+  "assetVersion": "2026-09-21",
   "product": "Ingeniometrix",
   "purpose": "Authoritative source registry for knowledge taxonomies, reference typing, review status, and keyword enrichment.",
   "downloadPolicy": {
@@ -18,7 +18,7 @@
       "authorityLevel": "primary",
       "version": "2015",
       "machineReadable": false,
-      "sourcePageUrl": "https://www.oecd.org/finance/frascati-manual-2015-9789264239012-en.htm",
+      "sourcePageUrl": "https://www.oecd.org/en/about/projects/frascati-manual-development.html",
       "downloadTargets": [
         {
           "id": "manual-pdf",
@@ -29,10 +29,12 @@
           "format": "pdf"
         }
       ],
-      "licenseOrRights": "OECD copyright",
+      "licenseOrRights": "OECD Terms and Conditions for written content published before 1 July 2024; use, distribution and adaptation permitted with attribution. Commercial translation requires separate authorization.",
       "notes": [
         "Treat FORD as canonical for research fields.",
-        "No separate official CSV or RDF table was verified; seed from the official manual."
+        "No separate official CSV or RDF table was verified; seed from Table 2.2 of the official manual.",
+        "Spanish labels and Latin American aliases are an Ingeniometrix adaptation; original English labels remain stored and authoritative.",
+        "Local extensions use explicit LATAM codes and never masquerade as official OECD subcodes."
       ]
     },
     {

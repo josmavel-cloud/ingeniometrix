@@ -20,9 +20,10 @@ const copy = {
     emptyBody:
       "Empieza con una idea. Ingeniometrix te ayudara a definirla, contrastarla con evidencia y convertirla en un plan revisable.",
     createFirst: "Crear primer proyecto",
-    step1: ["Paso 1", "Define contexto", "Elige universidad, nivel, area e interes para entrar con mejor punto de partida."],
-    step2: ["Paso 2", "Elige una base sugerida", "Ingeniometrix te propone temas iniciales del catalogo segun ese contexto."],
-    step3: ["Paso 3", "Contrasta y construye", "Selecciona evidencia trazable y genera un plan para revision academica."],
+    step1: ["Paso 1", "Idea", "Parte de una idea propia o genera propuestas compatibles con tu nivel, área y contexto."],
+    step2: ["Paso 2", "Define tu investigación", "Delimita problema, unidad de análisis, alcance y metodología sin perder tu borrador."],
+    step3: ["Paso 3", "Evidencia", "Busca y selecciona fuentes trazables para sostener el plan."],
+    step4: ["Paso 4", "Plan de tesis", "Genera una versión inmutable y descarga sus documentos cuando estén listos."],
     nextStep: "Siguiente paso",
   },
   en: {
@@ -37,9 +38,10 @@ const copy = {
     emptyBody:
       "The MVP now starts with context and suggestions. Create an initial base in seconds, then enter the workspace to refine the intake and move toward sources and blueprint.",
     createFirst: "Create first project",
-    step1: ["Step 1", "Define context", "Choose university, degree, area, and interest to start from a better base."],
+    step1: ["Step 1", "Idea", "Start from your own idea or proposals compatible with your level, field, and context."],
     step2: ["Step 2", "Choose a suggested base", "Ingeniometrix proposes initial catalog topics from that context."],
     step3: ["Step 3", "Refine and validate", "Adjust the intake, select traceable sources, and generate a blueprint for academic review."],
+    step4: ["Step 4", "Thesis plan", "Generate an immutable version and download its documents when ready."],
     nextStep: "Next step",
   },
 };
@@ -55,7 +57,6 @@ export default async function ProjectsPage() {
     return {
       id: project.id,
       title: project.title,
-      university: project.university,
       program: project.program,
       status: project.status,
       updatedAt: project.updatedAt.toISOString(),
@@ -126,7 +127,7 @@ export default async function ProjectsPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-4">
               <article className="rounded-[28px] p-5 brand-card-lilac">
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
                   {t.step1[0]}
@@ -161,6 +162,12 @@ export default async function ProjectsPage() {
                 <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
                   {t.step3[2]}
                 </p>
+              </article>
+
+              <article className="rounded-[28px] p-5 brand-card-blush">
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">{t.step4[0]}</p>
+                <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">{t.step4[1]}</p>
+                <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">{t.step4[2]}</p>
               </article>
             </div>
           </div>

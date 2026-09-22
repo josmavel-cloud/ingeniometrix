@@ -1,11 +1,10 @@
-import { TOPIC_SUGGESTION_GENERATOR_1_PROMPT } from "@/server/mvp/prompts/topic-suggestion-generator.v1";
+import { TOPIC_SUGGESTION_GENERATOR_2_PROMPT } from "@/server/mvp/prompts/topic-suggestion-generator.v2";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import topicSuggestionSchema from "@/ai/schemas/topic-suggestion.schema.json";
 import { getConfiguredLlmProvider } from "@/llm";
 
 type TopicSuggestionGeneratorInput = {
-  university: string;
-  universityContext: string;
+  country: string;
   degreeLevel: string;
   program: string;
   areaLabel: string | null;
@@ -40,9 +39,18 @@ export async function generateTopicSuggestionsInRealTime(
       : "Sin hints taxonomicos claros";
 
   const response = await provider.generateStructuredObject<TopicSuggestionBatch>({
-    prompt: renderVersionedPrompt(TOPIC_SUGGESTION_GENERATOR_1_PROMPT, { var_0: (input.university), var_1: (input.universityContext), var_2: (input.degreeLevel), var_3: (input.program), var_4: (input.areaLabel ?? "No especificada"), var_5: (input.seedText), var_6: (taxonomyHints) }).trim(),
+    model: process.env.IMX_IDEA_MODEL?.trim() || process.env.LLM_DEFAULT_MODEL?.trim() || "gpt-5.4",
+    maxOutputTokens: 3200,
+    prompt: renderVersionedPrompt(TOPIC_SUGGESTION_GENERATOR_2_PROMPT, {
+      var_0: input.degreeLevel,
+      var_1: input.country,
+      var_2: input.program,
+      var_3: input.areaLabel ?? "No especificada",
+      var_4: input.seedText,
+      var_5: taxonomyHints,
+    }).trim(),
     schemaName: "topic_suggestion_batch",
-    trackingAttribution: { promptVersion: TOPIC_SUGGESTION_GENERATOR_1_PROMPT.version },
+    trackingAttribution: { promptVersion: TOPIC_SUGGESTION_GENERATOR_2_PROMPT.version },
     schema: topicSuggestionSchema as Record<string, unknown>,
   });
 

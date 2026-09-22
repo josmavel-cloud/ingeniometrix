@@ -91,6 +91,8 @@ async function upsertScheme(input) {
       version: input.version ?? null,
       uri: input.uri ?? null,
       description: input.description ?? null,
+      sourceJson: input.source ?? undefined,
+      isActive: true,
     },
     create: {
       code: input.code,
@@ -98,6 +100,8 @@ async function upsertScheme(input) {
       version: input.version ?? null,
       uri: input.uri ?? null,
       description: input.description ?? null,
+      sourceJson: input.source ?? undefined,
+      isActive: true,
     },
   });
 }
@@ -110,8 +114,18 @@ async function upsertConcept({
   prefLabel,
   altLabels,
   definition,
+  labelEs,
+  source,
+  isActive = true,
   lang = "en",
 }) {
+  const aliases = [...new Set(altLabels.filter(Boolean))];
+  const normalizedSearchText = [conceptCode, prefLabel, labelEs, ...aliases]
+    .filter(Boolean)
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
   return prisma.taxonomyConcept.upsert({
     where: {
       schemeId_conceptCode: {
@@ -123,8 +137,13 @@ async function upsertConcept({
       parentId: parentId ?? null,
       conceptUri: conceptUri ?? null,
       prefLabel,
-      altLabelsJson: altLabels.length > 0 ? altLabels : null,
+      altLabelsJson: aliases.length > 0 ? aliases : null,
+      labelOriginal: prefLabel,
+      labelEs: labelEs ?? prefLabel,
+      normalizedSearchText,
       definition: definition ?? null,
+      sourceJson: source ?? undefined,
+      isActive,
       lang,
     },
     create: {
@@ -133,8 +152,13 @@ async function upsertConcept({
       conceptCode,
       conceptUri: conceptUri ?? null,
       prefLabel,
-      altLabelsJson: altLabels.length > 0 ? altLabels : null,
+      altLabelsJson: aliases.length > 0 ? aliases : null,
+      labelOriginal: prefLabel,
+      labelEs: labelEs ?? prefLabel,
+      normalizedSearchText,
       definition: definition ?? null,
+      sourceJson: source ?? undefined,
+      isActive,
       lang,
     },
   });
@@ -145,31 +169,28 @@ async function seedFord() {
   const scheme = await upsertScheme(ford.scheme);
   let conceptCount = 0;
 
-  for (const broad of ford.concepts) {
-    const broadConcept = await upsertConcept({
-      schemeId: scheme.id,
-      parentId: null,
-      conceptCode: broad.conceptCode,
-      conceptUri: `${ford.scheme.uri}#${broad.conceptCode}`,
-      prefLabel: broad.prefLabel,
-      altLabels: [],
-      definition: null,
-    });
-    conceptCount += 1;
-
-    for (const subfield of broad.children ?? []) {
-      await upsertConcept({
+  async function walk(concepts, parentId = null) {
+    for (const concept of concepts) {
+      const saved = await upsertConcept({
         schemeId: scheme.id,
-        parentId: broadConcept.id,
-        conceptCode: subfield.conceptCode,
-        conceptUri: `${ford.scheme.uri}#${subfield.conceptCode}`,
-        prefLabel: subfield.prefLabel,
-        altLabels: [],
+        parentId,
+        conceptCode: concept.conceptCode,
+        conceptUri: `${ford.scheme.uri}#${concept.conceptCode}`,
+        prefLabel: concept.prefLabel,
+        labelEs: concept.labelEs,
+        altLabels: concept.aliases ?? [],
         definition: null,
+        source: {
+          taxonomy: "OECD FORD 2015",
+          localExtension: Boolean(concept.localExtension),
+          sourceCode: concept.localExtension ? null : concept.conceptCode,
+        },
       });
       conceptCount += 1;
+      await walk(concept.children ?? [], saved.id);
     }
   }
+  await walk(ford.concepts);
 
   return {
     scheme: ford.scheme.code,

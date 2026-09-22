@@ -421,7 +421,7 @@ export async function runMvpThesisPlanBlueprint(input: { userId: string; project
       title: project.title,
       program: project.program,
       degree_level: project.degreeLevel,
-      university: project.university,
+      university: project.university ?? "",
       country: project.country,
       language: project.language,
       topic: project.intake.topic,

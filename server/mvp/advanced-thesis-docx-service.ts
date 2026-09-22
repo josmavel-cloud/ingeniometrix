@@ -295,7 +295,7 @@ function renderCover(input: { project: ProjectWithData; coverPath: string }) {
         new ImageRun({ type: "png", data: image, transformation: { width: 390, height: 520 } }),
       ],
     }),
-    new Paragraph({ alignment: AlignmentType.CENTER, children: [textRun(project.university, { bold: true })] }),
+    ...(project.university ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [textRun(project.university, { bold: true })] })] : []),
     new Paragraph({ alignment: AlignmentType.CENTER, children: [textRun(project.program)] }),
     new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: twip(16), after: twip(8) }, children: [textRun(clean(intake.topic), { bold: true, size: pt(14) })] }),
     new Paragraph({ alignment: AlignmentType.CENTER, children: [textRun("Plan de tesis institucional para revision academica — entregable único Ingeniometrix", { italics: true })] }),

@@ -22,6 +22,9 @@ type BlueprintVersionListItem = {
   createdAt: string;
   blueprintJson: Record<string, unknown>;
   coherenceReportJson: Record<string, unknown>;
+  originatingDraftRevision: number | null;
+  publicationStatus: string;
+  userLabel: string | null;
 };
 
 type BlueprintUiError = {
@@ -37,6 +40,8 @@ type BlueprintPanelProps = {
   selectedReferenceCount: number;
   versions: BlueprintVersionListItem[];
   language: SupportedLanguage;
+  activeVersionId: string | null;
+  draftRevision: number;
 };
 
 type CoherenceCheck = {
@@ -140,6 +145,8 @@ export function BlueprintPanel({
   selectedReferenceCount,
   versions,
   language,
+  activeVersionId,
+  draftRevision,
 }: BlueprintPanelProps) {
   const router = useRouter();
   const copy = getProjectUiCopy(language).blueprint;
@@ -150,7 +157,7 @@ export function BlueprintPanel({
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const latestVersion = versions[0] ?? null;
+  const latestVersion = versions.find((version) => version.id === activeVersionId) ?? versions[0] ?? null;
   const latestBlueprintDocxUrl = latestVersion
     ? `/api/projects/${projectId}/blueprints/${latestVersion.id}/docx`
     : null;
@@ -414,6 +421,21 @@ export function BlueprintPanel({
     });
   }
 
+  function selectVersion(versionId: string) {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch(`/api/projects/${projectId}/blueprints/${versionId}`, {
+        method: "PATCH",
+      });
+      const payload = (await readJsonPayload(response)) as { error?: string };
+      if (!response.ok) {
+        setError({ message: payload.error ?? "No se pudo seleccionar esta versión." });
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
       {(progress?.jobStatus === "WAITING_USER_DECISION" || progress?.jobStatus === "FAILED") && progress.jobId && <ScientificDesignApproval projectId={projectId} jobId={progress.jobId} onApproved={() => { setProgress({ ...progress, jobStatus: "WAITING_NEXT_STAGE", label: "Continuando con tu decisión" }); router.refresh(); }} />}
@@ -506,7 +528,7 @@ export function BlueprintPanel({
         {error ? (
           <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
             <p className="font-semibold">
-              {error.code ? `${error.code}: ` : ""}{error.message}
+              {error.message}
             </p>
             {error.nextAction ? (
               <p className="mt-2 leading-6">{error.nextAction}</p>
@@ -559,7 +581,34 @@ export function BlueprintPanel({
             <p className="mt-2 text-sm leading-6 text-slate-500">
               {copy.generatedAt} {new Date(latestVersion.createdAt).toLocaleString(locale)}
             </p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Borrador congelado: revisión {latestVersion.originatingDraftRevision ?? "histórica"}. Borrador actual: revisión {draftRevision}.
+            </p>
           </div>
+
+          {versions.length > 1 ? (
+            <section className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Historial de planes</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {versions.map((version) => {
+                  const active = version.id === latestVersion.id;
+                  return (
+                    <button
+                      className={`rounded-2xl border p-3 text-left text-sm ${active ? "border-[var(--color-plum)] bg-[rgba(219,193,255,0.18)]" : "border-slate-200 bg-slate-50"}`}
+                      disabled={active || isPending}
+                      key={version.id}
+                      onClick={() => selectVersion(version.id)}
+                      type="button"
+                    >
+                      <span className="font-semibold">{version.userLabel?.trim() || `Plan ${version.versionNumber}`}</span>
+                      <span className="mt-1 block text-xs text-slate-500">Revisión {version.originatingDraftRevision ?? "histórica"} · {new Date(version.createdAt).toLocaleDateString(locale)}</span>
+                      <span className="mt-1 block text-xs font-semibold text-[var(--color-plum)]">{active ? "Versión actual" : "Ver esta versión"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           {(blueprint?.general_objective || (blueprint?.specific_objectives ?? []).length > 0) ? (
             <div className="rounded-[24px] border border-slate-200 bg-white p-5">
@@ -654,9 +703,6 @@ export function BlueprintPanel({
                           {item.authors} {item.year ? `| ${item.year}` : ""}
                         </p>
                       </div>
-                      <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        {item.reference_id}
-                      </span>
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-700">{item.summary}</p>
                     <p className="mt-3 text-sm leading-6 text-slate-700">
@@ -696,9 +742,7 @@ export function BlueprintPanel({
                 </p>
                 <ul className="mt-3 grid gap-3 text-sm leading-7 text-slate-700">
                   {(blueprint?.references_used ?? []).map((reference) => (
-                    <li key={reference.reference_id}>
-                      <strong>{reference.reference_id}</strong>: {reference.title}
-                    </li>
+                    <li key={reference.reference_id}>{reference.title}</li>
                   ))}
                 </ul>
               </div>

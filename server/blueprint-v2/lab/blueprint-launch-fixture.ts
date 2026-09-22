@@ -442,6 +442,7 @@ export async function loadBlueprintLaunchLatestFixtureSet(): Promise<LoadedMaste
     topicAreaId: null,
     topicAreaLabel: savedIntake.projectContext.knowledgeAreaLabel ?? "Laboratorio blueprint-launch",
     selectedTopicSuggestionId: null,
+    activeBlueprintVersionId: null,
     createdAt: timestamp,
     updatedAt: timestamp,
     intake: {
@@ -455,6 +456,9 @@ export async function loadBlueprintLaunchLatestFixtureSet(): Promise<LoadedMaste
       availableData: savedIntake.intake.availableData ?? null,
       preferredMethodology: savedIntake.intake.preferredMethodology ?? null,
       advisorNotes: savedIntake.intake.advisorNotes ?? null,
+      researchScope: null,
+      constructs: null,
+      pendingDecisions: null,
       searchQuery: intakeSearchQuery,
       createdAt: timestamp,
       updatedAt: timestamp,

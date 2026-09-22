@@ -12,6 +12,7 @@ export const PROJECT_DEGREE_LEVEL_OPTIONS: Array<{
   { value: "ESPECIALIZACION", label: "Especializacion" },
   { value: "MAESTRIA", label: "Maestria" },
   { value: "DOCTORADO", label: "Doctorado" },
+  { value: "PROYECTO_INVESTIGACION", label: "Proyecto de investigacion" },
 ];
 
 export function getDegreeLevelLabel(degreeLevel: DegreeLevel) {
@@ -24,6 +25,8 @@ export function getDegreeLevelLabel(degreeLevel: DegreeLevel) {
       return "Maestria";
     case "DOCTORADO":
       return "Doctorado";
+    case "PROYECTO_INVESTIGACION":
+      return "Proyecto de investigacion";
     case "POSGRADO":
     default:
       return "Posgrado";
@@ -47,6 +50,8 @@ export function getDegreeLevelLabelForLanguage(
       return "Master's";
     case "DOCTORADO":
       return "Doctorate";
+    case "PROYECTO_INVESTIGACION":
+      return "Research project";
     case "POSGRADO":
     default:
       return "Graduate";
@@ -73,6 +78,8 @@ export function getGenericProgramDefault(degreeLevel: DegreeLevel) {
       return "Programa de maestria";
     case "DOCTORADO":
       return "Programa de doctorado";
+    case "PROYECTO_INVESTIGACION":
+      return "Proyecto de investigacion";
     case "POSGRADO":
     default:
       return "Programa de posgrado";

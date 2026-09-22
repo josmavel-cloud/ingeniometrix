@@ -1,4 +1,4 @@
-import { QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT } from "@/server/mvp/prompts/quick-idea-draft-generator.v1";
+import { QUICK_IDEA_DRAFT_GENERATOR_2_PROMPT } from "@/server/mvp/prompts/quick-idea-draft-generator.v2";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import ideaDraftBundleSchema from "@/ai/schemas/idea-draft-bundle.schema.json";
 import { getLanguageInstruction, normalizeLanguageCode } from "@/lib/language";
@@ -7,16 +7,22 @@ import { getConfiguredLlmProvider } from "@/llm";
 type IdeaDraft = {
   title: string;
   rationale: string;
+  problem: string;
+  objectOrPopulation: string;
+  context: string;
+  scientificApproach: string;
+  feasibility: string;
+  recentActivitySignal: string;
+  missingDecisions: string[];
 };
 
 type QuickIdeaDraftGeneratorInput = {
-  university: string;
-  universityContext: string;
   degreeLevel: string;
-  program: string;
+  country: string;
   language?: string | null;
   areaLabel: string | null;
   seedText: string;
+  mode: "PROPOSE" | "REFINE";
   existingTitles: string[];
 };
 
@@ -36,10 +42,22 @@ export async function generateQuickIdeaDraft(
       : "- Sin ideas previas generadas";
 
   return provider.generateStructuredObject<IdeaDraftBundle>({
-    model: process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini",
-    prompt: renderVersionedPrompt(QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT, { var_0: (getLanguageInstruction(language)), var_1: (input.university), var_2: (input.universityContext), var_3: (input.degreeLevel), var_4: (input.program), var_5: (input.areaLabel ?? "No especificada"), var_6: (input.seedText), var_7: (existingIdeas) }).trim(),
+    model:
+      process.env.IMX_IDEA_MODEL?.trim() ||
+      process.env.LLM_DEFAULT_MODEL?.trim() ||
+      "gpt-5.4",
+    prompt: renderVersionedPrompt(QUICK_IDEA_DRAFT_GENERATOR_2_PROMPT, {
+      var_0: getLanguageInstruction(language),
+      var_1: input.mode,
+      var_2: input.degreeLevel,
+      var_3: input.country,
+      var_4: input.areaLabel ?? "No especificada",
+      var_5: input.seedText.trim() || "Sin intencion previa; proponer opciones",
+      var_6: existingIdeas,
+    }).trim(),
     schemaName: "idea_draft_bundle",
-    trackingAttribution: { promptVersion: QUICK_IDEA_DRAFT_GENERATOR_1_PROMPT.version },
+    maxOutputTokens: 2600,
+    trackingAttribution: { promptVersion: QUICK_IDEA_DRAFT_GENERATOR_2_PROMPT.version },
     schema: ideaDraftBundleSchema as Record<string, unknown>,
   });
 }

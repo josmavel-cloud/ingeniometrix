@@ -4,10 +4,6 @@ import {
   type ProjectPreset,
   type ProjectPresetDegreeLevel,
 } from "@/lib/project-presets";
-import type {
-  ProjectTemplateKey,
-  ProjectUniversityCode,
-} from "@/lib/peru-universities";
 
 export type TopicSuggestionTone = "lilac" | "gold" | "mint" | "blush";
 
@@ -93,8 +89,6 @@ export function getTopicAreaLabel(areaId: string | null | undefined) {
 export function buildProjectPresetSuggestionEntries(params: {
   areaId?: string | null;
   degreeLevel: ProjectPresetDegreeLevel;
-  university: ProjectUniversityCode;
-  templateKey: ProjectTemplateKey;
   interestText: string;
   limit?: number;
 }) {

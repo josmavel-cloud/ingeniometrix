@@ -17,7 +17,8 @@ export type ResearchBlueprintCoreDraft = {
     | "POSGRADO"
     | "ESPECIALIZACION"
     | "MAESTRIA"
-    | "DOCTORADO";
+    | "DOCTORADO"
+    | "PROYECTO_INVESTIGACION";
   university: string;
   program: string;
   research_line: string;
@@ -334,7 +335,7 @@ export function normalizeBlueprintDraft(
     project_title: normalizeText(input.draft.project_title, input.project.title),
     template_key: normalizeText(input.draft.template_key, input.project.templateKey),
     degree_level: input.project.degreeLevel,
-    university: normalizeText(input.draft.university, input.project.university),
+    university: normalizeText(input.draft.university, input.project.university ?? ""),
     program: normalizeText(input.draft.program, input.project.program),
     research_line: normalizeText(
       input.draft.research_line,

@@ -26,6 +26,23 @@ enum DegreeLevel {
   ESPECIALIZACION
   MAESTRIA
   DOCTORADO
+  PROYECTO_INVESTIGACION
+}
+
+enum AcademicFieldResolutionStatus {
+  CANONICAL
+  CUSTOM_UNRESOLVED
+}
+
+enum PlanPublicationStatus {
+  PUBLISHED
+  SUPERSEDED
+}
+
+enum PlanSourceDispositionStatus {
+  USED
+  CONSIDERED_NOT_USED
+  REJECTED_AFTER_INSPECTION
 }
 
 enum University {
@@ -233,42 +250,42 @@ model User {
 
 // Pre-generation business spend. Customer credits remain a separate ledger.
 model PaidOperation {
-  id                String    @id @default(uuid())
-  userId            String
-  projectId         String?
-  draftId           String?
-  revision          String
-  requestId         String
-  purpose           String
-  inputFingerprint  String
-  status            String    @default("RUNNING")
-  hardCapMicros     Int
-  committedMicros   Int       @default(0)
-  boundBreached     Boolean   @default(false)
-  resultJson        Json?
-  createdAt         DateTime  @default(now())
-  completedAt       DateTime?
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  calls             PaidOperationCall[]
+  id               String              @id @default(uuid())
+  userId           String
+  projectId        String?
+  draftId          String?
+  revision         String
+  requestId        String
+  purpose          String
+  inputFingerprint String
+  status           String              @default("RUNNING")
+  hardCapMicros    Int
+  committedMicros  Int                 @default(0)
+  boundBreached    Boolean             @default(false)
+  resultJson       Json?
+  createdAt        DateTime            @default(now())
+  completedAt      DateTime?
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calls            PaidOperationCall[]
 
   @@unique([userId, requestId])
   @@index([userId, createdAt])
 }
 
 model PaidOperationCall {
-  id                  String        @id @default(uuid())
-  operationId         String
-  purpose             String
-  model               String
-  actualModel         String?
-  reservedMicros      Int
-  estimatedMicros     Int?
-  status              String        @default("RESERVED")
-  usageJson           Json?
-  attributionJson     Json
-  createdAt           DateTime      @default(now())
-  completedAt         DateTime?
-  operation           PaidOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  operationId     String
+  purpose         String
+  model           String
+  actualModel     String?
+  reservedMicros  Int
+  estimatedMicros Int?
+  status          String        @default("RESERVED")
+  usageJson       Json?
+  attributionJson Json
+  createdAt       DateTime      @default(now())
+  completedAt     DateTime?
+  operation       PaidOperation @relation(fields: [operationId], references: [id], onDelete: Cascade)
 
   @@index([operationId, createdAt])
 }
@@ -307,7 +324,7 @@ model Project {
   country                   String                         @default("PE")
   language                  String                         @default("es")
   degreeLevel               DegreeLevel
-  university                University
+  university                University?
   program                   String
   templateKey               TemplateKey                    @default(GENERIC_POSGRADO_PE)
   topicOriginType           TopicOriginType                @default(CATALOG)
@@ -316,6 +333,7 @@ model Project {
   topicAreaId               String?
   topicAreaLabel            String?                        @db.Text
   selectedTopicSuggestionId String?
+  activeBlueprintVersionId  String?                        @unique
   createdAt                 DateTime                       @default(now())
   updatedAt                 DateTime                       @updatedAt
   user                      User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -335,6 +353,7 @@ model Project {
   knowledgeFields           ProjectKnowledgeField[]
   topicSuggestions          ProjectTopicSuggestion[]       @relation("ProjectTopicSuggestions")
   selectedTopicSuggestion   ProjectTopicSuggestion?        @relation("ProjectSelectedTopicSuggestion", fields: [selectedTopicSuggestionId], references: [id], onDelete: SetNull)
+  activeBlueprintVersion    BlueprintVersion?              @relation("ProjectActiveBlueprintVersion", fields: [activeBlueprintVersionId], references: [id], onDelete: SetNull)
 }
 
 model TopicAreaCatalogEntry {
@@ -361,6 +380,9 @@ model Intake {
   availableData        String?  @db.Text
   preferredMethodology String?  @db.Text
   advisorNotes         String?  @db.Text
+  researchScope        String?  @db.Text
+  constructs           String?  @db.Text
+  pendingDecisions     String?  @db.Text
   searchQuery          String?  @db.Text
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
@@ -369,15 +391,17 @@ model Intake {
 
 // Mutable workspace state. Generations consume immutable input snapshots, not this row.
 model ProjectDraft {
-  id                String   @id @default(uuid())
-  projectId         String   @unique
-  revision          Int      @default(1)
+  id                String    @id @default(uuid())
+  projectId         String    @unique
+  revision          Int       @default(1)
   confirmedRevision Int?
   contentJson       Json
   contentHash       String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  staleScopesJson   Json      @default("[]")
+  lastInvalidatedAt DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model Reference {
@@ -408,18 +432,19 @@ model Reference {
 }
 
 model ProjectReference {
-  id              String    @id @default(uuid())
-  projectId       String
-  referenceId     String
-  sourceProvider  Provider
-  relevanceScore  Float?
-  selected        Boolean   @default(false)
-  selectedOrder   Int?
-  selectionReason String?   @db.Text
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  project         Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  reference       Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  id               String                  @id @default(uuid())
+  projectId        String
+  referenceId      String
+  sourceProvider   Provider
+  relevanceScore   Float?
+  selected         Boolean                 @default(false)
+  selectedOrder    Int?
+  selectionReason  String?                 @db.Text
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  project          Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  reference        Reference               @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+  planDispositions PlanSourceDisposition[]
 
   @@unique([projectId, referenceId])
   @@index([projectId, relevanceScore])
@@ -427,7 +452,7 @@ model ProjectReference {
 }
 
 model BlueprintVersion {
-  id                             String              @id @default(uuid())
+  id                             String                   @id @default(uuid())
   projectId                      String
   versionNumber                  Int
   model                          String
@@ -436,41 +461,52 @@ model BlueprintVersion {
   selectedReferencesSnapshotJson Json
   blueprintJson                  Json
   coherenceReportJson            Json
-  exportStatus                   ExportStatus        @default(PENDING)
-  createdAt                      DateTime            @default(now())
-  project                        Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  exportStatus                   ExportStatus             @default(PENDING)
+  publicationStatus              PlanPublicationStatus    @default(PUBLISHED)
+  originatingDraftRevision       Int?
+  generationJobId                String?                  @unique
+  generationInputSnapshotId      String?                  @unique
+  userLabel                      String?                  @db.Text
+  generationManifestJson         Json?
+  createdAt                      DateTime                 @default(now())
+  project                        Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  activeForProject               Project?                 @relation("ProjectActiveBlueprintVersion")
+  generationJob                  BlueprintJob?            @relation(fields: [generationJobId], references: [id], onDelete: SetNull)
+  generationInputSnapshot        GenerationInputSnapshot? @relation(fields: [generationInputSnapshotId], references: [id], onDelete: SetNull)
   generatedArtifacts             GeneratedArtifact[]
+  sourceDispositions             PlanSourceDisposition[]
 
   @@unique([projectId, versionNumber])
 }
 
 model BlueprintJob {
-  id                 String              @id @default(uuid())
+  id                 String                    @id @default(uuid())
   projectId          String
   userId             String
-  status             BlueprintJobStatus  @default(QUEUED)
+  status             BlueprintJobStatus        @default(QUEUED)
   currentStage       String?
-  progress           Int                 @default(0)
-  language           String              @default("es")
-  runnerKind         String              @default("database-worker")
-  attempts           Int                 @default(0)
-  maxAttempts        Int                 @default(3)
+  progress           Int                       @default(0)
+  language           String                    @default("es")
+  runnerKind         String                    @default("database-worker")
+  attempts           Int                       @default(0)
+  maxAttempts        Int                       @default(3)
   nextAttemptAt      DateTime?
   lockedAt           DateTime?
   lastHeartbeatAt    DateTime?
   startedAt          DateTime?
   completedAt        DateTime?
-  errorMessage       String?             @db.Text
+  errorMessage       String?                   @db.Text
   errorJson          Json?
   metadataJson       Json?
   stageDataJson      Json?
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+  project            Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   stages             BlueprintJobStage[]
   inputSnapshots     GenerationInputSnapshot[]
   generatedArtifacts GeneratedArtifact[]
+  blueprintVersion   BlueprintVersion?
 
   @@index([projectId, status])
   @@index([userId, status])
@@ -499,15 +535,16 @@ model BlueprintJobStage {
 
 // Append-only inputs; revisions never overwrite what a previous plan consumed.
 model GenerationInputSnapshot {
-  id          String       @id @default(uuid())
-  jobId       String
-  revision    Int
-  draftId     String?
-  draftRevision Int?
-  contentHash String
-  payloadJson Json
-  createdAt   DateTime     @default(now())
-  job         BlueprintJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id               String            @id @default(uuid())
+  jobId            String
+  revision         Int
+  draftId          String?
+  draftRevision    Int?
+  contentHash      String
+  payloadJson      Json
+  createdAt        DateTime          @default(now())
+  job              BlueprintJob      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  blueprintVersion BlueprintVersion?
 
   @@unique([jobId, revision])
 }
@@ -728,15 +765,18 @@ model ProjectSourceAsset {
 }
 
 model TaxonomyScheme {
-  id          String            @id @default(uuid())
-  code        String            @unique
-  name        String
-  version     String?
-  uri         String?
-  description String?           @db.Text
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  concepts    TaxonomyConcept[]
+  id           String            @id @default(uuid())
+  code         String            @unique
+  name         String
+  version      String?
+  uri          String?
+  description  String?           @db.Text
+  sourceJson   Json?
+  isActive     Boolean           @default(true)
+  deprecatedAt DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  concepts     TaxonomyConcept[]
 }
 
 model TaxonomyConcept {
@@ -747,8 +787,14 @@ model TaxonomyConcept {
   conceptUri                  String?
   prefLabel                   String
   altLabelsJson               Json?
+  labelOriginal               String?
+  labelEs                     String?
+  normalizedSearchText        String?                   @db.Text
   definition                  String?                   @db.Text
   lang                        String                    @default("es")
+  sourceJson                  Json?
+  isActive                    Boolean                   @default(true)
+  deprecatedAt                DateTime?
   createdAt                   DateTime                  @default(now())
   updatedAt                   DateTime                  @updatedAt
   scheme                      TaxonomyScheme            @relation(fields: [schemeId], references: [id], onDelete: Cascade)
@@ -760,23 +806,51 @@ model TaxonomyConcept {
   primaryTopicSuggestions     ProjectTopicSuggestion[]  @relation("TopicSuggestionPrimaryConcept")
 
   @@unique([schemeId, conceptCode])
+  @@index([schemeId, isActive])
 }
 
 model ProjectKnowledgeField {
-  id           String               @id @default(uuid())
-  projectId    String
-  conceptId    String
-  isPrimary    Boolean              @default(false)
-  source       ClassificationSource
-  confidence   Float?
-  evidenceJson Json?
-  createdAt    DateTime             @default(now())
-  updatedAt    DateTime             @updatedAt
-  project      Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  concept      TaxonomyConcept      @relation(fields: [conceptId], references: [id], onDelete: Cascade)
+  id                       String                        @id @default(uuid())
+  projectId                String
+  conceptId                String?
+  isPrimary                Boolean                       @default(false)
+  source                   ClassificationSource
+  resolutionStatus         AcademicFieldResolutionStatus @default(CANONICAL)
+  submittedLabel           String?                       @db.Text
+  normalizedSubmittedLabel String?                       @db.Text
+  customLabel              String?                       @db.Text
+  matchedAlias             String?                       @db.Text
+  taxonomyCodeSnapshot     String?
+  taxonomyVersionSnapshot  String?
+  confidence               Float?
+  evidenceJson             Json?
+  createdAt                DateTime                      @default(now())
+  updatedAt                DateTime                      @updatedAt
+  project                  Project                       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  concept                  TaxonomyConcept?              @relation(fields: [conceptId], references: [id], onDelete: SetNull)
 
   @@unique([projectId, conceptId])
   @@index([projectId, isPrimary])
+  @@index([projectId, resolutionStatus])
+  @@index([normalizedSubmittedLabel])
+}
+
+model PlanSourceDisposition {
+  id                      String                      @id @default(uuid())
+  blueprintVersionId      String
+  projectReferenceId      String
+  status                  PlanSourceDispositionStatus
+  reason                  String?                     @db.Text
+  evidenceLevel           String?
+  relevanceDimensionsJson Json?
+  provenanceJson          Json?
+  createdAt               DateTime                    @default(now())
+  blueprintVersion        BlueprintVersion            @relation(fields: [blueprintVersionId], references: [id], onDelete: Cascade)
+  projectReference        ProjectReference            @relation(fields: [projectReferenceId], references: [id], onDelete: Cascade)
+
+  @@unique([blueprintVersionId, projectReferenceId])
+  @@index([blueprintVersionId, status])
+  @@index([projectReferenceId])
 }
 
 model ProjectTopicSuggestion {

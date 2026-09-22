@@ -191,14 +191,14 @@ const ES_COPY = {
     },
   },
   projectPage: {
-    description: "Avanza por cinco etapas claras, desde tu idea hasta el documento descargable.",
+    description: "Avanza por cuatro pasos claros, desde tu idea hasta el plan descargable.",
     missingTopicKicker: "Falta cerrar la etapa tema",
     missingTopicTitle: "Antes de continuar, elige la base tematica definitiva.",
     missingTopicBody:
       "Tu proyecto ya tiene una idea inicial, pero aun no selecciona un tema final. Cierra esa etapa y luego define la investigacion.",
     goToTopic: "Ir a etapa Tema",
     currentStatus: "Estado actual",
-    stageCounter: (stage: number) => `Etapa ${stage} de 5`,
+    stageCounter: (stage: number) => `Paso ${stage} de 4`,
     nextStep: "Siguiente paso",
     projectData: "Ver datos del proyecto",
     status: "Estado",
@@ -415,7 +415,7 @@ const ES_COPY = {
     completed: "Plan de tesis listo",
     progressDefault: "Generando plan de tesis",
     progressBody:
-      "Etapas reales del motor: contexto, antecedentes, redaccion, validacion y cierre.",
+      "Estamos organizando la evidencia, redactando el contenido y revisando su coherencia. Puedes salir y volver más tarde.",
     noVersionsTitle: "Aun no hay versiones generadas.",
     noVersionsBody:
       "Cuando generes el primer plan, aqui veras el objetivo general, la revision de coherencia y las referencias utilizadas.",

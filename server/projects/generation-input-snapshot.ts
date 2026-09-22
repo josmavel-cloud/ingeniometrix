@@ -11,7 +11,7 @@ import { APPROVED_SCIENTIFIC_PLAN_PROMPT } from "@/server/mvp/prompts/scientific
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { CONSISTENCY_MATRIX_PROMPT } from "@/server/mvp/prompts/consistency-matrix.v1";
 
-type FrozenInput = { id: string; jobId: string; project: Record<string, any>; inspection: { id: string; outputSnapshotJson: unknown } | null; draft: unknown; policies: unknown };
+type FrozenInput = { id: string; jobId: string; project: Record<string, any>; referenceCandidates?: unknown[]; sourceMaterializations?: unknown[]; inspection: { id: string; outputSnapshotJson: unknown } | null; draft: unknown; policies: unknown };
 const context = new AsyncLocalStorage<FrozenInput | null>();
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 function scientificRuntimePolicy() {
@@ -32,12 +32,19 @@ export function frozenProject<T extends { id: string; userId: string }>(live: T 
   return { ...live, ...project } as T;
 }
 export async function appendGenerationInput(tx: Prisma.TransactionClient, input: { jobId: string; projectId: string; userId: string; revision: number }) {
-  const project = await tx.project.findFirstOrThrow({ where: { id: input.projectId, userId: input.userId }, include: { intake: true, projectReferences: { where: { selected: true }, include: { reference: true }, orderBy: { id: "asc" } }, draft: true } });
+  const project = await tx.project.findFirstOrThrow({ where: { id: input.projectId, userId: input.userId }, include: { intake: true, projectReferences: { where: { selected: true }, include: { reference: true }, orderBy: { id: "asc" } }, knowledgeFields: { where: { isPrimary: true }, include: { concept: { include: { scheme: true } } } }, draft: true } });
   if (project.draft && project.draft.confirmedRevision !== project.draft.revision) throw new Error("DRAFT_CONFIRMATION_REQUIRED");
   const { draft, ...researchProject } = project;
   const inspection = await tx.mvpStepRun.findFirst({ where: { projectId: project.id, stepKey: MVP_SOURCE_INSPECTION_KEY, status: { in: ["COMPLETED", "PARTIALLY_COMPLETED"] } }, orderBy: { startedAt: "desc" }, select: { id: true, outputSnapshotJson: true } });
+  const referenceCandidates = await tx.projectReference.findMany({ where: { projectId: project.id }, include: { reference: true }, orderBy: [{ selected: "desc" }, { selectedOrder: "asc" }, { relevanceScore: "desc" }, { id: "asc" }] });
+  const sourceMaterializations = await tx.projectSourceMaterialization.findMany({ where: { projectId: project.id }, select: { id: true, sourceId: true, referenceId: true, materializationType: true, status: true, metricsJson: true, artifactsJson: true, createdAt: true }, orderBy: { createdAt: "asc" } });
+  const uploadedDocuments = await tx.generatedArtifact.findMany({
+    where: { projectId: project.id, kind: "SOURCE_PDF" },
+    select: { id: true, fileName: true, mimeType: true, byteSize: true, sha256: true, metadataJson: true, createdAt: true },
+    orderBy: { createdAt: "asc" },
+  });
   const policies = scientificRuntimePolicy();
-  const payload = { version: "generation-input.v1", project: researchProject, inspection, draft: draft?.contentJson ?? null, policies };
+  const payload = { version: "generation-input.v2", project: researchProject, referenceCandidates, sourceMaterializations, uploadedDocuments, inspection, draft: draft?.contentJson ?? null, policies, userApprovals: { draftConfirmedRevision: draft?.confirmedRevision ?? null } };
   const snapshot = await tx.generationInputSnapshot.create({ data: { jobId: input.jobId, revision: input.revision, draftId: draft?.id, draftRevision: draft?.revision, payloadJson: json(payload), contentHash: fingerprint(payload) } });
   return { snapshot, project: researchProject };
 }

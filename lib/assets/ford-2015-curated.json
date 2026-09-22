@@ -1,88 +1,95 @@
 {
   "scheme": {
     "code": "FORD-2015",
-    "name": "Fields of Research and Development (FORD)",
-    "version": "2015",
-    "uri": "https://unstats.un.org/unsd/classifications/Family/Detail/1039",
-    "description": "Curated local seed based on OECD Frascati Manual 2015 and UNSD classification detail."
+    "name": "OECD Fields of Research and Development (FORD)",
+    "version": "2015-table-2.2-es-latam-v1",
+    "uri": "https://www.oecd.org/content/dam/oecd/en/publications/reports/2015/10/frascati-manual-2015_g1g57dcb/9789264239012-en.pdf",
+    "description": "Adaptacion localizada al espanol de la clasificacion FORD de la Tabla 2.2 del Manual de Frascati 2015. Las etiquetas originales se preservan y las extensiones latinoamericanas se marcan expresamente.",
+    "source": {
+      "publisher": "OECD",
+      "title": "Frascati Manual 2015: Guidelines for Collecting and Reporting Data on Research and Experimental Development",
+      "table": "2.2 Fields of R&D classification",
+      "year": 2015,
+      "accessed": "2026-09-21",
+      "rights": "OECD Terms and Conditions; attribution required",
+      "adaptationDisclaimer": "Adaptacion de una obra original de la OECD. La OECD no ha aprobado ni respaldado esta adaptacion. En caso de discrepancia, prevalece la obra original en ingles."
+    }
   },
   "concepts": [
     {
-      "conceptCode": "1",
-      "prefLabel": "Natural sciences",
+      "conceptCode": "1", "prefLabel": "Natural sciences", "labelEs": "Ciencias naturales", "aliases": ["ciencia natural"],
       "children": [
-        { "conceptCode": "1.1", "prefLabel": "Mathematics" },
-        { "conceptCode": "1.2", "prefLabel": "Computer and information sciences" },
-        { "conceptCode": "1.3", "prefLabel": "Physical sciences" },
-        { "conceptCode": "1.4", "prefLabel": "Chemical sciences" },
-        { "conceptCode": "1.5", "prefLabel": "Earth and related environmental sciences" },
-        { "conceptCode": "1.6", "prefLabel": "Biological sciences" },
-        { "conceptCode": "1.7", "prefLabel": "Other natural sciences" }
+        { "conceptCode": "1.1", "prefLabel": "Mathematics", "labelEs": "Matematicas", "aliases": ["matematica", "ciencias matematicas"] },
+        { "conceptCode": "1.2", "prefLabel": "Computer and information sciences", "labelEs": "Computacion y ciencias de la informacion", "aliases": ["computacion", "informatica", "ingenieria de sistemas", "sistemas", "ciencias de la computacion", "tecnologias de informacion"] },
+        { "conceptCode": "1.3", "prefLabel": "Physical sciences", "labelEs": "Ciencias fisicas", "aliases": ["fisica"] },
+        { "conceptCode": "1.4", "prefLabel": "Chemical sciences", "labelEs": "Ciencias quimicas", "aliases": ["quimica"] },
+        { "conceptCode": "1.5", "prefLabel": "Earth and related environmental sciences", "labelEs": "Ciencias de la Tierra y ciencias ambientales relacionadas", "aliases": ["geologia", "geociencias", "ciencias ambientales"] },
+        { "conceptCode": "1.6", "prefLabel": "Biological sciences", "labelEs": "Ciencias biologicas", "aliases": ["biologia"] },
+        { "conceptCode": "1.7", "prefLabel": "Other natural sciences", "labelEs": "Otras ciencias naturales", "aliases": [] }
       ]
     },
     {
-      "conceptCode": "2",
-      "prefLabel": "Engineering and technology",
+      "conceptCode": "2", "prefLabel": "Engineering and technology", "labelEs": "Ingenieria y tecnologia", "aliases": ["ingenierias", "tecnologia"],
       "children": [
-        { "conceptCode": "2.1", "prefLabel": "Civil engineering" },
-        { "conceptCode": "2.2", "prefLabel": "Electrical engineering, electronic engineering, information engineering" },
-        { "conceptCode": "2.3", "prefLabel": "Mechanical engineering" },
-        { "conceptCode": "2.4", "prefLabel": "Chemical engineering" },
-        { "conceptCode": "2.5", "prefLabel": "Materials engineering" },
-        { "conceptCode": "2.6", "prefLabel": "Medical engineering" },
-        { "conceptCode": "2.7", "prefLabel": "Environmental engineering" },
-        { "conceptCode": "2.8", "prefLabel": "Environmental biotechnology" },
-        { "conceptCode": "2.9", "prefLabel": "Industrial biotechnology" },
-        { "conceptCode": "2.10", "prefLabel": "Nano-technology" },
-        { "conceptCode": "2.11", "prefLabel": "Other engineering and technologies" }
+        { "conceptCode": "2.1", "prefLabel": "Civil engineering", "labelEs": "Ingenieria civil", "aliases": ["civil", "estructuras", "ingenieria estructural", "construccion", "transportes", "hidraulica"], "children": [
+          { "conceptCode": "2.1-LATAM-ARCH", "prefLabel": "Architecture and built environment", "labelEs": "Arquitectura y entorno construido", "aliases": ["arquitectura", "urbanismo", "diseno arquitectonico"], "localExtension": true }
+        ] },
+        { "conceptCode": "2.2", "prefLabel": "Electrical engineering, electronic engineering, information engineering", "labelEs": "Ingenieria electrica, electronica y de la informacion", "aliases": ["ingenieria electrica", "ingenieria electronica", "telecomunicaciones", "mecatronica"] },
+        { "conceptCode": "2.3", "prefLabel": "Mechanical engineering", "labelEs": "Ingenieria mecanica", "aliases": ["mecanica", "ingenieria mecanica electrica"] },
+        { "conceptCode": "2.4", "prefLabel": "Chemical engineering", "labelEs": "Ingenieria quimica", "aliases": [] },
+        { "conceptCode": "2.5", "prefLabel": "Materials engineering", "labelEs": "Ingenieria de materiales", "aliases": ["materiales", "metalurgia"] },
+        { "conceptCode": "2.6", "prefLabel": "Medical engineering", "labelEs": "Ingenieria medica", "aliases": ["ingenieria biomedica", "biomedica"] },
+        { "conceptCode": "2.7", "prefLabel": "Environmental engineering", "labelEs": "Ingenieria ambiental", "aliases": ["ambiental", "ingenieria sanitaria"] },
+        { "conceptCode": "2.8", "prefLabel": "Environmental biotechnology", "labelEs": "Biotecnologia ambiental", "aliases": [] },
+        { "conceptCode": "2.9", "prefLabel": "Industrial biotechnology", "labelEs": "Biotecnologia industrial", "aliases": [] },
+        { "conceptCode": "2.10", "prefLabel": "Nano-technology", "labelEs": "Nanotecnologia", "aliases": [] },
+        { "conceptCode": "2.11", "prefLabel": "Other engineering and technologies", "labelEs": "Otras ingenierias y tecnologias", "aliases": [], "children": [
+          { "conceptCode": "2.11-LATAM-IND", "prefLabel": "Industrial and operations engineering", "labelEs": "Ingenieria industrial y de operaciones", "aliases": ["ingenieria industrial", "industrial", "ingenieria de operaciones", "procesos industriales"], "localExtension": true }
+        ] }
       ]
     },
     {
-      "conceptCode": "3",
-      "prefLabel": "Medical and health sciences",
+      "conceptCode": "3", "prefLabel": "Medical and health sciences", "labelEs": "Ciencias medicas y de la salud", "aliases": ["medicina", "salud"],
       "children": [
-        { "conceptCode": "3.1", "prefLabel": "Basic medicine" },
-        { "conceptCode": "3.2", "prefLabel": "Clinical medicine" },
-        { "conceptCode": "3.3", "prefLabel": "Health sciences" },
-        { "conceptCode": "3.4", "prefLabel": "Medical biotechnology" },
-        { "conceptCode": "3.5", "prefLabel": "Other medical sciences" }
+        { "conceptCode": "3.1", "prefLabel": "Basic medicine", "labelEs": "Medicina basica", "aliases": [] },
+        { "conceptCode": "3.2", "prefLabel": "Clinical medicine", "labelEs": "Medicina clinica", "aliases": ["medicina humana"] },
+        { "conceptCode": "3.3", "prefLabel": "Health sciences", "labelEs": "Ciencias de la salud", "aliases": ["salud publica", "enfermeria", "nutricion"] },
+        { "conceptCode": "3.4", "prefLabel": "Medical biotechnology", "labelEs": "Biotecnologia medica", "aliases": [] },
+        { "conceptCode": "3.5", "prefLabel": "Other medical sciences", "labelEs": "Otras ciencias medicas", "aliases": [] }
       ]
     },
     {
-      "conceptCode": "4",
-      "prefLabel": "Agricultural and veterinary sciences",
+      "conceptCode": "4", "prefLabel": "Agricultural and veterinary sciences", "labelEs": "Ciencias agricolas y veterinarias", "aliases": ["ciencias agrarias", "agronomia"],
       "children": [
-        { "conceptCode": "4.1", "prefLabel": "Agriculture, forestry and fisheries" },
-        { "conceptCode": "4.2", "prefLabel": "Animal and dairy science" },
-        { "conceptCode": "4.3", "prefLabel": "Veterinary sciences" },
-        { "conceptCode": "4.4", "prefLabel": "Agricultural biotechnology" },
-        { "conceptCode": "4.5", "prefLabel": "Other agricultural sciences" }
+        { "conceptCode": "4.1", "prefLabel": "Agriculture, forestry and fisheries", "labelEs": "Agricultura, silvicultura y pesca", "aliases": ["agricultura", "forestal", "pesqueria"] },
+        { "conceptCode": "4.2", "prefLabel": "Animal and dairy science", "labelEs": "Ciencia animal y lechera", "aliases": ["zootecnia"] },
+        { "conceptCode": "4.3", "prefLabel": "Veterinary sciences", "labelEs": "Ciencias veterinarias", "aliases": ["veterinaria"] },
+        { "conceptCode": "4.4", "prefLabel": "Agricultural biotechnology", "labelEs": "Biotecnologia agricola", "aliases": [] },
+        { "conceptCode": "4.5", "prefLabel": "Other agricultural sciences", "labelEs": "Otras ciencias agricolas", "aliases": [] }
       ]
     },
     {
-      "conceptCode": "5",
-      "prefLabel": "Social sciences",
+      "conceptCode": "5", "prefLabel": "Social sciences", "labelEs": "Ciencias sociales", "aliases": [],
       "children": [
-        { "conceptCode": "5.1", "prefLabel": "Psychology and cognitive sciences" },
-        { "conceptCode": "5.2", "prefLabel": "Economics and business" },
-        { "conceptCode": "5.3", "prefLabel": "Education" },
-        { "conceptCode": "5.4", "prefLabel": "Sociology" },
-        { "conceptCode": "5.5", "prefLabel": "Law" },
-        { "conceptCode": "5.6", "prefLabel": "Political science" },
-        { "conceptCode": "5.7", "prefLabel": "Social and economic geography" },
-        { "conceptCode": "5.8", "prefLabel": "Media and communications" },
-        { "conceptCode": "5.9", "prefLabel": "Other social sciences" }
+        { "conceptCode": "5.1", "prefLabel": "Psychology and cognitive sciences", "labelEs": "Psicologia y ciencias cognitivas", "aliases": ["psicologia"] },
+        { "conceptCode": "5.2", "prefLabel": "Economics and business", "labelEs": "Economia y negocios", "aliases": ["economia", "administracion", "contabilidad", "finanzas", "negocios"] },
+        { "conceptCode": "5.3", "prefLabel": "Education", "labelEs": "Educacion", "aliases": ["ciencias de la educacion", "pedagogia"] },
+        { "conceptCode": "5.4", "prefLabel": "Sociology", "labelEs": "Sociologia", "aliases": [] },
+        { "conceptCode": "5.5", "prefLabel": "Law", "labelEs": "Derecho", "aliases": ["ciencias juridicas"] },
+        { "conceptCode": "5.6", "prefLabel": "Political science", "labelEs": "Ciencia politica", "aliases": ["politica"] },
+        { "conceptCode": "5.7", "prefLabel": "Social and economic geography", "labelEs": "Geografia social y economica", "aliases": [] },
+        { "conceptCode": "5.8", "prefLabel": "Media and communications", "labelEs": "Medios y comunicaciones", "aliases": ["comunicacion", "periodismo"] },
+        { "conceptCode": "5.9", "prefLabel": "Other social sciences", "labelEs": "Otras ciencias sociales", "aliases": [] }
       ]
     },
     {
-      "conceptCode": "6",
-      "prefLabel": "Humanities and the arts",
+      "conceptCode": "6", "prefLabel": "Humanities and the arts", "labelEs": "Humanidades y artes", "aliases": ["humanidades"],
       "children": [
-        { "conceptCode": "6.1", "prefLabel": "History and archaeology" },
-        { "conceptCode": "6.2", "prefLabel": "Languages and literature" },
-        { "conceptCode": "6.3", "prefLabel": "Philosophy, ethics and religion" },
-        { "conceptCode": "6.4", "prefLabel": "Arts (arts, history of arts, performing arts, music)" },
-        { "conceptCode": "6.5", "prefLabel": "Other humanities" }
+        { "conceptCode": "6.1", "prefLabel": "History and archaeology", "labelEs": "Historia y arqueologia", "aliases": ["historia", "arqueologia"] },
+        { "conceptCode": "6.2", "prefLabel": "Languages and literature", "labelEs": "Lenguas y literatura", "aliases": ["linguistica", "literatura"] },
+        { "conceptCode": "6.3", "prefLabel": "Philosophy, ethics and religion", "labelEs": "Filosofia, etica y religion", "aliases": ["filosofia", "etica", "religion"] },
+        { "conceptCode": "6.4", "prefLabel": "Arts (arts, history of arts, performing arts, music)", "labelEs": "Artes e historia del arte", "aliases": ["artes", "musica", "artes escenicas"] },
+        { "conceptCode": "6.5", "prefLabel": "Other humanities", "labelEs": "Otras humanidades", "aliases": [] }
       ]
     }
   ]

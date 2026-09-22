@@ -18,8 +18,8 @@ export function usePersistedIntake(projectId: string, form: DraftIntake, setForm
       if (!response.ok) throw new Error("No se pudo recuperar el borrador. Tus cambios no se sobrescribirán.");
       const { draft } = await response.json() as { draft: DraftView };
       if (controller.signal.aborted) return;
-      queue.current = new DraftSaveQueue(draft, async (revision, intake) => {
-        const response = await fetch(`/api/projects/${projectId}/draft`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision, intake }), keepalive: true });
+      queue.current = new DraftSaveQueue(draft, async (revision, intake, etag) => {
+        const response = await fetch(`/api/projects/${projectId}/draft`, { method: "PUT", headers: { "Content-Type": "application/json", "If-Match": etag }, body: JSON.stringify({ revision, etag, intake }), keepalive: true });
         const payload = await response.json();
         if (!response.ok) { conflict.current = response.status === 409; throw new Error(payload.error ?? "No se pudo guardar."); }
         return payload.draft;

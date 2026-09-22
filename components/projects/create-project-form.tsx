@@ -12,7 +12,6 @@ import {
 import { useRouter } from "next/navigation";
 import {
   BookOpenText,
-  Building2,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -30,42 +29,33 @@ import {
   getPresetDegreeLevelForProject,
   PROJECT_DEGREE_LEVEL_OPTIONS,
 } from "@/lib/degree-levels";
-import { PROJECT_CAREERS, PROJECT_PRESETS } from "@/lib/project-presets";
-import {
-  getFeaturedProjectUniversityOptions,
-  type ProjectUniversityCode,
-} from "@/lib/peru-universities";
-import {
-  SYSTEM_MASTER_TEMPLATE_ALIAS,
-  SYSTEM_MASTER_TEMPLATE_KEY,
-} from "@/lib/system-master-template";
+import { PROJECT_PRESETS } from "@/lib/project-presets";
 import type { SupportedLanguage } from "@/lib/language";
 import {
   buildProjectPresetSuggestionEntries,
-  getTopicAreaLabel,
   normalizeSearchText,
   type TopicSuggestionTone,
 } from "@/lib/topic-suggestion-scoring";
 
-const FEATURED_UNIVERSITIES = getFeaturedProjectUniversityOptions();
 const fieldClassName = "brand-input";
+const RC4_DEGREE_LEVEL_OPTIONS = PROJECT_DEGREE_LEVEL_OPTIONS.filter((option) => ["PREGRADO", "MAESTRIA", "PROYECTO_INVESTIGACION"].includes(option.value));
+const LATAM_COUNTRIES = [{ code: "PE", label: "Peru" }, { code: "AR", label: "Argentina" }, { code: "BO", label: "Bolivia" }, { code: "BR", label: "Brasil" }, { code: "CL", label: "Chile" }, { code: "CO", label: "Colombia" }, { code: "CR", label: "Costa Rica" }, { code: "EC", label: "Ecuador" }, { code: "MX", label: "Mexico" }, { code: "PA", label: "Panama" }, { code: "PY", label: "Paraguay" }, { code: "UY", label: "Uruguay" }, { code: "VE", label: "Venezuela" }];
 
 const createProjectCopy = {
   es: {
     intro:
       "Primero define el tema base, luego generamos ideas y finalmente eliges una variante final.",
-    step: "Paso 1 de 3",
+    step: "Paso 1 de 4 · Idea",
     restart: "Empezar otra vez",
     degree: "Nivel",
-    university: "Universidad",
     area: "Carrera o area base",
     areaPlaceholder: "Selecciona una opcion o escribe tu propia area",
     showAreas: "Mostrar areas sugeridas",
     useNewArea: (value: string) => `Usar "${value}" como area nueva`,
     areaHelp:
-      "Puedes elegir una opcion sugerida o escribir un area propia. La normalizaremos y registraremos en tiempo real.",
+      "Busca por nombre, alias o codigo OECD. Si no hay una coincidencia clara, conservaremos tu texto como area personalizada sin alterar el catalogo.",
     customAreaRegistered: (label: string) =>
-      `Registramos "${label}" como area personalizada.`,
+      `Conservaremos "${label}" como area personalizada pendiente de clasificacion.`,
     areaNormalized: (label: string) => `Normalizamos el area como "${label}".`,
     adjusting: " Ajustando...",
     validatingArea: "Validando semanticamente el area...",
@@ -87,19 +77,13 @@ const createProjectCopy = {
     previousIdea: "Idea anterior",
     nextIdea: "Idea siguiente",
     flowTopic: "Primero confirma el tema.",
-    flowConfirmed: "Genera hasta 5 ideas y luego elige una.",
+    flowConfirmed: "Genera hasta 3 ideas y luego elige una.",
     flowVariant:
       "Ya elegiste una idea principal. Ahora define una variante o continua con esa base.",
     currentIdea: "Idea generada actual",
     ideas: "ideas",
     chooseIdea: "Elegir esta idea",
     fixedIdea: "Idea fijada",
-    optionalSettings: "Ajustes opcionales",
-    program: "Programa",
-    hide: "Ocultar",
-    edit: "Editar",
-    programPlaceholder: "Ej. Maestria en Gestion Empresarial",
-    template: "Plantilla",
     areaSummary: "Area",
     notSpecified: "No especificada",
     finalVariant: "Elegir una variante final",
@@ -142,10 +126,9 @@ const createProjectCopy = {
   en: {
     intro:
       "First define the base topic, then generate ideas, and finally choose a final variant.",
-    step: "Step 1 of 3",
+    step: "Step 1 of 4 · Idea",
     restart: "Start over",
     degree: "Degree",
-    university: "University",
     area: "Career or base area",
     areaPlaceholder: "Select an option or write your own area",
     showAreas: "Show suggested areas",
@@ -175,19 +158,13 @@ const createProjectCopy = {
     previousIdea: "Previous idea",
     nextIdea: "Next idea",
     flowTopic: "Confirm the topic first.",
-    flowConfirmed: "Generate up to 5 ideas, then choose one.",
+    flowConfirmed: "Generate up to 3 ideas, then choose one.",
     flowVariant:
       "You chose a main idea. Now define a variant or continue with that base.",
     currentIdea: "Current generated idea",
     ideas: "ideas",
     chooseIdea: "Choose this idea",
     fixedIdea: "Idea fixed",
-    optionalSettings: "Optional settings",
-    program: "Program",
-    hide: "Hide",
-    edit: "Edit",
-    programPlaceholder: "E.g. Master in Business Management",
-    template: "Template",
     areaSummary: "Area",
     notSpecified: "Not specified",
     finalVariant: "Choose a final variant",
@@ -240,6 +217,13 @@ type TopicAreaOption = {
 type IdeaDraft = {
   title: string;
   rationale: string;
+  problem?: string;
+  objectOrPopulation?: string;
+  context?: string;
+  scientificApproach?: string;
+  feasibility?: string;
+  recentActivitySignal?: string;
+  missingDecisions?: string[];
 };
 
 type TopicFlowStage = "topic_input" | "topic_confirmed" | "variant_selection";
@@ -248,7 +232,7 @@ type NormalizedAreaResult = TopicAreaOption & {
   confidence: "high" | "medium" | "low";
 };
 
-const MAX_GENERATED_IDEAS = 5;
+const MAX_GENERATED_IDEAS = 3;
 
 async function readJsonSafe<T>(response: Response) {
   try {
@@ -256,24 +240,6 @@ async function readJsonSafe<T>(response: Response) {
   } catch {
     return null;
   }
-}
-
-function findCareerMatch(value: string) {
-  const normalizedValue = normalizeSearchText(value);
-
-  if (!normalizedValue) {
-    return null;
-  }
-
-  return (
-    PROJECT_CAREERS.find(
-      (career) => normalizeSearchText(career.label) === normalizedValue,
-    ) ??
-    PROJECT_CAREERS.find((career) =>
-      normalizeSearchText(career.label).includes(normalizedValue),
-    ) ??
-    null
-  );
 }
 
 function getProgramDefault(careerId: string | null, degreeLevel: DegreeLevel) {
@@ -306,15 +272,6 @@ function getSuggestionCardClassName(tone: TopicSuggestionTone, isActive: boolean
   ].join(" ");
 }
 
-function buildDefaultAreaOptions() {
-  return PROJECT_CAREERS.map((career) => ({
-    label: career.label,
-    canonicalAreaId: career.id,
-    canonicalAreaLabel: career.label,
-    source: "catalog" as const,
-  }));
-}
-
 function mergeTopicAreaOptions(...groups: TopicAreaOption[][]) {
   const merged = new Map<string, TopicAreaOption>();
 
@@ -338,17 +295,15 @@ export function CreateProjectForm({
 }: CreateProjectFormProps) {
   const router = useRouter();
   const copy = createProjectCopy[language];
-  const [degreeLevel, setDegreeLevel] = useState<DegreeLevel>("POSGRADO");
-  const [university, setUniversity] = useState<ProjectUniversityCode>("PUCP");
-  const [areaQuery, setAreaQuery] = useState(PROJECT_CAREERS[0]?.label ?? "");
+  const [degreeLevel, setDegreeLevel] = useState<DegreeLevel>("MAESTRIA");
+  const [country, setCountry] = useState("PE");
+  const [areaQuery, setAreaQuery] = useState("");
   const [program, setProgram] = useState(
-    getProgramDefault(PROJECT_CAREERS[0]?.id ?? null, "POSGRADO"),
+    getGenericProgramDefault("MAESTRIA"),
   );
   const [interestText, setInterestText] = useState(initialInterestText.trim());
   const [selectedSuggestionId, setSelectedSuggestionId] = useState("");
-  const [areaOptions, setAreaOptions] = useState<TopicAreaOption[]>(
-    buildDefaultAreaOptions(),
-  );
+  const [areaOptions, setAreaOptions] = useState<TopicAreaOption[]>([]);
   const [isAreaDropdownOpen, setIsAreaDropdownOpen] = useState(false);
   const [flowStage, setFlowStage] = useState<TopicFlowStage>("topic_input");
   const [confirmedTopic, setConfirmedTopic] = useState<string | null>(null);
@@ -365,8 +320,6 @@ export function CreateProjectForm({
   const [normalizedAreaMessage, setNormalizedAreaMessage] = useState<string | null>(null);
   const [selectedIdeaTitle, setSelectedIdeaTitle] = useState<string | null>(null);
   const [selectedVariantTitle, setSelectedVariantTitle] = useState<string | null>(null);
-  const [isProgramEditable, setIsProgramEditable] = useState(false);
-  const [hasManualProgram, setHasManualProgram] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isGeneratingIdeas, startIdeaTransition] = useTransition();
@@ -388,33 +341,21 @@ export function CreateProjectForm({
     );
   }, [areaOptions, areaQuery]);
 
-  const matchedCareer = useMemo(() => {
-    if (selectedAreaOption?.canonicalAreaId) {
-      return (
-        PROJECT_CAREERS.find((career) => career.id === selectedAreaOption.canonicalAreaId) ??
-        findCareerMatch(areaQuery)
-      );
-    }
-
-    return findCareerMatch(areaQuery);
-  }, [areaQuery, selectedAreaOption]);
-  const topicAreaId = selectedAreaOption?.canonicalAreaId ?? matchedCareer?.id ?? null;
+  const topicAreaId = selectedAreaOption?.canonicalAreaId ?? null;
   const topicAreaLabel =
     areaQuery.trim().length > 0
       ? areaQuery.trim()
-      : selectedAreaOption?.canonicalAreaLabel ?? getTopicAreaLabel(topicAreaId) ?? null;
+      : selectedAreaOption?.canonicalAreaLabel ?? null;
 
   const suggestionEntries = useMemo(
     () =>
       buildProjectPresetSuggestionEntries({
         areaId: topicAreaId,
         degreeLevel: getPresetDegreeLevelForProject(degreeLevel),
-        university,
-        templateKey: SYSTEM_MASTER_TEMPLATE_KEY,
         interestText: deferredInterestText,
         limit: 5,
       }),
-    [deferredInterestText, degreeLevel, topicAreaId, university],
+    [deferredInterestText, degreeLevel, topicAreaId],
   );
 
   const selectedSuggestion =
@@ -594,7 +535,7 @@ export function CreateProjectForm({
         }
 
         setAreaOptions(
-          mergeTopicAreaOptions(buildDefaultAreaOptions(), payload.suggestions),
+          mergeTopicAreaOptions(payload.suggestions),
         );
       } catch {
         // Mantiene las opciones locales sin romper la pantalla.
@@ -645,7 +586,7 @@ export function CreateProjectForm({
           };
 
           setAreaOptions((current) =>
-            mergeTopicAreaOptions([normalizedOption], current, buildDefaultAreaOptions()),
+            mergeTopicAreaOptions([normalizedOption], current),
           );
 
           if (
@@ -673,12 +614,8 @@ export function CreateProjectForm({
   }, [deferredAreaQuery, hasExactAreaOption, startNormalizingAreaTransition]);
 
   useEffect(() => {
-    if (hasManualProgram) {
-      return;
-    }
-
     setProgram(getProgramDefault(topicAreaId, degreeLevel));
-  }, [degreeLevel, hasManualProgram, topicAreaId]);
+  }, [degreeLevel, topicAreaId]);
 
   useEffect(() => {
     if (selectedSuggestion && selectedSuggestionId !== selectedSuggestion.id) {
@@ -712,7 +649,7 @@ export function CreateProjectForm({
           },
           body: JSON.stringify({
             degreeLevel,
-            university,
+            country,
             program,
             language,
             topicAreaId: topicAreaId ?? undefined,
@@ -760,7 +697,7 @@ export function CreateProjectForm({
         setActiveGeneratedIdeaIndex(nextIndex);
         setGeneratedIdeaVariants((current) => ({
           ...current,
-          [normalizedGeneratedTitle]: payload.relatedIdeas?.slice(0, 4) ?? [],
+          [normalizedGeneratedTitle]: payload.relatedIdeas?.slice(0, 2) ?? [],
         }));
         setInterestText(payload.generatedIdea.title);
 
@@ -803,7 +740,7 @@ export function CreateProjectForm({
             customIdeaText: shouldUseCatalogSuggestion ? undefined : trimmedIdea,
             title: trimmedIdea,
             degreeLevel,
-            university,
+            country,
             program,
             language,
             topicAreaId: topicAreaId ?? undefined,
@@ -821,7 +758,7 @@ export function CreateProjectForm({
           return;
         }
 
-        router.push(`/projects/${payload.project.id}#intake`);
+        router.push(`/projects/${payload.project.id}?step=define`);
         router.refresh();
       } catch {
         setError(copy.createError);
@@ -873,7 +810,7 @@ export function CreateProjectForm({
               onChange={(event) => setDegreeLevel(event.target.value as DegreeLevel)}
               value={degreeLevel}
             >
-              {PROJECT_DEGREE_LEVEL_OPTIONS.map((option) => (
+              {RC4_DEGREE_LEVEL_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {getDegreeLevelLabelForLanguage(option.value, language)}
                 </option>
@@ -881,44 +818,12 @@ export function CreateProjectForm({
             </select>
           </div>
 
-          <div className="grid gap-3 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
-            <div className="flex items-center gap-3">
-              <span className="inline-flex size-10 items-center justify-center rounded-[16px] bg-[rgba(157,231,214,0.28)] text-[var(--color-mint-strong)]">
-                <Building2 className="size-4" />
-              </span>
-              <label className="text-sm font-semibold text-[var(--color-muted)]">
-                {copy.university}
-              </label>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-              {FEATURED_UNIVERSITIES.map((option) => {
-                const isActive = option.code === university;
-
-                return (
-                  <button
-                    className={[
-                      "rounded-[20px] border px-4 py-3 text-left text-sm font-semibold transition-transform",
-                      isActive
-                        ? "border-[rgba(52,20,95,0.34)] bg-[rgba(255,255,255,0.96)] text-[var(--color-ink)] shadow-[0_12px_28px_rgba(52,20,95,0.12)]"
-                        : "border-[rgba(74,58,97,0.1)] bg-[rgba(255,255,255,0.82)] text-[var(--color-muted)] hover:-translate-y-[1px]",
-                    ].join(" ")}
-                    key={option.code}
-                    onClick={() => {
-                      if (flowStage !== "topic_input") {
-                        return;
-                      }
-
-                      setUniversity(option.code);
-                    }}
-                    disabled={flowStage !== "topic_input"}
-                    type="button"
-                  >
-                    {option.shortName}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <label className="grid gap-3 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Pais o contexto principal</span>
+            <select className={fieldClassName} disabled={flowStage !== "topic_input"} onChange={(event) => setCountry(event.target.value)} value={country}>
+              {LATAM_COUNTRIES.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}
+            </select>
+          </label>
         </div>
 
         <div className="grid gap-4">
@@ -1201,64 +1106,6 @@ export function CreateProjectForm({
           </div>
         </div>
       </section>
-
-      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-5">
-        <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
-          {copy.optionalSettings}
-        </summary>
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-2">
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm font-semibold text-[rgba(23,19,31,0.72)]">
-                {copy.program}
-              </p>
-              <button
-                className="brand-button-secondary px-4 py-2 text-sm font-semibold"
-                disabled={flowStage !== "topic_input"}
-                onClick={() => setIsProgramEditable((current) => !current)}
-                type="button"
-              >
-                {isProgramEditable ? copy.hide : copy.edit}
-              </button>
-            </div>
-
-            {isProgramEditable ? (
-              <input
-                className={fieldClassName}
-                disabled={flowStage !== "topic_input"}
-                onChange={(event) => {
-                  setProgram(event.target.value);
-                  setHasManualProgram(true);
-                }}
-                placeholder={copy.programPlaceholder}
-                required
-                value={program}
-              />
-            ) : (
-              <p className="text-sm leading-6 text-[var(--color-muted)]">
-                {program}
-              </p>
-            )}
-          </div>
-
-          <div className="grid gap-2 text-sm leading-6 text-[var(--color-muted)] sm:grid-cols-2">
-            <p>
-              <strong>{copy.template}:</strong> {SYSTEM_MASTER_TEMPLATE_ALIAS}
-            </p>
-            <p>
-              <strong>{copy.areaSummary}:</strong> {topicAreaLabel || copy.notSpecified}
-            </p>
-            <p>
-              <strong>{copy.degree}:</strong> {getDegreeLevelLabelForLanguage(degreeLevel, language)}
-            </p>
-            <p>
-              <strong>{copy.university}:</strong>{" "}
-              {FEATURED_UNIVERSITIES.find((option) => option.code === university)?.shortName ??
-                university}
-            </p>
-          </div>
-        </div>
-      </details>
 
       <details
         className={[

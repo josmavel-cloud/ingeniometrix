@@ -477,7 +477,7 @@ export function ReferenceSearchPanel({
           ))}
         </div>
         {searchSnapshot ? (
-          <div className="mt-4 grid gap-4">
+          <div aria-hidden="true" className="hidden">
             <div className="grid gap-3 lg:grid-cols-3">
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
@@ -633,8 +633,7 @@ export function ReferenceSearchPanel({
                   </span>
                 </label>
                 <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                  {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)} -{" "}
-                  {item.relevanceScore?.toFixed(2) ?? "0.00"}
+                  Relevancia {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)}
                 </div>
               </div>
 
@@ -701,37 +700,9 @@ export function ReferenceSearchPanel({
                     </summary>
                     <div className="mt-3 grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
                       <p>{copy.doiLabel}: {item.reference.doi ?? copy.unavailable}</p>
-                      <p>
-                        {copy.scoreLabel}:{" "}
-                        {renderScoreLabel(item.scoreBreakdown?.label, language) ??
-                          copy.unavailable}
-                      </p>
-                      <p>
-                        {copy.queryLabel}:{" "}
-                        {item.scoreBreakdown?.matchedQuery ?? copy.unavailable}
-                      </p>
-                      <p>
-                        {copy.stage}:{" "}
-                        {item.scoreBreakdown?.matchedQueryStage === "necessary_only"
-                          ? copy.stageNecessary
-                          : item.scoreBreakdown?.matchedQueryStage === "complementary_boosted"
-                            ? copy.stageComplementary
-                            : copy.stageBackup}
-                      </p>
-                      <p>
-                        {copy.necessaryMatches}:{" "}
-                        {item.scoreBreakdown?.necessaryMatches.join(", ") || copy.noStrongMatch}
-                      </p>
-                      <p>
-                        {copy.complementaryMatches}:{" "}
-                        {item.scoreBreakdown?.complementaryMatches.join(", ") ||
-                          copy.noBoost}
-                      </p>
-                      <p>
-                        {copy.optionalMatches}:{" "}
-                        {item.scoreBreakdown?.optionalMatches.join(", ") || copy.noMatch}
-                      </p>
-                      <p>{copy.recency}: {item.scoreBreakdown?.recencyBand ?? copy.unavailable}</p>
+                      <p>Relevancia temática: {renderScoreLabel(item.scoreBreakdown?.label, language) ?? copy.unavailable}</p>
+                      <p>Año de publicación: {item.reference.year ?? copy.unavailable}</p>
+                      <p>Revista o fuente: {item.reference.venue ?? copy.unavailable}</p>
                       <p>
                         {copy.pdfAccessible}:{" "}
                         {item.reference.pdfUrl && item.reference.pdfAccessible ? copy.yes : copy.notVerified}

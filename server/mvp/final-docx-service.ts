@@ -385,7 +385,7 @@ function buildCanonicalDocument(input: {
     },
     language: project.language || "es",
     institution: {
-      university_name: project.university,
+      university_name: project.university ?? "",
       school_name: null,
       program_name: project.program,
       mention: null,

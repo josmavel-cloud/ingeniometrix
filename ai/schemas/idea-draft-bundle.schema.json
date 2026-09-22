@@ -9,23 +9,37 @@
     "generatedIdea": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["title", "rationale"],
+      "required": ["title", "rationale", "problem", "objectOrPopulation", "context", "scientificApproach", "feasibility", "recentActivitySignal", "missingDecisions"],
       "properties": {
         "title": { "type": "string", "minLength": 1 },
-        "rationale": { "type": "string", "minLength": 1 }
+        "rationale": { "type": "string", "minLength": 1 },
+        "problem": { "type": "string", "minLength": 1 },
+        "objectOrPopulation": { "type": "string", "minLength": 1 },
+        "context": { "type": "string", "minLength": 1 },
+        "scientificApproach": { "type": "string", "minLength": 1 },
+        "feasibility": { "type": "string", "minLength": 1 },
+        "recentActivitySignal": { "type": "string", "minLength": 1 },
+        "missingDecisions": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 5 }
       }
     },
     "relatedIdeas": {
       "type": "array",
       "minItems": 0,
-      "maxItems": 4,
+      "maxItems": 2,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "rationale"],
+        "required": ["title", "rationale", "problem", "objectOrPopulation", "context", "scientificApproach", "feasibility", "recentActivitySignal", "missingDecisions"],
         "properties": {
           "title": { "type": "string", "minLength": 1 },
-          "rationale": { "type": "string", "minLength": 1 }
+          "rationale": { "type": "string", "minLength": 1 },
+          "problem": { "type": "string", "minLength": 1 },
+          "objectOrPopulation": { "type": "string", "minLength": 1 },
+          "context": { "type": "string", "minLength": 1 },
+          "scientificApproach": { "type": "string", "minLength": 1 },
+          "feasibility": { "type": "string", "minLength": 1 },
+          "recentActivitySignal": { "type": "string", "minLength": 1 },
+          "missingDecisions": { "type": "array", "items": { "type": "string", "minLength": 1 }, "maxItems": 5 }
         }
       }
     }

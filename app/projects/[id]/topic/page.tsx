@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { TopicStage } from "@/components/projects/topic-stage";
 import { ProjectShell } from "@/components/projects/project-shell";
+import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
 import { requireCurrentUser } from "@/server/auth/session";
 import {
   getTopicProjectForUser,
@@ -22,9 +23,18 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
 
     return (
       <ProjectShell
-        title="Elegir tema"
-        description="Compara tu idea original con tres opciones relacionadas y elige la base de tu investigacion."
+        title="Idea"
+        description="Paso 1 de 4 · Revisa o mejora la dirección inicial de tu investigación."
       >
+        <WorkflowStageNav
+          language="es"
+          items={[
+            { step: "01", href: `/projects/${project.id}/topic`, title: "Idea", description: "Elige la dirección de tu investigación.", active: true, current: true },
+            { step: "02", href: `/projects/${project.id}?step=define`, title: "Define tu investigación", description: "Delimita el problema, contexto y diseño.", active: project.topicSelectionStatus === "SELECTED", current: false },
+            { step: "03", href: `/projects/${project.id}?step=evidence`, title: "Evidencia", description: "Busca, revisa y selecciona fuentes.", active: false, current: false },
+            { step: "04", href: `/projects/${project.id}?step=plan`, title: "Plan de tesis", description: "Genera y consulta tus versiones publicadas.", active: false, current: false },
+          ]}
+        />
         <TopicStage
           projectId={project.id}
           projectTitle={project.title}

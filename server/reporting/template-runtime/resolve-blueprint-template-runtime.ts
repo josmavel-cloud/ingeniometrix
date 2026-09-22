@@ -9,7 +9,7 @@ import { resolveTemplateVersionForBlueprint } from "@/server/reporting/template-
 
 type BlueprintTemplateRuntimeInput = {
   projectTemplateKey: string;
-  projectUniversity: string;
+  projectUniversity: string | null;
   projectDegreeLevel: string;
   projectProgram: string;
 };
@@ -65,7 +65,8 @@ const KNOWN_PROJECT_UNIVERSITY_CODES = [
   "OTHER",
 ] as const satisfies readonly ProjectUniversityCode[];
 
-function resolveProjectUniversityName(university: string) {
+function resolveProjectUniversityName(university: string | null) {
+  if (!university) return null;
   if (
     KNOWN_PROJECT_UNIVERSITY_CODES.includes(university as ProjectUniversityCode)
   ) {
@@ -92,7 +93,7 @@ function getRuntimeHints(input: BlueprintTemplateRuntimeInput) {
   return Array.from(
     new Set([
       ...(PROJECT_TEMPLATE_RUNTIME_HINTS[input.projectTemplateKey] ?? []),
-      ...(UNIVERSITY_RUNTIME_HINTS[input.projectUniversity] ?? []),
+      ...(input.projectUniversity ? UNIVERSITY_RUNTIME_HINTS[input.projectUniversity] ?? [] : []),
     ]),
   );
 }
@@ -103,7 +104,7 @@ export async function resolveBlueprintTemplateRuntime(
   runtime: LoadedTemplateVersionRuntime;
   resolution: BlueprintTemplateRuntimeResolution;
 }> {
-  if (input.projectUniversity === "OTHER") {
+  if (!input.projectUniversity || input.projectUniversity === "OTHER") {
     const genericRuntime = await loadRuntimeFromHints(GENERIC_FALLBACK_TEMPLATE_KEYS);
 
     if (!genericRuntime) {

@@ -29,6 +29,9 @@ type IntakeState = {
   availableData: string;
   preferredMethodology: string;
   advisorNotes: string;
+  researchScope: string;
+  constructs: string;
+  pendingDecisions: string;
 };
 
 type GeneratedIntakeDraft = IntakeState & {
@@ -50,6 +53,9 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     availableData: project.intake?.availableData ?? "",
     preferredMethodology: project.intake?.preferredMethodology ?? "",
     advisorNotes: project.intake?.advisorNotes ?? "",
+    researchScope: project.intake?.researchScope ?? "",
+    constructs: project.intake?.constructs ?? "",
+    pendingDecisions: project.intake?.pendingDecisions ?? "",
   });
   const [activePresetId, setActivePresetId] = useState("");
   const [generatedDrafts, setGeneratedDrafts] = useState<GeneratedIntakeDraft[]>([]);
@@ -111,6 +117,9 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
       availableData: preset.availableData,
       preferredMethodology: preset.preferredMethodology,
       advisorNotes: preset.advisorNotes,
+      researchScope: "",
+      constructs: "",
+      pendingDecisions: "",
     });
   }
 
@@ -132,6 +141,9 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
       availableData: draft.availableData,
       preferredMethodology: draft.preferredMethodology,
       advisorNotes: draft.advisorNotes,
+      researchScope: draft.researchScope ?? "",
+      constructs: draft.constructs ?? "",
+      pendingDecisions: draft.pendingDecisions ?? "",
     });
     setDraftMessage(copy.draftApplied(draft.label));
     setDraftError(null);
@@ -147,6 +159,9 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
       availableData: draft.availableData,
       preferredMethodology: draft.preferredMethodology,
       advisorNotes: draft.advisorNotes,
+      researchScope: draft.researchScope ?? "",
+      constructs: draft.constructs ?? "",
+      pendingDecisions: draft.pendingDecisions ?? "",
     };
   }
 
@@ -463,8 +478,8 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
         </div>
       </section>
 
-      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-white/72 p-5">
-        <summary className="cursor-pointer list-none">
+      <section className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-white/72 p-5">
+        <div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(100,94,115,0.62)]">
@@ -474,14 +489,11 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
                 {copy.expandedTitle}
               </p>
             </div>
-            <span className="brand-button-secondary px-4 py-2 text-sm font-semibold">
-              {copy.openAdvanced}
-            </span>
           </div>
           <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
             {copy.expandedBody}
           </p>
-        </summary>
+        </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <label className="grid gap-2">
@@ -495,6 +507,21 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
               placeholder={copy.researchLinePlaceholder}
               value={form.researchLine}
             />
+          </label>
+
+          <label className="grid gap-2 lg:col-span-2">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Alcance de la investigacion</span>
+            <textarea className={textareaClassName} onChange={(event) => updateField("researchScope", event.target.value)} placeholder="Delimitacion tematica, temporal, geografica o del sistema." rows={3} value={form.researchScope} />
+          </label>
+
+          <label className="grid gap-2 lg:col-span-2">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Variables, categorias o constructos</span>
+            <textarea className={textareaClassName} onChange={(event) => updateField("constructs", event.target.value)} placeholder="Incluye solo los elementos que correspondan a tu enfoque metodologico." rows={3} value={form.constructs} />
+          </label>
+
+          <label className="grid gap-2 lg:col-span-2">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Decisiones pendientes</span>
+            <textarea className={textareaClassName} onChange={(event) => updateField("pendingDecisions", event.target.value)} placeholder="Aspectos que aun deben confirmarse con datos, asesor o acceso de campo." rows={3} value={form.pendingDecisions} />
           </label>
 
           <label className="grid gap-2">
@@ -552,7 +579,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
             />
           </label>
         </div>
-      </details>
+      </section>
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {success ? <p className="text-sm text-emerald-700">{success}</p> : null}

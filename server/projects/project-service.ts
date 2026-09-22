@@ -7,7 +7,7 @@ import {
   type IntakeInput,
   resolveProjectStatusFromIntake,
 } from "./project-validation";
-import { resolveAndRecordTopicArea } from "./topic-area-service";
+import { assignPrimaryAcademicField, resolveAndRecordTopicArea } from "./topic-area-service";
 import { lockCanonicalDraftMutation, syncCanonicalIntakeToDraft } from "./project-draft-service";
 
 export async function createProjectForUser(userId: string, input: CreateProjectInput) {
@@ -25,6 +25,7 @@ export async function createProjectForUser(userId: string, input: CreateProjectI
         userId,
         catalogTopicId: input.catalogTopicId,
         title: input.title,
+        country: input.country,
         degreeLevel: input.degreeLevel,
         university: input.university,
         program: input.program,
@@ -36,6 +37,8 @@ export async function createProjectForUser(userId: string, input: CreateProjectI
         topicAreaLabel: resolvedArea.topicAreaLabel,
       },
     });
+
+    await assignPrimaryAcademicField(tx, project.id, resolvedArea.topicAreaLabel ? resolvedArea : null);
 
     const suggestion = await tx.projectTopicSuggestion.create({
       data: {
@@ -87,6 +90,12 @@ export async function listProjectsForUser(
     take: Math.max(1, Math.min(options?.take ?? 60, 100)),
     include: {
       intake: true,
+      draft: true,
+      knowledgeFields: {
+        where: { isPrimary: true },
+        include: { concept: { include: { scheme: true } } },
+        take: 1,
+      },
       blueprintJobs: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -117,6 +126,12 @@ export async function getProjectForUser(userId: string, projectId: string) {
     },
     include: {
       intake: true,
+      draft: true,
+      knowledgeFields: {
+        where: { isPrimary: true },
+        include: { concept: { include: { scheme: true } } },
+        take: 1,
+      },
       topicSuggestions: {
         include: {
           primaryConcept: true,
@@ -164,6 +179,9 @@ export async function saveIntakeForProject(
             availableData: input.availableData,
             preferredMethodology: input.preferredMethodology,
             advisorNotes: input.advisorNotes,
+            researchScope: input.researchScope,
+            constructs: input.constructs,
+            pendingDecisions: input.pendingDecisions,
           },
           update: {
             topic: input.topic,
@@ -174,6 +192,9 @@ export async function saveIntakeForProject(
             availableData: input.availableData,
             preferredMethodology: input.preferredMethodology,
             advisorNotes: input.advisorNotes,
+            researchScope: input.researchScope,
+            constructs: input.constructs,
+            pendingDecisions: input.pendingDecisions,
           },
         },
       },

@@ -246,7 +246,7 @@ export function TopicStage({
         return;
       }
 
-      router.push(`/projects/${projectId}`);
+      router.push(`/projects/${projectId}?step=define`);
       router.refresh();
     });
   }

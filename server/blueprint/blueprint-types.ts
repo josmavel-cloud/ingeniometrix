@@ -114,7 +114,8 @@ export type ResearchBlueprintCore = {
     | "POSGRADO"
     | "ESPECIALIZACION"
     | "MAESTRIA"
-    | "DOCTORADO";
+    | "DOCTORADO"
+    | "PROYECTO_INVESTIGACION";
   university: string;
   program: string;
   research_line: string;

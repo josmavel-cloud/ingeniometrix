@@ -74,7 +74,7 @@ function buildFallbackBlueprintDraft(input: {
     title: string;
     templateKey: string;
     degreeLevel: ResearchBlueprintCoreDraft["degree_level"];
-    university: string;
+    university: string | null;
     program: string;
     language: string | null;
     projectReferences: Array<{
@@ -118,7 +118,7 @@ function buildFallbackBlueprintDraft(input: {
     project_title: input.project.title,
     template_key: input.project.templateKey,
     degree_level: input.project.degreeLevel,
-    university: input.project.university,
+    university: input.project.university ?? "",
     program: input.project.program,
     research_line:
       input.intake.researchLine ??
@@ -742,6 +742,15 @@ export async function getBlueprintVersionForUser(
 export async function getLatestBlueprintVersionForUser(userId: string, projectId: string) {
   const versions = await listBlueprintVersionsForUser(userId, projectId);
   return versions[0] ?? null;
+}
+
+export async function setActiveBlueprintVersionForUser(userId: string, projectId: string, versionId: string) {
+  return prisma.$transaction(async (tx) => {
+    const version = await tx.blueprintVersion.findFirst({ where: { id: versionId, projectId, project: { userId } }, select: { id: true, versionNumber: true } });
+    if (!version) throw new Error("Version de plan no encontrada.");
+    await tx.project.update({ where: { id: projectId, userId }, data: { activeBlueprintVersionId: version.id } });
+    return version;
+  });
 }
 
 export async function getBlueprintProgressForUser(userId: string, projectId: string) {

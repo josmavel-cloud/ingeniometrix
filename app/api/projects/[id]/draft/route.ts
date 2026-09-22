@@ -9,14 +9,17 @@ function failure(error: unknown) {
   return NextResponse.json({ error: error instanceof DraftConflict ? error.message : "No se pudo guardar o recuperar el borrador.", code: error instanceof DraftConflict ? "DRAFT_REVISION_CONFLICT" : "DRAFT_REQUEST_FAILED" }, { status: error instanceof DraftConflict ? 409 : 400, headers });
 }
 export async function GET(_request: Request, context: Context) {
-  try { const user = await requireCurrentUser(); return NextResponse.json({ draft: await readProjectDraft(user.id, (await context.params).id) }, { headers }); }
+  try { const user = await requireCurrentUser(); const draft = await readProjectDraft(user.id, (await context.params).id); return NextResponse.json({ draft }, { headers: { ...headers, ETag: draft.etag } }); }
   catch (error) { return failure(error); }
 }
 export async function PUT(request: Request, context: Context) {
   try {
     const user = await requireCurrentUser();
-    const body = z.object({ revision: z.number().int().nonnegative(), intake: draftIntakeSchema }).strict().parse(await request.json());
-    return NextResponse.json({ draft: await saveProjectDraft(user.id, (await context.params).id, body.revision, body.intake) }, { headers });
+    const body = z.object({ revision: z.number().int().nonnegative(), etag: z.string().max(128).optional(), intake: draftIntakeSchema }).strict().parse(await request.json());
+    const ifMatch = request.headers.get("if-match");
+    if (ifMatch && body.etag && ifMatch !== body.etag) throw new DraftConflict();
+    const draft = await saveProjectDraft(user.id, (await context.params).id, body.revision, body.intake, ifMatch ?? body.etag);
+    return NextResponse.json({ draft }, { headers: { ...headers, ETag: draft.etag } });
   } catch (error) { return failure(error); }
 }
 export async function POST(request: Request, context: Context) {

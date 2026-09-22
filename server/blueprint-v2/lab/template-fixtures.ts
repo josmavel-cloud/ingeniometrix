@@ -507,7 +507,7 @@ export function buildLabBlueprintTemplateContext(
     selected_by_user: true,
     source: "template_runtime",
     template_family: "Lab fixture institucional para depurar derivacion universitaria.",
-    university: project.university,
+    university: project.university ?? "",
     program: project.program,
     degree_level: project.degreeLevel,
     required_section_keys: semanticKeys,

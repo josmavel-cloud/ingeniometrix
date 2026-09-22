@@ -6,7 +6,7 @@ import { getProjectUiCopy } from "@/lib/project-ui-copy";
 import { getTemplateDisplayLabel } from "@/lib/system-master-template";
 
 type ProjectContextRibbonProps = {
-  universityLabel: string;
+  universityLabel?: string | null;
   degreeLevel: DegreeLevel;
   program: string;
   templateKey: string;
@@ -28,10 +28,7 @@ export function ProjectContextRibbon({
 }: ProjectContextRibbonProps) {
   const copy = getProjectUiCopy(language).contextRibbon;
   const items = [
-    {
-      label: copy.university,
-      value: universityLabel,
-    },
+    ...(universityLabel ? [{ label: copy.university, value: universityLabel }] : []),
     {
       label: copy.degree,
       value: getDegreeLevelLabelForLanguage(degreeLevel, language),
@@ -68,14 +65,14 @@ export function ProjectContextRibbon({
               {selectedTopicLabel}
             </p>
             <p className="mt-1 text-sm text-[var(--color-muted)]">
-              {universityLabel} | {program}
+              {[universityLabel, program].filter(Boolean).join(" | ")}
             </p>
           </div>
           <span className="brand-pill shrink-0">Ver contexto</span>
         </div>
       </summary>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {items.map((item) => (
           <article
             className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/76 p-4"

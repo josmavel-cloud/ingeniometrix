@@ -747,7 +747,7 @@ export async function buildTemplateRuntimeInspectionArtifact(
     project_context: {
       project_id: fixtures.project.id,
       title: fixtures.project.title,
-      university: fixtures.project.university,
+      university: fixtures.project.university ?? "",
       template_key: fixtures.project.templateKey,
       degree_level: fixtures.project.degreeLevel,
       program: fixtures.project.program,

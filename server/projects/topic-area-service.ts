@@ -1,364 +1,219 @@
-import { prisma } from "@/lib/prisma";
-import { PROJECT_CAREERS, PROJECT_PRESETS } from "@/lib/project-presets";
-import {
-  buildPresetSearchText,
-  getInterestTokens,
-  getMatchingSearchTokens,
-  getTopicAreaLabel,
-  normalizeSearchText,
-} from "@/lib/topic-suggestion-scoring";
-import { normalizeTopicAreaSemantically } from "@/server/projects/topic-area-normalizer";
+import { AcademicFieldResolutionStatus, ClassificationSource, Prisma } from "@prisma/client";
 
-type TopicAreaSuggestion = {
-  label: string;
+import { prisma } from "@/lib/prisma";
+
+const TAXONOMY_CODE = "FORD-2015";
+
+export function normalizeAcademicFieldText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+type ConceptRow = {
+  id: string;
+  conceptCode: string;
+  prefLabel: string;
+  labelEs: string | null;
+  altLabelsJson: unknown;
+  normalizedSearchText: string | null;
+  parent: { conceptCode: string } | null;
+  scheme: { code: string; version: string | null };
+};
+
+export type AcademicFieldResolution = {
+  topicAreaId: string | null;
+  topicAreaLabel: string;
   canonicalAreaId: string | null;
   canonicalAreaLabel: string | null;
+  conceptId: string | null;
+  taxonomyCode: string;
+  taxonomyVersion: string | null;
+  parentCode: string | null;
   source: "catalog" | "custom";
+  resolutionStatus: AcademicFieldResolutionStatus;
+  submittedLabel: string;
+  normalizedSubmittedLabel: string;
+  matchedAlias: string | null;
+  confidence: "high" | "low";
 };
 
-type ResolveTopicAreaInput = {
-  topicAreaId?: string | null;
-  topicAreaLabel?: string | null;
-};
-
-type TopicAreaMatchConfidence = "high" | "medium" | "low";
-
-function getCatalogCareerById(careerId: string | null | undefined) {
-  if (!careerId) {
-    return null;
-  }
-
-  return PROJECT_CAREERS.find((career) => career.id === careerId) ?? null;
+function aliases(concept: ConceptRow) {
+  return Array.isArray(concept.altLabelsJson)
+    ? concept.altLabelsJson.filter((value): value is string => typeof value === "string")
+    : [];
 }
 
-function findBestCareerMatch(label: string | null | undefined) {
-  const normalizedLabel = normalizeSearchText(label ?? "");
-
-  if (!normalizedLabel) {
-    return null;
-  }
-
-  const exactMatch =
-    PROJECT_CAREERS.find(
-      (career) => normalizeSearchText(career.label) === normalizedLabel,
-    ) ?? null;
-
-  if (exactMatch) {
-    return exactMatch;
-  }
-
-  const inputTokens = normalizedLabel.split(" ").filter((token) => token.length >= 3);
-
-  let bestMatch: (typeof PROJECT_CAREERS)[number] | null = null;
-  let bestScore = 0;
-
-  for (const career of PROJECT_CAREERS) {
-    const normalizedCareerLabel = normalizeSearchText(career.label);
-
-    if (normalizedCareerLabel.includes(normalizedLabel) || normalizedLabel.includes(normalizedCareerLabel)) {
-      return career;
-    }
-
-    const score = inputTokens.reduce((total, token) => {
-      return total + (normalizedCareerLabel.includes(token) ? 1 : 0);
-    }, 0);
-
-    if (score > bestScore) {
-      bestMatch = career;
-      bestScore = score;
-    }
-  }
-
-  return bestScore > 0 ? bestMatch : null;
+function displayLabel(concept: ConceptRow) {
+  return concept.labelEs?.trim() || concept.prefLabel;
 }
 
-function evaluateCareerMatch(label: string | null | undefined) {
-  const normalizedLabel = normalizeSearchText(label ?? "");
-
-  if (!normalizedLabel) {
-    return {
-      career: null,
-      confidence: "low" as TopicAreaMatchConfidence,
-    };
+function exactMatch(concept: ConceptRow, rawCode: string | null, normalizedLabel: string) {
+  if (rawCode && concept.conceptCode.toLowerCase() === rawCode.toLowerCase()) {
+    return { matchedAlias: null as string | null, byCode: true };
   }
+  const labels = [displayLabel(concept), concept.prefLabel, ...aliases(concept)];
+  const matched = labels.find((label) => normalizeAcademicFieldText(label) === normalizedLabel);
+  return matched ? { matchedAlias: matched === displayLabel(concept) ? null : matched, byCode: false } : null;
+}
 
-  const exactMatch =
-    PROJECT_CAREERS.find(
-      (career) => normalizeSearchText(career.label) === normalizedLabel,
-    ) ?? null;
+async function fordConcepts(): Promise<ConceptRow[]> {
+  return prisma.taxonomyConcept.findMany({
+    where: { scheme: { code: TAXONOMY_CODE }, isActive: true },
+    include: { parent: { select: { conceptCode: true } }, scheme: { select: { code: true, version: true } } },
+    orderBy: { conceptCode: "asc" },
+  });
+}
 
-  if (exactMatch) {
-    return {
-      career: exactMatch,
-      confidence: "high" as TopicAreaMatchConfidence,
-    };
-  }
-
-  const partialMatch = findBestCareerMatch(label);
-
-  if (!partialMatch) {
-    return {
-      career: null,
-      confidence: "low" as TopicAreaMatchConfidence,
-    };
-  }
-
-  const normalizedCareerLabel = normalizeSearchText(partialMatch.label);
-
-  if (
-    normalizedCareerLabel.includes(normalizedLabel) ||
-    normalizedLabel.includes(normalizedCareerLabel)
-  ) {
-    return {
-      career: partialMatch,
-      confidence: "medium" as TopicAreaMatchConfidence,
-    };
-  }
-
+function canonicalResolution(concept: ConceptRow, submittedLabel: string, matchedAlias: string | null): AcademicFieldResolution {
+  const label = displayLabel(concept);
   return {
-    career: partialMatch,
-    confidence: "low" as TopicAreaMatchConfidence,
+    topicAreaId: concept.conceptCode,
+    topicAreaLabel: label,
+    canonicalAreaId: concept.conceptCode,
+    canonicalAreaLabel: label,
+    conceptId: concept.id,
+    taxonomyCode: concept.scheme.code,
+    taxonomyVersion: concept.scheme.version,
+    parentCode: concept.parent?.conceptCode ?? null,
+    source: "catalog",
+    resolutionStatus: AcademicFieldResolutionStatus.CANONICAL,
+    submittedLabel,
+    normalizedSubmittedLabel: normalizeAcademicFieldText(submittedLabel),
+    matchedAlias,
+    confidence: "high",
   };
 }
 
-function toTopicAreaSuggestion(input: {
-  label: string;
-  canonicalAreaId?: string | null;
-  canonicalAreaLabel?: string | null;
-  source: "catalog" | "custom";
-}) {
+function customResolution(submittedLabel: string, version: string | null): AcademicFieldResolution {
   return {
-    label: input.label,
-    canonicalAreaId: input.canonicalAreaId ?? null,
-    canonicalAreaLabel: input.canonicalAreaLabel ?? null,
-    source: input.source,
-  } satisfies TopicAreaSuggestion;
-}
-
-async function persistTopicAreaEntry(input: {
-  displayLabel: string;
-  catalogCareer?: (typeof PROJECT_CAREERS)[number] | null;
-}) {
-  const normalizedLabel = normalizeSearchText(input.displayLabel);
-
-  await prisma.topicAreaCatalogEntry.upsert({
-    where: {
-      normalizedLabel,
-    },
-    update: {
-      displayLabel: input.displayLabel,
-      canonicalAreaId: input.catalogCareer?.id ?? null,
-      canonicalAreaLabel: input.catalogCareer?.label ?? null,
-      usageCount: {
-        increment: 1,
-      },
-    },
-    create: {
-      normalizedLabel,
-      displayLabel: input.displayLabel,
-      canonicalAreaId: input.catalogCareer?.id ?? null,
-      canonicalAreaLabel: input.catalogCareer?.label ?? null,
-      usageCount: 1,
-    },
-  });
-
-  return {
-    topicAreaId: input.catalogCareer?.id ?? null,
-    topicAreaLabel: input.catalogCareer?.label ?? input.displayLabel,
+    topicAreaId: null,
+    topicAreaLabel: submittedLabel,
+    canonicalAreaId: null,
+    canonicalAreaLabel: null,
+    conceptId: null,
+    taxonomyCode: TAXONOMY_CODE,
+    taxonomyVersion: version,
+    parentCode: null,
+    source: "custom",
+    resolutionStatus: AcademicFieldResolutionStatus.CUSTOM_UNRESOLVED,
+    submittedLabel,
+    normalizedSubmittedLabel: normalizeAcademicFieldText(submittedLabel),
+    matchedAlias: null,
+    confidence: "low",
   };
 }
 
 export async function listTopicAreaSuggestions(query?: string) {
-  const normalizedQuery = normalizeSearchText(query ?? "");
-  const queryTokens = getInterestTokens(query ?? "");
-  const rankedCatalogSuggestions = PROJECT_CAREERS.map((career) => {
-    if (!normalizedQuery) {
-      return {
-        career,
-        score: 1,
-      };
-    }
-
-    const careerLabel = normalizeSearchText(career.label);
-    let score = 0;
-
-    if (careerLabel.includes(normalizedQuery) || normalizedQuery.includes(careerLabel)) {
-      score += 20;
-    }
-
-    const careerTokens = getMatchingSearchTokens({
-      queryTokens,
-      searchText: careerLabel,
-    });
-    score += careerTokens.length * 5;
-
-    const presetMatches = PROJECT_PRESETS.filter((preset) => preset.careerId === career.id)
-      .map((preset) => {
-        const searchText = buildPresetSearchText(preset);
-        const tokenMatches = getMatchingSearchTokens({
-          queryTokens,
-          searchText,
-        });
-        const directMatch =
-          normalizedQuery.length >= 5 && searchText.includes(normalizedQuery) ? 1 : 0;
-
-        return tokenMatches.length * 4 + directMatch * 10;
-      })
-      .reduce((total, presetScore) => total + presetScore, 0);
-
-    score += presetMatches;
-
-    return {
-      career,
-      score,
-    };
-  })
-    .filter((entry) => !normalizedQuery || entry.score > 0)
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
+  const concepts = await fordConcepts();
+  const normalizedQuery = normalizeAcademicFieldText(query ?? "");
+  return concepts
+    .map((concept) => {
+      const label = displayLabel(concept);
+      const search = concept.normalizedSearchText || normalizeAcademicFieldText([concept.conceptCode, label, concept.prefLabel, ...aliases(concept)].join(" "));
+      let score = normalizedQuery ? 0 : concept.parent ? 5 : 1;
+      if (normalizedQuery) {
+        if (concept.conceptCode.toLowerCase() === normalizedQuery) score = 100;
+        else if (normalizeAcademicFieldText(label) === normalizedQuery) score = 95;
+        else if (aliases(concept).some((alias) => normalizeAcademicFieldText(alias) === normalizedQuery)) score = 90;
+        else if (search.includes(normalizedQuery)) score = 50;
+        else score = normalizedQuery.split(" ").filter((token) => token.length > 2 && search.includes(token)).length * 8;
       }
+      return {
+        label,
+        canonicalAreaId: concept.conceptCode,
+        canonicalAreaLabel: label,
+        code: concept.conceptCode,
+        parentCode: concept.parent?.conceptCode ?? null,
+        taxonomyVersion: concept.scheme.version,
+        source: "catalog" as const,
+        score,
+      };
+    })
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label, "es"))
+    .slice(0, normalizedQuery ? 12 : 60)
+    .map(({ score: _score, ...item }) => item);
+}
 
-      return left.career.label.localeCompare(right.career.label, "es");
-    });
-
-  const catalogSuggestions = rankedCatalogSuggestions.map(({ career }) =>
-    toTopicAreaSuggestion({
-      label: career.label,
-      canonicalAreaId: career.id,
-      canonicalAreaLabel: career.label,
-      source: "catalog",
-    }),
-  );
-
-  const customEntries = await prisma.topicAreaCatalogEntry.findMany({
-    where: normalizedQuery
-      ? {
-          OR: [
-            {
-              normalizedLabel: {
-                contains: normalizedQuery,
-                mode: "insensitive",
-              },
-            },
-            {
-              displayLabel: {
-                contains: query?.trim() ?? "",
-                mode: "insensitive",
-              },
-            },
-            {
-              canonicalAreaLabel: {
-                contains: query?.trim() ?? "",
-                mode: "insensitive",
-              },
-            },
-          ],
-        }
-      : undefined,
-    orderBy: [{ usageCount: "desc" }, { updatedAt: "desc" }],
-    take: 8,
-  });
-
-  const merged = new Map<string, TopicAreaSuggestion>();
-
-  for (const suggestion of catalogSuggestions) {
-    merged.set(normalizeSearchText(suggestion.label), suggestion);
+export async function resolveAcademicField(input: { topicAreaId?: string | null; topicAreaLabel?: string | null }) {
+  const submittedLabel = input.topicAreaLabel?.trim() || input.topicAreaId?.trim() || "";
+  if (!submittedLabel) return null;
+  const concepts = await fordConcepts();
+  const normalized = normalizeAcademicFieldText(submittedLabel);
+  const requestedCode = input.topicAreaId?.trim();
+  if (requestedCode) {
+    const byCode = concepts.find((concept) => concept.conceptCode.toLowerCase() === requestedCode.toLowerCase());
+    if (byCode) return canonicalResolution(byCode, submittedLabel, null);
   }
-
-  for (const entry of customEntries) {
-    const label = entry.canonicalAreaLabel ?? entry.displayLabel;
-    const key = normalizeSearchText(label);
-
-    if (!merged.has(key)) {
-      merged.set(
-        key,
-        toTopicAreaSuggestion({
-          label,
-          canonicalAreaId: entry.canonicalAreaId,
-          canonicalAreaLabel: entry.canonicalAreaLabel,
-          source: "custom",
-        }),
-      );
-    }
+  for (const concept of concepts) {
+    const match = exactMatch(concept, null, normalized);
+    if (match) return canonicalResolution(concept, submittedLabel, match.matchedAlias);
   }
+  return customResolution(submittedLabel, concepts[0]?.scheme.version ?? null);
+}
 
-  return Array.from(merged.values()).slice(0, 10);
+// Compatibility name: resolution is read-only and never mutates the canonical catalog.
+export async function resolveAndRecordTopicArea(input: { topicAreaId?: string | null; topicAreaLabel?: string | null }) {
+  const resolved = await resolveAcademicField(input);
+  return resolved ?? {
+    topicAreaId: null,
+    topicAreaLabel: null,
+    canonicalAreaId: null,
+    canonicalAreaLabel: null,
+    conceptId: null,
+    taxonomyCode: TAXONOMY_CODE,
+    taxonomyVersion: null,
+    parentCode: null,
+    source: "custom" as const,
+    resolutionStatus: AcademicFieldResolutionStatus.CUSTOM_UNRESOLVED,
+    submittedLabel: "",
+    normalizedSubmittedLabel: "",
+    matchedAlias: null,
+    confidence: "low" as const,
+  };
 }
 
 export async function normalizeTopicAreaInRealTime(rawLabel: string) {
-  const trimmedLabel = rawLabel.trim();
-
-  if (!trimmedLabel) {
-    return null;
-  }
-
-  const heuristicMatch = evaluateCareerMatch(trimmedLabel);
-
-  if (heuristicMatch.confidence !== "low") {
-    const persisted = await persistTopicAreaEntry({
-      displayLabel: heuristicMatch.career?.label ?? trimmedLabel,
-      catalogCareer: heuristicMatch.career,
-    });
-
-    return {
-      label: persisted.topicAreaLabel,
-      canonicalAreaId: persisted.topicAreaId,
-      canonicalAreaLabel: persisted.topicAreaLabel,
-      source: heuristicMatch.career ? "catalog" : "custom",
-      confidence: heuristicMatch.confidence,
-    } satisfies TopicAreaSuggestion & { confidence: TopicAreaMatchConfidence };
-  }
-
-  try {
-    const normalized = await normalizeTopicAreaSemantically(trimmedLabel);
-    const catalogCareer =
-      getCatalogCareerById(normalized.canonicalAreaId) ??
-      findBestCareerMatch(normalized.canonicalAreaLabel ?? normalized.normalizedLabel);
-    const displayLabel = catalogCareer?.label ?? normalized.normalizedLabel;
-    const persisted = await persistTopicAreaEntry({
-      displayLabel,
-      catalogCareer,
-    });
-
-    return {
-      label: persisted.topicAreaLabel,
-      canonicalAreaId: persisted.topicAreaId,
-      canonicalAreaLabel: persisted.topicAreaLabel,
-      source: catalogCareer ? "catalog" : "custom",
-      confidence: normalized.confidence,
-    } satisfies TopicAreaSuggestion & { confidence: TopicAreaMatchConfidence };
-  } catch {
-    const persisted = await persistTopicAreaEntry({
-      displayLabel: trimmedLabel,
-      catalogCareer: null,
-    });
-
-    return {
-      label: persisted.topicAreaLabel,
-      canonicalAreaId: persisted.topicAreaId,
-      canonicalAreaLabel: persisted.topicAreaLabel,
-      source: "custom",
-      confidence: "low",
-    } satisfies TopicAreaSuggestion & { confidence: TopicAreaMatchConfidence };
-  }
+  return resolveAcademicField({ topicAreaLabel: rawLabel });
 }
 
-export async function resolveAndRecordTopicArea(input: ResolveTopicAreaInput) {
-  const fallbackLabel = input.topicAreaLabel?.trim() || getTopicAreaLabel(input.topicAreaId);
-
-  if (!fallbackLabel) {
-    return {
-      topicAreaId: null,
-      topicAreaLabel: null,
-    };
-  }
-
-  const catalogCareer =
-    getCatalogCareerById(input.topicAreaId) ?? findBestCareerMatch(fallbackLabel);
-
-  return persistTopicAreaEntry({
-    displayLabel: fallbackLabel,
-    catalogCareer,
+export async function assignPrimaryAcademicField(
+  tx: Prisma.TransactionClient,
+  projectId: string,
+  resolution: AcademicFieldResolution | null,
+) {
+  if (!resolution) return null;
+  const existing = await tx.projectKnowledgeField.findFirst({
+    where: resolution.conceptId
+      ? { projectId, conceptId: resolution.conceptId }
+      : { projectId, conceptId: null, normalizedSubmittedLabel: resolution.normalizedSubmittedLabel },
+    select: { id: true },
   });
+  await tx.projectKnowledgeField.updateMany({ where: { projectId, isPrimary: true }, data: { isPrimary: false } });
+  const data = {
+      projectId,
+      conceptId: resolution.conceptId,
+      isPrimary: true,
+      source: ClassificationSource.USER,
+      resolutionStatus: resolution.resolutionStatus,
+      submittedLabel: resolution.submittedLabel,
+      normalizedSubmittedLabel: resolution.normalizedSubmittedLabel,
+      customLabel: resolution.resolutionStatus === AcademicFieldResolutionStatus.CUSTOM_UNRESOLVED ? resolution.submittedLabel : null,
+      matchedAlias: resolution.matchedAlias,
+      taxonomyCodeSnapshot: resolution.taxonomyCode,
+      taxonomyVersionSnapshot: resolution.taxonomyVersion,
+      confidence: resolution.confidence === "high" ? 1 : null,
+      evidenceJson: {
+        source: "USER_SELECTION",
+        canonicalCode: resolution.canonicalAreaId,
+        parentCode: resolution.parentCode,
+      },
+    } satisfies Prisma.ProjectKnowledgeFieldUncheckedCreateInput;
+  return existing
+    ? tx.projectKnowledgeField.update({ where: { id: existing.id }, data })
+    : tx.projectKnowledgeField.create({ data });
 }

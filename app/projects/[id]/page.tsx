@@ -1,254 +1,134 @@
-import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { BlueprintPanel } from "@/components/projects/blueprint-panel";
 import { ExportPanel } from "@/components/projects/export-panel";
 import { IntakeForm } from "@/components/projects/intake-form";
-import { ProjectContextRibbon } from "@/components/projects/project-context-ribbon";
 import { ProjectShell } from "@/components/projects/project-shell";
+import { ProjectSummarySidebar } from "@/components/projects/project-summary-sidebar";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
+import { UserPdfPlaceholder } from "@/components/projects/user-pdf-placeholder";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
 import { getLocaleForLanguage } from "@/lib/language";
-import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
-import {
-  getProjectStatusMetaForLanguage,
-  getProjectUiCopy,
-} from "@/lib/project-ui-copy";
 import { requireCurrentUser } from "@/server/auth/session";
 import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
 import { getProjectForUser } from "@/server/projects/project-service";
 import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import { listProjectReferences } from "@/server/retrieval/reference-service";
 
+type VisibleStep = "define" | "evidence" | "plan";
 type ProjectDetailPageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ step?: string }>;
 };
 
-export default async function ProjectDetailPage({
-  params,
-}: ProjectDetailPageProps) {
+export default async function ProjectDetailPage({ params, searchParams }: ProjectDetailPageProps) {
   const user = await requireCurrentUser();
   const language = "es" as const;
-  const copy = getProjectUiCopy(language);
   const locale = getLocaleForLanguage(language);
-  const { id } = await params;
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   const project = await getProjectForUser(user.id, id);
+  if (!project) notFound();
+  if (query.step === "idea") redirect(`/projects/${id}/topic`);
 
-  if (!project) {
-    notFound();
-  }
-
-  const [references, initialReferenceSearchSnapshot] = await Promise.all([
+  const currentStep: VisibleStep = query.step === "evidence" || query.step === "plan" ? query.step : "define";
+  const [references, initialReferenceSearchSnapshot, blueprintVersions] = await Promise.all([
     listProjectReferences(user.id, id, { languageOverride: language }),
     getLatestProjectReferenceSearchSnapshot(id),
+    listBlueprintVersionsForUser(user.id, id),
   ]);
-  const blueprintVersions = await listBlueprintVersionsForUser(user.id, id);
-  const statusMeta = getProjectStatusMetaForLanguage(project.status, language);
   const selectedReferenceCount = references.filter((reference) => reference.selected).length;
-  const hasIntakeMinimum = Boolean(
-    project.intake?.topic?.trim() &&
-      project.intake?.problemContext?.trim() &&
-      project.intake?.targetPopulation?.trim(),
-  );
+  const hasIntakeMinimum = Boolean(project.intake?.topic?.trim() && project.intake.problemContext?.trim() && project.intake.targetPopulation?.trim());
   const latestBlueprint = blueprintVersions[0] ?? null;
-  const selectedTopicLabel =
-    project.topicSelectionStatus === "SELECTED"
-      ? project.title
-      : project.topicSeedText ?? project.title;
-  const topicOriginLabel =
-    project.topicOriginType === "CUSTOM"
-      ? copy.projectPage.topicOrigin.custom
-      : project.topicOriginType === "HYBRID"
-        ? copy.projectPage.topicOrigin.hybrid
-        : copy.projectPage.topicOrigin.catalog;
-  const latestBlueprintJson = latestBlueprint?.blueprintJson as
-    | {
-        references_used?: Array<{ reference_id: string; title: string }>;
-      }
-    | undefined;
-  const stageCards = [
-    {
-      step: "01",
-      href: `/projects/${project.id}/topic`,
-      title: copy.workflow.stages.topic[0],
-      description: copy.workflow.stages.topic[1],
-      active: project.topicSelectionStatus === "SELECTED",
-      current: project.topicSelectionStatus !== "SELECTED",
-      cardClassName: "brand-card-lilac",
-    },
-    {
-      step: "02",
-      href: "#intake",
-      title: copy.workflow.stages.intake[0],
-      description: copy.workflow.stages.intake[1],
-      active: statusMeta.stage >= 1,
-      current: project.topicSelectionStatus === "SELECTED" && statusMeta.stage === 1,
-      cardClassName: "brand-card-gold",
-    },
-    {
-      step: "03",
-      href: "#fuentes",
-      title: copy.workflow.stages.sources[0],
-      description: copy.workflow.stages.sources[1],
-      active: statusMeta.stage >= 2,
-      current: statusMeta.stage === 2,
-      cardClassName: "brand-card-mint",
-    },
-    {
-      step: "04",
-      href: "#blueprint",
-      title: copy.workflow.stages.blueprint[0],
-      description: copy.workflow.stages.blueprint[1],
-      active: statusMeta.stage >= 3,
-      current: statusMeta.stage === 3,
-      cardClassName: "brand-card-blush",
-    },
-    {
-      step: "05",
-      href: "#exportacion",
-      title: copy.workflow.stages.export[0],
-      description: copy.workflow.stages.export[1],
-      active: statusMeta.stage >= 4,
-      current: statusMeta.stage >= 4,
-      cardClassName: "surface-panel",
-    },
+  const activeVersion = blueprintVersions.find((version) => version.id === project.activeBlueprintVersionId) ?? latestBlueprint;
+  const activeBlueprintJson = activeVersion?.blueprintJson as { references_used?: Array<{ reference_id: string; title: string }> } | undefined;
+  const primaryKnowledgeField = project.knowledgeFields[0];
+  const areaLabel = primaryKnowledgeField?.concept?.labelEs ?? primaryKnowledgeField?.customLabel ?? project.topicAreaLabel;
+  const draftStaleScopes = Array.isArray(project.draft?.staleScopesJson) ? project.draft.staleScopesJson : [];
+  const stepNumber = currentStep === "define" ? 2 : currentStep === "evidence" ? 3 : 4;
+  const progress = currentStep === "define" ? 35 : currentStep === "evidence" ? 65 : activeVersion ? 100 : 85;
+  const stages = [
+    { step: "01", href: `/projects/${id}/topic`, title: "Idea", description: "Elige la dirección de tu investigación.", active: true, current: false },
+    { step: "02", href: `/projects/${id}?step=define`, title: "Define tu investigación", description: "Delimita el problema, contexto y diseño.", active: hasIntakeMinimum, current: currentStep === "define" },
+    { step: "03", href: `/projects/${id}?step=evidence`, title: "Evidencia", description: "Busca, revisa y selecciona fuentes.", active: selectedReferenceCount > 0, current: currentStep === "evidence" },
+    { step: "04", href: `/projects/${id}?step=plan`, title: "Plan de tesis", description: "Genera y consulta tus versiones publicadas.", active: Boolean(activeVersion), current: currentStep === "plan" },
   ];
 
   return (
-    <ProjectShell
-      title={project.title}
-      description={copy.projectPage.description}
-    >
-      <ProjectContextRibbon
-        degreeLevel={project.degreeLevel}
-        language={language}
-        program={project.program}
-        selectedTopicLabel={selectedTopicLabel}
-        templateKey={project.templateKey}
-        topicOriginLabel={topicOriginLabel}
-        topicSeedText={project.topicSeedText?.trim() || project.title}
-        universityLabel={getUniversityDisplayNameByCode(project.university)}
-      />
-
-      <WorkflowStageNav items={stageCards} language={language} />
-
-      <section className="grid gap-6 xl:grid-cols-[0.88fr_1.22fr]">
-        <aside className="grid gap-6" id="proyecto">
-          {project.topicSelectionStatus !== "SELECTED" ? (
-            <section className="rounded-[32px] p-6 brand-card-lilac">
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
-                {copy.projectPage.missingTopicKicker}
-              </p>
-              <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-                {copy.projectPage.missingTopicTitle}
-              </h2>
-              <p className="mt-3 text-sm leading-7 text-[rgba(23,19,31,0.72)]">
-                {copy.projectPage.missingTopicBody}
-              </p>
-              <div className="mt-5">
-                <Link
-                  className="brand-button-primary px-5 py-3 text-sm font-semibold"
-                  href={`/projects/${project.id}/topic`}
-                >
-                  {copy.projectPage.goToTopic}
-                </Link>
-              </div>
+    <ProjectShell title={project.title} description={`Paso ${stepNumber} de 4 · ${stages[stepNumber - 1]?.title ?? "Investigación"}`}>
+      <WorkflowStageNav items={stages} language={language} />
+      <div className="grid gap-6 xl:grid-cols-[minmax(240px,0.34fr)_minmax(0,1fr)]">
+        <ProjectSummarySidebar
+          area={areaLabel}
+          context={project.intake?.researchScope ?? project.country}
+          degreeLevel={project.degreeLevel}
+          latestVersion={activeVersion?.versionNumber ?? null}
+          methodology={project.intake?.preferredMethodology ?? null}
+          pendingDecisions={project.intake?.pendingDecisions ?? (draftStaleScopes.length ? "Hay decisiones que deben revisarse después de los últimos cambios." : null)}
+          problem={project.intake?.problemContext ?? null}
+          progress={progress}
+          selectedSources={selectedReferenceCount}
+          title={project.title}
+        />
+        <main className="grid gap-6">
+          {currentStep === "define" ? (
+            <section className="surface-panel rounded-[32px] p-6 sm:p-8">
+              <p className="brand-kicker">Paso 2 · Define tu investigación</p>
+              <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold">Delimitación científica</h2>
+              <p className="mt-3 mb-6 text-sm leading-7 text-[var(--color-muted)]">Convierte la idea en una definición investigable. Todos los campos se guardan en tu borrador y puedes volver a editarlos.</p>
+              <IntakeForm project={project} language={language} />
             </section>
           ) : null}
-
-          <section className="brand-card-primary rounded-[32px] p-6 sm:p-8">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/64">
-                  {copy.projectPage.currentStatus}
-                </p>
-                <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-white">
-                  {statusMeta.label}
-                </h2>
-              </div>
-              <div className="rounded-full bg-white/12 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white">
-                {copy.projectPage.stageCounter(Math.min(statusMeta.stage + 1, 5))}
-              </div>
-            </div>
-            <p className="mt-4 text-sm leading-7 text-white/76">{statusMeta.summary}</p>
-            <div className="mt-5 rounded-[24px] bg-white/10 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/58">
-                {copy.projectPage.nextStep}
-              </p>
-              <p className="mt-2 text-sm leading-6 text-white">
-                {statusMeta.nextStep}
-              </p>
-            </div>
-          </section>
-
-        </aside>
-
-        <section className="grid gap-6">
-          <section className="surface-panel scroll-mt-32 rounded-[32px] p-6 sm:p-8" id="intake">
-            <div className="mb-6">
-              <p className="brand-kicker">
-                {copy.projectPage.intakeKicker}
-              </p>
-              <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-                {copy.projectPage.intakeTitle}
-              </h2>
-              <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-                {copy.projectPage.intakeBody}
-              </p>
-            </div>
-
-            <IntakeForm project={project} language={language} />
-          </section>
-
-          <div className="scroll-mt-32" id="fuentes">
-            <ReferenceSearchPanel
-              hasIntakeMinimum={hasIntakeMinimum}
-              intakeSnapshot={{
-                topic: project.intake?.topic ?? "",
-                problemContext: project.intake?.problemContext ?? "",
-                targetPopulation: project.intake?.targetPopulation ?? "",
-              }}
-              initialSearchSnapshot={initialReferenceSearchSnapshot}
-              initialReferences={references}
-              language={language}
-              projectId={project.id}
-              status={project.status}
-            />
-          </div>
-
-          <div className="scroll-mt-32" id="blueprint">
-            <BlueprintPanel
-              hasIntakeMinimum={hasIntakeMinimum}
-              language={language}
-              projectId={project.id}
-              projectStatus={project.status}
-              selectedReferenceCount={selectedReferenceCount}
-              versions={blueprintVersions.map((version) => ({
-                id: version.id,
-                versionNumber: version.versionNumber,
-                createdAt: version.createdAt.toISOString(),
-                blueprintJson: version.blueprintJson as Record<string, unknown>,
-                coherenceReportJson: version.coherenceReportJson as Record<string, unknown>,
-              }))}
-            />
-          </div>
-
-          <ExportPanel
-            hasBlueprint={blueprintVersions.length > 0}
-            hasIntakeMinimum={hasIntakeMinimum}
-            language={language}
-            latestBlueprintId={latestBlueprint?.id ?? null}
-            latestBlueprintCreatedAt={
-              latestBlueprint ? latestBlueprint.createdAt.toLocaleString(locale) : null
-            }
-            latestBlueprintReferenceCount={latestBlueprintJson?.references_used?.length ?? 0}
-            latestBlueprintVersionNumber={latestBlueprint?.versionNumber ?? null}
-            projectId={project.id}
-            projectStatus={project.status}
-            selectedReferenceCount={selectedReferenceCount}
-          />
-        </section>
-      </section>
+          {currentStep === "evidence" ? (
+            <>
+              <ReferenceSearchPanel
+                hasIntakeMinimum={hasIntakeMinimum}
+                intakeSnapshot={{ topic: project.intake?.topic ?? "", problemContext: project.intake?.problemContext ?? "", targetPopulation: project.intake?.targetPopulation ?? "" }}
+                initialSearchSnapshot={initialReferenceSearchSnapshot}
+                initialReferences={references}
+                language={language}
+                projectId={project.id}
+                status={project.status}
+              />
+              <UserPdfPlaceholder />
+            </>
+          ) : null}
+          {currentStep === "plan" ? (
+            <>
+              <BlueprintPanel
+                activeVersionId={activeVersion?.id ?? null}
+                draftRevision={project.draft?.revision ?? 0}
+                hasIntakeMinimum={hasIntakeMinimum}
+                language={language}
+                projectId={project.id}
+                projectStatus={project.status}
+                selectedReferenceCount={selectedReferenceCount}
+                versions={blueprintVersions.map((version) => ({
+                  id: version.id,
+                  versionNumber: version.versionNumber,
+                  createdAt: version.createdAt.toISOString(),
+                  blueprintJson: version.blueprintJson as Record<string, unknown>,
+                  coherenceReportJson: version.coherenceReportJson as Record<string, unknown>,
+                  originatingDraftRevision: version.originatingDraftRevision,
+                  publicationStatus: version.publicationStatus,
+                  userLabel: version.userLabel,
+                }))}
+              />
+              <ExportPanel
+                hasBlueprint={blueprintVersions.length > 0}
+                hasIntakeMinimum={hasIntakeMinimum}
+                language={language}
+                latestBlueprintId={activeVersion?.id ?? null}
+                latestBlueprintCreatedAt={activeVersion ? activeVersion.createdAt.toLocaleString(locale) : null}
+                latestBlueprintReferenceCount={activeBlueprintJson?.references_used?.length ?? 0}
+                latestBlueprintVersionNumber={activeVersion?.versionNumber ?? null}
+                projectId={project.id}
+                projectStatus={project.status}
+                selectedReferenceCount={selectedReferenceCount}
+              />
+            </>
+          ) : null}
+        </main>
+      </div>
     </ProjectShell>
   );
 }

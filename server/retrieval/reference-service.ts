@@ -12,6 +12,7 @@ import {
   REFERENCE_BATCH_SIZE,
 } from "@/lib/research-workflow";
 import { prisma } from "@/lib/prisma";
+import { syncSourceSelectionToDraft } from "@/server/projects/project-draft-service";
 import { logAuditEvent } from "@/server/audit/audit-service";
 
 import {
@@ -625,6 +626,9 @@ export async function listProjectReferences(
       selectedOrder: effectiveSelectedOrder,
       relevanceScore: snapshotEntry?.relevanceScore ?? item.relevanceScore,
       scoreBreakdown: snapshotEntry?.scoreBreakdown ?? null,
+      sourceState: effectiveSelected ? "SELECTED" : "CANDIDATE",
+      evidenceLevel: "UNKNOWN",
+      provenance: { provider: item.sourceProvider, searchSnapshotSavedAt: searchSnapshot?.savedAt ?? null },
       reference: {
         ...item.reference,
         sourceLanguage,
@@ -658,6 +662,10 @@ export async function updateSelectedProjectReferences(
   }
 
   const selectedCount = await prisma.$transaction(async (tx) => {
+    const requestedIds = [...new Set(selectedReferenceIds)];
+    if (requestedIds.length > MAX_SELECTED_REFERENCES) throw new Error(`Puedes seleccionar hasta ${MAX_SELECTED_REFERENCES} fuentes.`);
+    const ownedRows = await tx.projectReference.findMany({ where: { projectId, OR: [{ referenceId: { in: requestedIds } }, { id: { in: requestedIds } }] }, select: { id: true, referenceId: true } });
+    if (ownedRows.length !== requestedIds.length) throw new Error("Una o mas fuentes ya no pertenecen a este proyecto. Recarga la lista antes de guardar.");
     await tx.projectReference.updateMany({
       where: { projectId },
       data: {
@@ -666,7 +674,7 @@ export async function updateSelectedProjectReferences(
       },
     });
 
-    for (const [index, referenceId] of selectedReferenceIds.entries()) {
+    for (const [index, referenceId] of requestedIds.entries()) {
       await tx.projectReference.updateMany({
         where: {
           projectId,
@@ -695,6 +703,8 @@ export async function updateSelectedProjectReferences(
             : ProjectStatus.SOURCES_REVIEW,
       },
     });
+    const canonicalSelectedReferenceIds = requestedIds.map((requestedId) => ownedRows.find((item) => item.id === requestedId || item.referenceId === requestedId)!.referenceId);
+    await syncSourceSelectionToDraft(tx, projectId, canonicalSelectedReferenceIds);
 
     return selectedCount;
   });

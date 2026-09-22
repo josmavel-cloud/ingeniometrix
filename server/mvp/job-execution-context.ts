@@ -107,6 +107,17 @@ export async function jobCostSnapshot() {
   return { jobId: execution.jobId, ...record, calls: record.entries.length, committed_usd: committed(record.entries), estimated_known_usd: record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0), unknown_usage_calls: record.entries.filter((entry) => entry.estimate === null).length, retry_committed_usd: committed(record.entries.filter((entry) => entry.retry)), pricing: "estimated from provider tokens; actual billed USD unknown" };
 }
 
+export function classifyPlanSourceDisposition(input: {
+  hasEvidenceCard: boolean;
+  materializationStatus?: string | null;
+}) {
+  if (input.hasEvidenceCard) return "USED" as const;
+  if (input.materializationStatus && /UNUSABLE|FAILED|REJECTED/i.test(input.materializationStatus)) {
+    return "REJECTED_AFTER_INSPECTION" as const;
+  }
+  return "CONSIDERED_NOT_USED" as const;
+}
+
 export async function createBlueprintVersionOnce(data: Prisma.BlueprintVersionUncheckedCreateInput, scientificInputs: unknown) {
   const execution = context.getStore();
   if (!execution) return prisma.blueprintVersion.create({ data });
@@ -120,7 +131,42 @@ export async function createBlueprintVersionOnce(data: Prisma.BlueprintVersionUn
       return tx.blueprintVersion.findUniqueOrThrow({ where: { id: output.versionId, projectId: data.projectId } });
     }
     const latest = await tx.blueprintVersion.findFirst({ where: { projectId: data.projectId }, orderBy: { versionNumber: "desc" }, select: { versionNumber: true } });
-    const version = await tx.blueprintVersion.create({ data: { ...data, versionNumber: (latest?.versionNumber ?? 0) + 1 } });
+    const inputSnapshot = await tx.generationInputSnapshot.findFirst({ where: { jobId: execution.jobId }, orderBy: { revision: "desc" } });
+    const evidenceLedger = await tx.projectEvidenceLedger.findFirst({ where: { projectId: data.projectId }, orderBy: { createdAt: "desc" }, include: { evidenceCards: { select: { id: true, referenceId: true, evidenceBasis: true, qualityStatus: true } }, sourceMaterializations: { select: { id: true, referenceId: true, materializationType: true, status: true } } } });
+    const generationManifest = {
+      version: "plan-version-manifest.v1",
+      jobId: execution.jobId,
+      inputSnapshot: inputSnapshot ? { id: inputSnapshot.id, revision: inputSnapshot.revision, draftId: inputSnapshot.draftId, draftRevision: inputSnapshot.draftRevision, contentHash: inputSnapshot.contentHash } : null,
+      scientificInputs,
+      evidence: evidenceLedger ? { ledgerId: evidenceLedger.id, stepRunId: evidenceLedger.stepRunId, evidenceCardIds: evidenceLedger.evidenceCards.map((card) => card.id), materializationIds: evidenceLedger.sourceMaterializations.map((item) => item.id) } : null,
+      policies: inputSnapshot && typeof inputSnapshot.payloadJson === "object" && inputSnapshot.payloadJson && !Array.isArray(inputSnapshot.payloadJson) ? (inputSnapshot.payloadJson as Record<string, unknown>).policies ?? null : null,
+      approvals: inputSnapshot && typeof inputSnapshot.payloadJson === "object" && inputSnapshot.payloadJson && !Array.isArray(inputSnapshot.payloadJson) ? (inputSnapshot.payloadJson as Record<string, unknown>).userApprovals ?? null : null,
+    };
+    const version = await tx.blueprintVersion.create({ data: { ...data, versionNumber: (latest?.versionNumber ?? 0) + 1, generationJobId: execution.jobId, generationInputSnapshotId: inputSnapshot?.id, originatingDraftRevision: inputSnapshot?.draftRevision, generationManifestJson: json(generationManifest) } });
+    const selected = await tx.projectReference.findMany({ where: { projectId: data.projectId, selected: true }, select: { id: true, referenceId: true, relevanceScore: true, selectionReason: true } });
+    const cardsByReference = new Map((evidenceLedger?.evidenceCards ?? []).map((card) => [card.referenceId, card]));
+    const materializationsByReference = new Map((evidenceLedger?.sourceMaterializations ?? []).map((item) => [item.referenceId, item]));
+    if (selected.length > 0) {
+      await tx.planSourceDisposition.createMany({ data: selected.map((item) => {
+        const card = cardsByReference.get(item.referenceId);
+        const materialization = materializationsByReference.get(item.referenceId);
+        const status = classifyPlanSourceDisposition({ hasEvidenceCard: Boolean(card), materializationStatus: materialization?.status });
+        return {
+          id: randomUUID(),
+          blueprintVersionId: version.id,
+          projectReferenceId: item.id,
+          status,
+          reason: status === "USED" ? "La fuente produjo evidencia consumida por el plan publicado." : status === "REJECTED_AFTER_INSPECTION" ? `La inspeccion termino con estado ${materialization?.status}.` : "La fuente fue seleccionada e inspeccionada, pero no produjo evidencia usada en esta version.",
+          evidenceLevel: card?.evidenceBasis ?? materialization?.materializationType ?? null,
+          relevanceDimensionsJson: json({ aggregateScore: item.relevanceScore }),
+          provenanceJson: json({ selectionReason: item.selectionReason, evidenceCardId: card?.id ?? null, materializationId: materialization?.id ?? null }),
+        };
+      }) });
+    }
+    await tx.project.update({ where: { id: data.projectId }, data: { activeBlueprintVersionId: version.id } });
+    if (inputSnapshot?.draftId && inputSnapshot.draftRevision) {
+      await tx.projectDraft.updateMany({ where: { id: inputSnapshot.draftId, revision: inputSnapshot.draftRevision }, data: { staleScopesJson: json([]), lastInvalidatedAt: null } });
+    }
     await tx.blueprintJobStage.create({ data: { jobId: execution.jobId, stageKey, status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: { versionId: version.id, fingerprint: hash } } });
     return version;
   });

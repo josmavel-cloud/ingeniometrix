@@ -14,11 +14,6 @@ import {
   getInterestTokens,
   getTopicAreaLabel,
 } from "@/lib/topic-suggestion-scoring";
-import {
-  buildUniversityResearchContext,
-  getUniversityDisplayNameByCode,
-} from "@/lib/peru-universities";
-
 import { generateTopicSuggestionsInRealTime } from "./topic-suggestion-generator";
 
 type TopicProjectRecord = Prisma.ProjectGetPayload<{
@@ -489,8 +484,6 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
     catalogSuggestions = buildProjectPresetSuggestionEntries({
       areaId: project.topicAreaId,
       degreeLevel: getPresetDegreeLevelForProject(project.degreeLevel),
-      university: project.university,
-      templateKey: project.templateKey,
       interestText: seedText,
       limit: 3,
     });
@@ -525,8 +518,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
       const taxonomyHints = await loadTaxonomyHints(seedText, areaLabel);
 
       const generatedSuggestions = await generateTopicSuggestionsInRealTime({
-        university: getUniversityDisplayNameByCode(project.university),
-        universityContext: buildUniversityResearchContext(project.university).contextSummary,
+        country: project.country,
         degreeLevel: project.degreeLevel,
         program: project.program,
         areaLabel,
@@ -594,8 +586,7 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
   const taxonomyHints = await loadTaxonomyHints(seedText, areaLabel);
 
   const generatedSuggestions = await generateTopicSuggestionsInRealTime({
-    university: getUniversityDisplayNameByCode(project.university),
-    universityContext: buildUniversityResearchContext(project.university).contextSummary,
+    country: project.country,
     degreeLevel: project.degreeLevel,
     program: project.program,
     areaLabel,

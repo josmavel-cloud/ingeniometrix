@@ -4,7 +4,7 @@ import type { DraftIntake, DraftView } from "./project-draft-contract";
 export class DraftSaveQueue {
   private tail: Promise<unknown> = Promise.resolve();
   private error: Error | null = null;
-  constructor(private current: DraftView, private send: (revision: number, intake: DraftIntake) => Promise<DraftView>) {}
+  constructor(private current: DraftView, private send: (revision: number, intake: DraftIntake, etag: string) => Promise<DraftView>) {}
   matches(intake: DraftIntake) { return JSON.stringify(this.current.intake) === JSON.stringify(intake); }
   retry() { this.error = null; } // Explicit retry only; revision is never advanced speculatively.
   save(intake: DraftIntake): Promise<DraftView> {
@@ -12,7 +12,7 @@ export class DraftSaveQueue {
     const next = this.tail.then(async () => {
       if (this.error) throw this.error;
       if (this.matches(frozen)) return this.current;
-      try { this.current = await this.send(this.current.revision, frozen); return this.current; }
+      try { this.current = await this.send(this.current.revision, frozen, this.current.etag); return this.current; }
       catch (error) { this.error = error instanceof Error ? error : new Error("No se pudo guardar."); throw this.error; }
     });
     this.tail = next.catch(() => undefined);

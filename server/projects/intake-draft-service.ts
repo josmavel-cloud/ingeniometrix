@@ -1,6 +1,6 @@
 import { INTAKE_DRAFT_SERVICE_1_PROMPT } from "@/server/mvp/prompts/intake-draft-service.v1";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
-import type { DegreeLevel, Intake, Project, University } from "@prisma/client";
+import type { DegreeLevel, Intake, Project } from "@prisma/client";
 
 import intakeDraftBundleSchema from "@/ai/schemas/intake-draft-bundle.schema.json";
 import {
@@ -57,7 +57,8 @@ function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
   const area =
     input.project.topicAreaLabel?.trim() ||
     (language === "en" ? "the selected academic area" : "el area academica seleccionada");
-  const university = getUniversityDisplayNameByCode(input.project.university as University);
+  const university = getUniversityDisplayNameByCode(input.project.university);
+  const institutionalSuffix = university ? ` para ${university}` : "";
   const program = input.project.program;
   const labels = language === "en"
     ? ["Operational angle", "User/process angle", "Institutional angle"]
@@ -83,7 +84,7 @@ function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
           ? "Qualitative or mixed design, to be selected after source review and data availability checks."
           : "Applied, descriptive or correlational design, pending validation against available data and advisor guidance.",
       advisorNotes:
-        `Generated as an editable intake draft for ${university}. Assumptions are provisional and must not be treated as verified findings.`,
+        `Generated as an editable intake draft${institutionalSuffix}. Assumptions are provisional and must not be treated as verified findings.`,
     }));
   }
 
@@ -106,7 +107,7 @@ function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
         ? "Diseno cualitativo o mixto, a elegir despues de revisar fuentes y disponibilidad real de datos."
         : "Diseno aplicado, descriptivo o correlacional, pendiente de validacion con datos disponibles y orientacion del asesor.",
     advisorNotes:
-      `Generado como borrador editable de intake para ${university}. Los supuestos son provisionales y no deben tratarse como hallazgos verificados.`,
+      `Generado como borrador editable${institutionalSuffix}. Los supuestos son provisionales y no deben tratarse como hallazgos verificados.`,
   }));
 }
 
