@@ -33,6 +33,8 @@ function expectedOrigin(request: NextRequest) {
 function validateMutationOrigin(request: NextRequest) {
   if (SAFE_METHODS.has(request.method) || !request.nextUrl.pathname.startsWith("/api/")) return null;
   if (request.nextUrl.pathname.startsWith("/api/internal/")) return null;
+  // Dedicated machine callback authenticates the provider signature instead of browser origin.
+  if (request.nextUrl.pathname === "/api/payments/mercado-pago/webhook") return null;
   const allowedOrigin = expectedOrigin(request);
   if (!allowedOrigin) return NextResponse.json({ error: "APP_ORIGIN no esta configurado." }, { status: 503 });
 
