@@ -83,6 +83,8 @@
     "test:rc4-background-responses": "tsx scripts/test-rc4-background-responses.ts",
     "test:rc4-draft-snapshots": "tsx scripts/test-rc4-draft-snapshots.ts",
     "test:rc4-g2": "tsx scripts/test-rc4-g2.ts",
+    "test:rc4-g3-document-profile": "tsx scripts/test-rc4-g3-document-profile.ts",
+    "repair:rc4-g3-presentation": "tsx scripts/repair-rc4-g3-presentation.ts",
     "compare:diagnostic-runs": "tsx scripts/compare-diagnostic-runs.ts",
     "diagnose:lab-b-ingestion": "tsx scripts/run-lab-b-diagnostic-ingestion.ts",
     "diagnose:lab-b-full-docx": "tsx scripts/run-lab-b-full-diagnostic-docx.ts --allow-degraded-handoff",

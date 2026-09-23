@@ -51,6 +51,14 @@ DB stores metadata, structured evidence, execution state and final private downl
 - DOCX/PDF intermediate render outputs before persistence.
 - QA/renders in `artifacts-local/` during validation.
 
+`latam-compact-v1` adds no Prisma model. Its profile, section/page budgets, citation
+policy and asset policy live in `server/mvp/document-profiles/latam-compact-v1.ts`.
+The published `BlueprintVersion.blueprintJson` remains the structured source of truth;
+DOCX/PDF are render products, and the native consistency matrix is derived from the
+validated structured matrix. Optional asset failures are transactional: a failed or
+uninventoried asset cannot be inserted into the document. Presentation-only validation
+artifacts remain private and do not mutate an immutable plan version.
+
 `artifacts-local/` is excluded from release Docker context and must remain uncommitted.
 
 ## Ownership And Download Rules

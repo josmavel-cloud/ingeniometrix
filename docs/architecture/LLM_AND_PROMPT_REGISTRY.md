@@ -27,6 +27,25 @@ See [field authority and consumers](RC4_SCIENTIFIC_DECISION.md) and the private
 `artifacts-local/rc4/scientific-design-evaluation-g1-1/PROMPTS_USED.md` holds G1.1 templates.
 G1.2 changed transport only and reused selector v3 plus critic v3 unchanged.
 
+## RC4 G3 compact document profile
+
+`latam-compact-v1` consumes the approved G1 design; it never invokes the selector or
+critic. Calls use one concatenated Responses input with strict structured output. All are
+reserved by B4 before dispatch.
+
+| Call | Status | Model | Prompt | Output / policy |
+| --- | --- | --- | --- | --- |
+| Compact scientific sections | ACTIVE for `latam-compact-v1` | `gpt-5.4` | `scientific-plan-latam-compact.v1.ts`, wrapped by the compact export in `scientific-plan-approved.v1.ts` | Phase schemas in `scientific-plan-generation.ts`; approved definition/design are authoritative. Legacy prompt/budgets remain profile-isolated. |
+| Consistency matrix | ACTIVE | `gpt-5.4` | `consistency-matrix.v1.ts` | Strict `consistencyMatrixSchema`; rendered only as an editable Word table. |
+| Section compaction | CONDITIONAL, one round maximum | `gpt-5.4-mini` | `section-budget.v2.ts` | Only oversized sections; no design regeneration. |
+| Asset planner | ACTIVE | `gpt-5.4-mini` | `asset-planner.v1.ts` | Zero to four optional interior proposals; native/deterministic rendering; matrix is the fifth interior slot. |
+| Citation repair | CONDITIONAL, one localized recovery | `gpt-5.4` | `scientific-document-citation-repair.v1.ts` | Repairs only unsupported attribution targets; independent scientific re-review required. |
+| Final infographic | ACTIVE, deterministic | No image model | `latam-compact-deterministic-v1` renderer | Structured ResearchDesign -> controlled SVG/PNG; no fabricated findings. |
+
+For this profile, legacy cover-image, matrix-image, source-figure republication and G1
+selector/critic calls are disabled. The complete acceptance prompt inventory is private at
+`artifacts-local/mvp-step6-blueprint-docx/6c0d181e-c0ae-4410-acd6-6824a73b115c/rc4-g3-2026-09-22T05-58-25-503Z/scientific-plan/PROMPTS_USED.md`.
+
 Prompt source of truth for the MVP engine is `server/mvp/prompts/`. Do not embed new important behavioral prompts directly in service logic.
 
 Release configuration keeps:

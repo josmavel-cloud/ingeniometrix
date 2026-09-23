@@ -12,7 +12,7 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | G1a | Reconcile selected/considered/used/excluded; asset QA; terminal costs | Canonical Step 6, export, job control | Reference run read-only + regressions | IN_PROGRESS |
 | G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Explicit scope semantics; compact critic v3; persistent background selector; bounded recovery and approval | Geo and qualitative PASS_WITH_LIMITATIONS; applied cross-domain PASS_WITH_LIMITATIONS; insufficient PASS | COMPLETE / ACCEPTED |
 | G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Revisioned draft, FORD catalog, immutable versions, four-step UI; PDF upload is contract-only | 54/54 offline suites; fresh/RC3 migrations; Prisma, typecheck and builds | COMPLETE |
-| G3 | latam-compact-v1, 7-12 body pages, editable matrix, five assets | Existing document renderers | DOCX/PDF/all-page review | PENDING |
+| G3 | latam-compact-v1, 7-12 body pages, editable matrix, evidence-driven assets | Versioned compact profile, deterministic renderer and bounded presentation repair | 56/56 suites; 12 body/14 total pages; all-page review; USD0.5566905 | COMPLETE / PASS_WITH_LIMITATIONS |
 | G4 | OIDC, credits, sandbox payments, administration | Ubuntu identity + transactional ledgers | Isolation/concurrency/webhooks/OAuth | PENDING |
 | G5 | Vercel UI / Ubuntu backend, portable private storage | Typed API boundary; isolated build targets | Bundles, proxy, restore | PENDING |
 | G6 | Regression, scientific acceptance, budget, handoff | Existing suites + RC4 evaluations | <=2 full paid runs; <=USD15 total | PENDING |
@@ -92,5 +92,19 @@ All sources were considered; S1/S2 exclusions are explicit and S3 is the sole ci
 full-text support. Final suite: 55/55; Prisma, typecheck and both builds PASS. Private
 evidence: `artifacts-local/rc4/scientific-design-evaluation-g1-2/`.
 
-Next action: implement and validate the G3 compact document profile using the accepted
-scientific-decision gate; do not rerun G1 or alter its frozen evidence.
+G3 introduced `latam-compact-v1` without rerunning G1. The accepted geospatial
+ScientificDecision/ResearchDesign produced four questions, one general objective and
+three aligned specific objectives, no forced hypothesis, an editable native matrix and
+one deterministic final methodological infographic. No cover or matrix image and no
+legacy extracted figure were used. The first scientific review stopped publication on
+five unsupported attributions; one localized citation repair plus one independent review
+closed them without changing the approved design. Final cumulative usage: 12 calls,
+116476 input + 20091 output tokens, estimated USD0.5566905. A zero-provider presentation
+repair removed duplicated rendered citations and a partially inserted optional diagram,
+fixed lists/footers/references and regenerated only the deterministic infographic.
+Final artifacts have 12 body pages (14 total), so the gate is PASS_WITH_LIMITATIONS:
+within the 7-12 hard contract but one page above the 9-11 target, with pending researcher
+decisions still visible. Report: `docs/quality/rc4-g3-document-acceptance.md`.
+
+Next action: implement G4 authentication federation, credit ledger and sandbox payments
+without changing the accepted G1-G3 scientific/document contracts.
