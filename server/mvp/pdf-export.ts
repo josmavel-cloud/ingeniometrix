@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { assessRenderSanity, pageBudgetPolicy } from "./execution-policy";
 const exec = promisify(execFile);
 
-export async function exportPlanPdf(docxPath: string, pdfPath: string, options: { templateHardMaxBodyPages?: number | null; expectedBodyPages?: number | null } = {}) {
+export async function exportPlanPdf(docxPath: string, pdfPath: string, options: { templateHardMaxBodyPages?: number | null; expectedBodyPages?: number | null; targetMinBodyPages?: number; targetMaxBodyPages?: number; softMaxBodyPages?: number } = {}) {
   const directory = path.dirname(pdfPath);
   await mkdir(directory, { recursive: true });
   const profile = await mkdtemp(path.join(directory, ".libreoffice-profile-"));
@@ -21,7 +21,7 @@ export async function exportPlanPdf(docxPath: string, pdfPath: string, options: 
   const bodyPages = referencesPage >= 0 ? referencesPage - 1 : null; // Separate cover and references sections.
   const bodyPageTexts = referencesPage >= 0 ? pages.slice(1, referencesPage) : [];
   const sanity = assessRenderSanity({ bodyPages, bodyPageTexts, expectedBodyPages: options.expectedBodyPages });
-  const policy = pageBudgetPolicy(bodyPages, { templateHardMaxBodyPages: options.templateHardMaxBodyPages, renderSanity: sanity });
+  const policy = pageBudgetPolicy(bodyPages, { templateHardMaxBodyPages: options.templateHardMaxBodyPages, renderSanity: sanity, targetMinBodyPages: options.targetMinBodyPages, targetMaxBodyPages: options.targetMaxBodyPages, softMaxBodyPages: options.softMaxBodyPages });
   const warnings = policy.status === "ABOVE_SOFT_MAX"
     ? ["El plan supera la extensión objetivo. Puedes ajustarlo posteriormente según los requisitos específicos de tu universidad."]
     : policy.status === "TEMPLATE_LIMIT_EXCEEDED"

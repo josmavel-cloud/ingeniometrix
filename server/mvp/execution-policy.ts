@@ -76,10 +76,11 @@ export function assessRenderSanity(input: { bodyPages: number | null; bodyPageTe
   return { status: reasons.length ? "RENDER_SANITY_FAILURE" : "PASS", reasons, emergencyMaxBodyPages };
 }
 
-export function pageBudgetPolicy(bodyPages: number | null, options: { templateHardMaxBodyPages?: number | null; renderSanity?: RenderSanity } = {}) {
-  const targetMin = positive("IMX_BODY_TARGET_MIN_PAGES", 12);
-  const targetMax = positive("IMX_BODY_TARGET_MAX_PAGES", 15);
-  const soft = positive("IMX_BODY_SOFT_MAX_PAGES", 18);
+export function pageBudgetPolicy(bodyPages: number | null, options: { templateHardMaxBodyPages?: number | null; renderSanity?: RenderSanity; targetMinBodyPages?: number; targetMaxBodyPages?: number; softMaxBodyPages?: number } = {}) {
+  const targetMin = options.targetMinBodyPages ?? positive("IMX_BODY_TARGET_MIN_PAGES", 12);
+  const targetMax = options.targetMaxBodyPages ?? positive("IMX_BODY_TARGET_MAX_PAGES", 15);
+  const soft = options.softMaxBodyPages ?? positive("IMX_BODY_SOFT_MAX_PAGES", 18);
+  if (![targetMin, targetMax, soft].every((value) => Number.isInteger(value) && value > 0)) throw new Error("Invalid page budget values");
   if (targetMin > targetMax || targetMax > soft) throw new Error("Invalid page budget ordering");
   const templateHardMax = options.templateHardMaxBodyPages ?? null;
   if (templateHardMax !== null && (!Number.isInteger(templateHardMax) || templateHardMax <= 0)) throw new Error("Invalid template hard page limit");

@@ -65,7 +65,7 @@ export type MvpStep6ContentBlock =
       title: string;
       rows: string[][];
       source_note: string;
-      render_hint?: "standard" | "compact_landscape" | "compact";
+      render_hint?: "standard" | "compact_landscape" | "compact" | "compact_page_break";
     }
   | {
       kind: "figure";
@@ -75,7 +75,7 @@ export type MvpStep6ContentBlock =
       source_note: string;
       asset_key: string | null;
       source_id: string | null;
-      render_hint?: "standard" | "landscape_full";
+      render_hint?: "standard" | "landscape_full" | "compact_vector";
     }
   | {
       kind: "equation";
@@ -124,10 +124,10 @@ export type MvpStep6HeroImagePlan = {
 
 export type MvpStep6VisualAssetPlan = {
   asset_id: string;
-  asset_type: "hero_infographic" | "conceptual_diagram" | "methodology_workflow" | "evidence_comparison_table" | "research_design_table" | "consistency_matrix_image" | "consistency_matrix_table" | "equation" | "source_asset";
+  asset_type: "hero_infographic" | "conceptual_diagram" | "methodology_workflow" | "evidence_comparison_table" | "research_design_table" | "consistency_matrix_image" | "consistency_matrix_table" | "equation" | "source_asset" | "derived_synthesis_table" | "final_methodological_infographic";
   purpose: string;
   destination_section: string;
-  origin: "original_design" | "evidence_synthesis" | "reproduced_source";
+  origin: "original_design" | "evidence_synthesis" | "reproduced_source" | "deterministic_transformation" | "generic_illustration";
   content_specification: unknown;
   supporting_source_ids: string[];
   rendering_method: string;
@@ -177,6 +177,11 @@ export type MvpStep6PageBudgetPlan = {
     notes: string;
   }>;
   compression_policy: string[];
+  document_profile?: "legacy-release0" | "latam-compact-v1";
+  body_page_min?: number;
+  body_page_max?: number;
+  page_profile_status?: "WITHIN_TARGET" | "WITHIN_ALLOWED_RANGE" | "UNDER_MIN" | "OVER_MAX" | "UNMEASURED";
+  actual_by_section?: Array<{ section_key: string; words: number; budget_words: number; estimated_pages: number }>;
 };
 
 export type MvpStep6TitlePlan = {
@@ -265,6 +270,7 @@ export type MvpStep6EditorialReport = {
 };
 
 export type MvpStep6BlueprintPackage = {
+  document_profile?: "legacy-release0" | "latam-compact-v1";
   scientific_plan?: {
     definition: import("./research-plan-contracts").ResearchDefinition;
     design: import("./research-plan-contracts").ResearchDesign;

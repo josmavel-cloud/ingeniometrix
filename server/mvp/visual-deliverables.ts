@@ -43,21 +43,39 @@ function fittedSvgText(input: { text: string; x: number; y: number; width: numbe
   if (lines.length * fontSize * 1.22 > input.height) throw new Error("DECLARATIVE_DIAGRAM_TEXT_OVERFLOW");
   return svgText({ text: input.text, x: input.x, y: input.y, width: input.width, fontSize, bold: input.bold });
 }
-export async function renderBoxes(input: { outputPath: string; title: string; subtitle: string; boxes: string[]; arrows?: boolean }) {
-  const width = 1600; const boxWidth = 1260;
+export async function renderBoxes(input: { outputPath: string; title: string; subtitle: string; boxes: string[]; arrows?: boolean; columns?: 1 | 2; finalWidth?: number; finalHeight?: number }) {
+  const width = 1600; const columns = input.columns ?? 1; const gap = 50; const contentWidth = 1260;
+  const boxWidth = columns === 1 ? contentWidth : Math.floor((contentWidth - gap) / 2);
   // Deterministic summaries are labels, not replacements for the complete method.
   // Keep a readable canvas; the full input is retained in a private sidecar.
-  const labels = input.boxes.map((text) => clean(text).split(/\s+/).slice(0, 12).join(" "));
-  const boxHeight = Math.max(150, ...labels.map((text) => wrap(text, 56).length * 49 + 70));
-  const height = Math.max(900, 260 + labels.length * (boxHeight + 18));
-  if (height > 2400 || 38 * Math.min(520 / width, 500 / height) * 0.75 < 9) throw new Error("DECLARATIVE_DIAGRAM_TEXT_OVERFLOW: optional diagram cannot retain 9pt labels at final page size");
+  const labels = input.boxes.map((text) => clean(text).split(/\s+/).slice(0, columns === 1 ? 12 : 9).join(" "));
+  const charsPerLine = columns === 1 ? 56 : 32;
+  const boxHeight = Math.max(140, ...labels.map((text) => wrap(text, charsPerLine).length * 42 + 50));
+  const rows = Math.ceil(labels.length / columns);
+  const titleLines = wrap(clean(input.title), 52);
+  const subtitleLines = wrap(clean(input.subtitle), 92);
+  const titleY = 80;
+  const subtitleY = titleY + Math.max(1, titleLines.length) * 56 + 18;
+  const boxesY = subtitleY + Math.max(1, subtitleLines.length) * 34 + 50;
+  const height = Math.max(900, boxesY + rows * (boxHeight + 32) + 35);
+  const finalWidth = input.finalWidth ?? 520;
+  const finalHeight = input.finalHeight ?? 500;
+  const effectivePointSize = 38 * Math.min(finalWidth / width, finalHeight / height) * 0.75;
+  if (height > 2400 || effectivePointSize < 9) throw new Error(`DECLARATIVE_DIAGRAM_TEXT_OVERFLOW: optional diagram cannot retain 9pt labels at final page size (${width}x${height} -> ${finalWidth}x${finalHeight}, ${effectivePointSize.toFixed(2)}pt)`);
   const boxes = labels.map((box, index) => {
-    const y = 220 + index * (boxHeight + 18);
-    return `<rect x="170" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="18" fill="${index % 2 ? COLORS.pale : COLORS.warm}" stroke="${COLORS.border}" stroke-width="2"/>${fittedSvgText({ text: box, x: 215, y: y + 52, width: boxWidth - 90, height: boxHeight - 65, preferredSize: 40 })}${input.arrows && index < input.boxes.length - 1 ? `<path d="M800 ${y + boxHeight}v18" stroke="${COLORS.accent}" stroke-width="6"/><path d="M786 ${y + boxHeight + 10}l14 14 14-14" fill="none" stroke="${COLORS.accent}" stroke-width="6"/>` : ""}`;
+    const row = Math.floor(index / columns); const column = index % columns;
+    const x = 170 + column * (boxWidth + gap); const y = boxesY + row * (boxHeight + 32);
+    const nextIndex = index + 1; const nextRow = Math.floor(nextIndex / columns); const nextColumn = nextIndex % columns;
+    const arrow = input.arrows && nextIndex < labels.length
+      ? nextRow === row
+        ? `<path d="M${x + boxWidth} ${y + boxHeight / 2}h${gap}" stroke="${COLORS.accent}" stroke-width="6"/><path d="M${x + boxWidth + gap - 12} ${y + boxHeight / 2 - 12}l12 12-12 12" fill="none" stroke="${COLORS.accent}" stroke-width="6"/>`
+        : `<path d="M${x + boxWidth / 2} ${y + boxHeight}v32" stroke="${COLORS.accent}" stroke-width="6"/><path d="M${x + boxWidth / 2 - 12} ${y + boxHeight + 20}l12 12 12-12" fill="none" stroke="${COLORS.accent}" stroke-width="6"/>`
+      : "";
+    return `${arrow}<rect x="${x}" y="${y}" width="${boxWidth}" height="${boxHeight}" rx="18" fill="${index % 2 ? COLORS.pale : COLORS.warm}" stroke="${COLORS.border}" stroke-width="2"/>${fittedSvgText({ text: `${index + 1}. ${box}`, x: x + 35, y: y + 52, width: boxWidth - 70, height: boxHeight - 65, preferredSize: columns === 1 ? 40 : 34 })}`;
   }).join("");
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="white"/>${svgText({ text: input.title, x: 120, y: 90, width: 1360, fontSize: 46, bold: true })}${svgText({ text: input.subtitle, x: 120, y: 145, width: 1360, fontSize: 25 })}${boxes}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="white"/>${svgText({ text: input.title, x: 120, y: titleY, width: 1360, fontSize: 46, bold: true })}${svgText({ text: input.subtitle, x: 120, y: subtitleY, width: 1360, fontSize: 25 })}${boxes}</svg>`;
   await sharp(Buffer.from(svg)).png().toFile(input.outputPath);
-  await writeFile(`${input.outputPath}.layout.json`, JSON.stringify({ original_labels: input.boxes, display_labels: labels, full_content_location: "ResearchDesign and methodology", fallback: labels.some((label, i) => label !== clean(input.boxes[i])) ? "deterministic_label_summary" : "adaptive_geometry", width, height, minimum_font_px: 38 }, null, 2));
+  await writeFile(`${input.outputPath}.layout.json`, JSON.stringify({ original_labels: input.boxes, display_labels: labels, full_content_location: "ResearchDesign and methodology", fallback: labels.some((label, i) => label !== clean(input.boxes[i])) ? "deterministic_label_summary" : "adaptive_geometry", width, height, columns, minimum_font_px: columns === 1 ? 38 : 34 }, null, 2));
 }
 
 function sourceLabel(ledger: MvpStep5EvidenceLedger, sourceId: string) {
@@ -91,7 +109,7 @@ export function researchDesignTable(design: ResearchDesign): MvpStep6ContentBloc
     ["Instrumentos", design.instruments.join("; ") || "Por definir", design.pending_decisions.length ? `${design.pending_decisions.length} decisiones pendientes; véase alcance, limitaciones y decisiones pendientes.` : "Sin decisión crítica pendiente declarada"],
     ["Análisis", firstSentence(design.analysis_method), design.quality_criteria.length ? `${design.quality_criteria.length} criterios declarados; principal: ${leadingClause(design.quality_criteria[0])}` : "Criterios por definir"],
   ];
-  return { kind: "table", title: "Diseño de investigación propuesto", rows: [["Componente", "Definición propuesta", qualitative ? "Fuentes/interpretación o decisión pendiente" : "Indicadores/medición o decisión pendiente"], ...rows], source_note: "Fuente: elaboración propia a partir del diseño de investigación estabilizado.", render_hint: "compact" };
+  return { kind: "table", title: "Diseño de investigación propuesto", rows: [["Componente", "Definición propuesta", qualitative ? "Fuentes/interpretación o decisión pendiente" : "Indicadores/medición o decisión pendiente"], ...rows], source_note: "Fuente: elaboración propia a partir del diseño de investigación estabilizado.", render_hint: "compact_page_break" };
 }
 
 function publicOrdinalLabel(prefix: string, ids: string[], orderedIds: string[]) {

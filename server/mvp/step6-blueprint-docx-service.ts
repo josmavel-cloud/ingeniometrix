@@ -71,14 +71,10 @@ import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report
 
 import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence, sourceDisposition } from "./evidence-continuity";
 import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
-import { deterministicInfographic, infographicFingerprint } from "./final-infographic";
-import { buildVisualDeliverables, visualCheckpointPolicy } from "./visual-deliverables";
-import { attachScientificAssets } from "./scientific-assets";
 import { exportPlanPdf } from "./pdf-export";
 import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "./application-budget";
 import { ensureResearchCoverage } from "./research-fallback";
-import { GENERATION_ORDER } from "./research-plan-contracts";
-import { SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan.v4";
+import { SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT as SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-latam-compact.v1";
 import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce, currentJobExecution } from "./job-execution-context";
 import { approvedDesignForCurrentJob } from "./scientific-decision-service";
 import { currentGenerationInput, frozenProject } from "@/server/projects/generation-input-snapshot";
@@ -86,6 +82,8 @@ import { GENERATION_POLICY_VERSION } from "./generation-budgets";
 import { compactDocxWhitespace } from "./docx-layout-compaction";
 import { pageBudgetPolicy, templateHardMaxBodyPages } from "./execution-policy";
 import { buildEvidenceLog, extractExportReferences, renderBibtex, renderRis } from "@/server/blueprint/blueprint-export";
+import { LATAM_COMPACT_GENERATION_ORDER, LATAM_COMPACT_PROFILE, LATAM_COMPACT_PROFILE_ID, pageProfileStatus, predictedLayoutBudget, reviewLatamCompactDocument, validateCompactCitationPolicy } from "./document-profiles/latam-compact-v1";
+import { planAndRenderCompactAssets, renderFinalMethodologicalInfographic } from "./compact-asset-planner";
 const STEP6_ARTIFACT_ROOT = "mvp-step6-blueprint-docx";
 const FONT = "Times New Roman";
 const ACCENT = "2F5D62";
@@ -413,17 +411,17 @@ function buildStyleContract(project: ProjectForStep6): MvpStep6AcademicStyleCont
     logo_asset_path: resolveIngeniometrixLogoPath(),
     page: {
       paper_size: "letter",
-      margin_top_cm: 2.5,
-      margin_right_cm: 2.5,
-      margin_bottom_cm: 2.5,
-      margin_left_cm: 3,
+      margin_top_cm: 2.2,
+      margin_right_cm: 2.2,
+      margin_bottom_cm: 2.2,
+      margin_left_cm: 2.6,
     },
     typography: {
       body_font: FONT,
-      body_size_pt: 12,
+      body_size_pt: 11,
       line_spacing: "one_point_fifteen",
       paragraph_alignment: "justify",
-      first_line_indent_cm: 1.25,
+      first_line_indent_cm: 0.75,
     },
     headings: [
       { level: 1, style_id: "Heading1", numbered: true },
@@ -449,7 +447,7 @@ function buildStyleContract(project: ProjectForStep6): MvpStep6AcademicStyleCont
     document_policy: [
       "documento Word editable",
       "tablas nativas",
-      "extensión objetivo de 12 a 15 páginas, ajustable a requisitos institucionales",
+      "perfil latam-compact-v1: 7 a 12 paginas de cuerpo; objetivo 9 a 11",
       "matriz de consistencia en página horizontal",
       "imagenes sin deformacion y con relación de aspecto conservada",
       "figuras con fuente cuando existan assets",
@@ -2227,10 +2225,11 @@ function textRun(text: string, options: { bold?: boolean; italics?: boolean; siz
   });
 }
 
-function paragraph(text: string, options: { bold?: boolean; italics?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; indent?: boolean; afterPt?: number; keepNext?: boolean } = {}) {
+function paragraph(text: string, options: { bold?: boolean; italics?: boolean; align?: (typeof AlignmentType)[keyof typeof AlignmentType]; indent?: boolean; afterPt?: number; keepNext?: boolean; pageBreakBefore?: boolean } = {}) {
   return new Paragraph({
     alignment: options.align ?? AlignmentType.JUSTIFIED,
     keepNext: options.keepNext,
+    pageBreakBefore: options.pageBreakBefore,
     spacing: { line: 276, after: twipPt(options.afterPt ?? 4) },
     indent: { firstLine: options.indent === false ? 0 : cm(1.25) },
     children: [textRun(sanitizePublicText(text), { bold: options.bold, italics: options.italics })],
@@ -2242,6 +2241,7 @@ function heading(text: string, level: 1 | 2 | 3) {
     heading: level === 1 ? HeadingLevel.HEADING_1 : level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3,
     spacing: { before: twipPt(level === 1 ? 14 : 8), after: twipPt(6) },
     indent: { firstLine: 0 },
+    keepNext: true,
     children: [textRun(text, { bold: true, size: level === 1 ? 14 : 12, color: DARK })],
   });
 }
@@ -2264,8 +2264,16 @@ function bullet(text: string) {
   return new Paragraph({
     bullet: { level: 0 },
     spacing: { line: 276, after: twipPt(3) },
-    indent: { firstLine: 0 },
     children: [textRun(text)],
+  });
+}
+
+function referenceParagraph(text: string) {
+  return new Paragraph({
+    alignment: AlignmentType.LEFT,
+    spacing: { line: 252, after: twipPt(5) },
+    indent: { left: cm(1.25), hanging: cm(1.25) },
+    children: [textRun(text, { size: 10.5 })],
   });
 }
 
@@ -2296,8 +2304,9 @@ export function tableBlock(block: Extract<MvpStep6ContentBlock, { kind: "table" 
   const columnCount = Math.max(...block.rows.map((row) => row.length));
   const width = Math.floor(100 / Math.max(1, columnCount));
   const compact = block.render_hint === "compact_landscape";
+  const compactPageBreak = block.render_hint === "compact_page_break";
   return [
-    paragraph(captionText(ref, block.title), { bold: true, align: AlignmentType.CENTER, indent: false, afterPt: 4 }),
+    paragraph(captionText(ref, block.title), { bold: true, align: AlignmentType.CENTER, indent: false, afterPt: 4, pageBreakBefore: compactPageBreak }),
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       layout: TableLayoutType.FIXED,
@@ -2305,7 +2314,7 @@ export function tableBlock(block: Extract<MvpStep6ContentBlock, { kind: "table" 
         new TableRow({
           tableHeader: rowIndex === 0,
           children: Array.from({ length: columnCount }).map((_, index) =>
-            tableCell(row[index] || " ", { header: rowIndex === 0, width, compact: compact || block.render_hint === "compact" }),
+            tableCell(row[index] || " ", { header: rowIndex === 0, width, compact: compact || block.render_hint === "compact" || compactPageBreak }),
           ),
         }),
       ),
@@ -2366,9 +2375,10 @@ async function imageBlock(block: Extract<MvpStep6ContentBlock, { kind: "figure" 
   }
   const image = await readFile(block.image_path);
   const dimensions = dimensionsFromImageBuffer(image, block.image_path);
-  const declarative = block.asset_key === "original:conceptual-system-diagram" || block.asset_key === "original:methodology-workflow";
-  const maxWidth = block.render_hint === "landscape_full" ? 680 : declarative ? 520 : 420;
-  const maxHeight = block.render_hint === "landscape_full" ? 420 : declarative ? 500 : 260;
+  const declarative = block.asset_key?.startsWith("original:") === true;
+  const compactVector = block.render_hint === "compact_vector";
+  const maxWidth = block.render_hint === "landscape_full" ? 680 : compactVector ? 600 : declarative ? 520 : 420;
+  const maxHeight = block.render_hint === "landscape_full" ? 420 : compactVector ? 430 : declarative ? 500 : 260;
   const fitted = dimensions
     ? fitDimensions({ originalWidth: dimensions.width, originalHeight: dimensions.height, maxWidth, maxHeight })
     : { width: maxWidth, height: maxHeight };
@@ -2423,7 +2433,7 @@ async function renderBlock(
   if (block.kind === "figure") return imageBlock(block, ref);
   if (block.kind === "equation") return equationBlock(block, ref);
   if (block.kind === "reference_list") {
-    return block.items.map((item) => paragraph(item, { indent: false }));
+    return block.items.map(referenceParagraph);
   }
   return [];
 }
@@ -2542,7 +2552,6 @@ function makeHeaderFooter(title: string) {
           new Paragraph({
             alignment: AlignmentType.CENTER,
             children: [
-              textRun("Pagina ", { size: 9 }),
               new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: pt(9) }),
             ],
           }),
@@ -2563,8 +2572,9 @@ function sectionProperties(input: {
       margin: {
         top: cm(landscape ? 1.5 : input.style.page.margin_top_cm),
         right: cm(landscape ? 1.4 : input.style.page.margin_right_cm),
-        bottom: cm(landscape ? 1.5 : input.style.page.margin_bottom_cm),
+        bottom: cm(landscape ? 2.1 : input.style.page.margin_bottom_cm),
         left: cm(landscape ? 1.4 : input.style.page.margin_left_cm),
+        footer: cm(0.75),
       },
     },
   };
@@ -2600,6 +2610,7 @@ export async function renderDocx(input: {
   const common = makeHeaderFooter(input.package.title_plan.short_title || displayTitle);
   const coverChildren: FileChild[] = [];
   const hero = input.package.hero_image;
+  const compactProfile = input.package.document_profile === LATAM_COMPACT_PROFILE_ID;
 
   coverChildren.push(await renderLogoParagraph({
     logoPath: style.logo_asset_path,
@@ -2608,17 +2619,19 @@ export async function renderDocx(input: {
     afterPt: 12,
   }));
 
-  const heroExtent = hero.status === "generated" ? 520 : 310;
-  coverChildren.push(await heroImageParagraph({ plan: hero, maxWidth: heroExtent, maxHeight: heroExtent }));
+  if (!compactProfile) {
+    const heroExtent = hero.status === "generated" ? 520 : 310;
+    coverChildren.push(await heroImageParagraph({ plan: hero, maxWidth: heroExtent, maxHeight: heroExtent }));
+  }
 
   coverChildren.push(
     paragraph(displayTitle, { bold: true, align: AlignmentType.CENTER, indent: false }),
     paragraph(input.package.title_plan.short_title, { italics: true, align: AlignmentType.CENTER, indent: false }),
     paragraph(`Programa: ${input.project.program}`, { align: AlignmentType.CENTER, indent: false }),
-    paragraph(`Institución: ${input.project.university === "OTHER" ? "por definir" : input.project.university}`, {
+    ...(input.project.university ? [paragraph(`Institución: ${input.project.university === "OTHER" ? "por definir" : input.project.university}`, {
       align: AlignmentType.CENTER,
       indent: false,
-    }),
+    })] : []),
     paragraph("Plan de investigación", {
       italics: true,
       align: AlignmentType.CENTER,
@@ -2642,7 +2655,8 @@ export async function renderDocx(input: {
       : pastMatrix
         ? afterMatrixChildren
         : beforeMatrixChildren;
-    target.push(heading(numberedHeadingTitle({
+    const unnumbered = compactProfile && (section.section_key === "executive_summary" || section.section_key === "references");
+    target.push(heading(unnumbered ? section.title : numberedHeadingTitle({
       title: section.title,
       level: section.level,
       counters: headingCounters,
@@ -2670,8 +2684,8 @@ export async function renderDocx(input: {
         {
           id: "Normal",
           name: "Normal",
-          run: { font: FONT, size: pt(12) },
-          paragraph: { spacing: { line: 276, after: twipPt(4) } },
+          run: { font: FONT, size: pt(compactProfile ? 11 : 12) },
+          paragraph: { spacing: { line: compactProfile ? 264 : 276, after: twipPt(compactProfile ? 6 : 4) } },
         },
         {
           id: "Heading1",
@@ -3102,18 +3116,23 @@ export async function runMvpStep6BlueprintDocx(input: {
     throw new Error("INSUFFICIENT_EVIDENCE: no hay evidencia inspeccionable verificada; agregar fuentes o repetir Step 5. No se genero plan.");
   }
   warnings.push(...evidenceGate.limitations);
-  const sectionPlan = scientificSectionPlan();
+  let sectionPlan = scientificSectionPlan();
   const academicStyleContract = buildStyleContract(project);
-  const initialPagePolicy = pageBudgetPolicy(null);
   const institutionalHardMax = templateHardMaxBodyPages(project.templateKey);
-  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: initialPagePolicy.soft,
-    target_body_pages: initialPagePolicy.target,
-    soft_max_body_pages: initialPagePolicy.soft,
+  const predicted = predictedLayoutBudget(sectionPlan);
+  const pageBudgetPlan: MvpStep6PageBudgetPlan = { ...buildPageBudgetPlan(sectionPlan), max_pages: LATAM_COMPACT_PROFILE.bodyPages.max,
+    document_profile: LATAM_COMPACT_PROFILE_ID,
+    body_page_min: LATAM_COMPACT_PROFILE.bodyPages.min,
+    body_page_max: LATAM_COMPACT_PROFILE.bodyPages.max,
+    target_body_pages: { min: LATAM_COMPACT_PROFILE.bodyPages.targetMin, max: LATAM_COMPACT_PROFILE.bodyPages.targetMax },
+    soft_max_body_pages: LATAM_COMPACT_PROFILE.bodyPages.max,
     template_hard_max_body_pages: institutionalHardMax,
+    words_per_page_estimate: predicted.wordsPerPage,
+    estimated_pages: predicted.bodyPages,
     max_body_words: sectionPlan.reduce((total, section) => total + section.max_words, 0),
-    fixed_page_reservations: [{ label: "Portada (fuera del cuerpo)", pages: 1 }, { label: "Referencias (fuera del cuerpo; extension variable)", pages: 1 }],
-    compression_policy: ["Objetivo 12-15 paginas de cuerpo; 18 es un umbral blando, no un maximo academico universal.", "Aplicar como maximo una ronda editorial y compactacion determinista; sin limite institucional, publicar el contenido valido con advertencia de longitud."] };
-  const sectionGenerationOrder: MvpStep6BlueprintPackage["section_generation_order"] = [{ wave: "core", section_keys: [...GENERATION_ORDER], model_tier: "strong_reasoning" }];
+    fixed_page_reservations: predicted.reservations,
+    compression_policy: ["Objetivo 9-11 paginas de cuerpo; rango permitido 7-12, sin contar portada ni referencias.", "Compactar primero el layout y la redundancia; una ronda editorial maxima; nunca reabrir el diseno cientifico."] };
+  const sectionGenerationOrder: MvpStep6BlueprintPackage["section_generation_order"] = [{ wave: "core", section_keys: [...LATAM_COMPACT_GENERATION_ORDER], model_tier: "strong_reasoning" }];
 
   const stepRun = await createMvpStepRun({
     projectId: input.projectId,
@@ -3134,9 +3153,8 @@ export async function runMvpStep6BlueprintDocx(input: {
       prompts: {
         scientific_plan: SCIENTIFIC_PLAN_PROMPT.version,
         consistency_matrix: "ingeniometrix-consistency-matrix-v1",
-        hero_image: "ingeniometrix-hero-infographic-v2",
-        matrix_visual: "ingeniometrix-consistency-matrix-visual-v1",
-        visual_qa: "ingeniometrix-visual-qa-v1",
+        asset_planner: "ingeniometrix-asset-planner-v1",
+        final_infographic: "latam-compact-deterministic-v1",
       },
       section_generation_order: sectionGenerationOrder,
       academic_style_contract: academicStyleContract,
@@ -3166,61 +3184,45 @@ export async function runMvpStep6BlueprintDocx(input: {
     const approvedDesign = await approvedDesignForCurrentJob(project.intake, latestStep5.ledger);
     const scientific = await withLlmUsageContext(
       { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
-      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
+      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, documentProfile: LATAM_COMPACT_PROFILE_ID, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
     );
+    sectionPlan = scientific.plan;
     const finalSectionDrafts = structuredClone(scientific.drafts);
-    const assetQuality = attachScientificAssets(finalSectionDrafts, latestStep5.ledger, scientific.usedSources);
-    await writeJson(path.join(artifacts.artifactDir, "asset-quality.json"), assetQuality);
+    validateCompactCitationPolicy(finalSectionDrafts);
+    await writeJson(path.join(artifacts.artifactDir, "asset-quality.json"), { profile: LATAM_COMPACT_PROFILE_ID, legacy_figure_extraction_used: false, policy: "No se republican figuras de terceros; solo sintesis originales o transformaciones deterministas." });
     await writeJson(path.join(artifacts.artifactDir, "evidence-coverage.json"), scientific.coverage);
     const finalPageBudgetPlan: MvpStep6PageBudgetPlan = { ...pageBudgetPlan,
       estimated_pages: estimateDocumentPages({ drafts: finalSectionDrafts, pageBudget: pageBudgetPlan }) };
     const titlePlan = scientific.titlePlan;
     const editorial = { report: { artifact_type: "mvp_step6_editorial_report" as const, artifact_version: "v1" as const, status: "applied" as const, model: SCIENTIFIC_PLAN_PROMPT.model, prompt_version: SCIENTIFIC_PLAN_PROMPT.version, revised_section_count: 0, warnings: scientific.review.warnings, notes: scientific.review.checked_dimensions } };
     warnings.push(...scientific.review.warnings);
-    const imageFingerprint = infographicFingerprint(scientific.definition, scientific.design, titlePlan.title);
-    let heroImage: MvpStep6HeroImagePlan;
-    let visualPlan: MvpStep6VisualPlan | undefined;
-    if (input.heroReuse) {
-      if (input.heroReuse.projectId !== input.projectId || input.heroReuse.fingerprint !== imageFingerprint || !input.heroReuse.plan.image_path) throw new Error("HERO_REUSE_DESIGN_MISMATCH");
-      await copyFile(input.heroReuse.plan.image_path, artifacts.heroImagePath);
-      heroImage = { ...input.heroReuse.plan, image_path: artifacts.heroImagePath };
-      if (input.heroReuse.qualityRejectionReason) {
-        await deterministicInfographic(artifacts.heroImagePath);
-        heroImage = { ...heroImage, status: "svg_fallback", image_model: null, warnings: [...heroImage.warnings, `Visual quality rejection: ${input.heroReuse.qualityRejectionReason}`] };
-      }
-      await writeJson(`${artifacts.heroImagePath}.json`, { ...heroImage, reused_from: input.heroReuse.plan.image_path, image_fingerprint: imageFingerprint, provider_request_executed: false, cost_this_execution_usd: 0 });
-    } else {
-      const visuals = await stageCheckpoint("VISUALS", { science: scientific, ledger: latestStep5.ledger, policy: GENERATION_POLICY_VERSION, visualPolicy: visualCheckpointPolicy() }, async () => {
-      const cleanDrafts = structuredClone(finalSectionDrafts);
+    const compactVisuals = await stageCheckpoint("VISUALS", { science: scientific, profile: LATAM_COMPACT_PROFILE_ID, policy: GENERATION_POLICY_VERSION }, async () => {
+      // Asset planning mutates drafts by inserting cross-reference paragraphs
+      // and blocks. Keep those mutations transactional so a failed optional
+      // asset cannot leak into the published document or escape the inventory.
+      let stagedDrafts = structuredClone(finalSectionDrafts);
+      let result;
       try {
-      const result = await buildVisualDeliverables({
-        provider,
-        definition: scientific.definition,
-        design: scientific.design,
-        matrix: scientific.matrix,
-        ledger: latestStep5.ledger,
-        usedSourceIds: scientific.usedSources.map((source) => source.source_id),
-        drafts: finalSectionDrafts,
-        artifactDir: artifacts.artifactDir,
-        heroOutputPath: artifacts.heroImagePath,
-        projectId: input.projectId,
-        runId: artifacts.runId,
-      });
-      return { ...result, drafts: finalSectionDrafts };
+        result = await planAndRenderCompactAssets({ provider, definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, ledger: latestStep5.ledger, usedSourceIds: scientific.usedSources.map((source) => source.source_id), drafts: stagedDrafts, artifactDir: artifacts.artifactDir, projectId: input.projectId, runId: artifacts.runId, remainingBodyPages: LATAM_COMPACT_PROFILE.bodyPages.max - finalPageBudgetPlan.estimated_pages });
       } catch (error) {
-        const reason = `PRESENTATION_FALLBACK: ${error instanceof Error ? error.message : String(error)}`;
-        finalSectionDrafts.splice(0, finalSectionDrafts.length, ...cleanDrafts);
-        const heroImage: MvpStep6HeroImagePlan = { prompt_version: "b4-deterministic-fallback", placement: "cover", visual_type: "methodological_infographic_cover", prompt: "", negative_prompt: "", summary: "", image_path: null, image_model: null, status: "skipped", warnings: [reason] };
-        await writeJson(path.join(artifacts.artifactDir, "visual-failure.json"), { reason, scientific_content_preserved: true });
-        return { heroImage, visualPlan: undefined, drafts: cleanDrafts };
+        stagedDrafts = structuredClone(finalSectionDrafts);
+        const reason = `ASSET_PLANNER_FALLBACK: ${error instanceof Error ? error.message : String(error)}`;
+        warnings.push(reason);
+        await writeJson(path.join(artifacts.artifactDir, "visual-failure.json"), { reason, scientific_content_preserved: true, paid_scientific_regeneration: false });
+        result = { plan: { proposals: [], omitted_reason: reason }, visualPlan: { artifact_type: "mvp_step6_visual_plan" as const, artifact_version: "v1" as const, generated_at: new Date().toISOString(), research_design_hash: "profile-owned", matrix_hash: "profile-owned", matrix_sequence: ["validate_structured_matrix", "render_editable_native_table"], assets: [{ asset_id: "consistency-matrix", asset_type: "consistency_matrix_table" as const, purpose: "Alinear preguntas, objetivos y metodo", destination_section: "consistency_matrix", origin: "original_design" as const, content_specification: { row_count: scientific.matrix.rows.length }, supporting_source_ids: [], rendering_method: "Tabla Word nativa editable", caption: "Matriz de consistencia", attribution: "Elaboracion propia", quality_requirements: ["editable"], status: "accepted" as const, output_paths: [], failure_reason: null, validation: { editable: true, matrix_image_generated: false } }], image_requests: { initial: 0, repairs: 0 }, warnings: [reason] } };
       }
-      }, (value) => [...new Set([value.heroImage.image_path, ...(value.visualPlan?.assets.flatMap((asset) => asset.output_paths) ?? [])].filter((file): file is string => Boolean(file && fs.existsSync(file))))]);
-      finalSectionDrafts.splice(0, finalSectionDrafts.length, ...visuals.drafts);
-      heroImage = visuals.heroImage;
-      visualPlan = visuals.visualPlan;
-    }
-    warnings.push(...heroImage.warnings);
-    const summaryHeroImage: MvpStep6HeroImagePlan = { ...heroImage, placement: "post_matrix_summary", image_path: null, status: "skipped", warnings: [] };
+      const infographicPath = await renderFinalMethodologicalInfographic({ definition: scientific.definition, design: scientific.design, drafts: stagedDrafts, artifactDir: artifacts.artifactDir });
+      result.visualPlan.assets.push({ asset_id: "final-methodological-infographic", asset_type: "final_methodological_infographic", purpose: "Sintetizar la ruta de resolucion propuesta", destination_section: "final_methodological_infographic", origin: "deterministic_transformation", content_specification: { definition: scientific.definition, design: scientific.design }, supporting_source_ids: scientific.usedSources.map((source) => source.source_id), rendering_method: "SVG declarativo seguro convertido a PNG", caption: "Sintesis metodologica del plan de investigacion", attribution: "Elaboracion propia", quality_requirements: ["legible", "sin resultados inventados", "antes de referencias"], status: "accepted", output_paths: [infographicPath], failure_reason: null, validation: { qa: "PASS", deterministic: true } });
+      return { ...result, drafts: stagedDrafts };
+    }, (value) => value.visualPlan.assets.flatMap((asset) => asset.output_paths));
+    finalSectionDrafts.splice(0, finalSectionDrafts.length, ...compactVisuals.drafts);
+    const visualPlan: MvpStep6VisualPlan | undefined = compactVisuals.visualPlan;
+    const finalDocumentReview = reviewLatamCompactDocument({ definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, drafts: finalSectionDrafts, visuals: visualPlan });
+    await writeJson(path.join(artifacts.artifactDir, "final-document-review.json"), finalDocumentReview);
+    if (finalDocumentReview.status === "FAIL") throw new Error(`FINAL_DOCUMENT_SCIENTIFIC_REVIEW_BLOCKED: ${finalDocumentReview.critical_issues.join("; ")}`);
+    warnings.push(...finalDocumentReview.warnings);
+    const heroImage: MvpStep6HeroImagePlan = { prompt_version: "latam-compact-v1", placement: "cover", visual_type: "methodological_infographic_cover", prompt: "", negative_prompt: "", summary: "Portada academica sin imagen", image_path: null, image_model: null, status: "skipped", warnings: [] };
+    const summaryHeroImage: MvpStep6HeroImagePlan = { prompt_version: "latam-compact-deterministic-v1", placement: "post_matrix_summary", visual_type: "methodological_summary_hero", prompt: "", negative_prompt: "", summary: "Sintesis metodologica final", image_path: visualPlan?.assets.find((asset) => asset.asset_id === "final-methodological-infographic")?.output_paths[0] ?? null, image_model: null, status: "svg_fallback", warnings: [] };
     warnings.push(...summaryHeroImage.warnings);
 
     const crossReferencePlan = buildCrossReferencePlan({ drafts: finalSectionDrafts, pdfMentions: [] });
@@ -3228,7 +3230,8 @@ export async function runMvpStep6BlueprintDocx(input: {
     const citationCoordinatePlan = buildCitationCoordinatePlan(finalSectionDrafts);
     const assetPlacementPlan = buildAssetPlacementPlan(finalSectionDrafts);
     const provisionalPackage: MvpStep6BlueprintPackage = {
-      scientific_plan: { definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, generation_order: [...scientific.generation_order, "visual_plan", "consistency_matrix_visual", "consistency_matrix_editable", "hero_infographic", "docx", "pdf"] },
+      document_profile: LATAM_COMPACT_PROFILE_ID,
+      scientific_plan: { definition: scientific.definition, design: scientific.design, matrix: scientific.matrix, generation_order: [...scientific.generation_order, "asset_planner", "consistency_matrix_editable", "final_methodological_infographic", "docx", "pdf"] },
       artifact_type: "mvp_step6_blueprint_docx_package",
       artifact_version: "v1",
       project_id: input.projectId,
@@ -3263,8 +3266,8 @@ export async function runMvpStep6BlueprintDocx(input: {
       },
     };
 
-    const renderFingerprint = { drafts: finalSectionDrafts, title: titlePlan, style: academicStyleContract, heroImage, visualPlan, program: project.program, university: project.university, renderer: "b4.v1" };
-    const publicationPolicy = { version: "b4.3", target: initialPagePolicy.target, soft: initialPagePolicy.soft, templateHardMax: institutionalHardMax };
+    const renderFingerprint = { profile: LATAM_COMPACT_PROFILE_ID, drafts: finalSectionDrafts, title: titlePlan, style: academicStyleContract, heroImage, visualPlan, program: project.program, university: project.university, renderer: "rc4-g3.v1" };
+    const publicationPolicy = { version: LATAM_COMPACT_PROFILE_ID, target: pageBudgetPlan.target_body_pages, hardMax: LATAM_COMPACT_PROFILE.bodyPages.max, templateHardMax: institutionalHardMax };
     const pdf = await stageCheckpoint("FINAL_EXPORT", { renderFingerprint, publicationPolicy }, async () => {
     await stageCheckpoint("DOCX", renderFingerprint, async () => { await renderDocx({
       project,
@@ -3273,7 +3276,13 @@ export async function runMvpStep6BlueprintDocx(input: {
     }); return { path: artifacts.docxPath }; }, (value) => [value.path]);
 
     return stageCheckpoint("PDF", { renderFingerprint, converter: "libreoffice-b4.v1", publicationPolicy }, async () => {
-      const exportOptions = { templateHardMaxBodyPages: institutionalHardMax, expectedBodyPages: finalPageBudgetPlan.estimated_pages };
+      const exportOptions = {
+        templateHardMaxBodyPages: institutionalHardMax,
+        expectedBodyPages: finalPageBudgetPlan.estimated_pages,
+        targetMinBodyPages: LATAM_COMPACT_PROFILE.bodyPages.targetMin,
+        targetMaxBodyPages: LATAM_COMPACT_PROFILE.bodyPages.targetMax,
+        softMaxBodyPages: LATAM_COMPACT_PROFILE.bodyPages.max,
+      };
       let rendered = await exportPlanPdf(artifacts.docxPath, path.join(artifacts.artifactDir, "final-thesis-plan.pdf"), exportOptions);
       if (rendered.length_status === "ABOVE_SOFT_MAX" || rendered.length_status === "TEMPLATE_LIMIT_EXCEEDED") {
         await copyFile(artifacts.docxPath, path.join(artifacts.artifactDir, "pre-layout-thesis-plan.docx"));
@@ -3293,9 +3302,11 @@ export async function runMvpStep6BlueprintDocx(input: {
     finalPageBudgetPlan.length_status = pdf.length_status;
     finalPageBudgetPlan.publication_allowed = pdf.publication_allowed;
     finalPageBudgetPlan.render_sanity = { status: pdf.render_sanity_status, reasons: pdf.render_sanity_reasons, emergency_max_body_pages: pdf.render_sanity_emergency_max_body_pages };
+    finalPageBudgetPlan.page_profile_status = pageProfileStatus(pdf.body_pages);
+    finalPageBudgetPlan.actual_by_section = finalSectionDrafts.filter((draft) => draft.section_key !== "references").map((draft) => ({ section_key: draft.section_key, words: draft.word_count, budget_words: sectionPlan.find((section) => section.section_key === draft.section_key)?.max_words ?? 0, estimated_pages: Number((draft.word_count / finalPageBudgetPlan.words_per_page_estimate).toFixed(2)) }));
     await writeJson(path.join(artifacts.artifactDir, "pdf-validation.json"), pdf);
     await writeJson(path.join(artifacts.artifactDir, "application-budget.json"), await jobCostSnapshot() ?? currentApplicationBudget()?.entries);
-    if (pdf.length_status === "TEMPLATE_LIMIT_EXCEEDED") throw new Error(`TEMPLATE_PAGE_LIMIT: ${pdf.body_pages ?? "unknown"}/${pdf.template_hard_max_body_pages ?? "unknown"} body pages; scientific checkpoints retained`);
+    if (pdf.body_pages !== null && pdf.body_pages > LATAM_COMPACT_PROFILE.bodyPages.max) throw new Error(`COMPACT_PROFILE_PAGE_LIMIT: ${pdf.body_pages}/${LATAM_COMPACT_PROFILE.bodyPages.max} body pages; scientific checkpoints retained`);
     if (pdf.length_status === "RENDER_SANITY_FAILURE" || pdf.length_status === "UNMEASURED") throw new Error(`RENDER_SANITY_FAILURE: ${pdf.render_sanity_reasons.join(", ") || "body pages unmeasured"}; scientific checkpoints retained`);
 
     const coherenceReport = buildCoherenceReport({
@@ -3424,7 +3435,7 @@ export async function runMvpStep6BlueprintDocx(input: {
         deterministic_section_count: finalSectionDrafts.filter((draft) => draft.generation_source !== "llm").length,
         source_count: latestStep5.ledger.source_registry.length,
         evidence_item_count: allEvidenceItems(latestStep5.ledger).length,
-        asset_count: latestStep5.ledger.visual_localized_assets.length + latestStep5.ledger.curated_assets.length,
+        asset_count: visualPlan?.assets.filter((asset) => asset.status === "accepted").length ?? 0,
         warning_count: warnings.length,
       },
       api_usage: {
