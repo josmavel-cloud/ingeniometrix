@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { jobCostPolicy } from "./execution-policy";
+import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
 
 type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
 const context = new AsyncLocalStorage<Execution>();
@@ -32,6 +33,7 @@ const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + 
 // Call inside the SAME transaction that makes the job terminal. Uncertain/in-flight
 // spend is not refunded: retain its full reservation until late usage reconciliation.
 export async function closeJobCostControl(tx: Prisma.TransactionClient, jobId: string, jobStatus: "COMPLETED" | "FAILED") {
+  await settleCommercialJob(tx, jobId, jobStatus);
   const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
   if (!row) return;
   const record = row.outputJson as unknown as CostRecord;
@@ -68,6 +70,7 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
   if (execution.checkpointOnly) throw new Error(`CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN: ${purpose}`);
   const id = randomUUID();
   await locked(execution, async (tx) => {
+    const commercialCap = await assertCommercialPaidAuthorization(tx, execution.jobId);
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
     const record = row?.outputJson as unknown as CostRecord ?? { policy: jobCostPolicy(), entries: [] };
     const policy = record.policy; // Persisted at the first call; changing env cannot reset an existing job's cap.
@@ -77,6 +80,7 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     // never shortened, if actual context cannot fit the remaining envelope.
     const mandatoryReserve = /final_title|executive_summary/.test(execution.stage) ? 0.05 : policy.mandatoryReserve;
     const spent = committed(record.entries);
+    if (commercialCap !== null && spent + maximum + mandatoryReserve > commercialCap) throw new Error("COST_LIMIT_REACHED: commercial policy snapshot");
     const deepSpent = committed(record.entries.filter((entry) => entry.category === "DEEP_RESEARCH_COST"));
     if (!Number.isFinite(maximum) || maximum <= 0 || record.entries.some((entry) => entry.estimate !== null && entry.estimate > entry.maximum) || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
     record.entries.push({ id, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve });

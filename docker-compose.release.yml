@@ -63,7 +63,17 @@ services:
       dockerfile: Dockerfile.release
       target: runtime
     restart: unless-stopped
-    environment: *release-env
+    environment:
+      <<: *release-env
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      IMX_PAYMENT_MODE: ${IMX_PAYMENT_MODE:-sandbox}
+      IMX_PAYMENT_ACCOUNT_CONTEXT: ${IMX_PAYMENT_ACCOUNT_CONTEXT:-test_user}
+      MP_TEST_ACCESS_TOKEN: ${MP_TEST_ACCESS_TOKEN:-}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
+      MP_TEST_MERCHANT_ID: ${MP_TEST_MERCHANT_ID:-}
+      MP_APPLICATION_ID: ${MP_APPLICATION_ID:-}
+      IMX_TRUST_PROXY_IP: ${IMX_TRUST_PROXY_IP:-0}
     ports:
       - "${APP_PORT:-3301}:3000"
     volumes:

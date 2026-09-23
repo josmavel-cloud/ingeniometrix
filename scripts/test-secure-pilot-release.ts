@@ -1,3 +1,4 @@
+import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -65,6 +66,7 @@ async function main() {
   const passwordHash = await hashPassword("secure-pilot-password");
   const [userA, userB] = await Promise.all(emails.map((email) => prisma.user.create({ data: { email, passwordHash } })));
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "imx-secure-pilot-"));
+  await grantTestPackage(userA.id);
 
   try {
     assert.equal(await verifyPassword("secure-pilot-password", passwordHash), true);
@@ -202,6 +204,7 @@ async function main() {
       job_id: job.id,
     })}\n`);
   } finally {
+    await removeTestCommercialData([userA.id, userB.id]);
     await prisma.user.deleteMany({ where: { email: { in: emails } } });
     await rm(tempDir, { recursive: true, force: true });
     await prisma.$disconnect();

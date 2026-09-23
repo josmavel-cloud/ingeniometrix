@@ -4,10 +4,12 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/auth/login-form";
 import { BrandBadge } from "@/components/brand/brand-badge";
 import { getCurrentUser } from "@/server/auth/session";
+import { GoogleButton } from "@/components/auth/google-button";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkspaceEntryPage() {
+export default async function WorkspaceEntryPage({ searchParams }: { searchParams: Promise<{ auth?: string }> }) {
+  const authState = (await searchParams).auth;
   const user = await getCurrentUser();
 
   if (user) {
@@ -32,7 +34,9 @@ export default async function WorkspaceEntryPage() {
         </div>
 
         <div className="mt-7">
-          <LoginForm />
+          {authState && <p role="alert" className="mb-4">{authState === "account_link_required" ? "Ya tienes una cuenta. Ingresa con tu contraseña y vincula Google desde Mi cuenta." : "No se pudo completar el acceso. Intenta nuevamente."}</p>}
+          <GoogleButton />
+          <details className="mt-6"><summary>Acceder con una cuenta existente</summary><div className="mt-4"><LoginForm /></div></details>
         </div>
 
         <p className="mt-6 border-t border-[rgba(74,58,97,0.08)] pt-5 text-sm leading-6 text-[var(--color-muted)]">

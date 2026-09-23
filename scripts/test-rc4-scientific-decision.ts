@@ -1,3 +1,4 @@
+import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
@@ -131,6 +132,7 @@ async function main() {
 
   const user = await prisma.user.create({ data: { email: `rc4-design-${Date.now()}@example.test` } });
   const other = await prisma.user.create({ data: { email: `rc4-design-other-${Date.now()}@example.test` } });
+  await grantTestPackage(user.id);
   try {
     const project = await prisma.project.create({ data: { userId: user.id, title: "Fixture", program: "Fixture", university: "OTHER", degreeLevel: "MAESTRIA", templateKey: "GENERIC_POSGRADO_PE", intake: { create: { topic: "Comprender un fenómeno", problemContext: definition.problem, targetPopulation: "Corpus sintético", preferredMethodology: "Cualitativa", availableData: "No confirmados", academicConstraints: "Solo pruebas" } } }, include: { intake: true } });
     const reference = await prisma.reference.create({ data: { title: "Fixture", normalizedTitle: "rc4 fixture", authorsJson: ["Autor sintético"] } });
@@ -205,6 +207,6 @@ async function main() {
     assert.ok(repeated.approved);
     assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).status, "FAILED", "approval replay cannot restart failure");
     console.log("PASS RC4 scientific decision: model/effort contract, evidence pointers, mixed-method conditions, owned approval, pause/idempotency, approved-state consumption; mocked only, paid calls=0.");
-  } finally { await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: other.id } }); await prisma.$disconnect(); }
+  } finally { await removeTestCommercialData([user.id, other.id]); await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: other.id } }); await prisma.$disconnect(); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

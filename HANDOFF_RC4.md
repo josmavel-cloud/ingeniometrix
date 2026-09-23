@@ -1,5 +1,22 @@
 # RC4 handoff
 
+## Latest checkpoint — G4 (2026-09-23)
+
+G4 authentication/commercial candidate implemented on G3 commit
+`1ada2d036244fc7a7df79e79a46aa79a688ca1cf`. Local/offline acceptance
+PASS_WITH_LIMITATIONS; Google and Mercado Pago external acceptance NOT_RUN because
+authorized credentials are absent. No real payments, paid LLM calls, push or deployment.
+Google OIDC + explicit account linking reuse opaque sessions. Sandbox-only candidate
+offer, immutable policy snapshots, transactional plan/credit reservations, authoritative
+payment verification and append-only ledger are reachable through production paths.
+G1/G2/G3/B4 remain green. Production commercial actions and admin adjustments stay
+blocked pending external acceptance, approved terms/price and administrator MFA.
+
+Read [G4 acceptance](docs/quality/rc4-g4-commercial-acceptance.md),
+[architecture](docs/architecture/RC4_G4_AUTH_AND_COMMERCIAL.md) and
+[runbook](docs/runbooks/rc4-g4-commercial.md) before continuing. Older checkpoints
+below preserve chronology and must not be mistaken for current G4 status.
+
 Branch: `feat/rc4-scientific-commercial`.
 Base: `02a0a4c0e3b87c41538766e786ec2e090661bff8` / `release0-secure-pilot-rc3`.
 RC3 worktree, containers, database, secrets and Tailscale are not modified.
@@ -13,7 +30,7 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | G1b | Intent, methodological evidence, Astra selector, Sol critic, approval | Explicit scope semantics; compact critic v3; persistent background selector; bounded recovery and approval | Geo and qualitative PASS_WITH_LIMITATIONS; applied cross-domain PASS_WITH_LIMITATIONS; insufficient PASS | COMPLETE / ACCEPTED |
 | G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Revisioned draft, FORD catalog, immutable versions, four-step UI; PDF upload is contract-only | 54/54 offline suites; fresh/RC3 migrations; Prisma, typecheck and builds | COMPLETE |
 | G3 | latam-compact-v1, 7-12 body pages, editable matrix, evidence-driven assets | Versioned compact profile, deterministic renderer and bounded presentation repair | 56/56 suites; 12 body/14 total pages; all-page review; USD0.5566905 | COMPLETE / PASS_WITH_LIMITATIONS |
-| G4 | OIDC, credits, sandbox payments, administration | Ubuntu identity + transactional ledgers | Isolation/concurrency/webhooks/OAuth | PENDING |
+| G4 | OIDC, credits, sandbox payments, administration | Google OIDC + opaque sessions + transactional ledgers + Orders sandbox | 58/58 suites; 23 HTTP assertions; migrations/builds green; external credentials absent | PASS_WITH_LIMITATIONS locally; external acceptance NOT_RUN; public commerce BLOCKED |
 | G5 | Vercel UI / Ubuntu backend, portable private storage | Typed API boundary; isolated build targets | Bundles, proxy, restore | PENDING |
 | G6 | Regression, scientific acceptance, budget, handoff | Existing suites + RC4 evaluations | <=2 full paid runs; <=USD15 total | PENDING |
 

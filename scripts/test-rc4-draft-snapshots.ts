@@ -1,3 +1,4 @@
+import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { prisma } from "@/lib/prisma";
 import { draftIntakeFrom, type DraftView } from "@/lib/project-draft-contract";
@@ -26,6 +27,7 @@ async function main() {
   assert.equal(rejectedSends, 1, "Conflict cannot silently overwrite with another revision");
 
   const user = await prisma.user.create({ data: { email: `rc4-drafts-${Date.now()}@example.test` } });
+  await grantTestPackage(user.id);
   let referenceId: string | undefined;
   try {
     const project = await prisma.project.create({ data: { userId: user.id, title: "Fixture", program: "Fixture", university: "OTHER", degreeLevel: "MAESTRIA", templateKey: "GENERIC_POSGRADO_PE", intake: { create: initial } } });
@@ -85,6 +87,7 @@ async function main() {
     assert.equal(synchronized.confirmedRevision, synchronized.revision);
     console.log("PASS RC4 drafts/snapshots: partial persistence, two-tab conflict, explicit confirmation, queue ordering, immutable inputs, live edits cannot alter worker snapshot; paid calls=0.");
   } finally {
+    await removeTestCommercialData([user.id]);
     await prisma.user.delete({ where: { id: user.id } });
     if (referenceId) await prisma.reference.delete({ where: { id: referenceId } });
     await prisma.$disconnect();

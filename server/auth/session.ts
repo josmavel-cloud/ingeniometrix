@@ -5,12 +5,13 @@ import { redirect } from "next/navigation";
 
 import { getLocaleForLanguage, LANGUAGE_COOKIE_NAME, normalizeLanguageCode } from "@/lib/language";
 import { prisma } from "@/lib/prisma";
+import { securityAudit } from "./security-events";
 
 export const SESSION_COOKIE_NAME = "imx_session";
-const SESSION_MAX_AGE_SECONDS = Math.max(
+const SESSION_MAX_AGE_SECONDS = Math.min(7 * 24 * 60 * 60, Math.max(
   900,
-  Number(process.env.IMX_SESSION_MAX_AGE_SECONDS ?? 60 * 60 * 12),
-);
+  Number(process.env.IMX_SESSION_MAX_AGE_SECONDS) || 60 * 60 * 12,
+));
 const RELEASE0_LOCAL_EMAIL = "release0-local@ingeniometrix.local";
 const RELEASE0_LOCAL_NAME = "Ingeniometrix Release 0";
 
@@ -27,12 +28,13 @@ export function validateEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-export async function createSession(payload: SessionPayload) {
+export async function issueSessionToken(payload: SessionPayload, priorToken?: string) {
   const token = randomBytes(32).toString("base64url");
   const now = new Date();
   const expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
 
   await prisma.$transaction([
+    prisma.userSession.updateMany({ where: { tokenHash: hashToken(priorToken || ""), revokedAt: null }, data: { revokedAt: now } }),
     prisma.userSession.deleteMany({
       where: { OR: [{ expiresAt: { lte: now } }, { revokedAt: { not: null } }] },
     }),
@@ -46,7 +48,13 @@ export async function createSession(payload: SessionPayload) {
     }),
   ]);
 
+  await securityAudit("LOGIN_SUCCESS", payload.userId, { sessionRotated: true });
+  return token;
+}
+
+export async function createSession(payload: SessionPayload) {
   const cookieStore = await cookies();
+  const token = await issueSessionToken(payload, cookieStore.get(SESSION_COOKIE_NAME)?.value);
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "strict",
@@ -56,17 +64,21 @@ export async function createSession(payload: SessionPayload) {
   });
 }
 
-export async function clearSession() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-
+export async function revokeSessionToken(token?: string) {
   if (token) {
+    const old = await prisma.userSession.findUnique({ where: { tokenHash: hashToken(token) } });
     await prisma.userSession.updateMany({
       where: { tokenHash: hashToken(token), revokedAt: null },
       data: { revokedAt: new Date() },
     });
+    if (old) await securityAudit("SESSION_REVOKED", old.userId);
   }
 
+}
+
+export async function clearSession() {
+  const cookieStore = await cookies();
+  await revokeSessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value);
   cookieStore.set(SESSION_COOKIE_NAME, "", {
     httpOnly: true,
     sameSite: "strict",

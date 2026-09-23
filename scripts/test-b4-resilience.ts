@@ -1,3 +1,4 @@
+import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -21,6 +22,7 @@ async function main() {
   global.fetch = async () => { throw new Error("Paid/network calls forbidden in B4 regression"); };
   const user = await prisma.user.create({ data: { email: `b4-${Date.now()}@example.test` } });
   const otherUser = await prisma.user.create({ data: { email: `b4-other-${Date.now()}@example.test` } });
+  await grantTestPackage(user.id);
   const directory = await mkdtemp(path.join(os.tmpdir(), "imx-b4-"));
   let checks = 0;
   const ok = (condition: unknown, label: string) => { assert.ok(condition, label); checks++; };
@@ -173,6 +175,6 @@ async function main() {
     ok(imageBound?.imageTokens === 3001 && imageBound.maximumUsd < 0.02, "vision bound counts patches, not a megabyte of base64 as text tokens");
     ok(responseCostBound({ model: "unknown", max_output_tokens: 1000 }) === null && responseCostBound({ model: "gpt-5.4-mini", max_output_tokens: 1000, input: [{ type: "input_image", detail: "original" }] }) === null, "unknown pricing/detail cannot authorize an unbounded call");
     console.log(JSON.stringify({ status: "PASS", checks, polling_simulated_ms: 600000, paid_calls: 0, scientific_calls_added_on_presentation_retry: scientificCalls - 13, artifacts: directory }));
-  } finally { await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: otherUser.id } }); await prisma.$disconnect(); }
+  } finally { await removeTestCommercialData([user.id, otherUser.id]); await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: otherUser.id } }); await prisma.$disconnect(); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

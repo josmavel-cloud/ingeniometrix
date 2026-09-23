@@ -1,14 +1,14 @@
 import { createHash } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
+import { requestAddress } from "./security-events";
 
 const WINDOW_MS = 15 * 60 * 1000;
 const BLOCK_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 5;
 
 function throttleKey(request: Request, email: string) {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const address = forwarded || request.headers.get("x-real-ip")?.trim() || "unknown";
+  const address = requestAddress(request);
   return createHash("sha256").update(`${address}\n${email.toLowerCase()}`).digest("hex");
 }
 

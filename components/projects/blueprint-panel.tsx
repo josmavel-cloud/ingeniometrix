@@ -1,4 +1,5 @@
 "use client";
+import { AccountPanel } from "@/components/commercial/account-panel";
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
@@ -438,6 +439,7 @@ export function BlueprintPanel({
 
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
+      <AccountPanel compact />
       {(progress?.jobStatus === "WAITING_USER_DECISION" || progress?.jobStatus === "FAILED") && progress.jobId && <ScientificDesignApproval projectId={projectId} jobId={progress.jobId} onApproved={() => { setProgress({ ...progress, jobStatus: "WAITING_NEXT_STAGE", label: "Continuando con tu decisión" }); router.refresh(); }} />}
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl">

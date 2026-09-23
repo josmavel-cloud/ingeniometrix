@@ -8,13 +8,16 @@ import {
 } from "@/server/auth/login-throttle";
 import { verifyPassword } from "@/server/auth/password";
 import { createSession, validateEmail } from "@/server/auth/session";
+import { rateLimit, requestAddress, secretHash, securityAudit } from "@/server/auth/security-events";
+import { limitedJson } from "@/server/commercial/mercado-pago";
 
 export async function POST(request: Request) {
   let stage = "READ_BODY";
 
   try {
     stage = "READ_BODY";
-    const body = (await request.json()) as {
+    await rateLimit("password-login", requestAddress(request), 30);
+    const body = (await limitedJson(request, 4096)) as {
       email?: string;
       password?: string;
     };
@@ -45,6 +48,7 @@ export async function POST(request: Request) {
     stage = "VERIFY_PASSWORD";
     const passwordValid = await verifyPassword(password, user?.passwordHash);
     if (!user || !passwordValid) {
+      await securityAudit("LOGIN_FAILURE", null, { method: "password", subjectHash: secretHash(email) });
       const blockedUntil = await recordLoginFailure(throttle.keyHash);
       return NextResponse.json(
         { error: "Credenciales invalidas." },
@@ -67,6 +71,7 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === "RATE_LIMITED") return NextResponse.json({ error: "Demasiados intentos. Intenta nuevamente más tarde." }, { status: 429 });
     console.error(`Unable to start Ingeniometrix session at ${stage}.`, error);
 
     return NextResponse.json(

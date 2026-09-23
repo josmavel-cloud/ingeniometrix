@@ -4,6 +4,7 @@ import { ProjectList, type ProjectListItem } from "@/components/projects/project
 import { ProjectShell } from "@/components/projects/project-shell";
 import { requireCurrentUser } from "@/server/auth/session";
 import { listProjectsForUser } from "@/server/projects/project-service";
+import { AccountPanel } from "@/components/commercial/account-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -88,6 +89,7 @@ export default async function ProjectsPage() {
       description={t.description}
     >
       <section className="surface-panel rounded-[32px] p-6 sm:p-8">
+        <AccountPanel compact />
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="brand-kicker">{t.kicker}</p>

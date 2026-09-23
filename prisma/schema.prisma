@@ -231,13 +231,13 @@ enum TemplateAssetSourceStrategy {
 }
 
 model User {
-  id                 String              @id @default(uuid())
-  email              String              @unique
-  passwordHash       String?             @db.Text
+  id                 String                  @id @default(uuid())
+  email              String                  @unique
+  passwordHash       String?                 @db.Text
   name               String?
-  locale             String              @default("es-PE")
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  locale             String                  @default("es-PE")
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
   projects           Project[]
   auditLogs          AuditLog[]
   stepRuns           MvpStepRun[]
@@ -246,6 +246,10 @@ model User {
   blueprintJobs      BlueprintJob[]
   generatedArtifacts GeneratedArtifact[]
   paidOperations     PaidOperation[]
+  authIdentities     AuthIdentity[]
+  purchases          Purchase[]
+  entitlements       CommercialEntitlement[]
+  trainingConsent    Boolean                 @default(false)
 }
 
 // Pre-generation business spend. Customer credits remain a separate ledger.
@@ -313,6 +317,148 @@ model AuthThrottle {
   updatedAt       DateTime  @updatedAt
 
   @@index([blockedUntil])
+}
+
+model AuthIdentity {
+  id                      String   @id @default(uuid())
+  userId                  String
+  provider                String
+  providerSubject         String
+  emailAtLinkTime         String
+  emailVerifiedAtLinkTime Boolean
+  createdAt               DateTime @default(now())
+  lastUsedAt              DateTime @default(now())
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerSubject])
+  @@index([userId])
+}
+
+model OidcTransaction {
+  stateHash       String    @id
+  browserHash     String
+  nonce           String
+  verifier        String
+  redirectUri     String
+  linkUserId      String?
+  linkSessionHash String?
+  expiresAt       DateTime
+  consumedAt      DateTime?
+  createdAt       DateTime  @default(now())
+}
+
+model ProductOffer {
+  id        String     @id
+  key       String
+  version   Int
+  snapshot  Json
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  purchases Purchase[]
+
+  @@unique([key, version])
+}
+
+model Purchase {
+  id                String                 @id @default(uuid())
+  userId            String
+  offerId           String
+  requestKey        String
+  snapshot          Json
+  termsVersion      String
+  privacyVersion    String
+  acceptedAt        DateTime
+  provider          String
+  mode              String
+  merchantId        String
+  applicationId     String
+  status            String                 @default("CREATED")
+  providerOrderId   String?                @unique
+  checkoutUrl       String?
+  providerUpdatedAt DateTime?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  offer             ProductOffer           @relation(fields: [offerId], references: [id], onDelete: Restrict)
+  entitlement       CommercialEntitlement?
+
+  @@unique([userId, requestKey])
+}
+
+// One package account keeps plan and compute units separate; balances are locked together.
+model CommercialEntitlement {
+  id              String                  @id @default(uuid())
+  userId          String
+  purchaseId      String?                 @unique
+  grantKey        String                  @unique
+  policy          Json
+  grantedSlots    Int
+  reservedSlots   Int                     @default(0)
+  consumedSlots   Int                     @default(0)
+  grantedCredits  Int
+  reservedCredits Int                     @default(0)
+  consumedCredits Int                     @default(0)
+  status          String                  @default("ACTIVE")
+  createdAt       DateTime                @default(now())
+  user            User                    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  purchase        Purchase?               @relation(fields: [purchaseId], references: [id], onDelete: Restrict)
+  reservations    CommercialReservation[]
+  entries         CommercialLedgerEntry[]
+
+  @@index([userId, status])
+}
+
+model CommercialReservation {
+  id                 String                @id @default(uuid())
+  jobId              String                @unique
+  entitlementId      String
+  userId             String
+  projectId          String
+  inputSnapshotId    String?
+  policy             Json
+  credits            Int
+  chargedCredits     Int                   @default(0)
+  status             String                @default("RESERVED")
+  blueprintVersionId String?               @unique
+  createdAt          DateTime              @default(now())
+  settledAt          DateTime?
+  job                BlueprintJob          @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  entitlement        CommercialEntitlement @relation(fields: [entitlementId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+}
+
+// Immutable entries: slot and compute amounts use distinct unit values.
+model CommercialLedgerEntry {
+  id             String                @id @default(uuid())
+  entitlementId  String
+  userId         String
+  purchaseId     String?
+  jobId          String?
+  operationKey   String                @unique
+  kind           String
+  unit           String
+  amount         Int
+  availableAfter Int
+  reason         String
+  policyVersion  String
+  actor          String
+  createdAt      DateTime              @default(now())
+  entitlement    CommercialEntitlement @relation(fields: [entitlementId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+}
+
+model PaymentEvent {
+  id          String    @id
+  provider    String
+  resourceId  String
+  status      String    @default("RECEIVED")
+  reason      String?
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+
+  @@index([status, createdAt])
 }
 
 model Project {
@@ -480,33 +626,34 @@ model BlueprintVersion {
 }
 
 model BlueprintJob {
-  id                 String                    @id @default(uuid())
-  projectId          String
-  userId             String
-  status             BlueprintJobStatus        @default(QUEUED)
-  currentStage       String?
-  progress           Int                       @default(0)
-  language           String                    @default("es")
-  runnerKind         String                    @default("database-worker")
-  attempts           Int                       @default(0)
-  maxAttempts        Int                       @default(3)
-  nextAttemptAt      DateTime?
-  lockedAt           DateTime?
-  lastHeartbeatAt    DateTime?
-  startedAt          DateTime?
-  completedAt        DateTime?
-  errorMessage       String?                   @db.Text
-  errorJson          Json?
-  metadataJson       Json?
-  stageDataJson      Json?
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
-  project            Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user               User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  stages             BlueprintJobStage[]
-  inputSnapshots     GenerationInputSnapshot[]
-  generatedArtifacts GeneratedArtifact[]
-  blueprintVersion   BlueprintVersion?
+  id                    String                    @id @default(uuid())
+  projectId             String
+  userId                String
+  status                BlueprintJobStatus        @default(QUEUED)
+  currentStage          String?
+  progress              Int                       @default(0)
+  language              String                    @default("es")
+  runnerKind            String                    @default("database-worker")
+  attempts              Int                       @default(0)
+  maxAttempts           Int                       @default(3)
+  nextAttemptAt         DateTime?
+  lockedAt              DateTime?
+  lastHeartbeatAt       DateTime?
+  startedAt             DateTime?
+  completedAt           DateTime?
+  errorMessage          String?                   @db.Text
+  errorJson             Json?
+  metadataJson          Json?
+  stageDataJson         Json?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  project               Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stages                BlueprintJobStage[]
+  inputSnapshots        GenerationInputSnapshot[]
+  generatedArtifacts    GeneratedArtifact[]
+  blueprintVersion      BlueprintVersion?
+  commercialReservation CommercialReservation?
 
   @@index([projectId, status])
   @@index([userId, status])

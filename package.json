@@ -4,6 +4,10 @@
   "private": true,
   "description": "MVP de Ingeniometrix",
   "scripts": {
+    "test:rc4-g4-auth": "tsx scripts/test-rc4-g4-auth.ts",
+    "test:rc4-g4-commercial": "tsx scripts/test-rc4-g4-commercial.ts",
+    "commercial:seed": "tsx scripts/commercial-admin.ts seed",
+    "commercial:reconcile": "tsx scripts/commercial-admin.ts reconcile",
     "dev": "next dev",
     "build": "prisma generate && next build",
     "build:release-worker": "esbuild scripts/run-release-worker.ts --bundle --platform=node --format=cjs --outfile=dist/release-worker.cjs --packages=external --tsconfig=tsconfig.json",
@@ -151,6 +155,7 @@
     "lucide-react": "^1.8.0",
     "next": "^16.3.3",
     "openai": "^6.34.0",
+    "openid-client": "6.8.8",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "sharp": "0.35.4",

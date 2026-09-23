@@ -18,6 +18,7 @@ import { upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-s
 import { runMvpEvidenceMaterialization } from "@/server/mvp/evidence-materialization-service";
 import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-service";
 import { closeJobCostControl, currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
+import { reserveCommercialJob } from "@/server/commercial/ledger";
 import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-policy";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
@@ -316,13 +317,14 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         runnerKind: "database-worker",
         maxAttempts: DEFAULT_MAX_ATTEMPTS,
         stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint } satisfies JobData),
-        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", scientificProfile: options?.scientificProfile ?? "rc3" }),
+        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", commercialPolicy: "commercial-v1", scientificProfile: options?.scientificProfile ?? "rc3" }),
       },
     });
     if (options?.scientificProfile === "rc4") {
       const frozen = await appendGenerationInput(tx, { jobId, projectId, userId, revision: 1 });
       await tx.blueprintJob.update({ where: { id: jobId }, data: { stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint: researchProjectFingerprint(frozen.project), inputSnapshotId: frozen.snapshot.id }) } });
     }
+    await reserveCommercialJob(tx, jobId);
     return created;
   });
   return toJobSummary(job);
@@ -543,6 +545,7 @@ export async function authorizePresentationRecoveryForUser(userId: string, proje
     const missing = PRESENTATION_RECOVERY_CHECKPOINTS.filter((stageKey) => !valid.has(stageKey));
     if (missing.length) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${missing.join(",")}`);
     const nextData: JobData = { ...data, recoveryMode: "PRESENTATION_ONLY" };
+    if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
     const previousMetadata = job.metadataJson as Record<string, unknown> | null;
     const recoveryHistory = Array.isArray(previousMetadata?.presentationRecovery) ? previousMetadata.presentationRecovery : [];
     const updated = await tx.blueprintJob.update({
