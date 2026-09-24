@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { AccountPanel } from "@/components/commercial/account-panel";
 import { GoogleButton } from "@/components/auth/google-button";
-import { requireCurrentUser } from "@/server/auth/session";
+import { requireCurrentUser } from "@/lib/backend-http";
 export const dynamic = "force-dynamic";
 export default async function AccountPage() {
   await requireCurrentUser();

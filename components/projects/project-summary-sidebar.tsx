@@ -1,5 +1,5 @@
 import { getDegreeLevelLabelForLanguage } from "@/lib/degree-levels";
-import type { DegreeLevel } from "@prisma/client";
+import type { DegreeLevel } from "@/lib/hybrid-contracts";
 
 type ProjectSummarySidebarProps = {
   title: string;

@@ -1,6 +1,6 @@
 "use client";
 
-import { type DegreeLevel } from "@prisma/client";
+import type { DegreeLevel } from "@/lib/hybrid-contracts";
 import {
   FormEvent,
   useDeferredValue,

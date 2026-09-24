@@ -1,6 +1,6 @@
 import { CreateProjectForm } from "@/components/projects/create-project-form";
 import { ProjectShell } from "@/components/projects/project-shell";
-import { requireCurrentUser } from "@/server/auth/session";
+import { requireCurrentUser } from "@/lib/backend-http";
 
 export const dynamic = "force-dynamic";
 

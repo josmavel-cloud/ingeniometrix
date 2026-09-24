@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { LoginForm } from "@/components/auth/login-form";
 import { BrandBadge } from "@/components/brand/brand-badge";
-import { getCurrentUser } from "@/server/auth/session";
+import { getCurrentUser } from "@/lib/backend-http";
 import { GoogleButton } from "@/components/auth/google-button";
 
 export const dynamic = "force-dynamic";

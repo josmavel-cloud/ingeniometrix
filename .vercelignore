@@ -12,3 +12,9 @@ dist
 *.log
 *.tsbuildinfo
 .codex-*
+.env*
+server/
+prisma/
+scripts/
+llm/
+ai/

@@ -1,6 +1,6 @@
 "use client";
 
-import type { Intake, Project } from "@prisma/client";
+import type { ProjectView } from "@/lib/hybrid-contracts";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
@@ -14,9 +14,7 @@ import {
 } from "@/lib/project-presets";
 
 type IntakeFormProps = {
-  project: Project & {
-    intake: Intake | null;
-  };
+  project: Pick<ProjectView, "id" | "title" | "catalogTopicId" | "intake">;
   language: SupportedLanguage;
 };
 

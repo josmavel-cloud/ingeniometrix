@@ -250,6 +250,8 @@ model User {
   purchases          Purchase[]
   entitlements       CommercialEntitlement[]
   trainingConsent    Boolean                 @default(false)
+  transferGrants     TransferGrant[]
+  uploadedPdfs       UploadedPdf[]
 }
 
 // Pre-generation business spend. Customer credits remain a separate ledger.
@@ -304,9 +306,54 @@ model UserSession {
   createdAt     DateTime  @default(now())
   userAgentHash String?
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transferGrants TransferGrant[]
 
   @@index([userId, expiresAt])
   @@index([expiresAt, revokedAt])
+}
+
+// G5 transport capabilities; hashes only, never plaintext bearer tokens.
+model TransferGrant {
+  id           String    @id @default(uuid())
+  tokenHash    String    @unique
+  purpose      String
+  userId       String
+  projectId    String
+  sessionId    String
+  artifactId   String?
+  documentId   String?
+  maxBytes     Int
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  session      UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  artifact     GeneratedArtifact? @relation(fields: [artifactId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  document     UploadedPdf? @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  @@index([expiresAt])
+  @@index([projectId, purpose])
+}
+
+model UploadedPdf {
+  id              String   @id @default(uuid())
+  userId          String
+  projectId       String
+  draftRevision   Int
+  fileName        String
+  mimeType        String   @default("application/pdf")
+  storageKey      String   @unique
+  expectedBytes   Int
+  byteSize        Int?
+  sha256          String?
+  trainingConsent Boolean  @default(false)
+  status          String   @default("AWAITING_UPLOAD")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  transferGrants  TransferGrant[]
+  @@index([projectId, status])
 }
 
 model AuthThrottle {
@@ -483,6 +530,8 @@ model Project {
   createdAt                 DateTime                       @default(now())
   updatedAt                 DateTime                       @updatedAt
   user                      User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transferGrants            TransferGrant[]
+  uploadedPdfs              UploadedPdf[]
   intake                    Intake?
   draft                     ProjectDraft?
   projectReferences         ProjectReference[]
@@ -711,6 +760,7 @@ model GeneratedArtifact {
   metadataJson       Json?
   createdAt          DateTime              @default(now())
   updatedAt          DateTime              @updatedAt
+  transferGrants     TransferGrant[]
   user               User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   blueprintVersion   BlueprintVersion?     @relation(fields: [blueprintVersionId], references: [id], onDelete: Cascade)

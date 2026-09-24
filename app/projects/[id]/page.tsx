@@ -6,14 +6,10 @@ import { IntakeForm } from "@/components/projects/intake-form";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { ProjectSummarySidebar } from "@/components/projects/project-summary-sidebar";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
-import { UserPdfPlaceholder } from "@/components/projects/user-pdf-placeholder";
+import { PrivatePdfUpload } from "@/components/projects/private-pdf-upload";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
 import { getLocaleForLanguage } from "@/lib/language";
-import { requireCurrentUser } from "@/server/auth/session";
-import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-service";
-import { getProjectForUser } from "@/server/projects/project-service";
-import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
-import { listProjectReferences } from "@/server/retrieval/reference-service";
+import { requireCurrentUser, pageData } from "@/lib/backend-http";
 
 type VisibleStep = "define" | "evidence" | "plan";
 type ProjectDetailPageProps = {
@@ -26,16 +22,10 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const language = "es" as const;
   const locale = getLocaleForLanguage(language);
   const [{ id }, query] = await Promise.all([params, searchParams]);
-  const project = await getProjectForUser(user.id, id);
-  if (!project) notFound();
+  const { project, references, initialReferenceSearchSnapshot, blueprintVersions } = await pageData("detail", id);
   if (query.step === "idea") redirect(`/projects/${id}/topic`);
 
   const currentStep: VisibleStep = query.step === "evidence" || query.step === "plan" ? query.step : "define";
-  const [references, initialReferenceSearchSnapshot, blueprintVersions] = await Promise.all([
-    listProjectReferences(user.id, id, { languageOverride: language }),
-    getLatestProjectReferenceSearchSnapshot(id),
-    listBlueprintVersionsForUser(user.id, id),
-  ]);
   const selectedReferenceCount = references.filter((reference) => reference.selected).length;
   const hasIntakeMinimum = Boolean(project.intake?.topic?.trim() && project.intake.problemContext?.trim() && project.intake.targetPopulation?.trim());
   const latestBlueprint = blueprintVersions[0] ?? null;
@@ -89,7 +79,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 projectId={project.id}
                 status={project.status}
               />
-              <UserPdfPlaceholder />
+              <PrivatePdfUpload projectId={id} />
             </>
           ) : null}
           {currentStep === "plan" ? (
@@ -105,7 +95,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 versions={blueprintVersions.map((version) => ({
                   id: version.id,
                   versionNumber: version.versionNumber,
-                  createdAt: version.createdAt.toISOString(),
+                  createdAt: version.createdAt,
                   blueprintJson: version.blueprintJson as Record<string, unknown>,
                   coherenceReportJson: version.coherenceReportJson as Record<string, unknown>,
                   originatingDraftRevision: version.originatingDraftRevision,
@@ -118,7 +108,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 hasIntakeMinimum={hasIntakeMinimum}
                 language={language}
                 latestBlueprintId={activeVersion?.id ?? null}
-                latestBlueprintCreatedAt={activeVersion ? activeVersion.createdAt.toLocaleString(locale) : null}
+                latestBlueprintCreatedAt={activeVersion ? new Date(activeVersion.createdAt).toLocaleString(locale) : null}
                 latestBlueprintReferenceCount={activeBlueprintJson?.references_used?.length ?? 0}
                 latestBlueprintVersionNumber={activeVersion?.versionNumber ?? null}
                 projectId={project.id}

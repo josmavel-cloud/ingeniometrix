@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { directArtifactDownload } from "@/server/hybrid/download-redirect";
 import { GeneratedArtifactKind } from "@prisma/client";
 import { requireCurrentUser } from "@/server/auth/session";
 import {
@@ -12,6 +13,8 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   try {
     const user = await requireCurrentUser();
     const { id, versionId } = await context.params;
+    const direct = await directArtifactDownload(user.id, id, versionId, "BLUEPRINT_PDF");
+    if (direct) return direct;
     const version = await getBlueprintVersionForUser(user.id, id, versionId);
     const stored = await findGeneratedArtifactForUserVersion({
       userId: user.id,

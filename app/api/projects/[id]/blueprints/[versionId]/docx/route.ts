@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { directArtifactDownload } from "@/server/hybrid/download-redirect";
 import { ExportStatus, GeneratedArtifactKind } from "@prisma/client";
 import { readCanonicalStep6Docx } from "@/server/mvp/canonical-docx-download";
 
@@ -30,6 +31,8 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id, versionId } = await context.params;
+    const direct = await directArtifactDownload(user.id, id, versionId, "BLUEPRINT_DOCX");
+    if (direct) return direct;
     const language = await getProjectContentLanguageForUser(user.id, id);
     const blueprintVersion = await getBlueprintVersionForUser(user.id, id, versionId);
     const stored = await findGeneratedArtifactForUserVersion({

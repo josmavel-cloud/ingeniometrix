@@ -48,10 +48,13 @@ function validateMutationOrigin(request: NextRequest) {
 
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  if (process.env.IMX_RUNTIME_ROLE === "frontend" && (pathname.startsWith("/api/internal/") || pathname.startsWith("/api/health/"))) return notFoundResponse();
   if (isProductionPublication() && isLegacyInternalPath(pathname)) return notFoundResponse();
   const csrfFailure = validateMutationOrigin(request);
   if (csrfFailure) return csrfFailure;
   return NextResponse.next();
 }
 
-export const config = { matcher: "/:path*" };
+// Do not clone/buffer large PDF bodies in Next proxy (default truncation is 10 MB).
+// This exact route enforces Origin + single-use session-bound capability itself.
+export const config = { matcher: "/((?!api/transfers/upload$).*)" };

@@ -2,8 +2,7 @@ import Link from "next/link";
 
 import { ProjectList, type ProjectListItem } from "@/components/projects/project-list";
 import { ProjectShell } from "@/components/projects/project-shell";
-import { requireCurrentUser } from "@/server/auth/session";
-import { listProjectsForUser } from "@/server/projects/project-service";
+import { requireCurrentUser, pageData } from "@/lib/backend-http";
 import { AccountPanel } from "@/components/commercial/account-panel";
 
 export const dynamic = "force-dynamic";
@@ -51,37 +50,8 @@ export default async function ProjectsPage() {
   const user = await requireCurrentUser();
   const language = "es" as const;
   const t = copy[language];
-  const projects = await listProjectsForUser(user.id);
-  const projectListItems: ProjectListItem[] = projects.map((project) => {
-    const latestJob = project.blueprintJobs[0] ?? null;
-
-    return {
-      id: project.id,
-      title: project.title,
-      program: project.program,
-      status: project.status,
-      updatedAt: project.updatedAt.toISOString(),
-      latestJob: latestJob
-        ? {
-            id: latestJob.id,
-            status: latestJob.status,
-            currentStage: latestJob.currentStage,
-            progress: latestJob.progress,
-            errorMessage: latestJob.errorMessage,
-            updatedAt: latestJob.updatedAt.toISOString(),
-            shouldNudge: false,
-          }
-        : null,
-      artifactCount: project.generatedArtifacts.length,
-      hasDocx: project.generatedArtifacts.some(
-        (artifact) => artifact.kind === "BLUEPRINT_DOCX",
-      ),
-      hasPdf: project.generatedArtifacts.some(
-        (artifact) =>
-          artifact.kind === "BLUEPRINT_PDF" || artifact.kind === "SOURCE_PDF",
-      ),
-    };
-  });
+  const projects = await pageData("projects");
+  const projectListItems: ProjectListItem[] = projects;
 
   return (
     <ProjectShell

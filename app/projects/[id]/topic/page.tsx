@@ -3,11 +3,7 @@ import { notFound } from "next/navigation";
 import { TopicStage } from "@/components/projects/topic-stage";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
-import { requireCurrentUser } from "@/server/auth/session";
-import {
-  getTopicProjectForUser,
-  listTopicSuggestionsForUser,
-} from "@/server/projects/topic-suggestion-service";
+import { requireCurrentUser, pageData } from "@/lib/backend-http";
 
 type TopicStagePageProps = {
   params: Promise<{ id: string }>;
@@ -18,8 +14,7 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
   const { id } = await params;
 
   try {
-    const project = await getTopicProjectForUser(user.id, id);
-    const suggestions = await listTopicSuggestionsForUser(user.id, id);
+    const { project, suggestions } = await pageData("topic", id);
 
     return (
       <ProjectShell

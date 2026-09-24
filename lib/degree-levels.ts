@@ -1,4 +1,4 @@
-import type { DegreeLevel } from "@prisma/client";
+import type { DegreeLevel } from "@/lib/hybrid-contracts";
 
 import type { SupportedLanguage } from "@/lib/language";
 import type { ProjectPresetDegreeLevel } from "@/lib/project-presets";
