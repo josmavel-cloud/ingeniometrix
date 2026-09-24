@@ -32,8 +32,11 @@ paid metrics sampling. No public metrics endpoint.
 Test reboot/Docker restart on an agreed maintenance window; restarting isolated app
 and idle worker is not proof of full host reboot or in-flight scientific recovery.
 
-G5.2 recheck (2026-09-24): no external monitor/alert destination is configured.
-The repository host CLI is unavailable, so no scheduled GitHub Actions monitor was
-installed or claimed. Staging homepage/workspace and direct Funnel liveness/readiness
-returned 200 in point probes; these do not monitor worker heartbeat, remote-backup
-age or disk threshold and do not provide alerting.
+G5.3 recheck (2026-09-24): no external monitor/alert destination is configured.
+The GitHub CLI and a supported workflow/secrets write channel are unavailable here,
+so no scheduled GitHub Actions monitor was installed or claimed. Current point probes:
+staging homepage 200, staging `/workspace` 500, backend Funnel liveness/readiness 200.
+The backend `/api/health/operational` path returns 404. These point probes do not
+monitor worker heartbeat, remote-backup age or disk threshold and do not provide
+alerting. A protected operational-health endpoint/token and external secret setup
+remain prerequisites before those signals can be monitored off-host.

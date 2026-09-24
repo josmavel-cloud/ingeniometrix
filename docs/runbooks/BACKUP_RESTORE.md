@@ -49,11 +49,11 @@ remain production prerequisites until proven.
 
 ## Owner-selected Workspace / Drive destination
 
-Owner supplied a dedicated Drive folder during G5. Metadata inspection found
-`anyone: writer`; no backup was uploaded and permissions were not changed by Codex.
-Owner must change General access to Restricted, keep only approved principals,
-and arrange an independent recovery custodian/key before production data upload.
-Re-read folder permissions after the change; a public editable folder is not ready.
+Owner supplied a dedicated Drive folder during G5. On 2026-09-24, read-only
+permission metadata showed General access restricted: only named user permissions
+were returned (owner and writer); no `anyone`, `anyoneWithLink`, or domain permission
+was present. No permission changes or uploads were made. This is a safe folder ACL,
+not proof that the backup credential is least-privileged.
 
 The backup image includes rclone. Optional `docker-compose.g5-drive.yml` uses
 restic's rclone transport; encryption remains in restic before transfer. Configure
@@ -71,6 +71,14 @@ config directory and backup.sh refuses unreviewed access. Store rclone.conf mode
 Supply the override to every backup/check/restore command and scheduled backup
 wrapper; do not use the local-repository rehearsal as proof of remote readiness.
 
+Before configuring the remote, create/authorize a dedicated Google identity (or
+approved service identity) with access only to this folder where feasible. Complete
+interactive rclone OAuth setup locally; do not use the app's OIDC credentials or
+the broad Google Drive connector identity as a substitute. Store the remote config
+outside the repository with directory mode 0700 and file mode 0600. Separately
+generate and escrow both the restic repository password and rclone-crypt recovery
+secret with an independent custodian; neither belongs in Git, Drive, or chat.
+
 After authorized local credential setup and ACL verification: initialize one new
 `restic-g5` repository in the folder, quiesce only G5 app/worker, back up, check, and
 restore from that REMOTE repository into a new isolated DB/volume. Compare hashes
@@ -82,7 +90,10 @@ Sources: [restic rclone backend](https://restic.readthedocs.io/en/stable/030_pre
 [Restic repository setup](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html)
 documents encrypted repositories and remote backend configuration.
 
-Rechecked 2026-09-24: Drive ACL remains `anyone:writer`; external backup, remote
-object verification and restore-from-remote remain NOT RUN. The previous restic
-restore is an isolated same-host rehearsal only, not an off-machine backup. No
-remote credentials were discovered or printed.
+Rechecked 2026-09-24: Drive ACL is restricted, but no host rclone configuration,
+G5 backup runtime environment, or dedicated remote identity is configured. The
+backup image contains rclone/restic; this does not make a remote usable. No external
+backup, remote object verification, or restore-from-remote was run. The previous
+restic restore is an isolated same-host rehearsal only, not an off-machine backup.
+Do not proceed until the dedicated identity/config and independently escrowed
+recovery secrets are available.

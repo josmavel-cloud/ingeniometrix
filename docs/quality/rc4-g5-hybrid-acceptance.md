@@ -172,6 +172,33 @@ G5 remains BLOCKED until remote backup and restore, monitoring, one controlled
 scientific staging journey, download/settlement and external two-user isolation are
 evidenced.
 
+## G5.3 infrastructure prerequisite recheck (2026-09-24)
+
+**Decision: BLOCKED; do not start the final paid staging E2E.** Source and remote
+feature branch were both `e2a5b4b4d68c6328150071717b24695e67ca6467`; the worktree was
+clean at start. This checkpoint changes only the four documentation files listed
+below. No provider, payment, LLM, DB, or service mutation was performed.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Drive folder exposure | RESTRICTED | Drive permission metadata contained only named user owner/writer permissions; no anyone/link/domain permission. |
+| Backup identity/config | NOT READY | No host `rclone.conf`, dedicated remote identity, or `/etc/ingeniometrix/g5.env`; no remote alias could be verified. Existing backup container image includes rclone/restic. |
+| External encrypted backup | NOT RUN | No upload made; therefore no remote object/size/manifest evidence. |
+| Restore from remote | NOT RUN | Same-host encrypted rehearsal is not an external restore. |
+| External monitoring | NOT READY | `gh` CLI/workflow-secret write path unavailable; no protected operational endpoint (`/api/health/operational` returned 404). |
+| Current staging probes | DEGRADED | Vercel `/` 200, `/workspace` 500; Funnel `/api/health/live` and `/api/health/ready` 200. |
+| Failure/recovery + stale-backup tests | NOT RUN | No active external workflow exists to observe these conditions. |
+| Local validation | PASS | Prisma validation with ephemeral placeholder URLs, typecheck, frontend build, full build, and worker bundle. The existing broad `artifacts-local` tracing warnings remain. |
+
+No product/runtime files or services were changed; these G5.3 documentation notes
+are the only worktree changes, and no commit/push was made. Before backup,
+configure a dedicated least-privilege identity for the restricted folder, protected
+rclone config, `imx-drive`/`imx-drive-crypt`, and independently escrowed crypt/restic
+recovery secrets. Before monitoring, add a protected aggregate health contract and
+monitoring credential, configure the GitHub Actions secret through repository
+settings, and enable/verify the workflow from the repository's default branch. The
+staging `/workspace` 500 should be diagnosed separately before final E2E.
+
 ## Reproduction and next action
 
 Follow [STAGING_RUNBOOK](../runbooks/STAGING_RUNBOOK.md),

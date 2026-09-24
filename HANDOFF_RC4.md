@@ -67,6 +67,27 @@ See [G5 acceptance](docs/quality/rc4-g5-hybrid-acceptance.md),
 not yet approved/ingested as scientific evidence. Admin MFA remains a production
 blocker. Existing G4/RC3 stacks and Tailscale mappings were preserved.
 
+### G5.3 infrastructure prerequisite recheck (2026-09-24)
+
+At `e2a5b4b4d68c6328150071717b24695e67ca6467`, the RC4 feature worktree and remote
+branch were clean and aligned. The Drive backup folder ACL is now restricted (only
+named user permissions; no anyone/link/domain-wide permission), but this is not a
+least-privilege rclone identity. No host rclone config, `/etc/ingeniometrix/g5.env`,
+or dedicated backup identity exists. The backup image includes rclone/restic but no
+remote was configured; no upload or remote restore occurred. The exact manual
+prerequisite is to authorize a dedicated identity for only the folder, configure
+`imx-drive` plus `imx-drive-crypt`, and independently escrow rclone-crypt/restic
+recovery secrets before running the documented remote backup/restore procedure.
+
+No off-host monitor was installed: GitHub CLI/workflow secret administration is
+unavailable in this environment, and staging `/api/health/operational` returns 404.
+The current checks are point-in-time only: staging `/` 200, `/workspace` 500, backend
+Funnel liveness/readiness 200. Do not claim staging healthy while the workspace route
+is failing. No monitoring failure/recovery or stale-backup test was run. No paid LLM,
+payment, Drive write, DNS change, or app/worker restart was performed. Prisma
+validation, typecheck, frontend/full builds, and worker build passed locally; build
+output retains the existing broad `artifacts-local` tracing warnings.
+
 ## Previous checkpoint — G4 (2026-09-23)
 
 G4 authentication/commercial candidate implemented on G3 commit
