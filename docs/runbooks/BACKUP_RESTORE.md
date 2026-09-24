@@ -140,6 +140,14 @@ crypt repository, then review and test the plan output. Do not enable or run pru
 as part of this acceptance; the script's current monthly value is 6 and must not be
 used unchanged.
 
+The external staging monitor treats the most recent successful backup marker older
+than 26 hours, or a missing/invalid marker, as stale/unknown. It does not prune or
+delete backup data. Retention scheduling remains a separate, explicitly reviewed
+maintenance change using daily 7, weekly 4, monthly 3; cleanup of the extra
+`rclone:imx-drive:restic-g5` repository still requires owner authorization.
+`CLEANUP_AUTHORIZATION_REQUIRED = YES`; do not delete or prune that repository
+without separate owner approval.
+
 For recovery, restore the exact versioned crypt repository using the protected
 rclone config plus the independently escrowed rclone crypt and Restic recovery
 secrets; use the matching Postgres major version (16 here), then validate the

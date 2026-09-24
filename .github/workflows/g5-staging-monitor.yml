@@ -1,0 +1,27 @@
+name: G5 staging monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g5-staging-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Probe public staging and protected operational health
+        env:
+          STAGING_MONITOR_TOKEN: ${{ secrets.STAGING_MONITOR_TOKEN }}
+        run: node scripts/g5-staging-monitor.mjs

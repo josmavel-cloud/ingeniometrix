@@ -43,6 +43,7 @@ services:
       IMX_HYBRID_TRANSFERS: "1"
       IMX_PRIVATE_STORAGE_ROOT: /app/artifacts-local/private-storage
       IMX_OPERATIONS_DIR: /app/artifacts-local/operations
+      IMX_MONITORING_TOKEN: ${IMX_MONITORING_TOKEN:-}
       IMX_AUTHLESS_WORKSPACE: "0"
       IMX_ENABLE_DEEP_RESEARCH: "0"
       IMX_PAYMENT_MODE: sandbox
@@ -79,6 +80,7 @@ services:
       GOOGLE_CLIENT_SECRET: ""
       MP_TEST_ACCESS_TOKEN: ""
       MP_WEBHOOK_SECRET: ""
+      IMX_MONITORING_TOKEN: ""
     command: [npm, run, worker:release]
     volumes: ["g5_artifacts:/app/artifacts-local"]
     networks: [data, edge]

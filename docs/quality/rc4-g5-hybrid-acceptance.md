@@ -208,3 +208,27 @@ Follow [STAGING_RUNBOOK](../runbooks/STAGING_RUNBOOK.md),
 The Preview is deployed, but first resolve and verify the custom staging origin in
 Wix/Vercel before Google browser acceptance. Do not deploy the repository root or
 expose database/provider secrets to Vercel.
+
+## G5.3 monitoring implementation update (2026-09-24)
+
+The backup/restore docs are committed separately (`eacbede`). Monitoring code adds
+a protected, read-only operational aggregate and a GitHub Actions workflow that
+probes staging web, backend readiness, worker heartbeat freshness, backup age and
+disk free percentage. The response contains only safe state enums. The app receives
+`IMX_MONITORING_TOKEN`; the worker does not. The workflow expects GitHub Actions
+secret `STAGING_MONITOR_TOKEN`, runs every 15 minutes once present on the default
+branch, and supports manual dispatch.
+
+Offline monitoring tests detect healthy state, app outage and recovery, stale
+backup/worker fixtures, low storage and invalid authorization. TypeScript, Vercel,
+backend and worker builds pass. Live point probes returned staging homepage 200 and
+backend readiness 200. However, the protected endpoint and Caddy change are not
+deployed to the running staging containers: the current app requires a matching
+runtime token, and this environment has no GitHub CLI or Actions-secret setter.
+GitHub reports `main` as the default branch, so this feature-branch workflow is not
+yet scheduled externally. No external outage/recovery, secret, or notification
+acceptance is claimed. Manual prerequisite: add `STAGING_MONITOR_TOKEN` in GitHub
+Actions secrets and inject the same value only into the isolated staging app
+runtime, then rebuild/recreate only the G5 staging app/proxy and run the workflow.
+No LLM/payment call, backup deletion, or pruning occurred; the extra base-remote
+Restic repository remains preserved pending cleanup authorization.

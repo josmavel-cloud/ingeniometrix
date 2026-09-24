@@ -119,6 +119,28 @@ G5: external monitoring, final paid staging E2E, and other pending acceptance it
 remain independent gates. No repository code changed; this handoff/runbook update
 is documentation-only.
 
+### G5.3 monitoring implementation (2026-09-24)
+
+After the encrypted-backup docs commit, implemented `/api/health/operational` as a
+read-only bearer-token endpoint exposing only aggregate worker heartbeat (120s),
+backup freshness (26h), and free-storage threshold (15%) states. Caddy allows only
+the three health routes; app receives `IMX_MONITORING_TOKEN`, worker explicitly
+does not. Added an every-15-minute GitHub Actions workflow plus manual dispatch and
+offline healthy/outage/recovery/stale fixtures. Retention intent remains daily 7,
+weekly 4, monthly 3; no pruning occurred. The extra
+`rclone:imx-drive:restic-g5` repository remains preserved and requires explicit
+cleanup authorization (`CLEANUP_AUTHORIZATION_REQUIRED = YES`).
+
+Local tests, typecheck, Vercel build, full backend build and worker build pass.
+The live staging home and Funnel readiness point probes returned 200, but the
+current containers still run the prior image and this session has no `gh` CLI or
+GitHub Actions-secret write operation. Required Actions secret is
+`STAGING_MONITOR_TOKEN`; a matching token must be added to the isolated app runtime
+before recreating only the G5 app. The workflow is committed only on this feature
+branch; scheduled runs activate only when it is available on the repository's
+default branch (`main`). Therefore no external monitor, outage/recovery observation,
+or final staging E2E is claimed yet.
+
 ## Previous checkpoint — G4 (2026-09-23)
 
 G4 authentication/commercial candidate implemented on G3 commit
