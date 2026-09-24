@@ -13,6 +13,7 @@ dist
 *.tsbuildinfo
 .codex-*
 .env*
+app/api/
 server/
 prisma/
 scripts/

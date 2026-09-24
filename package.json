@@ -12,6 +12,7 @@
     "commercial:reconcile": "tsx scripts/commercial-admin.ts reconcile",
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "build:vercel": "next build",
     "build:release-worker": "esbuild scripts/run-release-worker.ts --bundle --platform=node --format=cjs --outfile=dist/release-worker.cjs --packages=external --tsconfig=tsconfig.json",
     "start": "next start",
     "worker:release": "node dist/release-worker.cjs",
