@@ -86,8 +86,18 @@ TRUNCATE ni permiso de desactivar triggers; separar del rol migrador antes de G5
 `mercado-pago.ts`: Checkout Pro vía Orders, no mezcla Preferences con Orders.
 POST /v1/orders usa X-Idempotency-Key = Purchase.id persistido; GET /users/me
 confirma `test_user` y merchant configurado ANTES de crear checkout. Token prefix
-no demuestra sandbox. Sólo órdenes ORDTST, país PE, moneda PEN, sin live_mode=true.
-checkout_url debe ser HTTPS con host/path permitido y mismo order_id.
+no demuestra sandbox. `ORDTST` se conserva sólo como señal positiva opcional, no
+como frontera de seguridad. El país del proveedor se normaliza mediante un mapa
+explícito (`PE`/`PER` → `PE`); moneda PEN y `live_mode=true` se validan de forma
+estricta. `checkout_url` debe usar HTTPS, host/path de allowlist exacta y el mismo
+`order_id`.
+
+`recoverMercadoPagoOrderForPurchase` cubre la respuesta perdida después de crear:
+busca sólo por `external_reference` y una ventana de ±10 minutos, exige exactamente
+una coincidencia, recupera esa Order por GET y valida merchant, application, importe,
+moneda, país, estado, referencia y checkout. La persistencia `CHECKOUT_READY` y el
+evento de auditoría son atómicos; cero o varias coincidencias no mutan nada. Una
+Purchase con Order ya persistida se reutiliza sin otra operación de proveedor.
 
 Webhook exacto `/api/payments/mercado-pago/webhook`: cuerpo acotado, tipo `order`,
 HMAC-SHA256 con x-signature/x-request-id/data.id y ventana 10 minutos. Firma no

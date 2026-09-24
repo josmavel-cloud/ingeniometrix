@@ -6,6 +6,8 @@
   "scripts": {
     "test:rc4-g4-auth": "tsx scripts/test-rc4-g4-auth.ts",
     "test:rc4-g4-commercial": "tsx scripts/test-rc4-g4-commercial.ts",
+    "test:rc4-g4-webhook": "tsx scripts/test-rc4-g4-webhook.ts",
+    "test:rc4-g4-order-recovery": "tsx scripts/test-rc4-g4-order-recovery.ts",
     "commercial:seed": "tsx scripts/commercial-admin.ts seed",
     "commercial:reconcile": "tsx scripts/commercial-admin.ts reconcile",
     "dev": "next dev",

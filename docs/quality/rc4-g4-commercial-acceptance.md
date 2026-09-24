@@ -2,9 +2,36 @@
 
 Fecha: 2026-09-23. Base limpia `1ada2d036244fc7a7df79e79a46aa79a688ca1cf`.
 Rama `feat/rc4-scientific-commercial`, worktree `ingeniometrix-wt-rc4`.
-G4_STATUS: PASS_WITH_LIMITATIONS para implementación/aceptación offline.
-GOOGLE_EXTERNAL_ACCEPTANCE: NOT_RUN. PAYMENT_EXTERNAL_ACCEPTANCE: NOT_RUN.
+G4_STATUS: PASS_WITH_LIMITATIONS para implementación y aceptación externa parcial.
+GOOGLE_EXTERNAL_ACCEPTANCE: PASS (G4.1). PAYMENT_EXTERNAL_ACCEPTANCE: PARTIAL.
 Venta real y despliegue público: BLOCKED. No se afirma aceptación externa.
+
+## Aceptación externa G4.1 — Google OIDC
+
+Entorno controlado mediante Tailscale Serve, sin secretos en este informe:
+
+- `APP_ORIGIN`: `https://pepe-thinkpad-t470s.tailbcdf27.ts.net:8448`
+- `GOOGLE_REDIRECT_URI`: `https://pepe-thinkpad-t470s.tailbcdf27.ts.net:8448/api/auth/google/callback`
+- `TAILSCALE_SERVE`: `:8448 -> 127.0.0.1:3308`
+- `LOGIN`: PASS
+- `CALLBACK`: PASS
+- `SESSION_PERSISTS_AFTER_RELOAD`: YES
+- `LOGOUT`: PASS
+- `RELOGIN`: PASS
+- `ERRORS`: NONE
+
+La aceptación Google se completó por separado. La aceptación Mercado Pago parcial
+actual se registra a continuación; el checkout/pago manual permanece pendiente.
+
+## Aceptación externa G4.1 — Mercado Pago parcial
+
+- Webhook simulator firmado: PASS/HTTP 200, sin mutación comercial.
+- Primera Orders API sandbox: una Order creada para `starter_5_plans`, PEN 99.00.
+- Respuesta perdida recuperada exclusivamente por búsqueda/GET autoritativo.
+- Purchase local: `CHECKOUT_READY`; Order y checkout persistidos; entitlement 0.
+- País observado `PER`, normalizado explícitamente a `PE`; `ORDTST` queda como
+  señal positiva opcional, no frontera única.
+- Checkout manual, pago y grant por webhook: NOT_RUN.
 
 ## Matriz de requisitos
 

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { securityAudit } from "@/server/auth/security-events";
 import { commercialLaunchGuard, currentOffer, offerSchema } from "./catalog";
 import { grantEntitlement, revokeEntitlement } from "./ledger";
-import { mercadoPago } from "./mercado-pago";
+import { mercadoPago, searchMercadoPagoOrderIds } from "./mercado-pago";
 import type { PaymentProvider, VerifiedOrder } from "./payment-provider";
 
 export async function purchaseForUser(userId: string, id: string) {
@@ -35,16 +35,16 @@ export async function createPurchase(userId: string, requestKey: string, offerId
   await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Purchase" WHERE id = ${purchase.id} FOR UPDATE`;
     const current = await tx.purchase.findUniqueOrThrow({ where: { id: purchase.id } });
-    validateOrder(current, order);
+    validateOrderForPurchase(current, order);
     if (!order.checkoutUrl) throw new Error("CHECKOUT_URL_MISSING");
     await tx.purchase.update({ where: { id: purchase.id }, data: { providerOrderId: order.id, checkoutUrl: order.checkoutUrl, ...(current.status === "CREATED" ? { status: "CHECKOUT_READY" } : {}) } });
     await securityAudit("CHECKOUT_CREATED", userId, { purchaseId: purchase.id }, tx);
   });
   return { purchaseId: purchase.id, checkoutUrl: order.checkoutUrl! };
 }
-function validateOrder(purchase: { id: string; providerOrderId: string | null; merchantId: string; applicationId: string; snapshot: unknown; mode: string }, order: VerifiedOrder) {
+export function validateOrderForPurchase(purchase: { id: string; providerOrderId: string | null; merchantId: string; applicationId: string; snapshot: unknown; mode: string }, order: VerifiedOrder) {
   const policy = offerSchema.parse(purchase.snapshot);
-  if (order.externalReference !== purchase.id || purchase.providerOrderId && order.id !== purchase.providerOrderId || order.merchantId !== purchase.merchantId || order.applicationId !== purchase.applicationId || order.currency !== policy.currency || order.amountMinor !== policy.priceMinor || order.mode !== purchase.mode) throw new Error("PAYMENT_VERIFICATION_MISMATCH");
+  if (order.externalReference !== purchase.id || purchase.providerOrderId && order.id !== purchase.providerOrderId || order.merchantId !== purchase.merchantId || order.applicationId !== purchase.applicationId || order.currency !== policy.currency || order.amountMinor !== policy.priceMinor || order.country !== "PE" || order.mode !== purchase.mode) throw new Error("PAYMENT_VERIFICATION_MISMATCH");
 }
 export async function processPaymentEvent(eventKey: string, resourceId: string, provider: PaymentProvider = mercadoPago) {
   await prisma.paymentEvent.createMany({ data: [{ id: eventKey, provider: provider.name, resourceId }], skipDuplicates: true });
@@ -58,7 +58,7 @@ export async function processPaymentEvent(eventKey: string, resourceId: string, 
     await tx.$queryRaw`SELECT id FROM "Purchase" WHERE id = ${order.externalReference} FOR UPDATE`;
     const p = await tx.purchase.findUnique({ where: { id: order.externalReference } });
     if (!p || p.provider !== provider.name) throw new Error("PAYMENT_VERIFICATION_MISMATCH");
-    validateOrder(p, order);
+    validateOrderForPurchase(p, order);
     const event = await tx.paymentEvent.findUniqueOrThrow({ where: { id: eventKey } });
     if (event.status === "PROCESSED") return;
     const stale = p.providerUpdatedAt && order.updatedAt < p.providerUpdatedAt;
@@ -73,6 +73,50 @@ export async function processPaymentEvent(eventKey: string, resourceId: string, 
     await tx.paymentEvent.update({ where: { id: eventKey }, data: { status: "PROCESSED", processedAt: new Date() } });
   });
 }
+
+type OrderRecoveryProvider = {
+  search(input: { externalReference: string; beginDate: Date; endDate: Date }): Promise<string[]>;
+  retrieve(id: string): Promise<VerifiedOrder>;
+};
+
+const mercadoPagoRecoveryProvider: OrderRecoveryProvider = {
+  search: searchMercadoPagoOrderIds,
+  retrieve: (id) => mercadoPago.retrieveOrder(id),
+};
+
+export async function recoverMercadoPagoOrderForPurchase(purchaseId: string, provider: OrderRecoveryProvider = mercadoPagoRecoveryProvider) {
+  const purchase = await prisma.purchase.findUnique({ where: { id: purchaseId } });
+  if (!purchase || purchase.provider !== "mercado_pago" || purchase.mode !== "sandbox") throw new Error("PURCHASE_NOT_RECOVERABLE");
+  if (purchase.providerOrderId) {
+    if (!purchase.checkoutUrl) throw new Error("PURCHASE_RECOVERY_INCOMPLETE");
+    return { purchaseId, providerOrderId: purchase.providerOrderId, checkoutUrl: purchase.checkoutUrl, matchCount: 1, reused: true };
+  }
+
+  const ids = await provider.search({
+    externalReference: purchase.id,
+    beginDate: new Date(purchase.createdAt.getTime() - 10 * 60_000),
+    endDate: new Date(purchase.createdAt.getTime() + 10 * 60_000),
+  });
+  if (ids.length === 0) throw new Error("PAYMENT_ORDER_NOT_FOUND");
+  if (ids.length !== 1) throw new Error("PAYMENT_ORDER_AMBIGUOUS");
+  const order = await provider.retrieve(ids[0]);
+  validateOrderForPurchase(purchase, order);
+  if (order.status !== "PENDING" || !order.checkoutUrl) throw new Error("PAYMENT_ORDER_NOT_CHECKOUT_READY");
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Purchase" WHERE id = ${purchase.id} FOR UPDATE`;
+    const current = await tx.purchase.findUniqueOrThrow({ where: { id: purchase.id } });
+    if (current.providerOrderId) {
+      if (current.providerOrderId !== order.id || !current.checkoutUrl) throw new Error("PURCHASE_RECOVERY_CONFLICT");
+      return { purchaseId, providerOrderId: current.providerOrderId, checkoutUrl: current.checkoutUrl, matchCount: 1, reused: true };
+    }
+    validateOrderForPurchase(current, order);
+    const updated = await tx.purchase.update({ where: { id: current.id }, data: { providerOrderId: order.id, checkoutUrl: order.checkoutUrl, status: "CHECKOUT_READY", providerUpdatedAt: order.updatedAt } });
+    await securityAudit("PAYMENT_ORDER_RECOVERED", updated.userId, { purchaseId: updated.id, provider: "mercado_pago", mode: "sandbox", country: order.country, providerStatus: order.status, sandboxIdSignal: order.sandboxIdSignal }, tx);
+    return { purchaseId, providerOrderId: order.id, checkoutUrl: order.checkoutUrl!, matchCount: 1, reused: false };
+  });
+}
+
 export async function reconcilePaymentEvents(provider: PaymentProvider = mercadoPago) {
   const events = await prisma.paymentEvent.findMany({ where: { status: "RECEIVED" }, take: 100, orderBy: { createdAt: "asc" } });
   const results = [];

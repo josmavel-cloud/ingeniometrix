@@ -62,7 +62,7 @@ autorizado; hace GET de Orders, nunca generación LLM ni cargos. Procesa máximo
 | Plataforma falla antes de publicación | Release comercial; costos B4 intactos |
 | Publicación antes de settlement | Reconciliar mismo job; DOCX/PDF exigidos |
 | Settlement interrumpido | Transacción revierte; operationKey evita doble cargo |
-| Provider create responde pero app pierde respuesta | Reintentar misma compra/idempotency key |
+| Provider create responde pero app pierde respuesta | Recuperar por GET y referencia exacta antes de cualquier nuevo POST |
 | Pago verificado antes de grant | Purchase/grant/evento en una transacción |
 | Grant antes de ACK | Repetición verifica y no vuelve a conceder |
 | Webhook perdido | Reconciliar compras pendientes con GET provider |
@@ -72,6 +72,13 @@ COST_PENDING no se libera sin usage acreditable. La reconciliación no inventa n
 reescribe usage. Pendientes antiguos/checkout sin order ID se investigan antes de
 autorizar otra compra. Contracargos reales requieren validar topic/mapeo en sandbox;
 no hay integración activa con un feed separado de contracargos.
+
+Ante una respuesta perdida, usar `recoverMercadoPagoOrderForPurchase(purchaseId)`.
+La operación busca por `external_reference` en una ventana de ±10 minutos, exige
+exactamente una coincidencia y recupera el detalle por GET. Valida merchant,
+application, importe, moneda, país, estado y checkout antes de persistir. `PE` y
+`PER` se normalizan a `PE`; `ORDTST` es señal auxiliar y no frontera única. Cero o
+varias coincidencias detienen la recuperación sin mutaciones ni un nuevo POST.
 
 ## Validación reproducible sin proveedores
 
