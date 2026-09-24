@@ -17,11 +17,15 @@ Validate from repo: `node scripts/check-vercel-bundle.mjs dist/vercel-TIMESTAMP`
 It rejects production trace escapes and backend/private dependencies.
 
 Owner-selected project: `https://vercel.com/josmavel-clouds-projects/ingeniometrix`.
-It must be linked to the generated package and environment explicitly configured
-before an authorized preview deployment. CLI 59.26.0 reported Logged out; owner must
-authorize locally with `npx vercel login`. Do not paste tokens into chat. Do not change
-the project's production settings, Git integration or production alias. A successful
-local Next build is not a Vercel deployment.
+The RC4 package has been linked and deployed as a Preview for
+`feat/rc4-scientific-commercial`. Preview-only variables are documented in
+`docs/runbooks/STAGING_RUNBOOK.md`; Production variables and aliases were not changed.
+The deployment URL is available before custom-domain DNS, and Vercel Deployment
+Protection remains enabled. `staging.ingeniometrix.com` is not yet a verified browser
+origin because Wix is still authoritative and its staging record is absent. Do not
+disable protection globally or change Production/Git integration to work around this.
+Never paste Vercel tokens into chat. A successful local Next build alone is not a
+Vercel deployment; verify both the deployment state and the backend boundary.
 
 | Surface | Route | Authority/path |
 | --- | --- | --- |
@@ -32,7 +36,15 @@ local Next build is not a Vercel deployment.
 | PDF authorization | POST /api/transfers/authorize | same-origin session + CSRF; returns single-use capability |
 | Large PDF upload | PUT /api/transfers/upload | direct UPLOAD_ORIGIN, bearer token, exact Origin/CORS; 30 MiB |
 | Final DOCX/PDF | existing version export routes -> 302 capability URL | owner session mint -> direct Ubuntu binary; no Vercel binary response |
-| Liveness/readiness | /api/health/live, /api/health/ready | container-local only; public ingress denies |
+| Liveness/readiness | /api/health/live, /api/health/ready | sanitized endpoints allowed through the staging Caddy ingress; no internal detail |
+
+Staging note: direct Funnel health/readiness endpoints return 200. During the
+branch Preview acceptance, `/api/health/ready` on the Vercel origin returned 404,
+although authenticated `/api/ui/*` rewrites reached Caddy. A 2026-09-24 public probe
+received 200 for the custom Vercel staging homepage and workspace shell. Keep using
+the direct backend readiness URL for monitoring until the Vercel route discrepancy
+is explained; do not expose dependency details to make the proxy test pass. A signed
+webhook reached Ubuntu, but retained logs do not prove that request traversed Vercel.
 
 Downloads use a 60-second single-use query capability with no-referrer/no-store;
 never log query strings. A lost response requires a new authorized link, not reuse.

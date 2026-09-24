@@ -33,7 +33,10 @@ async function main() {
   eq((await fetch(url)).status, 401);
   eq((await fetch(`${backend}/api/internal/blueprint-jobs/x/run-stage`, { method: "POST" })).status, 404);
   eq((await fetch(`${origin}/api/internal/blueprint-jobs/x/run-stage`, { method: "POST" })).status, 404);
-  eq((await fetch(`${backend}/api/health/ready`)).status, 404);
+  eq((await fetch(`${backend}/api/health/live`)).status, 200);
+  eq((await fetch(`${backend}/api/health/ready`)).status, 200);
+  // Frontend package never implements health; monitoring calls API origin directly.
+  eq((await fetch(`${origin}/api/health/ready`)).status, 404);
   eq((await fetch(`${backend}/artifacts-local/private-storage/anything`)).status, 404);
   eq((await fetch(`${origin}/api/auth/logout`, { method: "POST", headers })).status, 200);
   eq(await (await fetch(`${origin}/api/ui/session`, { headers: { cookie } })).json(), null);

@@ -55,10 +55,51 @@ Google login, real sandbox purchase, or scientific staging acceptance.
 - App image creates private/operations directories with node ownership. Worker
   heartbeat writes are serialized. Restore applies the same restricted grants.
 
+## G5.1 staging connection checkpoint (2026-09-23)
+
+The owner-authorized RC4 feature branch is linked to the Vercel project above. Six
+branch-scoped Preview variables were configured: `IMX_RUNTIME_ROLE=frontend`,
+`PUBLIC_APP_ORIGIN`, `APP_ORIGIN`, and `AUTH_ORIGIN` use
+`https://staging.ingeniometrix.com`; `BACKEND_API_ORIGIN` and `UPLOAD_ORIGIN` use
+`https://pepe-thinkpad-t470s.tailbcdf27.ts.net:10000`. The values were applied only
+to Preview for `feat/rc4-scientific-commercial`; Vercel Production was not changed.
+
+The frontend-only package built and deployed Ready as Preview at
+`https://ingeniometrix-lz6wbofh7-josmavel-clouds-projects.vercel.app` (deployment
+`CJJxDGJWGUXqGjruHjmmTDrnp8RJ`). Bundle check passed with 23 production traces and
+no Prisma, database credentials, worker, private-storage or LibreOffice modules.
+Via Vercel's protected-deployment-aware curl, `/` and `/workspace` returned 200;
+the same-origin `/api/ui/session` and an authenticated owner-only detail request
+also returned 200 through the Ubuntu Caddy backend. Password-fixture login and
+logout both returned 200. This proves the Vercel rewrite and backend session path,
+not an end-user Google browser login. Vercel Deployment Protection remains on.
+Direct Funnel liveness/readiness both returned 200. The same-origin Preview path
+`/api/health/ready` returned 404, so readiness monitoring should use the backend
+origin; this route discrepancy remains to investigate before relying on a Vercel
+health proxy.
+
+The Ubuntu app's `UPLOAD_ORIGIN` and Vercel Preview `UPLOAD_ORIGIN` both target the
+Funnel origin. Direct upload and artifact-download capabilities therefore continue
+to bypass Vercel, with existing one-use authorization and exact-Origin checks. The
+30 MiB upload was already accepted through Funnel in the preceding checkpoint; it
+was not repeated here. No Mercado Pago webhook configuration or order was changed.
+
+Wix remains authoritative and the public custom hostname
+`staging.ingeniometrix.com` still does not resolve. Therefore the Ready Preview
+deployment URL is a diagnostic endpoint, not yet an approved browser staging origin:
+Deployment Protection and the app's exact `APP_ORIGIN`/CSRF policy prevent treating
+its `vercel.app` hostname as interchangeable with the custom domain. No DNS, Google
+Console, Cloudflare or Production setting was changed. Exact Google callback for the
+intended custom origin is
+`https://staging.ingeniometrix.com/api/auth/google/callback`; it is not yet externally
+verified. Intended sandbox webhook endpoint is
+`https://pepe-thinkpad-t470s.tailbcdf27.ts.net:10000/api/payments/mercado-pago/webhook`.
+
 ## Not validated / external prerequisites
 
-1. Vercel project supplied: `https://vercel.com/josmavel-clouds-projects/ingeniometrix`.
-   CLI 59.26.0 reports Logged out. No project settings or domain aliases changed.
+1. Custom staging-domain resolution and browser acceptance remain blocked on the
+   owner-authorized Wix staging record and the domain association/Preview protection
+   path. No DNS or Production setting was changed.
 2. Cloudflare binary exists, but no named identity/management authorization available.
    Only staging and api-staging DNS adds are owner-approved, after destinations are
    verified. No DNS writes; root, api, Tailscale and G4 Quick Tunnel preserved.
@@ -86,12 +127,57 @@ Operations/tests/handoff are in the accompanying G5 operations commit. No push.
 Production cutover: NO. Real payments: NO. Price/merchant/legal/refund/production
 webhook/admin-MFA prerequisites from G4 remain in force.
 
+## G5.2 external staging close attempt (2026-09-24)
+
+**Decision: BLOCKED; no production cutover.** This checkpoint preserves prior
+acceptance and does not repeat Google login, payment, upload, Funnel-restart or
+paid-provider tests.
+
+Read-only probes: Vercel staging `/` and `/workspace` returned HTTP 200; Ubuntu
+Funnel liveness and readiness returned HTTP 200. The latest signed Mercado Pago
+diagnostic was 2026-09-24 05:16:15 UTC and returned HTTP 200 as
+`VALID_UNSUPPORTED_NOTIFICATION` (`type=stop_delivery_op_wh`, `action=Created`).
+Signature and request-ID headers were present and verification passed. That branch
+does not invoke order processing, so Purchase, PaymentEvent, entitlement and credit
+deltas were zero. Retained Caddy logs do not prove whether that request traversed
+Vercel; it is not recorded as a Vercel-proxy webhook acceptance. No simulator,
+payment or order was initiated in this checkpoint.
+
+G5 offline validator: 15/15 PASS. Isolated G4 auth/commercial/webhook/order-recovery
+and B4 resilience tests passed; Prisma validation, TypeScript, full Next build,
+frontend-only package build/boundary check (24 traces), full build, worker bundle and
+`git diff --check` passed. G4 DB tests used only `imx_b4_validation_rc4`; staging
+ledger was not changed. Builds retain existing broad `artifacts-local` tracing
+warnings. External provider acceptances were not repeated.
+
+The owner-provided Drive folder still grants `anyone:writer`; it is not an acceptable
+remote recovery target. No remote backup or restore-from-remote was performed. Host
+`rclone`, `restic`, `gh` and `vercel` CLIs/remotes are unavailable. The previous
+same-host encrypted restore remains a local rehearsal only. External monitoring is
+not installed; there are no off-host alerts for web/API, worker heartbeat, backup
+age or disk. The local operator health command could not run on the host because its
+DB URL is injected into the app container, not the shell.
+
+No authenticated staging session was available for this run. Consequently no fresh
+project, paid scientific generation, artifact download, commercial settlement,
+in-flight worker restart or external two-user isolation test was performed. This
+avoids raw DB grants, admin-user creation and repeated OAuth/payment acceptance.
+Prior idle-worker restart and local G5 ownership tests remain evidence only for
+their original scope.
+
+Resume prerequisites: restrict the Drive folder to approved principals; configure a
+least-privilege rclone identity and independently held restic recovery key; provide
+an authorized staging user session path and off-host monitoring/notification access.
+G5 remains BLOCKED until remote backup and restore, monitoring, one controlled
+scientific staging journey, download/settlement and external two-user isolation are
+evidenced.
+
 ## Reproduction and next action
 
 Follow [STAGING_RUNBOOK](../runbooks/STAGING_RUNBOOK.md),
 [VERCEL_BOUNDARY](../architecture/VERCEL_BOUNDARY.md),
 [BACKUP_RESTORE](../runbooks/BACKUP_RESTORE.md) and
 [PRODUCTION_LAUNCH_CHECKLIST](../runbooks/PRODUCTION_LAUNCH_CHECKLIST.md).
-Authorize local Vercel access for the identified project; never share tokens in chat.
-Then verify exact staging destinations before any approved DNS addition. Do not
-deploy the repository root or expose database/provider secrets to Vercel.
+The Preview is deployed, but first resolve and verify the custom staging origin in
+Wix/Vercel before Google browser acceptance. Do not deploy the repository root or
+expose database/provider secrets to Vercel.

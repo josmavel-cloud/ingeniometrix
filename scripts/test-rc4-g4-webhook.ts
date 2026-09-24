@@ -6,6 +6,7 @@ import { mercadoPago } from "@/server/commercial/mercado-pago";
 const secret = "offline-webhook-secret-that-must-never-be-logged";
 const requestId = "offline-provider-request-id-that-must-never-be-logged";
 const accessTokenCanary = "offline-access-token-that-must-never-be-logged";
+const cookieCanary = "offline-session-cookie-that-must-never-be-logged";
 
 function signedRequest(
   resourceId: string,
@@ -21,6 +22,7 @@ function signedRequest(
     "content-type": "application/json",
     "x-request-id": requestId,
     authorization: `Bearer ${accessTokenCanary}`,
+    cookie: cookieCanary,
   };
   if (options.signature !== "missing") headers["x-signature"] = `ts=${ts},v1=${signature}`;
   return {
@@ -51,7 +53,9 @@ async function main() {
       });
       assert.equal(response.status, 401);
       assert.equal(providerLookups, 0);
-      assert.equal(logs.at(-1)?.commercialMutationResult, "NONE");
+      assert.equal(logs.at(-1)?.eventClassification, "AUTHENTICATION_FAILED");
+      assert.equal(logs.at(-1)?.signatureValidationResult, "FAIL");
+      assert.equal(logs.at(-1)?.safeErrorCode, "WEBHOOK_SIGNATURE_INVALID");
       checks += 3;
     }
 
@@ -67,7 +71,18 @@ async function main() {
     });
     assert.equal(simulatorResponse.status, 200);
     assert.equal(commercialCalls, 0, "simulator does not enter provider lookup or commercial persistence");
-    assert.equal(safeLogs.at(-1)?.classification, "VALID_TEST_NOTIFICATION");
+    assert.equal(safeLogs.at(-1)?.eventClassification, "VALID_TEST_NOTIFICATION");
+    assert.equal(safeLogs.at(-1)?.bodyParseStatus, "PARSED");
+    assert.equal(safeLogs.at(-1)?.bodyDataIdPresent, true);
+    assert.equal(safeLogs.at(-1)?.type, "test");
+    assert.equal(safeLogs.at(-1)?.action, "TEST.CREATED");
+    assert.equal(safeLogs.at(-1)?.liveMode, false);
+    assert.equal(safeLogs.at(-1)?.queryDataIdPresent, true);
+    assert.equal(safeLogs.at(-1)?.xSignaturePresent, true);
+    assert.equal(safeLogs.at(-1)?.xRequestIdPresent, true);
+    assert.equal(safeLogs.at(-1)?.signatureParseStatus, "VALID");
+    assert.equal(safeLogs.at(-1)?.signatureValidationResult, "PASS");
+    assert.equal(safeLogs.at(-1)?.responseStatus, 200);
     checks += 3;
 
     const unsupported = signedRequest("notification-123", { type: "payment", action: "payment.updated", data: { id: "notification-123" }, live_mode: false });
@@ -80,7 +95,7 @@ async function main() {
     });
     assert.equal(unsupportedResponse.status, 200);
     assert.equal(commercialCalls, 0);
-    assert.equal(safeLogs.at(-1)?.classification, "VALID_UNSUPPORTED_NOTIFICATION");
+    assert.equal(safeLogs.at(-1)?.eventClassification, "VALID_UNSUPPORTED_NOTIFICATION");
     checks += 3;
 
     const orderId = "ORDTST123456";
@@ -94,9 +109,9 @@ async function main() {
     });
     assert.equal(orderResponse.status, 200);
     assert.equal(commercialCalls, 1, "valid order continues to the existing order processor");
-    assert.equal(safeLogs.at(-1)?.signatureTimestampPresent, true);
-    assert.equal(safeLogs.at(-1)?.signatureV1Present, true);
-    assert.equal(safeLogs.at(-1)?.queryDataIdCase, "UPPERCASE");
+    assert.equal(safeLogs.at(-1)?.bodyParseStatus, "PARSED");
+    assert.equal(safeLogs.at(-1)?.bodyDataIdPresent, true);
+    assert.equal(safeLogs.at(-1)?.queryDataIdPresent, true);
     checks += 5;
 
     const ts = String(Math.floor(Date.now() / 1000));
@@ -119,6 +134,47 @@ async function main() {
     assert.equal(commercialCalls, 1, "invalid case-normalized signature has zero commercial mutation");
     checks += 2;
 
+    const malformedTemplate = signedRequest("123456", { type: "test", action: "test.created" });
+    const malformedJson = new Request(malformedTemplate.request.url, {
+      method: "POST",
+      headers: malformedTemplate.request.headers,
+      body: "{not-json",
+    });
+    const malformedLogs: Record<string, unknown>[] = [];
+    const malformedResponse = await handleMercadoPagoWebhook(malformedJson, {
+      launchGuard: () => undefined,
+      applyRateLimit: async () => undefined,
+      verifyNotification: (candidate) => mercadoPago.verifyNotification(candidate),
+      processOrder: async () => { commercialCalls++; },
+      log: (record) => malformedLogs.push(record),
+    });
+    assert.equal(malformedResponse.status, 400);
+    assert.equal(malformedLogs.at(-1)?.bodyParseStatus, "INVALID_JSON");
+    assert.equal(malformedLogs.at(-1)?.signatureValidationResult, "PASS");
+    assert.equal(malformedLogs.at(-1)?.safeErrorCode, "WEBHOOK_REQUEST_MALFORMED");
+    assert.equal(malformedLogs.at(-1)?.eventClassification, "MALFORMED_REQUEST");
+    checks += 5;
+
+    const missingQueryTemplate = signedRequest("123456", { type: "test", action: "test.created" });
+    const missingQuery = new Request("https://app.example.test/api/payments/mercado-pago/webhook", {
+      method: "POST",
+      headers: missingQueryTemplate.request.headers,
+      body: JSON.stringify({ type: "test", action: "test.created" }),
+    });
+    const missingQueryLogs: Record<string, unknown>[] = [];
+    const missingQueryResponse = await handleMercadoPagoWebhook(missingQuery, {
+      launchGuard: () => undefined,
+      applyRateLimit: async () => undefined,
+      verifyNotification: (candidate) => mercadoPago.verifyNotification(candidate),
+      processOrder: async () => { commercialCalls++; },
+      log: (record) => missingQueryLogs.push(record),
+    });
+    assert.equal(missingQueryResponse.status, 400);
+    assert.equal(missingQueryLogs.at(-1)?.queryDataIdPresent, false);
+    assert.equal(missingQueryLogs.at(-1)?.signatureValidationResult, "NOT_REACHED");
+    assert.equal(missingQueryLogs.at(-1)?.safeErrorCode, "WEBHOOK_REQUEST_MALFORMED");
+    checks += 3;
+
     const fakeOrder = signedRequest("ORDER123456", { type: "order", action: "order.updated", data: { id: "ORDER123456" }, live_mode: false });
     const fakeOrderResponse = await handleMercadoPagoWebhook(fakeOrder.request, {
       launchGuard: () => undefined,
@@ -132,13 +188,19 @@ async function main() {
     checks += 2;
 
     const serializedLogs = JSON.stringify(safeLogs);
-    for (const forbidden of [secret, requestId, accessTokenCanary, simulator.rawSignature]) {
+    for (const forbidden of [secret, requestId, accessTokenCanary, cookieCanary, simulator.rawSignature]) {
       assert.equal(serializedLogs.includes(forbidden), false, `diagnostics must not include sensitive value: ${forbidden.slice(0, 8)}`);
       checks++;
     }
-    assert.match(serializedLogs, /requestCorrelationId/);
-    assert.match(serializedLogs, /signatureValidation/);
-    checks += 2;
+    assert.match(serializedLogs, /requestCorrelationHash/);
+    assert.match(serializedLogs, /signatureValidationResult/);
+    const expectedDiagnosticKeys = [
+      "timestamp", "requestCorrelationHash", "method", "queryDataIdPresent", "bodyParseStatus",
+      "bodyDataIdPresent", "type", "action", "liveMode", "xSignaturePresent", "xRequestIdPresent",
+      "signatureParseStatus", "signatureValidationResult", "eventClassification", "safeErrorCode", "responseStatus",
+    ].sort();
+    assert.deepEqual(Object.keys(safeLogs.at(-1)!).sort(), expectedDiagnosticKeys);
+    checks += 3;
 
     console.log(`PASS G4 webhook: ${checks} assertions; authentication-first classification, simulator acknowledgement, real-order isolation, safe diagnostics.`);
   } finally {

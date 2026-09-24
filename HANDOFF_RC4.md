@@ -11,13 +11,53 @@ streamed through Caddy/Next successfully. Fresh migration and upgrade PASS.
 App/idle-worker restart and isolated encrypted restore PASS (local repository only).
 No paid LLM calls, payments, push, DNS writes or external deployment in G5.
 
-G5 remains BLOCKED for external acceptance, not production-ready. Vercel project
-identified by owner: `josmavel-clouds-projects/ingeniometrix`; local CLI is logged out.
-Owner approved only `staging.ingeniometrix.com` and `api-staging.ingeniometrix.com`
-after exact destination verification; no production record changes authorized.
+### G5.1 staging connection checkpoint (2026-09-23)
+
+Vercel Preview environment variables were configured only for branch
+`feat/rc4-scientific-commercial`: `IMX_RUNTIME_ROLE=frontend`,
+`PUBLIC_APP_ORIGIN`/`APP_ORIGIN`/`AUTH_ORIGIN=https://staging.ingeniometrix.com`,
+and `BACKEND_API_ORIGIN`/`UPLOAD_ORIGIN=https://pepe-thinkpad-t470s.tailbcdf27.ts.net:10000`.
+The application origin remains the browser/cookie authority; ordinary API routes
+use the same-origin Vercel rewrite, while one-use upload/download capabilities use
+the Funnel origin. Preview-only variables do not alter Vercel Production.
+
+Funnel serves the isolated Caddy ingress on port 10000. Public liveness/readiness
+return 200; an unsigned Mercado Pago probe is rejected with 401; an authorized
+synthetic PDF upload of 30 MiB passed and remained quarantined. A Funnel restart
+restored readiness and left existing Tailscale Serve mappings unchanged. PostgreSQL
+and worker have no published ports. Vercel Preview for this branch is deployed Ready
+at `https://ingeniometrix-lz6wbofh7-josmavel-clouds-projects.vercel.app`; `/`,
+`/workspace`, same-origin session API, authenticated owner detail, and logout were
+verified through Vercel's protection-aware CLI, with backend requests reaching Caddy.
+The generated bundle has 23 production traces and no backend/private dependencies.
+This is not browser acceptance: Wix DNS still has no `staging` A record, and Vercel
+Deployment Protection remains enabled. The custom staging URL and Google browser
+login remain unverified.
+
+G5 remains BLOCKED for full external acceptance, not production-ready. Vercel project
+is linked and the Preview environment is branch-scoped; Production settings were
+not changed. Owner authorized only staging DNS changes, but this task explicitly
+did not modify Wix. `api-staging.ingeniometrix.com` is a future named-tunnel option;
+the active staging backend for this test is the Tailscale Funnel origin above.
 Named-tunnel credentials/identity are unavailable. Owner supplied a dedicated
 Simetrika Google Drive folder; read-only permission metadata shows `anyone: writer`.
 External backup paused until owner restricts it and authorizes local rclone access.
+
+### G5.2 close attempt (2026-09-24)
+
+Status remains **BLOCKED**. Read-only probes: Vercel staging root and `/workspace`
+200; Funnel `/api/health/live` and `/api/health/ready` 200. Latest available signed
+webhook diagnostic (05:16:15 UTC) passed signature validation and returned 200 as
+`VALID_UNSUPPORTED_NOTIFICATION`, with zero commercial mutations. Vercel traversal
+of that specific event is unproven from retained logs; no provider test was repeated.
+
+G5 offline 15/15; isolated G4 auth/commercial/webhook/recovery and B4 48 checks;
+Prisma, typecheck, frontend/full/worker builds and 24-trace Vercel boundary passed.
+Drive remains `anyone:writer`; no external backup/restore or external monitoring was
+performed. No authenticated staging session was available, so no paid generation,
+downloads/settlement, in-flight worker recovery or external two-user test ran. See
+`docs/quality/rc4-g5-hybrid-acceptance.md` G5.2 for evidence and prerequisites.
+Production and real payments remain disabled.
 No Drive write performed. Optional Drive/restic configuration is prepared. Local
 backup is not off-machine.
 

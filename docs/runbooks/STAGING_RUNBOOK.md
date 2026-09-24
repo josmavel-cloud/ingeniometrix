@@ -23,8 +23,18 @@ DB name fixed imx_g5_staging, ports only G5_PROXY_PORT loopback; no DB published
 
 External staging (only after credentials/owner approval):
 PUBLIC_APP_ORIGIN / APP_ORIGIN / AUTH_ORIGIN = https://staging.ingeniometrix.com;
-BACKEND_API_ORIGIN (frontend) and UPLOAD_ORIGIN = https://api-staging.ingeniometrix.com.
-Backend's server-component fallback remains local. Rebuild frontend after origin changes.
+Vercel Preview/Pre-Production variables are branch-scoped to
+feat/rc4-scientific-commercial:
+IMX_RUNTIME_ROLE=frontend;
+PUBLIC_APP_ORIGIN / APP_ORIGIN / AUTH_ORIGIN = https://staging.ingeniometrix.com;
+BACKEND_API_ORIGIN / UPLOAD_ORIGIN =
+https://pepe-thinkpad-t470s.tailbcdf27.ts.net:10000.
+Ordinary browser API calls use Vercel's same-origin rewrite to BACKEND_API_ORIGIN.
+Direct PDF upload and artifact download capabilities use UPLOAD_ORIGIN. The API
+origin is the Ubuntu staging Caddy ingress through Tailscale Funnel; the port is
+public only through Funnel. Vercel Production variables are unchanged. Rebuild
+frontend after origin changes. The api-staging.ingeniometrix.com Cloudflare named
+tunnel remains a future option and has no DNS record in Wix.
 IMX_PAYMENT_MODE=sandbox, IMX_PAYMENT_ACCOUNT_CONTEXT=test_user;
 production price/payment disabled, authless/deep research OFF. Add only test provider
 credentials if the external acceptance needs them. No production keys.
@@ -48,5 +58,16 @@ Never label it Google/scientific/provider acceptance.
 
 Stop only G5: `docker compose --env-file .env.g5-staging -f docker-compose.g5.yml stop`.
 Keep volumes. Do not stop RC3/G4, tunnel or Tailscale services.
-Before enabling named tunnel/Vercel, complete DNS approval, off-machine repository,
-Google callback setup and the production launch checklist. No production cutover here.
+The 2026-09-24 G5.2 probe received Vercel HTTP 200 from the custom staging domain;
+do not change DNS unless that mapping is rechecked and a specific record change is
+authorized.
+For Google staging login, authorize the callback above in Google Console. Funnel
+public API readiness is available at /api/health/ready; it exposes only a sanitized
+status. Off-machine backup/restore and external monitoring remain separate blockers.
+No production cutover here.
+
+G5.2 recheck (2026-09-24): staging origin `/` and `/workspace` returned 200; direct
+Funnel liveness/readiness returned 200. Do not infer an authenticated user session
+from an unauthenticated workspace-shell response. External backup/restore, alerting,
+the controlled paid scientific journey and external two-user acceptance remain
+pending; no paid generation or payment was initiated for this checkpoint.

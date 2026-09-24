@@ -81,3 +81,8 @@ Sources: [restic rclone backend](https://restic.readthedocs.io/en/stable/030_pre
 
 [Restic repository setup](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html)
 documents encrypted repositories and remote backend configuration.
+
+Rechecked 2026-09-24: Drive ACL remains `anyone:writer`; external backup, remote
+object verification and restore-from-remote remain NOT RUN. The previous restic
+restore is an isolated same-host rehearsal only, not an off-machine backup. No
+remote credentials were discovered or printed.

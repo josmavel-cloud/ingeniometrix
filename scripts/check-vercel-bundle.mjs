@@ -19,6 +19,20 @@ async function scan(dir) {
 }
 await scan(path.join(root, ".next"));
 if (!traces) throw new Error("No production traces found");
+const output = path.join(root, ".vercel/output");
+if (await stat(output).then(() => true).catch(() => false)) {
+  async function scanVercel(dir) {
+    for (const item of await readdir(dir, { withFileTypes: true })) {
+      const file = path.join(dir, item.name);
+      if (item.isDirectory()) { await scanVercel(file); continue; }
+      if (!file.endsWith(".vc-config.json")) continue;
+      const config = JSON.parse(await readFile(file, "utf8"));
+      const paths = Object.entries(config.filePathMap || {}).flatMap(([source, destination]) => [source, String(destination)]);
+      if (paths.some((value) => /(?:^|\/)\.env(?:\.|$)/.test(value))) throw new Error(`Environment file in Vercel function trace: ${path.relative(root, file)}`);
+    }
+  }
+  await scanVercel(output);
+}
 for (const name of ["server", "prisma", "lib/prisma.ts", "node_modules/@prisma/client"]) {
   if (await stat(path.join(root, name)).then(() => true).catch(() => false)) throw new Error(`Forbidden package content: ${name}`);
 }

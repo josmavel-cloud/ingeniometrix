@@ -59,3 +59,16 @@ off-machine encrypted backup, independently monitored ingress/backup/heartbeat a
 restore rehearsal are mandatory. Future migration is configuration-driven: PostgreSQL
 connection URLs, ArtifactStore object adapter, worker/backend images to dedicated VM.
 No Kubernetes or extra queue required.
+
+## G5.2 staging checkpoint (2026-09-24)
+
+Read-only probes observed `https://staging.ingeniometrix.com/` and `/workspace`
+returning HTTP 200 from Vercel; direct Funnel liveness/readiness also returned 200.
+This confirms current public routing for those paths, not authenticated browser
+acceptance, a payment webhook proxy, or the complete scientific journey. The latest
+signed webhook diagnostic was accepted by Ubuntu, but its Vercel traversal is not
+established from retained request logs. Keep the webhook endpoint on the direct
+Ubuntu/Funnel origin until proxy traversal is independently evidenced.
+
+External backup/restore, off-host alerting, one authenticated paid staging
+generation, artifacts/settlement and external two-user isolation remain G5 blockers.

@@ -30,10 +30,15 @@
       }
     }
   }
+  @health path /api/health/live /api/health/ready
   @private path /api/internal/* /api/labs/* /api/blueprint-launch/* /api/health/*
   @upload path /api/transfers/upload
   # route preserves this security order instead of Caddy's directive sorting.
   route {
+  # Responses contain only ok/ready or unavailable; no dependency details.
+  handle @health {
+    reverse_proxy app:3000
+  }
   respond @private 404
   handle @upload {
     request_body {

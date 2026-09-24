@@ -2,7 +2,9 @@
 
 - `/api/health/live`: process liveness only.
 - `/api/health/ready`: DB SELECT 1 + private volume read/write access; no provider calls.
-- Both are denied on public Caddy/Vercel; Docker health checks them internally.
+- Caddy exposes only these two sanitized endpoints at the staging API origin;
+  Vercel denies them. They reveal no configuration/dependency details. Docker also
+  checks readiness internally.
 - `scripts/g5-health.ts`: local operator-only queue status counts, failed-job counts,
   disk available bytes, worker heartbeat age, backup age, auth failures, payment event
   states, job duration and cumulative B4 known estimates/unknown commitments.
@@ -29,3 +31,9 @@ paid metrics sampling. No public metrics endpoint.
 
 Test reboot/Docker restart on an agreed maintenance window; restarting isolated app
 and idle worker is not proof of full host reboot or in-flight scientific recovery.
+
+G5.2 recheck (2026-09-24): no external monitor/alert destination is configured.
+The repository host CLI is unavailable, so no scheduled GitHub Actions monitor was
+installed or claimed. Staging homepage/workspace and direct Funnel liveness/readiness
+returned 200 in point probes; these do not monitor worker heartbeat, remote-backup
+age or disk threshold and do not provide alerting.

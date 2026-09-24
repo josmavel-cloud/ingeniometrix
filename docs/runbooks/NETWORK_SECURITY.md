@@ -3,7 +3,8 @@
 Only `docker-compose.g5.yml` is the hybrid staging stack. Database is on the internal
 `data` network with NO published port. Worker has no listener/published port.
 App is not published. Caddy binds host 127.0.0.1:3310; named tunnel reaches only it.
-Caddy denies internal/legacy/health/filesystem/page routes, caps ordinary bodies at
+Caddy denies internal/legacy/filesystem/page routes; only sanitized liveness/readiness
+are public for external monitoring. It caps ordinary bodies at
 1 MB and PDF streams at 31,457,280 bytes, with read/write/idle timeouts.
 Logs delete request URI/headers and response headers (no capability/signature leaks).
 Caddy image carries bind capability; NET_BIND_SERVICE is the sole retained cap.

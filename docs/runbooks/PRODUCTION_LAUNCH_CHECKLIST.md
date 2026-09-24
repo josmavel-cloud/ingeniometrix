@@ -2,6 +2,12 @@
 
 STATUS: BLOCKED. A frontend build is not a deployed/accepted service.
 
+G5.2 (2026-09-24) remains BLOCKED: live Vercel homepage/workspace and direct Funnel
+health probes returned 200, but off-machine encrypted backup/restore, external
+monitoring, authenticated scientific staging E2E, artifact settlement and external
+two-user isolation have not been accepted. Do not infer production readiness from
+these shallow health checks.
+
 - [ ] Owner confirms exact staging DNS targets; preserve apex/api/existing mappings.
 - [ ] Vercel staging deployed, no backend bundle/DB/provider/storage credentials.
 - [ ] Persistent named tunnel + Caddy HTTPS path and tunnel restart verified.
