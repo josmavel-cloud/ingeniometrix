@@ -1,8 +1,17 @@
 # Current State
 
-STATUS: CURRENT - Release 0 secure pilot handoff.
+STATUS: RC4 development checkpoint is in HANDOFF_RC4.md. The Release 0 freeze below
+is historical, not the current RC4 feature worktree state.
 
-## Current Canonical Release
+Active RC4 branch: `feat/rc4-scientific-commercial`, worktree
+`/home/pepe/.openclaw/workspace/ingeniometrix-wt-rc4`.
+G4 accepted baseline: `b6f0cf8a1917f39eb34650805a5f63f52782539a`.
+G5 hybrid implementation is locally validated; external staging and production
+cutover are BLOCKED. Read [HANDOFF_RC4.md](HANDOFF_RC4.md) and the
+[G5 report](docs/quality/rc4-g5-hybrid-acceptance.md) before changing anything.
+No production payments, DNS cutover or new scientific acceptance are implied.
+
+## Historical Release 0 Documentation Freeze
 
 - Product: `Ingeniometrix`
 - Branch: `release/secure-pilot`

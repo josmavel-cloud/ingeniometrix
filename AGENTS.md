@@ -2,6 +2,11 @@
 
 STATUS: CURRENT - Release 0 secure pilot handoff.
 
+RC4 worktree override: on `feat/rc4-scientific-commercial`, read
+`HANDOFF_RC4.md` after `CURRENT_STATE.md`. The release freeze references below
+are historical; do not switch worktrees or treat them as RC4 HEAD. G5 staging
+operations use only `docker-compose.g5.yml`, never existing RC3/G4 stacks.
+
 This file is for future Codex/agent sessions. Keep it operational and short.
 For the current state, read [CURRENT_STATE.md](CURRENT_STATE.md) first.
 

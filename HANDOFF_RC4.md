@@ -1,6 +1,33 @@
 # RC4 handoff
 
-## Latest checkpoint — G4 (2026-09-23)
+## Latest checkpoint — G5 local implementation (2026-09-23)
+
+G5 starts from `b6f0cf8a1917f39eb34650805a5f63f52782539a` on
+`feat/rc4-scientific-commercial`. Hybrid HTTP boundary, frontend-only packaging,
+private 30 MiB upload/download capabilities, isolated least-privilege Compose,
+Caddy, health/heartbeat and encrypted backup/restore tooling are implemented.
+15 relevant offline suites PASS; HTTP boundary 29 assertions PASS; 30 MiB PDF
+streamed through Caddy/Next successfully. Fresh migration and upgrade PASS.
+App/idle-worker restart and isolated encrypted restore PASS (local repository only).
+No paid LLM calls, payments, push, DNS writes or external deployment in G5.
+
+G5 remains BLOCKED for external acceptance, not production-ready. Vercel project
+identified by owner: `josmavel-clouds-projects/ingeniometrix`; local CLI is logged out.
+Owner approved only `staging.ingeniometrix.com` and `api-staging.ingeniometrix.com`
+after exact destination verification; no production record changes authorized.
+Named-tunnel credentials/identity are unavailable. Owner supplied a dedicated
+Simetrika Google Drive folder; read-only permission metadata shows `anyone: writer`.
+External backup paused until owner restricts it and authorizes local rclone access.
+No Drive write performed. Optional Drive/restic configuration is prepared. Local
+backup is not off-machine.
+
+See [G5 acceptance](docs/quality/rc4-g5-hybrid-acceptance.md),
+[hybrid architecture](docs/architecture/HYBRID_DEPLOYMENT.md), and
+[staging runbook](docs/runbooks/STAGING_RUNBOOK.md). Uploaded PDFs are quarantined,
+not yet approved/ingested as scientific evidence. Admin MFA remains a production
+blocker. Existing G4/RC3 stacks and Tailscale mappings were preserved.
+
+## Previous checkpoint — G4 (2026-09-23)
 
 G4 authentication/commercial candidate implemented on G3 commit
 `1ada2d036244fc7a7df79e79a46aa79a688ca1cf`. Local/offline and external sandbox
@@ -39,12 +66,13 @@ RC3 worktree, containers, database, secrets and Tailscale are not modified.
 | G2 | Versioned draft, autosave, taxonomy, four steps, uploads/HTML | Revisioned draft, FORD catalog, immutable versions, four-step UI; PDF upload is contract-only | 54/54 offline suites; fresh/RC3 migrations; Prisma, typecheck and builds | COMPLETE |
 | G3 | latam-compact-v1, 7-12 body pages, editable matrix, evidence-driven assets | Versioned compact profile, deterministic renderer and bounded presentation repair | 56/56 suites; 12 body/14 total pages; all-page review; USD0.5566905 | COMPLETE / PASS_WITH_LIMITATIONS |
 | G4 | OIDC, credits, sandbox payments, administration | Google OIDC + opaque sessions + transactional ledgers + Orders sandbox | regressions green; Google external PASS; sandbox checkout, webhook and idempotent grant PASS | COMPLETE / PASS; public commerce BLOCKED |
-| G5 | Vercel UI / Ubuntu backend, portable private storage | Typed API boundary; isolated build targets | Bundles, proxy, restore | PENDING |
+| G5 | Vercel UI / Ubuntu backend, portable private storage | HTTP boundary, package guard, transfer capabilities, Caddy, roles, backup/restore | Local offline + HTTP + restore green; external credentials/dependencies pending | IMPLEMENTED LOCALLY / EXTERNAL BLOCKED |
 | G6 | Regression, scientific acceptance, budget, handoff | Existing suites + RC4 evaluations | <=2 full paid runs; <=USD15 total | PENDING |
 
 ## Constraints and decisions
 
-- One writer. No push, deployment, real charges or production DB writes.
+- One writer. No push, real charges or production DB writes. G5 staging deployment
+  authorized; production domain cutover prohibited until the explicit readiness gate.
 - Scientific selector `gpt-6-astra/high`; critic `gpt-5.6-sol/high`.
 - Existing scientific drafting models retained. Deep Research OFF.
 - Existing USD2 job cap retained. No paid call before bounded reservations.

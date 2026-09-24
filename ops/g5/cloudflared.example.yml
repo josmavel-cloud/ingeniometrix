@@ -1,0 +1,11 @@
+# Owner must create the named tunnel and approve DNS before activation.
+tunnel: REPLACE_WITH_NAMED_TUNNEL_UUID
+credentials-file: /etc/cloudflared/ingeniometrix-staging.json
+metrics: 127.0.0.1:20351
+ingress:
+  - hostname: api-staging.ingeniometrix.com
+    path: ^/api/.*$
+    service: http://127.0.0.1:3310
+    originRequest:
+      connectTimeout: 10s
+  - service: http_status:404

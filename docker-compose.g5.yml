@@ -1,0 +1,139 @@
+name: imx-rc4-g5-staging
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: imx_g5_staging
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      MIGRATION_PASSWORD: ${MIGRATION_PASSWORD:?required}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?required}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?required}
+      BACKUP_DB_PASSWORD: ${BACKUP_DB_PASSWORD:?required}
+    volumes:
+      - g5_db:/var/lib/postgresql/data
+      - ./ops/g5/init-roles.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    networks: [data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d imx_g5_staging"]
+      interval: 5s
+      retries: 20
+  migrate:
+    image: imx-rc4-g5-migration:local
+    build: { context: ., dockerfile: Dockerfile.release, target: migration }
+    environment:
+      DATABASE_URL: postgresql://imx_migrate:${MIGRATION_PASSWORD}@db:5432/imx_g5_staging
+      DATABASE_URL_UNPOOLED: postgresql://imx_migrate:${MIGRATION_PASSWORD}@db:5432/imx_g5_staging
+    networks: [data]
+    depends_on: { db: { condition: service_healthy } }
+  app:
+    image: imx-rc4-g5-runtime:local
+    build: { context: ., dockerfile: Dockerfile.release, target: runtime }
+    restart: unless-stopped
+    environment: &runtime
+      NODE_ENV: production
+      APP_ORIGIN: ${PUBLIC_APP_ORIGIN:?required}
+      PUBLIC_APP_ORIGIN: ${PUBLIC_APP_ORIGIN}
+      AUTH_ORIGIN: ${PUBLIC_APP_ORIGIN}
+      BACKEND_API_ORIGIN: http://127.0.0.1:3000
+      UPLOAD_ORIGIN: ${UPLOAD_ORIGIN:?required}
+      DATABASE_URL: postgresql://imx_app:${APP_DB_PASSWORD}@db:5432/imx_g5_staging
+      DATABASE_URL_UNPOOLED: postgresql://imx_app:${APP_DB_PASSWORD}@db:5432/imx_g5_staging
+      IMX_HYBRID_TRANSFERS: "1"
+      IMX_PRIVATE_STORAGE_ROOT: /app/artifacts-local/private-storage
+      IMX_OPERATIONS_DIR: /app/artifacts-local/operations
+      IMX_AUTHLESS_WORKSPACE: "0"
+      IMX_ENABLE_DEEP_RESEARCH: "0"
+      IMX_PAYMENT_MODE: sandbox
+      IMX_PAYMENT_ACCOUNT_CONTEXT: test_user
+      PRODUCTION_PRICE_ENABLED: "false"
+      IMX_TRUST_PROXY_IP: "0"
+      BLUEPRINT_WORKER_SECRET: ${BLUEPRINT_WORKER_SECRET:?required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MP_TEST_ACCESS_TOKEN: ${MP_TEST_ACCESS_TOKEN:-}
+      MP_TEST_MERCHANT_ID: ${MP_TEST_MERCHANT_ID:-}
+      MP_APPLICATION_ID: ${MP_APPLICATION_ID:-}
+      MP_WEBHOOK_SECRET: ${MP_WEBHOOK_SECRET:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENALEX_API_KEY: ${OPENALEX_API_KEY:-}
+      CROSSREF_MAILTO: ${CROSSREF_MAILTO:-}
+    volumes: ["g5_artifacts:/app/artifacts-local"]
+    networks: [data, edge]
+    depends_on: { db-grants: { condition: service_completed_successfully } }
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:3000/api/health/ready >/dev/null"]
+      interval: 10s
+      retries: 20
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+  worker:
+    image: imx-rc4-g5-runtime:local
+    restart: unless-stopped
+    environment:
+      <<: *runtime
+      DATABASE_URL: postgresql://imx_worker:${WORKER_DB_PASSWORD}@db:5432/imx_g5_staging
+      DATABASE_URL_UNPOOLED: postgresql://imx_worker:${WORKER_DB_PASSWORD}@db:5432/imx_g5_staging
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      MP_TEST_ACCESS_TOKEN: ""
+      MP_WEBHOOK_SECRET: ""
+    command: [npm, run, worker:release]
+    volumes: ["g5_artifacts:/app/artifacts-local"]
+    networks: [data, edge]
+    depends_on: { app: { condition: service_healthy } }
+    healthcheck:
+      test: [CMD, node, -e, "const f=require('fs');const s=JSON.parse(f.readFileSync('/app/artifacts-local/operations/worker.json'));process.exit(s.state!=='STOPPING'&&Date.now()-Date.parse(s.at)<90000?0:1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+  proxy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports: ["127.0.0.1:${G5_PROXY_PORT:-3310}:8080"]
+    volumes: ["./ops/g5/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    networks: [edge]
+    depends_on: { app: { condition: service_healthy } }
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+  db-grants:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: db
+      PGDATABASE: imx_g5_staging
+      PGUSER: imx_migrate
+      PGPASSWORD: ${MIGRATION_PASSWORD}
+    networks: [data]
+    volumes: ["./ops/g5/runtime-grants.sql:/runtime-grants.sql:ro"]
+    command: [psql, --no-psqlrc, --set, ON_ERROR_STOP=1, --file, /runtime-grants.sql]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+  backup:
+    profiles: [operations]
+    build: { context: ., dockerfile: ops/g5/Dockerfile.backup }
+    image: imx-rc4-g5-backup:local
+    environment:
+      PGHOST: db
+      PGDATABASE: imx_g5_staging
+      PGUSER: imx_backup
+      PGPASSWORD: ${BACKUP_DB_PASSWORD}
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:-/repository}
+      RESTIC_PASSWORD: ${RESTIC_PASSWORD:-}
+      IMX_BACKUP_ALLOW_LOCAL_TEST: ${IMX_BACKUP_ALLOW_LOCAL_TEST:-0}
+    volumes:
+      - g5_artifacts:/artifacts:ro
+      - g5_backup_test:/repository
+      - ./ops/g5:/config:ro
+    tmpfs: ["/scratch:mode=0700"]
+    networks: [data, edge]
+    entrypoint: [/bin/sh, /config/backup.sh]
+networks:
+  data: { internal: true }
+  edge: {}
+volumes:
+  g5_db: {}
+  g5_artifacts: {}
+  g5_backup_test: {}

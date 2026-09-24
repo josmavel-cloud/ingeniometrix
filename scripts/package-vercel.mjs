@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, cp, readdir, stat } from "node:fs/promises"
 import path from "node:path";
 import ts from "typescript";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 
 // Build artefact generation only. Never copy the worktree wholesale to Vercel.
 const root = process.cwd();
@@ -70,5 +71,11 @@ await writeFile(path.join(target, "package-lock.json"), JSON.stringify(lock, nul
 await cp("tsconfig.json", path.join(target, "tsconfig.json"));
 await writeFile(path.join(target, "vercel.json"), JSON.stringify({ framework: "nextjs", buildCommand: "npm run build", installCommand: "npm ci" }));
 await writeFile(path.join(target, ".vercelignore"), ".env*\nnode_modules\n.next\n");
-await writeFile(path.join(target, "boundary-manifest.json"), JSON.stringify({ head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), files: [...seen].sort(), backendModules: 0 }, null, 2));
+const moduleHash = createHash("sha256");
+for (const rel of [...seen].sort()) moduleHash.update(rel).update("\0").update(await readFile(path.join(target, rel))).update("\0");
+await writeFile(path.join(target, "boundary-manifest.json"), JSON.stringify({
+  head: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  workingTreeDirty: Boolean(execFileSync("git", ["status", "--porcelain"], { encoding: "utf8" }).trim()),
+  moduleGraphSha256: moduleHash.digest("hex"), files: [...seen].sort(), backendModules: 0,
+}, null, 2));
 console.log(target);

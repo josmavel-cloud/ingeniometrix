@@ -1,0 +1,8 @@
+[Unit]
+Description=Ingeniometrix encrypted off-machine backup
+After=docker.service network-online.target
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /srv/ingeniometrix/ops/g5/backup-host.sh
+TimeoutStartSec=3600
+UMask=0077

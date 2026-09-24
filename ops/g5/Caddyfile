@@ -1,0 +1,53 @@
+{
+  admin off
+  auto_https off
+  servers {
+    timeouts {
+      read_header 10s
+      read_body 120s
+      write 180s
+      idle 60s
+    }
+  }
+}
+:8080 {
+  header {
+    X-Content-Type-Options nosniff
+    X-Frame-Options DENY
+    Referrer-Policy no-referrer
+    Cache-Control "private, no-store"
+    -Server
+  }
+  # Do not log request URI/query, cookies, signatures or auth headers.
+  log {
+    output stdout
+    format filter {
+      wrap json
+      fields {
+        request>uri delete
+        request>headers delete
+        resp_headers delete
+      }
+    }
+  }
+  @private path /api/internal/* /api/labs/* /api/blueprint-launch/* /api/health/*
+  @upload path /api/transfers/upload
+  # route preserves this security order instead of Caddy's directive sorting.
+  route {
+  respond @private 404
+  handle @upload {
+    request_body {
+      max_size 31457280
+    }
+    reverse_proxy app:3000
+  }
+  handle /api/* {
+    request_body {
+      max_size 1MB
+    }
+    reverse_proxy app:3000
+  }
+  # No pages/files/administration through the public backend ingress.
+  respond 404
+  }
+}

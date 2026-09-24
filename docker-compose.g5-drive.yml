@@ -1,0 +1,18 @@
+# Optional reviewed Drive transport. Never activate while folder permits anyone.
+# Only backup service receives rclone OAuth/config; app/worker/frontend do not.
+services:
+  backup:
+    environment:
+      RESTIC_REPOSITORY: rclone:imx-drive:restic-g5
+      RCLONE_CONFIG: /credentials/rclone/rclone.conf
+      RCLONE_DRIVE_ROOT_FOLDER_ID: ${G5_DRIVE_FOLDER_ID:?reviewed folder required}
+      IMX_BACKUP_REMOTE_REVIEWED: ${IMX_BACKUP_REMOTE_REVIEWED:-0}
+      IMX_BACKUP_ALLOW_LOCAL_TEST: "0"
+    volumes:
+      # Writable directory permits OAuth refresh/atomic config replace.
+      # Dedicated host directory mode 0700, config mode 0600; never general home.
+      - type: bind
+        source: ${G5_RCLONE_CONFIG_DIR:?dedicated protected config directory required}
+        target: /credentials/rclone
+        bind:
+          create_host_path: false

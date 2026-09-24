@@ -6,6 +6,8 @@ package. It traverses the UI module graph (including type imports), rejects back
 Prisma, provider and Node filesystem dependencies, and copies only tracked public
 assets. API implementations/private artifacts/env files are not copied. Dependencies
 are filtered from the existing pinned lockfile; no provider SDK/Prisma installs.
+Boundary manifest records Git HEAD, dirty status and copied module-graph hash;
+a build from a dirty worktree must not be attributed to HEAD alone.
 
 In that package run `npm ci --ignore-scripts` then `npm run build` with:
 IMX_RUNTIME_ROLE=frontend, PUBLIC_APP_ORIGIN, APP_ORIGIN, AUTH_ORIGIN,
