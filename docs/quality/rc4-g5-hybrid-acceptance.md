@@ -221,14 +221,20 @@ branch, and supports manual dispatch.
 
 Offline monitoring tests detect healthy state, app outage and recovery, stale
 backup/worker fixtures, low storage and invalid authorization. TypeScript, Vercel,
-backend and worker builds pass. Live point probes returned staging homepage 200 and
-backend readiness 200. However, the protected endpoint and Caddy change are not
-deployed to the running staging containers: the current app requires a matching
-runtime token, and this environment has no GitHub CLI or Actions-secret setter.
-GitHub reports `main` as the default branch, so this feature-branch workflow is not
-yet scheduled externally. No external outage/recovery, secret, or notification
-acceptance is claimed. Manual prerequisite: add `STAGING_MONITOR_TOKEN` in GitHub
-Actions secrets and inject the same value only into the isolated staging app
-runtime, then rebuild/recreate only the G5 staging app/proxy and run the workflow.
-No LLM/payment call, backup deletion, or pruning occurred; the extra base-remote
-Restic repository remains preserved pending cleanup authorization.
+backend and worker builds pass. Owner-configured token presence was verified without
+reading or printing its value in `.env.g5-staging`. Rebuilt/recreated only the
+isolated staging app; it became healthy and DB/worker remained running. App-local
+unauthenticated/authenticated requests returned 401/200. Public requests returned
+404 until the stale proxy was recreated to load the health allowlist, then returned
+401 unauthenticated and 200 authorized. The payload contained only the four
+aggregate fields; worker, backup-age and disk states were healthy.
+
+The backup marker was initialized from the conservative creation time of the
+previously verified external snapshot; no new backup or pruning occurred. Feature
+branch push at `6403af8` succeeded. The workflow is self-contained so its only main
+branch file dependency is the workflow YAML itself. No GitHub Actions dispatch or
+run-list API is exposed by the available integration and `gh` is not installed, so
+no external Actions run or notification delivery is claimed. The workflow-only
+`main` commit/push remains next; stop before outage/recovery testing until manual
+dispatch is available. No payment, LLM, DNS, Funnel, OAuth, DB or worker changes
+occurred.

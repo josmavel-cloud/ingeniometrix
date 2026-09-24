@@ -90,16 +90,20 @@ try {
     at: new Date(runtimeNow - 27 * 60 * 60 * 1000).toISOString(), status: "SUCCESS",
   }));
   const staleBackup = await GET(request(`Bearer ${testToken}`));
-  assert.equal(staleBackup.status, 503, "stale backup makes the aggregate unhealthy");
-  assert.equal((await staleBackup.json()).backupAge, "stale");
+  assert.equal(staleBackup.status, 200, "authorized diagnostic retrieval succeeds");
+  const staleBackupBody = await staleBackup.json();
+  assert.equal(staleBackupBody.status, "degraded", "stale backup degrades aggregate health");
+  assert.equal(staleBackupBody.backupAge, "stale");
 
   await writeFile(join(operationsRoot, "backup.json"), JSON.stringify(runtimeBackup));
   await writeFile(join(operationsRoot, "worker.json"), JSON.stringify({
     at: new Date(runtimeNow - 121_000).toISOString(), state: "IDLE",
   }));
   const staleWorker = await GET(request(`Bearer ${testToken}`));
-  assert.equal(staleWorker.status, 503, "stale worker makes the aggregate unhealthy");
-  assert.equal((await staleWorker.json()).workerHeartbeat, "stale");
+  assert.equal(staleWorker.status, 200, "authorized diagnostic retrieval succeeds");
+  const staleWorkerBody = await staleWorker.json();
+  assert.equal(staleWorkerBody.status, "degraded", "stale worker degrades aggregate health");
+  assert.equal(staleWorkerBody.workerHeartbeat, "stale");
 } finally {
   if (previous.token === undefined) delete process.env.IMX_MONITORING_TOKEN;
   else process.env.IMX_MONITORING_TOKEN = previous.token;

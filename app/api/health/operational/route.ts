@@ -39,7 +39,7 @@ export async function GET(request: Request) {
   });
 
   return Response.json(health, {
-    status: health.status === "healthy" ? 200 : 503,
+    status: 200,
     headers: { "Cache-Control": "no-store", Vary: "Authorization" },
   });
 }

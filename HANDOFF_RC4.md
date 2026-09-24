@@ -132,14 +132,18 @@ weekly 4, monthly 3; no pruning occurred. The extra
 cleanup authorization (`CLEANUP_AUTHORIZATION_REQUIRED = YES`).
 
 Local tests, typecheck, Vercel build, full backend build and worker build pass.
-The live staging home and Funnel readiness point probes returned 200, but the
-current containers still run the prior image and this session has no `gh` CLI or
-GitHub Actions-secret write operation. Required Actions secret is
-`STAGING_MONITOR_TOKEN`; a matching token must be added to the isolated app runtime
-before recreating only the G5 app. The workflow is committed only on this feature
-branch; scheduled runs activate only when it is available on the repository's
-default branch (`main`). Therefore no external monitor, outage/recovery observation,
-or final staging E2E is claimed yet.
+Activation follow-up (2026-09-24): owner-configured token was present in
+`.env.g5-staging`; the rebuilt isolated app loaded it. App-only recreation left DB
+and worker running. App-local unauthenticated/authenticated requests returned
+401/200. The old proxy returned 404 until it was recreated to load the health-route
+allowlist. Public Funnel requests then returned 401 without auth and 200 with auth;
+the response exposed only aggregate enums and all states were healthy. The backup
+age marker was initialized conservatively from the creation time of the previously
+verified external snapshot (not a new backup). Feature branch push at `6403af8` was
+verified. The workflow is now self-contained for a workflow-only `main` commit.
+GitHub dispatch/list-runs API tooling is unavailable here; no Actions run or
+notification delivery is claimed. No outage was induced. No DB, worker, OAuth,
+payment, DNS or Funnel changes were made.
 
 ## Previous checkpoint — G4 (2026-09-23)
 
