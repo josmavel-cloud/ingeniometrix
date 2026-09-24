@@ -126,7 +126,7 @@ async function main() {
     assert.throws(() => normalizeOrder({ ...raw, live_mode: true }), /SANDBOX/); checks++;
     assert.throws(() => normalizeOrder({ ...raw, total_paid_amount: "1.00" }), /MISMATCH/); checks++;
     const ts = String(Math.floor(Date.now()/1000)); const resourceId = "ORDTST123", requestId = "offline-request";
-    const signature = createHmac("sha256", process.env.MP_WEBHOOK_SECRET!).update(`id:${resourceId.toLowerCase()};request-id:${requestId};ts:${ts};`).digest("hex");
+    const signature = createHmac("sha256", process.env.MP_WEBHOOK_SECRET!).update(`id:${resourceId};request-id:${requestId};ts:${ts};`).digest("hex");
     const signed = { resourceId, requestId, signature: `ts=${ts},v1=${signature}`, secret: process.env.MP_WEBHOOK_SECRET! };
     assert.ok(verifyMpSignature(signed)); checks++;
     assert.throws(() => verifyMpSignature({ ...signed, resourceId: "ORDTSTOTHER" })); checks++;

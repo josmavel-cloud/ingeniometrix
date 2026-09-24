@@ -14,7 +14,7 @@ function signedRequest(
 ) {
   const ts = String(Math.floor(Date.now() / 1000));
   const valid = createHmac("sha256", secret)
-    .update(`id:${resourceId.toLowerCase()};request-id:${requestId};ts:${ts};`)
+    .update(`id:${resourceId};request-id:${requestId};ts:${ts};`)
     .digest("hex");
   const signature = options.signature === "invalid" ? "0".repeat(64) : valid;
   const headers: Record<string, string> = {
@@ -84,7 +84,7 @@ async function main() {
     checks += 3;
 
     const orderId = "ORDTST123456";
-    const order = signedRequest(orderId, { type: "order", action: "order.updated", data: { id: orderId }, live_mode: false });
+    const order = signedRequest(orderId, { type: "order", action: "order.processed", data: { id: orderId }, live_mode: false });
     const orderResponse = await handleMercadoPagoWebhook(order.request, {
       launchGuard: () => undefined,
       applyRateLimit: async () => undefined,
@@ -94,6 +94,29 @@ async function main() {
     });
     assert.equal(orderResponse.status, 200);
     assert.equal(commercialCalls, 1, "valid order continues to the existing order processor");
+    assert.equal(safeLogs.at(-1)?.signatureTimestampPresent, true);
+    assert.equal(safeLogs.at(-1)?.signatureV1Present, true);
+    assert.equal(safeLogs.at(-1)?.queryDataIdCase, "UPPERCASE");
+    checks += 5;
+
+    const ts = String(Math.floor(Date.now() / 1000));
+    const incorrectlyLowercased = createHmac("sha256", secret)
+      .update(`id:${orderId.toLowerCase()};request-id:${requestId};ts:${ts};`)
+      .digest("hex");
+    const wrongCaseRequest = new Request(`https://app.example.test/api/payments/mercado-pago/webhook?data.id=${orderId}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-request-id": requestId, "x-signature": `ts=${ts},v1=${incorrectlyLowercased}` },
+      body: JSON.stringify({ type: "order", action: "order.processed", data: { id: orderId }, live_mode: false }),
+    });
+    const wrongCaseResponse = await handleMercadoPagoWebhook(wrongCaseRequest, {
+      launchGuard: () => undefined,
+      applyRateLimit: async () => undefined,
+      verifyNotification: (candidate) => mercadoPago.verifyNotification(candidate),
+      processOrder: async () => { commercialCalls++; },
+      log: (record) => safeLogs.push(record),
+    });
+    assert.equal(wrongCaseResponse.status, 401, "a signature over a modified lowercase ID is invalid");
+    assert.equal(commercialCalls, 1, "invalid case-normalized signature has zero commercial mutation");
     checks += 2;
 
     const fakeOrder = signedRequest("ORDER123456", { type: "order", action: "order.updated", data: { id: "ORDER123456" }, live_mode: false });

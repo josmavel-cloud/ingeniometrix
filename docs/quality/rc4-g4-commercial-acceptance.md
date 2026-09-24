@@ -2,9 +2,10 @@
 
 Fecha: 2026-09-23. Base limpia `1ada2d036244fc7a7df79e79a46aa79a688ca1cf`.
 Rama `feat/rc4-scientific-commercial`, worktree `ingeniometrix-wt-rc4`.
-G4_STATUS: PASS_WITH_LIMITATIONS para implementación y aceptación externa parcial.
-GOOGLE_EXTERNAL_ACCEPTANCE: PASS (G4.1). PAYMENT_EXTERNAL_ACCEPTANCE: PARTIAL.
-Venta real y despliegue público: BLOCKED. No se afirma aceptación externa.
+G4_STATUS: PASS para implementación y aceptación externa sandbox.
+GOOGLE_EXTERNAL_ACCEPTANCE: PASS (G4.1).
+MERCADO_PAGO_EXTERNAL_ACCEPTANCE: PASS (G4.1).
+Venta real y despliegue público: BLOCKED; la aceptación no habilita producción.
 
 ## Aceptación externa G4.1 — Google OIDC
 
@@ -20,18 +21,25 @@ Entorno controlado mediante Tailscale Serve, sin secretos en este informe:
 - `RELOGIN`: PASS
 - `ERRORS`: NONE
 
-La aceptación Google se completó por separado. La aceptación Mercado Pago parcial
-actual se registra a continuación; el checkout/pago manual permanece pendiente.
+La aceptación Google se completó por separado. La aceptación Mercado Pago sandbox
+se registra a continuación.
 
-## Aceptación externa G4.1 — Mercado Pago parcial
+## Aceptación externa G4.1 — Mercado Pago
 
 - Webhook simulator firmado: PASS/HTTP 200, sin mutación comercial.
-- Primera Orders API sandbox: una Order creada para `starter_5_plans`, PEN 99.00.
-- Respuesta perdida recuperada exclusivamente por búsqueda/GET autoritativo.
-- Purchase local: `CHECKOUT_READY`; Order y checkout persistidos; entitlement 0.
+- Orders API sandbox: una Order real de prueba para `starter_5_plans`, PEN 99.00.
+- Checkout manual completado con comprador de prueba independiente.
+- Estado autoritativo del proveedor: `processed/accredited`; merchant, aplicación,
+  referencia externa, importe, moneda y país coinciden.
+- La firma del webhook Orders fue validada tras alinear el manifiesto con el SDK
+  oficial: `data.id` es sensible a mayúsculas y debe conservarse exactamente.
+- Purchase local: `PAID`; cinco cupos y 10,000 créditos de cómputo concedidos por
+  la ruta comercial normal, no por redirección ni escritura manual.
+- Repetir exactamente el mismo webhook devolvió HTTP 200, mantuvo un solo evento,
+  un solo entitlement y no produjo un segundo grant.
 - País observado `PER`, normalizado explícitamente a `PE`; `ORDTST` queda como
   señal positiva opcional, no frontera única.
-- Checkout manual, pago y grant por webhook: NOT_RUN.
+- Dinero real cobrado: 0. El flujo permaneció en vendedor/comprador sandbox.
 
 ## Matriz de requisitos
 
@@ -43,15 +51,15 @@ actual se registra a continuación; el checkout/pago manual permanece pendiente.
 | G4.7–8 sesión/UI Google | session/google-button/workspace/account | UserSession existente | rotate/revoke/expiry/CSRF | PASS offline; UX interactiva NOT_RUN |
 | G4.9–15 reserva/liquidación/cap | ledger + enqueue + B4 call gate | Entitlement/Reservation/entries | último cupo concurrente, recuperación, release, usage desconocido | PASS |
 | G4.16–17 saldo/compra necesaria | AccountPanel + blueprints POST | saldo persistente | 402 sin job ni reserva; preparación disponible | PASS HTTP |
-| G4.18–20 proveedor/checkout | interfaz + MP Orders | Purchase snapshot/idempotency | clave estable servidor; sin grant al redirigir | PASS offline; externo NOT_RUN |
-| G4.21–24 webhook/estado | signature + retrieve + processPaymentEvent | PaymentEvent/Purchase | firma, importe, moneda, merchant/app, duplicate/out-of-order | PASS offline |
+| G4.18–20 proveedor/checkout | interfaz + MP Orders | Purchase snapshot/idempotency | clave estable servidor; sin grant al redirigir | PASS externo sandbox |
+| G4.21–24 webhook/estado | signature + retrieve + processPaymentEvent | PaymentEvent/Purchase | firma, importe, moneda, merchant/app, duplicate/out-of-order | PASS externo sandbox |
 | G4.25 refund/chargeback | revokeEntitlement + estados normalizados | asientos + freeze | revisión si usado/reservado; conserva documentos | PASS offline; entrega real NOT_VERIFIED |
 | G4.26–28 append-only/auditoría | triggers/constraints/securityAudit | ledger + AuditLog | UPDATE/DELETE prohibidos, saldo no negativo | PASS |
 | G4.29–30 abuso/IDOR/CSRF | DB rate locks/proxy/owner filters | AuthThrottle | concurrencia, dos usuarios, origen malicioso | PASS offline/HTTP |
 | G4.31 admin/MFA | no admin comercial web | guard fail-closed | MFA no implementado; sensible deshabilitado | BLOCKED producción |
 | G4.32 términos/consent | compra acepta versiones; preference API | snapshot/AuditLog/trainingConsent | no opt-in automático; revocable; sin entrenamiento | PASS técnico; legal NOT_APPROVED |
 | G4.33 secretos | env.example/app env exclusivamente | archivos locales ignorados | sin tokens persistidos/committed | PASS |
-| G4.34–35 aceptación externa | runbook/config checks | no credenciales encontradas | no simular éxito proveedor | NOT_RUN |
+| G4.34–35 aceptación externa | Google OIDC + Mercado Pago sandbox | secretos sólo en env ignorado | login y pago/webhook reales de sandbox | PASS |
 | G4.36 seed desarrollo | helper scripts/fixtures/commercial | grant audit etiquetado | puerto/nombre DB aislados; sin endpoint de regalo | PASS |
 | G4.37–39 históricos/UI/precio | migración aditiva/catálogo candidato | usuarios/sesiones conservados | sin derechos gratuitos automáticos; venta real bloqueada | PASS local |
 | G4.40–41 integración/reconciliación | atomic enqueue/terminal + CLI | mismo job/snapshot/reserva | rollback, worker restart, publication crash | PASS offline |
@@ -96,12 +104,10 @@ desde start y revoca al autenticarse correctamente.
 
 ## Límites y bloqueos de producción
 
-No configurados: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, MP_TEST_ACCESS_TOKEN,
-MP_WEBHOOK_SECRET, MP_TEST_MERCHANT_ID, MP_APPLICATION_ID. No login Google real,
-checkout real de sandbox, webhook del proveedor ni evaluación visual interactiva.
-Contrato Orders verificado documentalmente; los campos/modo/url deben comprobarse
-contra cuenta de prueba. Contracargos normalizados están cubiertos offline, no se
-afirma aceptación del feed real separado de contracargos.
+Google OIDC y Mercado Pago Checkout Pro/Orders fueron aceptados externamente sólo
+en el entorno aislado sandbox. Las credenciales permanecen en archivos ignorados y
+no se reproducen aquí. Reembolsos/contracargos están cubiertos offline, pero el feed
+externo real separado de contracargos sigue sin aceptación.
 
 MFA administrativo pendiente; no ajustes comerciales públicos. Precio S/99,
 merchant/país, términos y privacidad necesitan aprobación. Condiciones actuales
@@ -116,5 +122,5 @@ Dockerfile existente excluye esas herramientas del runtime; no se reconstruyó
 container ni se reaceptó el riesgo para venta pública. Sin upgrade forzado.
 
 Uso: PAID_LLM_CALLS=0; REAL_PAYMENTS=0. No se inició entrenamiento.
-No se desplegó, empujó ni tocó RC3. Único siguiente paso: aceptación externa
-controlada Google + Mercado Pago sandbox con credenciales autorizadas, antes de G5.
+No se desplegó, empujó ni tocó RC3. Siguiente paso: G5, diseño y validación del
+despliegue híbrido Vercel/Ubuntu manteniendo comercio productivo deshabilitado.

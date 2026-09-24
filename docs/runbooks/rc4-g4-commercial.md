@@ -22,6 +22,13 @@ no usar un token comercial porque su prefijo se parezca al de prueba. Registrar
 endpoint HTTPS /api/payments/mercado-pago/webhook y custodiar secreto de firma.
 No provisionar recursos ni publicar endpoint desde G4.
 
+Para validar la firma, construir el manifiesto con el `data.id` exacto del query
+string. No convertirlo a minúsculas: los identificadores Orders `ORDTST...` son
+sensibles a mayúsculas en el HMAC aunque un simulador con ID numérico no revele el
+problema. La firma usa `x-signature`, `x-request-id`, `data.id` y el secreto webhook;
+el body no sustituye al identificador firmado. Una firma inválida siempre responde
+401 y no genera eventos comerciales.
+
 ## Migración y catálogo
 
 Respaldar primero. `npm run db:migrate:deploy` con rol migrador y BD aislada al
@@ -99,8 +106,8 @@ prueba interactiva visual ni login Google/checkout externo.
 
 ## Prerrequisitos antes de G5/público
 
-Aceptar Google real (callback, vinculación y logout), checkout de comprador de
-prueba + webhook real + devolución/contracargo y eventual consistencia; revisar
+Google real y checkout/webhook sandbox ya tienen aceptación externa. Aún falta
+aceptar devolución/contracargo externo y consistencia eventual; revisar
 legal/precio/merchant país; MFA administrativo; rol DB runtime mínimo; backups;
 definir origen único/CSRF en arquitectura híbrida y conectividad privada Ubuntu.
 Compose heredado publica DB port: G5 debe cerrarlo a loopback/interfaz privada antes

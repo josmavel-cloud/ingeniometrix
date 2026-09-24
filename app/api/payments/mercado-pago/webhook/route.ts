@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { commercialLaunchGuard } from "@/server/commercial/catalog";
-import { MercadoPagoWebhookError, mercadoPago, signatureParseStatus } from "@/server/commercial/mercado-pago";
+import { MercadoPagoWebhookError, mercadoPago, signatureComponentPresence, signatureParseStatus } from "@/server/commercial/mercado-pago";
 import type { VerifiedNotification } from "@/server/commercial/payment-provider";
 import { processPaymentEvent } from "@/server/commercial/purchases";
 import { rateLimit, requestAddress, secretHash } from "@/server/auth/security-events";
@@ -23,16 +23,22 @@ const defaultDependencies: WebhookDependencies = {
 
 function requestFacts(request: Request) {
   const requestId = request.headers.get("x-request-id");
+  const signature = request.headers.get("x-signature");
+  const components = signatureComponentPresence(signature);
+  const queryDataId = new URL(request.url).searchParams.get("data.id");
   return {
     timestamp: new Date().toISOString(),
     requestCorrelationId: requestId ? secretHash(requestId).slice(0, 16) : null,
     eventType: null as string | null,
     action: null as string | null,
     liveMode: null as boolean | null,
-    queryDataIdPresent: new URL(request.url).searchParams.has("data.id"),
-    signaturePresent: request.headers.has("x-signature"),
+    queryDataIdPresent: Boolean(queryDataId),
+    queryDataIdCase: queryDataId ? (/^[0-9]+$/.test(queryDataId) ? "NUMERIC" : queryDataId === queryDataId.toUpperCase() ? "UPPERCASE" : queryDataId === queryDataId.toLowerCase() ? "LOWERCASE" : "MIXED") : null,
+    signaturePresent: Boolean(signature),
     requestIdPresent: Boolean(requestId),
-    signatureParseStatus: signatureParseStatus(request.headers.get("x-signature")),
+    signatureParseStatus: signatureParseStatus(signature),
+    signatureTimestampPresent: components.timestampPresent,
+    signatureV1Present: components.v1Present,
   };
 }
 

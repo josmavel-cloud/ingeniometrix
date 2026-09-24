@@ -84,6 +84,14 @@ export function signatureParseStatus(signature: string | null): "MISSING" | "INV
   const value = signatures[0][1];
   return /^\d{10,13}$/.test(ts || "") && /^[a-f0-9]{64}$/i.test(value || "") ? "VALID" : "INVALID";
 }
+export function signatureComponentPresence(signature: string | null) {
+  if (!signature) return { timestampPresent: false, v1Present: false };
+  const parts = signature.split(",").map((part) => part.trim().split("=", 2));
+  return {
+    timestampPresent: parts.some(([key, value]) => key.toLowerCase() === "ts" && Boolean(value)),
+    v1Present: parts.some(([key, value]) => key.toLowerCase() === "v1" && Boolean(value)),
+  };
+}
 
 export function verifyMpSignature(input: { resourceId: string; requestId: string; signature: string; secret: string; now?: number }) {
   const parts = input.signature.split(",").map((part) => part.trim().split("="));
@@ -93,7 +101,10 @@ export function verifyMpSignature(input: { resourceId: string; requestId: string
   if (!/^\d{10,13}$/.test(ts || "") || !/^[a-f0-9]{64}$/i.test(sig || "") || !input.requestId || !input.secret) return webhookError("WEBHOOK_SIGNATURE_INVALID", 401);
   const stamp = Number(ts) * (ts.length === 10 ? 1000 : 1);
   if (Math.abs((input.now ?? Date.now()) - stamp) > 10 * 60_000) return webhookError("WEBHOOK_SIGNATURE_EXPIRED", 401);
-  const manifest = `id:${input.resourceId.toLowerCase()};request-id:${input.requestId};ts:${ts};`;
+  // Preserve data.id exactly as received in the query string. Mercado Pago's
+  // maintained SDK trims this input but does not change its case before HMAC;
+  // changing ORDTST... to lowercase invalidates real Orders notifications.
+  const manifest = `id:${input.resourceId.trim()};request-id:${input.requestId.trim()};ts:${ts};`;
   const expected = createHmac("sha256", input.secret).update(manifest).digest();
   if (!timingSafeEqual(expected, Buffer.from(sig, "hex"))) return webhookError("WEBHOOK_SIGNATURE_INVALID", 401);
   return secretHash(manifest);
