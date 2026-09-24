@@ -1,0 +1,71 @@
+name: G5 staging monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g5-staging-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Probe public staging and protected operational health
+        env:
+          STAGING_MONITOR_TOKEN: ${{ secrets.STAGING_MONITOR_TOKEN }}
+          STAGING_WEB_URL: https://staging.ingeniometrix.com/
+          STAGING_BACKEND_ORIGIN: https://pepe-thinkpad-t470s.tailbcdf27.ts.net:10000
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          const timeout = AbortSignal.timeout(12000);
+          async function probe(url, headers = {}) {
+            try {
+              const response = await fetch(url, { headers, signal: timeout, cache: "no-store" });
+              let body = null;
+              try { body = await response.json(); } catch { /* preserve status only */ }
+              return { code: response.status, body };
+            } catch {
+              return { code: 0, body: null };
+            }
+          }
+
+          const [web, ready, operational] = await Promise.all([
+            probe(process.env.STAGING_WEB_URL),
+            probe(`${process.env.STAGING_BACKEND_ORIGIN}/api/health/ready`),
+            probe(`${process.env.STAGING_BACKEND_ORIGIN}/api/health/operational`, {
+              Authorization: `Bearer ${process.env.STAGING_MONITOR_TOKEN || ""}`,
+            }),
+          ]);
+          const failures = [];
+          if (web.code < 200 || web.code >= 400) failures.push("staging_web");
+          if (ready.code !== 200 || ready.body?.status !== "ready") failures.push("backend_readiness");
+          const summary = operational.body;
+          if (operational.code !== 200 || summary?.status !== "healthy") failures.push("operational_health");
+          for (const key of ["workerHeartbeat", "backupAge", "storage"]) {
+            if (summary?.[key] !== "healthy") failures.push(key);
+          }
+          console.log(JSON.stringify({
+            http: { web: web.code, readiness: ready.code, operational: operational.code },
+            states: summary ? {
+              status: summary.status,
+              workerHeartbeat: summary.workerHeartbeat,
+              backupAge: summary.backupAge,
+              storage: summary.storage,
+            } : null,
+          }));
+          if (failures.length) {
+            console.error(`Staging monitor failed: ${failures.join(",")}`);
+            process.exitCode = 1;
+          }
+          NODE
