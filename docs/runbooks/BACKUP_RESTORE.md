@@ -79,10 +79,13 @@ outside the repository with directory mode 0700 and file mode 0600. Separately
 generate and escrow both the restic repository password and rclone-crypt recovery
 secret with an independent custodian; neither belongs in Git, Drive, or chat.
 
-After authorized local credential setup and ACL verification: initialize one new
-`restic-g5` repository in the folder, quiesce only G5 app/worker, back up, check, and
-restore from that REMOTE repository into a new isolated DB/volume. Compare hashes
-and ledger again. Remote copy/restore remain NOT_RUN. Existing local repo is preserved.
+After authorized local credential setup and ACL verification, use a unique,
+versioned repository path through `imx-drive-crypt`, for example
+`rclone:imx-drive-crypt:staging/YYYY/MM/DD/<backup-id>`. The Drive overlay has a
+static `RESTIC_REPOSITORY` value for its historical base-remote setup; every crypt
+operation must explicitly override it with `docker compose run -e RESTIC_REPOSITORY`
+and verify the resulting value is under `rclone:imx-drive-crypt:` before init,
+backup, check, or restore. Never use the base-remote default for a crypt acceptance.
 
 Sources: [restic rclone backend](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html#other-services-via-rclone),
 [Drive scopes/root configuration](https://rclone.org/drive/).
@@ -90,10 +93,55 @@ Sources: [restic rclone backend](https://restic.readthedocs.io/en/stable/030_pre
 [Restic repository setup](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html)
 documents encrypted repositories and remote backend configuration.
 
-Rechecked 2026-09-24: Drive ACL is restricted, but no host rclone configuration,
-G5 backup runtime environment, or dedicated remote identity is configured. The
-backup image contains rclone/restic; this does not make a remote usable. No external
-backup, remote object verification, or restore-from-remote was run. The previous
-restic restore is an isolated same-host rehearsal only, not an off-machine backup.
-Do not proceed until the dedicated identity/config and independently escrowed
-recovery secrets are available.
+### External encrypted backup/restore acceptance (2026-09-24)
+
+Owner confirmed independent custody of the rclone crypt password/password2 and
+Restic repository password. The host rclone config was mode 0600; the dedicated
+Drive folder had previously been verified restricted. The `imx_backup` database
+role was confirmed non-superuser and without database-create, insert, or update
+privileges. There were no active generation jobs. Only the isolated G5 staging app
+and worker were briefly quiesced; both returned healthy and staging readiness was
+200 afterward. No live database writes, payments, or LLM calls were made.
+
+Verified encrypted repository:
+
+- Backup ID: `ed5d7458-5586-441d-8990-60da933cd6da`
+- Remote: `imx-drive-crypt:staging/2026/09/24/ed5d7458-5586-441d-8990-60da933cd6da`
+- Restic snapshot: `62703b86`
+- Created: `2026-09-24T15:31:47Z`
+- Manifest SHA-256: `21d71550fe57301aa662eb14540089ef9c0c21a48c5f6a5044cef19d704b2e0b`
+- Restic processed 94,668,534 logical bytes in 56 files and packed 79,961 bytes;
+  rclone reported 6 remote files / 83,887 bytes including remote metadata overhead.
+- Restic `check --read-data` passed. A fresh restore was downloaded from this Drive
+  repository into tmpfs and restored to a temporary PostgreSQL 16 container on
+  `network none`; no live storage or DB was used.
+- Database object counts and migration inventory matched. Counts: 2 users, 3
+  projects, 3 drafts, 1 BlueprintVersion, 0 jobs, 1 GeneratedArtifact, 0 purchases,
+  1 entitlement, 0 reservations, 2 ledger entries, 0 payment events, 13 migrations.
+  Negative entitlement balances, negative ledger available-after values, active
+  jobs, and unfinished migrations: all zero. One user/project/version join resolved.
+- All 6 private-storage file hashes passed. Temporary restore container, socket
+  volume, and decrypted tmpfs data were removed; the remote snapshot was preserved.
+
+Operational deviation: an earlier attempt exposed that the Drive Compose overlay
+hard-codes `rclone:imx-drive:restic-g5`. Before detecting the override, one separate
+Restic-encrypted repository and snapshot was created at that base-remote path. It
+was not used for the accepted restore and was not deleted, in accordance with the
+no-delete instruction. Restic encrypts its repository contents, but the rclone
+crypt layer was not applied to that extra copy. Review/remove that exact repository
+only under a separately authorized cleanup; do not confuse it with the accepted
+crypt snapshot above. No plaintext database or artifact data was uploaded.
+
+Provisional pilot retention: daily 7, weekly 4, monthly 3. This is the intended
+schedule, not an enabled pruning schedule; no pruning was run. Before automation,
+reconcile `backup.sh` and the scheduled wrapper to use the exact Restic policy
+`forget --keep-daily 7 --keep-weekly 4 --keep-monthly 3` against the reviewed
+crypt repository, then review and test the plan output. Do not enable or run pruning
+as part of this acceptance; the script's current monthly value is 6 and must not be
+used unchanged.
+
+For recovery, restore the exact versioned crypt repository using the protected
+rclone config plus the independently escrowed rclone crypt and Restic recovery
+secrets; use the matching Postgres major version (16 here), then validate the
+manifest SHA-256, migration inventory, artifact hashes, and ledger checks before
+starting app/worker processes. Recovery secrets are not stored in this repository.

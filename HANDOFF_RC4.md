@@ -88,6 +88,37 @@ payment, Drive write, DNS change, or app/worker restart was performed. Prisma
 validation, typecheck, frontend/full builds, and worker build passed locally; build
 output retains the existing broad `artifacts-local` tracing warnings.
 
+### G5 external encrypted backup and isolated remote restore (2026-09-24)
+
+Follow-up to the prerequisite recheck above: owner confirmed external custody of
+the rclone crypt password/password2 and Restic repository password. On the clean
+`feat/rc4-scientific-commercial` worktree at `04ec1daefd2cbdf5f7471594c15ab4ca4c89188f`,
+created and verified a real encrypted remote backup:
+`imx-drive-crypt:staging/2026/09/24/ed5d7458-5586-441d-8990-60da933cd6da`;
+Restic snapshot `62703b86`, manifest SHA-256
+`21d71550fe57301aa662eb14540089ef9c0c21a48c5f6a5044cef19d704b2e0b`.
+Restic full-data check and a restore downloaded from Google Drive passed. Restore
+used tmpfs for decrypted data, a temporary PostgreSQL 16 instance with no network,
+and an isolated socket; source/restored counts and ledger invariants matched, and
+all six private artifact file hashes passed. No production/staging DB mutations,
+payments, or LLM calls occurred. Staging app/worker recovered healthy and
+`/api/health/ready` returned 200. Exact counts, recovery steps, and provisional
+retention are recorded in `docs/runbooks/BACKUP_RESTORE.md`.
+
+Operational caveat: the first Compose attempt revealed that
+`docker-compose.g5-drive.yml` hard-codes the base remote repository. Before catching
+this, one separate Restic-encrypted snapshot was also written to
+`rclone:imx-drive:restic-g5`; that copy did not pass through rclone crypt. It was not
+used for the accepted remote restore and remains preserved pending separately
+authorized cleanup. The accepted snapshot above was explicitly initialized,
+backed up, checked, and restored through `imx-drive-crypt`. Do not claim an
+exclusive-crypt transfer history until the extra repository is reviewed.
+
+The verified encrypted backup/restore sub-gate passes. This does not close all of
+G5: external monitoring, final paid staging E2E, and other pending acceptance items
+remain independent gates. No repository code changed; this handoff/runbook update
+is documentation-only.
+
 ## Previous checkpoint — G4 (2026-09-23)
 
 G4 authentication/commercial candidate implemented on G3 commit
