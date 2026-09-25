@@ -1,5 +1,49 @@
 # RC4 handoff
 
+## Latest checkpoint - conversational intake Phase 1 (2026-09-25)
+
+Implementation Gates 1-4 and software validation are complete. **Frontend staging
+deployment is BLOCKED by Vercel commit-author permissions; manual UX acceptance is
+PENDING. Do not claim Phase 1 PASS or resume G5 scientific E2E.**
+
+New projects use Define tu investigacion -> Evidencia -> Plan de tesis, with
+proposal-only conversation, a live editable definition, immutable bounded turns,
+field provenance and exact revision/hash confirmation. ProjectDraft is mutable
+authority; Intake is the explicitly confirmed snapshot. Retrieval/G1/G3 semantics
+are unchanged. Historical projects retain compatibility.
+
+Scoped feature commits: `3dc50e7`, `a4edad1`, `08aadc2`, `01e6d31`; pushed normally
+to `feat/rc4-scientific-commercial`. Five pre-existing staging-entitlement files
+remain unstaged and byte-identical; do not include them in Phase 1 commits.
+
+All 62 existing offline suites PASS, as do new definition/conversation/navigation
+tests, local Chrome software checks, Prisma, TypeScript, full/worker builds and
+frontend-only build (24 dependency traces, no backend modules). Simulated model
+tests do not establish empirical advisor quality. Zero real model calls, retrieval
+calls, scientific generations or payments were made.
+
+Staging migration `20260925120000_conversational_intake` applied successfully.
+Only the isolated staging app was recreated; DB, worker, proxy and Funnel were not
+restarted. Backend readiness/liveness and protected aggregate operational health
+are healthy. With owner authorization, the original project's OPENAI_API_KEY was
+reused privately in ignored mode-0600 `.env.g5-staging`; runtime presence verified
+without displaying it. A disposable public Vercel-to-Ubuntu API fixture passed
+creation/replay, revisioned edit, explicit confirmation, search-intent and owner
+denial, with zero provider calls/jobs; its records were removed afterward.
+
+New frontend Preview `dpl_7zj6d4LAMJ7jSbQr8EwC1oB6wciz` was blocked before build:
+the commit author lacks deployment permission for this Vercel project. No identity
+was changed to bypass the check. `staging.ingeniometrix.com` still points to the
+previous frontend; its homepage/workspace and session API respond 200. Public web
+`/api/health/*` intentionally returns 404; use the Funnel backend health routes.
+Owner must resolve Vercel author/team authorization, then deploy the validated
+frontend package and update only the staging alias before manual acceptance.
+
+Reference project `ca610ddb-82c7-4854-9592-0d961c7e595b` remains revision 1 with
+unchanged hash and zero jobs. See the [Phase 1 report](docs/quality/rc4-phase1-conversational-intake.md),
+[architecture](docs/architecture/RC4_CONVERSATIONAL_INTAKE.md) and
+[manual staging runbook](docs/runbooks/RC4_PHASE1_STAGING.md).
+
 ## Latest checkpoint — G5 local implementation (2026-09-23)
 
 G5 starts from `b6f0cf8a1917f39eb34650805a5f63f52782539a` on
