@@ -44,8 +44,8 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   ];
 
   return (
-    <ProjectShell title={project.title} description={`Paso ${stepNumber} de 3 · ${stages[stepNumber - 1]?.title ?? "Investigación"}`}>
-      <WorkflowStageNav items={stages} language={language} />
+    <ProjectShell title={project.title} description={`Paso ${stepNumber} de 3 · ${stages[stepNumber - 1]?.title ?? "Investigación"}`} compactHeader={project.conversationalIntake && currentStep === "define"}>
+      <WorkflowStageNav items={stages} language={language} compact={project.conversationalIntake && currentStep === "define"} />
       <div className={project.conversationalIntake && currentStep === "define" ? "grid gap-6" : "grid gap-6 xl:grid-cols-[minmax(240px,0.34fr)_minmax(0,1fr)]"}>
         {!(project.conversationalIntake && currentStep === "define") && <ProjectSummarySidebar
           area={areaLabel}

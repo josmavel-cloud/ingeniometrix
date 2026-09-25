@@ -45,8 +45,8 @@ provider calls, translation, ranking and admission are unchanged.
 
 ## Model governance
 
-Prompt: `server/projects/prompts/conversational-intake.v1.ts`, ID
-`conversational-academic-intake`, version `1.0.0`.
+Prompt: `server/projects/prompts/conversational-intake.v2.ts`, ID
+`conversational-academic-intake`, version `2.0.0`.
 Input: current definition and at most 12 recent owner inputs; max serialized
 context 100 KB. Output: strict `intake-turn.v1`, one question, up to 8 proposals,
 up to 3 ambiguities. Reject unauthorized fields, foreign input references, repeated
@@ -57,6 +57,16 @@ Config: IMX_INTAKE_MODEL, IMX_INTAKE_REASONING (low/medium). No automatic escala
 Existing B4 cost bounds reject unpriced models and reserve full configured output
 ceiling plus conservative input before dispatch. PaidOperation handles user daily
 and request limits. No new GPT-6 runtime model is activated.
+
+The v2 intake behavior analyzes the user's original idea once when a fresh
+project first opens. The user idea is the model input; its request is persisted
+with an `initial` marker and protected by the existing idempotency key. A reload
+or an already edited project does not create another initial call. The model
+proposes before asking. A deterministic material-question filter permits at most
+three visible clarifications and suppresses questions already covered by
+accepted values or unreviewed proposals. It never treats the proposals as
+confirmed search intent. Questions about final methodology and other later
+design details are deferred. No new table or search-readiness rule was added.
 Official model reference checked 2026-09-25:
 [GPT-5.4 Mini](https://developers.openai.com/api/docs/models/gpt-5.4-mini).
 Existing standard rates match the documented $0.75 input / $0.075 cached input /
@@ -78,6 +88,14 @@ proposals/unknowns. Later edits invalidate downstream readiness while historical
 artifacts remain unchanged. Project resume chooses definition while unconfirmed,
 evidence when confirmed, and plan when versions exist. Navigation itself does not
 change the definition hash.
+
+The Phase 1 UX refinement keeps the existing brand tokens and project shell. On
+the definition step, its header and three-stage navigation are compact so the
+chat and bottom composer fit sooner on desktop and mobile. The secondary panel
+shows only topic, purpose/problem, object, relevant context, concepts and output;
+all other fields remain editable under "Más detalles". Enter sends; Shift+Enter
+adds a line. Confirmation review starts with those visible values and offers a
+disclosure for every other accepted value, preserving exact snapshot transparency.
 
 Set IMX_CONVERSATIONAL_INTAKE=0 on backend to stop new conversational project/model
 operations without losing draft/history; manual edits/read/confirmation remain

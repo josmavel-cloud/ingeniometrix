@@ -25,7 +25,7 @@ async function main() {
   const hook = readFileSync("components/projects/use-persisted-intake.ts", "utf8");
   assert.ok(hook.includes("anchor.href !== location.href")); assert.ok(!hook.includes("() => confirm(currentForm.current)"));
   const ui = readFileSync("components/projects/conversational-intake.tsx", "utf8");
-  for (const marker of ["role=\"log\"", "No lo sé", "Rechazar", "Confirmar esta definición", "sessionStorage", "popstate", "conflictRef"]) assert.ok(ui.includes(marker), marker);
+  for (const marker of ["role=\"log\"", "No lo sé", "Descartar", "Confirmar para buscar evidencia", "sessionStorage", "popstate", "conflictRef", "e.nativeEvent.isComposing", "!e.shiftKey", "Más detalles"]) assert.ok(ui.includes(marker), marker);
   console.log("PASS Phase1 Gates3/4 contract checks: serialization, idempotent retry, no implicit confirmation, query navigation, pending local text, conflict handling; manual browser acceptance remains required");
 }
 main().catch(e => { console.error(e); process.exitCode = 1; });

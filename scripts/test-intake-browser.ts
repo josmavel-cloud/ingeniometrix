@@ -57,8 +57,8 @@ async function main() {
     assert.equal(await prisma.intake.count({ where: { projectId } }), 0);
     await call("Page.navigate", { url: `${origin}/projects/${projectId}?step=define` });
     await until("document.body.innerText.includes('Relatos y experiencias de estudiantes migrantes')");
-    await click("Revisar definición"); await until("document.body.innerText.includes('Esto se usará para buscar evidencia')");
-    await click("Confirmar esta definición para buscar evidencia");
+    await click("Revisar definición"); await until("document.body.innerText.includes('Esto entendimos para buscar evidencia')");
+    await click("Confirmar para buscar evidencia");
     await until("document.body.innerText.includes('Definición confirmada')");
     const intake = await prisma.intake.findUniqueOrThrow({ where: { projectId } });
     assert.equal(intake.targetPopulation, "Relatos y experiencias de estudiantes migrantes");
@@ -67,10 +67,10 @@ async function main() {
     assert.equal(api.intent.readiness, "READY"); assert.equal(api.intent.methodologicalSignals.length, 0);
     await call("Page.reload"); await until("document.body.innerText.includes('Definición confirmada')");
     const artifact = path.resolve("artifacts-local/rc4/phase1-browser"); await mkdir(artifact, { recursive: true });
-    const screenshot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+    const screenshot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     await writeFile(path.join(artifact, "desktop.png"), Buffer.from(screenshot.data, "base64"));
     await call("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    const mobile = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+    const mobile = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     await writeFile(path.join(artifact, "mobile.png"), Buffer.from(mobile.data, "base64"));
     assert.ok(await evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), "No mobile horizontal overflow");
     await call("Network.clearBrowserCookies"); await call("Page.reload");
