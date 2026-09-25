@@ -124,12 +124,13 @@ async function main() {
       readFile("components/projects/workflow-stage-nav.tsx", "utf8"),
       readFile("components/projects/create-project-form.tsx", "utf8"),
     ]);
-    for (const label of ["Idea", "Define tu investigación", "Evidencia", "Plan de tesis"]) assert.ok(projectPage.includes(label));
+    for (const label of ["Define tu investigación", "Evidencia", "Plan de tesis"]) assert.ok(projectPage.includes(label));
+    assert.ok(projectPage.includes('query.step === "idea"'), "Historical Idea URL remains compatible");
     assert.ok(workflowNav.includes("sm:grid-cols-4"));
     assert.ok(!createForm.includes("Ajustes opcionales"));
     assert.ok(!createForm.includes("project-university"));
 
-    console.log("PASS RC4 G2: FORD taxonomy, optional university, custom mapping, resumable revisions, immutable multi-version plans, owner isolation, four-step UI and source terminal states; paid calls=0.");
+    console.log("PASS RC4 G2: FORD taxonomy, optional university, custom mapping, resumable revisions, immutable multi-version plans, owner isolation, three visible steps with historical Idea compatibility, source terminal states; paid calls=0.");
   } finally {
     await prisma.user.deleteMany({ where: { id: { in: [owner.id, other.id] } } });
     await prisma.$disconnect();

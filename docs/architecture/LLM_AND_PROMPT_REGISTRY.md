@@ -5,6 +5,14 @@ accepted for the bounded cases; see [G1 evaluation](../quality/rc4-g1-design-acc
 
 ## RC4 scientific selector (before approved drafting)
 
+Phase 1 conversational intake is separate from scientific selection:
+`server/projects/prompts/conversational-intake.v1.ts` / version `1.0.0`, policy
+`server/projects/intake-model-policy.ts`, default gpt-5.4-mini/low/3000 tokens.
+Strict `intake-turn.v1` produces unreviewed proposals, never confirmed Intake.
+Consumer: `intake-conversation-service.ts`; PaidOperation reserves full output
+ceiling before dispatch and retains unknown usage. No automatic model escalation
+or transport retry. See [Phase 1 authority and governance](RC4_CONVERSATIONAL_INTAKE.md).
+
 All use a single concatenated Responses input, strict JSON schema and high reasoning.
 The long selector uses Responses background mode with `store=true`; critic calls remain
 foreground with `store=false`. Inputs are whitelisted user intent and a bounded inspected evidence

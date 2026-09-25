@@ -28,7 +28,7 @@ function getFirstNonBlankSearchValue(
 }
 
 export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
-  await requireCurrentUser();
+  const user = await requireCurrentUser();
   const language = "es" as const;
   const resolvedSearchParams = (await searchParams) ?? {};
   const initialInterestText = getFirstNonBlankSearchValue(
@@ -44,7 +44,7 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
       description="Define tu investigación con una conversación breve y una revisión explícita."
     >
       <section className="surface-panel rounded-[34px] p-4 sm:p-8">
-        <ConversationalProjectCreate initialIdea={initialInterestText} />
+        <ConversationalProjectCreate initialIdea={initialInterestText} ownerId={user.id} />
       </section>
     </ProjectShell>
   );

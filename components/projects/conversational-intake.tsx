@@ -10,6 +10,8 @@ type Turn = { requestId: string; kind: string; status: string; inputJson: { mess
 type Edit = { field: DefinitionField; value: string; knowledge: "KNOWN" | "UNKNOWN" | "NOT_APPLICABLE" };
 const button = "rounded-lg border px-3 py-2 text-sm disabled:opacity-50";
 const primary = `${button} bg-[var(--color-plum)] text-white`;
+const academicLabel: Record<string, string> = { MAESTRIA: "Maestría", PREGRADO: "Pregrado", PROYECTO_INVESTIGACION: "Proyecto de investigación" };
+const publicValue = (field: DefinitionField, value: string) => field === "academicLevel" ? academicLabel[value] ?? "Nivel por revisar" : value;
 
 export function ConversationalIntake({ projectId, ownerId }: { projectId: string; ownerId: string }) {
   const endpoint = `/api/projects/${projectId}/definition`, cacheKey = `imx-intake-pending:${ownerId}:${projectId}`;
@@ -118,7 +120,8 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
   if (!state) return <p role="status">{error || notice}</p>;
   const d = state.definition, readiness = definitionReadiness(d);
   const latest = [...turns].reverse().find(t => t.kind === "MESSAGE" && t.status === "COMPLETE");
-  const question = latest?.resultJson?.nextQuestion;
+  const proposedQuestion = latest?.resultJson?.nextQuestion;
+  const question = proposedQuestion && d.fields[proposedQuestion.field].lastChangedRevision <= (latest?.resultJson?.baseRevision ?? 0) ? proposedQuestion : null;
   const proposals = d.proposals.filter(p => p.status === "PENDING");
   return <div className="grid gap-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,1fr)]">
     <section className="surface-panel min-w-0 rounded-3xl p-5" aria-labelledby="conversation-title">
@@ -152,7 +155,7 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
       <details open><summary className="cursor-pointer text-xl font-semibold">Tu investigación</summary>
         <p className="my-3 text-sm">{state.confirmedRevision === state.revision ? "Definición confirmada" : "Borrador: cambios aún no confirmados"}</p>
         <dl className="space-y-3">{DEFINITION_FIELDS.filter(k => k !== "originalIdea" && (d.fields[k].value || ["topic", "object", "purpose", "concepts"].includes(k))).map(k => <div key={k}>
-          <dt className="font-semibold">{FIELD_LABELS[k]}</dt><dd className="text-sm whitespace-pre-wrap">{d.fields[k].value || (d.fields[k].knowledge === "NOT_APPLICABLE" ? "No aplica" : "Pendiente")}</dd>
+          <dt className="font-semibold">{FIELD_LABELS[k]}</dt><dd className="text-sm whitespace-pre-wrap">{publicValue(k, d.fields[k].value) || (d.fields[k].knowledge === "NOT_APPLICABLE" ? "No aplica" : "Pendiente")}</dd>
           <dd className="flex items-center gap-2 text-xs"><span>{d.fields[k].origin === "USER_EXPLICIT" ? "Lo indicaste" : usable(d.fields[k]) ? "Aceptado" : "Por revisar"}</span><button className={button} onClick={() => void chooseField(k)}>Editar</button></dd>
         </div>)}</dl>
         {proposals.map(p => <article key={p.id} className="my-3 rounded-xl border p-3"><p className="text-xs">Propuesta por revisar · {FIELD_LABELS[p.field]}</p><p>{p.proposed.value || (p.proposed.knowledge === "UNKNOWN" ? "Pendiente" : "No aplica")}</p><div className="mt-2 flex gap-2">
@@ -173,7 +176,7 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
       <div className="mt-6 border-t pt-4">
         {readiness.evidenceSearch.reasons.map(r => <p key={r} className="my-2 text-sm">{r}</p>)}
         <button className={primary} disabled={modelBusy || conflict} onClick={() => { void flush().then(() => setReview(true)).catch(() => undefined); }}>Revisar definición</button>
-        {review && <div className="mt-4" aria-label="Revisión antes de confirmar"><h3 className="font-semibold">Esto se usará para buscar evidencia</h3><dl>{DEFINITION_FIELDS.filter(k => usable(d.fields[k])).map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap text-sm">{d.fields[k].value}</dd></div>)}</dl>
+        {review && <div className="mt-4" aria-label="Revisión antes de confirmar"><h3 className="font-semibold">Esto se usará para buscar evidencia</h3><dl>{DEFINITION_FIELDS.filter(k => usable(d.fields[k])).map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap text-sm">{publicValue(k, d.fields[k].value)}</dd></div>)}</dl>
           <p className="my-3 text-sm">{proposals.length} propuestas pendientes no se incluirán. Pendientes: {DEFINITION_FIELDS.filter(k => !usable(d.fields[k])).map(k => FIELD_LABELS[k]).join(", ")}. Confirmar no inicia una búsqueda ni aprueba el diseño científico.</p>
           <button className={primary} disabled={readiness.evidenceSearch.status !== "READY" || dirty} onClick={async () => {
             try {

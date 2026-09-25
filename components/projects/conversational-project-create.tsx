@@ -1,20 +1,29 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function ConversationalProjectCreate({ initialIdea }: { initialIdea: string }) {
+export function ConversationalProjectCreate({ initialIdea, ownerId }: { initialIdea: string; ownerId: string }) {
   const [idea, setIdea] = useState(initialIdea), [level, setLevel] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const request = useRef<{ intakeMode: "conversation"; idea: string; degreeLevel: string; requestId: string } | null>(null);
   const router = useRouter();
+  const pendingKey = `imx-intake-create:${ownerId}`;
+  useEffect(() => {
+    const stored = sessionStorage.getItem(pendingKey);
+    if (stored) {
+      try { const saved = JSON.parse(stored); if (saved.intakeMode === "conversation" && typeof saved.requestId === "string") { request.current = saved; setIdea(saved.idea); setLevel(saved.degreeLevel); setError("Hay una creación pendiente. Reintentar reutiliza la misma solicitud, sin duplicar el proyecto."); } } catch {}
+    }
+  }, [pendingKey]);
   return <form className="mx-auto grid max-w-2xl gap-5" onSubmit={async e => {
     e.preventDefault(); if (busy) return; setBusy(true); setError("");
     request.current ??= { intakeMode: "conversation", idea, degreeLevel: level, requestId: crypto.randomUUID() };
+    sessionStorage.setItem(pendingKey, JSON.stringify(request.current));
     try {
       const response = await fetch("/api/projects", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request.current) });
       const payload = await response.json();
       if (!response.ok) throw new Error("No se pudo crear. Conservamos tu idea; puedes reintentar la misma solicitud.");
-      router.push(`/projects/${payload.project.id}?step=define`);
+      sessionStorage.removeItem(pendingKey);
+      router.replace(`/projects/${payload.project.id}?step=define`);
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo conectar."); setBusy(false); }
   }}>
     <label className="text-xl font-semibold" htmlFor="research-idea">Cuéntame qué quieres investigar.</label>

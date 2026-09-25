@@ -80,6 +80,7 @@ export function applyDefinitionAction(raw: ResearchDefinition, action: Definitio
     for (const p of d.proposals) if (p.field === action.field && p.status === "PENDING") p.status = "STALE";
   } else if (action.kind === "RESOLVE") {
     const a = d.ambiguities.find(a => a.id === action.ambiguityId); if (!a) throw new Error("AMBIGUITY_NOT_FOUND");
+    if (["originalIdea", "academicLevel"].includes(a.field)) throw new Error("USE_EXPLICIT_FIELD_CONTROL");
     a.resolved = true; d.fields[a.field] = userValue(action.answer, revision, messageId);
   } else {
     const p = d.proposals.find(p => p.id === action.proposalId); if (!p || p.status !== "PENDING") throw new Error("PROPOSAL_NOT_PENDING");

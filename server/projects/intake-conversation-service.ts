@@ -40,9 +40,11 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
     const result = await withPaidOperation({ userId, projectId, draftId: claim.view.id, requestId: `intake:${input.requestId}`, purpose: INTAKE_PROMPT.id,
       revision: String(input.baseRevision), inputs: { input, promptVersion: INTAKE_PROMPT.version, policy } }, async () => {
       const rawResult = testModel ? await testModel(prompt) : await getConfiguredLlmProvider().generateStructuredObject({ ...policy,
-        prompt, schemaName: "intake_turn_v1", schema: z.toJSONSchema(intakeTurnResultSchema), trackingLabel: "conversational-intake.v1" });
+        prompt, schemaName: "intake_turn_v1", schema: z.toJSONSchema(intakeTurnResultSchema), trackingLabel: "conversational-intake.v1",
+        trackingAttribution: { stage: "intake", source: INTAKE_PROMPT.id, promptVersion: INTAKE_PROMPT.version, promptHash: fingerprint(INTAKE_PROMPT.instructions) } });
       const parsed = intakeTurnResultSchema.parse(rawResult);
       if (parsed.baseRevision !== input.baseRevision) throw new Error("MODEL_REVISION_MISMATCH");
+      if ([...parsed.ambiguities, ...(parsed.nextQuestion ? [parsed.nextQuestion] : [])].some(a => ["originalIdea", "academicLevel"].includes(a.field))) throw new Error("USE_EXPLICIT_FIELD_CONTROL");
       if (new Set(parsed.proposedChanges.map(p => p.field)).size !== parsed.proposedChanges.length) throw new Error("DUPLICATE_PROPOSED_FIELD");
       for (const p of parsed.proposedChanges) {
         if (["originalIdea", "academicLevel"].includes(p.field) || p.sourceMessageIds.some(id => !knownIds.has(id))) throw new Error("INVALID_PROPOSAL_PROVENANCE");
