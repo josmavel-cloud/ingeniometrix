@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { BlueprintPanel } from "@/components/projects/blueprint-panel";
 import { ExportPanel } from "@/components/projects/export-panel";
 import { IntakeForm } from "@/components/projects/intake-form";
+import { ConversationalIntake } from "@/components/projects/conversational-intake";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { ProjectSummarySidebar } from "@/components/projects/project-summary-sidebar";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
@@ -23,31 +24,30 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
   const locale = getLocaleForLanguage(language);
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const { project, references, initialReferenceSearchSnapshot, blueprintVersions } = await pageData("detail", id);
-  if (query.step === "idea") redirect(`/projects/${id}/topic`);
+  if (query.step === "idea") redirect(project.conversationalIntake ? `/projects/${id}?step=define` : `/projects/${id}/topic`);
 
-  const currentStep: VisibleStep = query.step === "evidence" || query.step === "plan" ? query.step : "define";
+  const currentStep: VisibleStep = query.step === "evidence" || query.step === "plan" ? query.step : query.step === "define" ? "define" : project.conversationalIntake && project.definitionConfirmed ? (blueprintVersions.length ? "plan" : "evidence") : "define";
   const selectedReferenceCount = references.filter((reference) => reference.selected).length;
-  const hasIntakeMinimum = Boolean(project.intake?.topic?.trim() && project.intake.problemContext?.trim() && project.intake.targetPopulation?.trim());
+  const hasIntakeMinimum = project.conversationalIntake ? Boolean(project.definitionConfirmed) : Boolean(project.intake?.topic?.trim() && project.intake.problemContext?.trim() && project.intake.targetPopulation?.trim());
   const latestBlueprint = blueprintVersions[0] ?? null;
   const activeVersion = blueprintVersions.find((version) => version.id === project.activeBlueprintVersionId) ?? latestBlueprint;
   const activeBlueprintJson = activeVersion?.blueprintJson as { references_used?: Array<{ reference_id: string; title: string }> } | undefined;
   const primaryKnowledgeField = project.knowledgeFields[0];
   const areaLabel = primaryKnowledgeField?.concept?.labelEs ?? primaryKnowledgeField?.customLabel ?? project.topicAreaLabel;
   const draftStaleScopes = Array.isArray(project.draft?.staleScopesJson) ? project.draft.staleScopesJson : [];
-  const stepNumber = currentStep === "define" ? 2 : currentStep === "evidence" ? 3 : 4;
+  const stepNumber = currentStep === "define" ? 1 : currentStep === "evidence" ? 2 : 3;
   const progress = currentStep === "define" ? 35 : currentStep === "evidence" ? 65 : activeVersion ? 100 : 85;
   const stages = [
-    { step: "01", href: `/projects/${id}/topic`, title: "Idea", description: "Elige la dirección de tu investigación.", active: true, current: false },
-    { step: "02", href: `/projects/${id}?step=define`, title: "Define tu investigación", description: "Delimita el problema, contexto y diseño.", active: hasIntakeMinimum, current: currentStep === "define" },
-    { step: "03", href: `/projects/${id}?step=evidence`, title: "Evidencia", description: "Busca, revisa y selecciona fuentes.", active: selectedReferenceCount > 0, current: currentStep === "evidence" },
-    { step: "04", href: `/projects/${id}?step=plan`, title: "Plan de tesis", description: "Genera y consulta tus versiones publicadas.", active: Boolean(activeVersion), current: currentStep === "plan" },
+    { step: "01", href: `/projects/${id}?step=define`, title: "Define tu investigación", description: "Aclara y confirma tu investigación.", active: hasIntakeMinimum, current: currentStep === "define" },
+    { step: "02", href: `/projects/${id}?step=evidence`, title: "Evidencia", description: "Busca, revisa y selecciona fuentes.", active: selectedReferenceCount > 0, current: currentStep === "evidence" },
+    { step: "03", href: `/projects/${id}?step=plan`, title: "Plan de tesis", description: "Genera y consulta tus versiones publicadas.", active: Boolean(activeVersion), current: currentStep === "plan" },
   ];
 
   return (
-    <ProjectShell title={project.title} description={`Paso ${stepNumber} de 4 · ${stages[stepNumber - 1]?.title ?? "Investigación"}`}>
+    <ProjectShell title={project.title} description={`Paso ${stepNumber} de 3 · ${stages[stepNumber - 1]?.title ?? "Investigación"}`}>
       <WorkflowStageNav items={stages} language={language} />
-      <div className="grid gap-6 xl:grid-cols-[minmax(240px,0.34fr)_minmax(0,1fr)]">
-        <ProjectSummarySidebar
+      <div className={project.conversationalIntake && currentStep === "define" ? "grid gap-6" : "grid gap-6 xl:grid-cols-[minmax(240px,0.34fr)_minmax(0,1fr)]"}>
+        {!(project.conversationalIntake && currentStep === "define") && <ProjectSummarySidebar
           area={areaLabel}
           context={project.intake?.researchScope ?? project.country}
           degreeLevel={project.degreeLevel}
@@ -58,11 +58,11 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           progress={progress}
           selectedSources={selectedReferenceCount}
           title={project.title}
-        />
+        />}
         <main className="grid gap-6">
-          {currentStep === "define" ? (
+          {currentStep === "define" && project.conversationalIntake ? <ConversationalIntake projectId={id} ownerId={user.id} /> : currentStep === "define" ? (
             <section className="surface-panel rounded-[32px] p-6 sm:p-8">
-              <p className="brand-kicker">Paso 2 · Define tu investigación</p>
+              <p className="brand-kicker">Paso 1 · Define tu investigación · editor histórico</p>
               <h2 className="mt-3 font-[var(--font-heading)] text-2xl font-semibold">Delimitación científica</h2>
               <p className="mt-3 mb-6 text-sm leading-7 text-[var(--color-muted)]">Convierte la idea en una definición investigable. Todos los campos se guardan en tu borrador y puedes volver a editarlos.</p>
               <IntakeForm project={project} language={language} />
@@ -70,6 +70,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           ) : null}
           {currentStep === "evidence" ? (
             <>
+              {project.conversationalIntake && !project.definitionConfirmed ? <p role="status">Hay cambios sin confirmar. Revisa tu definición antes de buscar evidencia.</p> : <>
               <ReferenceSearchPanel
                 hasIntakeMinimum={hasIntakeMinimum}
                 intakeSnapshot={{ topic: project.intake?.topic ?? "", problemContext: project.intake?.problemContext ?? "", targetPopulation: project.intake?.targetPopulation ?? "" }}
@@ -80,6 +81,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 status={project.status}
               />
               <PrivatePdfUpload projectId={id} />
+              </>}
             </>
           ) : null}
           {currentStep === "plan" ? (

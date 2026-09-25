@@ -43,7 +43,8 @@ export async function syncSourceSelectionToDraft(tx: Prisma.TransactionClient, p
   const contentHash = fingerprint(content);
   if (contentHash === project.draft.contentHash) return;
   const scopes = [...new Set([...staleScopes(project.draft.staleScopesJson), "EVIDENCE_PACK", "RESEARCH_DESIGN", "SECTIONS", "CONSISTENCY_MATRIX", "ASSETS"] )];
-  await tx.projectDraft.update({ where: { id: project.draft.id }, data: { contentJson: json(content), contentHash, revision: { increment: 1 }, confirmedRevision: project.draft.revision + 1, staleScopesJson: json(scopes), lastInvalidatedAt: new Date() } });
+  const confirmedRevision = previousContent.researchDefinition && project.draft.confirmedRevision !== project.draft.revision ? project.draft.confirmedRevision : project.draft.revision + 1;
+  await tx.projectDraft.update({ where: { id: project.draft.id }, data: { contentJson: json(content), contentHash, revision: { increment: 1 }, confirmedRevision, staleScopesJson: json(scopes), lastInvalidatedAt: new Date() } });
 }
 async function owned(tx: Prisma.TransactionClient, userId: string, projectId: string) {
   await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} AND "userId" = ${userId} FOR UPDATE`;

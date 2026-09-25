@@ -11,6 +11,8 @@ export type ProjectView = {
   id: string; title: string; catalogTopicId: string | null; country: string;
   degreeLevel: DegreeLevel; status: string; topicAreaLabel: string | null;
   activeBlueprintVersionId: string | null; intake: IntakeView | null;
+  conversationalIntake?: boolean;
+  definitionConfirmed?: boolean;
   draft: { revision: number; staleScopesJson: unknown } | null;
   knowledgeFields: Array<{ customLabel: string | null; concept: { labelEs: string | null } | null }>;
 };
@@ -23,6 +25,7 @@ export type DetailView = {
 };
 export type TopicView = { project: Pick<ProjectView, "id" | "title" | "topicAreaLabel"> & {
   topicSelectionStatus: string; topicSeedText: string | null;
+  conversationalIntake?: boolean;
   topicOriginType: ComponentProps<typeof TopicStage>["topicOriginType"];
 }; suggestions: ComponentProps<typeof TopicStage>["suggestions"] };
 export type PageContract = {

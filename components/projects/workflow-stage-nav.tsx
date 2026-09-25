@@ -20,7 +20,7 @@ export function WorkflowStageNav({ items, language }: WorkflowStageNavProps) {
 
   return (
     <nav className="surface-panel rounded-[28px] p-3 lg:sticky lg:top-24 lg:z-20">
-      <div className="grid gap-2 sm:grid-cols-4">
+      <div className={`grid gap-2 ${items.length === 3 ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
         {items.map((item) => (
           <a
             aria-current={item.current ? "step" : undefined}

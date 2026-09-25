@@ -1,4 +1,4 @@
-import { CreateProjectForm } from "@/components/projects/create-project-form";
+import { ConversationalProjectCreate } from "@/components/projects/conversational-project-create";
 import { ProjectShell } from "@/components/projects/project-shell";
 import { requireCurrentUser } from "@/lib/backend-http";
 
@@ -41,13 +41,10 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
   return (
     <ProjectShell
       title="Crear proyecto"
-      description="Completa el contexto inicial. Podras definir el problema y la poblacion en el siguiente tramo."
+      description="Define tu investigación con una conversación breve y una revisión explícita."
     >
       <section className="surface-panel rounded-[34px] p-4 sm:p-8">
-        <CreateProjectForm
-          initialInterestText={initialInterestText}
-          language={language}
-        />
+        <ConversationalProjectCreate initialIdea={initialInterestText} />
       </section>
     </ProjectShell>
   );

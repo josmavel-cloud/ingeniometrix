@@ -46,7 +46,7 @@ export function usePersistedIntake(projectId: string, form: DraftIntake, setForm
     setMessage(`Definición confirmada · revisión ${saved.revision}`);
     return saved.revision;
   }, [projectId, save]);
-  useEffect(() => registerDraftFlush(projectId, () => confirm(currentForm.current)), [projectId, confirm]);
+  useEffect(() => registerDraftFlush(projectId, async () => (await save(currentForm.current)).revision), [projectId, save]);
   useEffect(() => {
     if (!ready || error || queue.current?.matches(form)) return;
     setMessage("Cambios pendientes de guardar");
@@ -59,7 +59,7 @@ export function usePersistedIntake(projectId: string, form: DraftIntake, setForm
     };
     const guardNavigation = (event: MouseEvent) => {
       const anchor = event.target instanceof Element ? event.target.closest("a[href]") as HTMLAnchorElement | null : null;
-      if (anchor && new URL(anchor.href).pathname !== location.pathname && queue.current && !queue.current.matches(currentForm.current)) {
+      if (anchor && anchor.href !== location.href && queue.current && !queue.current.matches(currentForm.current)) {
         event.preventDefault(); event.stopPropagation();
         void save(currentForm.current).then(() => { location.assign(anchor.href); }).catch(() => undefined);
       }

@@ -31,6 +31,8 @@ export async function ownedPageData(userId: string, kind: string, id?: string) {
       project: { id: p.id, title: p.title, catalogTopicId: p.catalogTopicId, country: p.country,
         degreeLevel: p.degreeLevel, status: p.status, topicAreaLabel: p.topicAreaLabel,
         activeBlueprintVersionId: p.activeBlueprintVersionId, intake: p.intake,
+        conversationalIntake: Boolean((p.draft?.contentJson as Record<string, unknown> | null)?.researchDefinition),
+        definitionConfirmed: Boolean(p.intake?.confirmedDefinitionJson && p.draft?.revision === p.draft?.confirmedRevision),
         draft: p.draft ? { revision: p.draft.revision, staleScopesJson: p.draft.staleScopesJson } : null,
         knowledgeFields: p.knowledgeFields.map((f) => ({ customLabel: f.customLabel, concept: f.concept ? { labelEs: f.concept.labelEs } : null })) },
       references, initialReferenceSearchSnapshot,
@@ -42,6 +44,7 @@ export async function ownedPageData(userId: string, kind: string, id?: string) {
   if (kind === "topic") {
     const project = await getTopicProjectForUser(userId, id);
     return { project: { id: project.id, title: project.title, topicAreaLabel: project.topicAreaLabel,
+      conversationalIntake: Boolean((p.draft?.contentJson as Record<string, unknown> | null)?.researchDefinition),
       topicSelectionStatus: project.topicSelectionStatus, topicOriginType: project.topicOriginType, topicSeedText: project.topicSeedText },
       suggestions: await listTopicSuggestionsForUser(userId, id) } satisfies PageContract["topic"];
   }

@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { TopicStage } from "@/components/projects/topic-stage";
 import { ProjectShell } from "@/components/projects/project-shell";
@@ -13,8 +13,9 @@ export default async function TopicStagePage({ params }: TopicStagePageProps) {
   const user = await requireCurrentUser();
   const { id } = await params;
 
+  const { project, suggestions } = await pageData("topic", id);
+  if (project.conversationalIntake) redirect(`/projects/${id}?step=define`);
   try {
-    const { project, suggestions } = await pageData("topic", id);
 
     return (
       <ProjectShell
