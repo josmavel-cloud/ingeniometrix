@@ -45,3 +45,14 @@ concepts and unknown methodology/data remain excluded.
 - Prisma validate, TypeScript, full Next build, frontend-only package build
   (24 traces; no backend dependencies), worker bundle and `git diff --check`
   PASS. Existing Turbopack broad-pattern warnings are unrelated.
+
+## Staging deployment
+
+Feature commit `819bb8e` was pushed normally. The isolated staging runtime
+image was rebuilt, then only app and worker were recreated. DB and proxy kept
+their prior start times; Funnel was unchanged. Local app liveness/readiness,
+Funnel readiness and staging web returned HTTP 200; the worker returned a
+fresh IDLE heartbeat and passed its container healthcheck. No schema migration
+was needed and the reference project was not modified. The public POST search
+endpoint was not invoked because it has no provider-free dry-run mode; the
+canonical load/freeze path was exercised against the isolated test DB instead.

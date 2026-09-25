@@ -12,6 +12,13 @@ have not been redesigned. The owner staging fixture remains read-only; no
 search was executed. See the
 [Phase 2.1 report](docs/quality/rc4-phase2-1-search-intent.md).
 
+Commit `819bb8e` is on the remote feature branch. The isolated staging app and
+worker were rebuilt/recreated; both are healthy, local/Funnel readiness is 200,
+and the public staging web is 200. DB and proxy were not restarted. The real
+reference project's v2 intent was derived read-only and preserved accepted
+Lima context without a retrieval call. Public POST search was intentionally
+not invoked because there is no provider-free dry-run route.
+
 Five pre-existing staging-entitlement files remain outside this task's commits.
 
 ## Latest checkpoint - Phase 1 intake UX refinement (2026-09-25)
