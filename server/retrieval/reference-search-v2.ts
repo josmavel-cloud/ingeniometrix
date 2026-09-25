@@ -13,6 +13,9 @@ import { prisma } from "@/lib/prisma";
 import { getConfiguredLlmProvider } from "@/llm";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import type { IntakeInput } from "@/server/projects/project-validation";
+import { definitionSchema } from "@/lib/conversational-intake";
+import { fingerprint } from "@/server/mvp/job-execution-context";
+import { freezeSearchInput, searchInputIsStale, type SearchInput, type SearchInputTrace } from "./search-intent-service";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
 
 import {
@@ -71,6 +74,8 @@ export type ReferenceScoreBreakdown = {
 
 export type ProjectReferenceSearchSnapshot = {
   referenceSearchVersion: "v2";
+  inputTrace?: SearchInputTrace;
+  stale?: boolean;
   batchKind?: SourceDiscoveryBatchKind;
   savedAt: string;
   searchQuery: string;
@@ -774,28 +779,6 @@ async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<Refere
   }
 }
 
-function normalizeIntakeForSearch(intake: {
-  topic: string;
-  problemContext: string | null;
-  researchLine: string | null;
-  academicConstraints: string | null;
-  targetPopulation: string | null;
-  availableData: string | null;
-  preferredMethodology: string | null;
-  advisorNotes: string | null;
-}): IntakeInput {
-  return {
-    topic: intake.topic,
-    problemContext: intake.problemContext ?? undefined,
-    researchLine: intake.researchLine ?? undefined,
-    academicConstraints: intake.academicConstraints ?? undefined,
-    targetPopulation: intake.targetPopulation ?? undefined,
-    availableData: intake.availableData ?? undefined,
-    preferredMethodology: intake.preferredMethodology ?? undefined,
-    advisorNotes: intake.advisorNotes ?? undefined,
-  };
-}
-
 function getRecencyBand(year: number | null) {
   const currentYear = new Date().getFullYear();
 
@@ -1214,6 +1197,7 @@ function buildSuggestedSelectionOrders(input: {
 export async function searchProjectReferencesV2(
   userId: string,
   projectId: string,
+  input: SearchInput,
   options?: {
     desiredTotal?: number;
     batchKind?: SourceDiscoveryBatchKind;
@@ -1232,9 +1216,6 @@ export async function searchProjectReferencesV2(
         id: projectId,
         userId,
       },
-      include: {
-        intake: true,
-      },
     }),
     prisma.user.findUnique({
       where: { id: userId },
@@ -1251,9 +1232,10 @@ export async function searchProjectReferencesV2(
     }),
   ]);
 
-  if (!project || !project.intake) {
+  if (!project || input.intent.projectId !== projectId || input.intent.readiness !== "READY") {
     throw new Error("El proyecto no existe o aun no tiene intake.");
   }
+  const inputTrace = await freezeSearchInput(userId, input);
 
   const baseSelectedReferenceIds = existingProjectReferences
     .filter((item) => item.selected)
@@ -1266,11 +1248,11 @@ export async function searchProjectReferencesV2(
     projectLanguage: project.language,
   });
   const searchMetadata = await buildReferenceSearchMetadata(
-    normalizeIntakeForSearch(project.intake),
+    input.plannerInput,
   );
   const searchQuery = searchMetadata.normalizedTopic;
   const openAlexQueryPack = searchMetadata.openAlexQueryPack ??
-    buildOpenAlexQueryPack(searchMetadata.keywordGroups, normalizeIntakeForSearch(project.intake));
+    buildOpenAlexQueryPack(searchMetadata.keywordGroups, input.plannerInput);
   const exhaustiveQueryStages = [
     {
       stage: "necessary_only" as const,
@@ -1620,6 +1602,7 @@ export async function searchProjectReferencesV2(
 
   const searchSnapshot: ProjectReferenceSearchSnapshot = {
     referenceSearchVersion: "v2",
+    inputTrace,
     batchKind,
     savedAt: new Date().toISOString(),
     searchQuery,
@@ -1646,6 +1629,7 @@ export async function searchProjectReferencesV2(
     projectId: project.id,
     payloadJson: {
       referenceSearchVersion: "v2",
+      inputTrace,
       batchKind,
       searchQuery,
       searchIntent: searchMetadata.intentSummary,
@@ -1694,5 +1678,10 @@ export async function getLatestProjectReferenceSearchSnapshot(projectId: string)
     return null;
   }
 
-  return payload.searchSnapshot ?? null;
+  const snapshot = payload.searchSnapshot;
+  if (!snapshot?.inputTrace || snapshot.inputTrace.confirmedDraftRevision === null) return snapshot ?? null;
+  const draft = await prisma.projectDraft.findUnique({ where: { projectId } });
+  const raw = (draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
+  const currentHash = raw ? fingerprint(definitionSchema.parse(raw)) : null;
+  return { ...snapshot, stale: searchInputIsStale(snapshot.inputTrace, { revision: draft?.revision ?? null, definitionHash: currentHash }) };
 }

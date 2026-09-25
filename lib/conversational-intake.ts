@@ -56,14 +56,16 @@ export function projectIntake(d: ResearchDefinition) {
 }
 export function searchIntent(projectId: string, revision: number, definitionHash: string, d: ResearchDefinition) {
   const value = (key: DefinitionField) => usable(d.fields[key]) ? d.fields[key].value : null;
-  return { schemaVersion: "research-search-intent.v1", projectId, confirmedDraftRevision: revision, definitionHash,
+  return { schemaVersion: "research-search-intent.v2" as const, sourceKind: "CONFIRMED_DEFINITION" as const, projectId, confirmedDraftRevision: revision, definitionHash,
     userOriginalIdea: value("originalIdea"), coreProblem: value("problem"), topic: value("topic"), coreConcepts: value("concepts") ? [value("concepts")] : [],
-    objectOrPopulation: value("object"), context: value("context"), purpose: value("purpose"), intendedOutput: value("intendedOutput"),
+    objectOrPopulation: value("object"), context: value("context"), scope: value("scope"), purpose: value("purpose"), intendedOutput: value("intendedOutput"),
     methodologicalSignals: value("methodPreference") ? [{ kind: "USER_PREFERENCE", value: value("methodPreference") }] : [],
     explicitConstraints: value("constraints") ? [value("constraints")] : [], taxonomy: value("taxonomy"), academicLevel: value("academicLevel"),
     unresolvedFields: DEFINITION_FIELDS.filter(k => !usable(d.fields[k])).map(field => ({ field, knowledge: d.fields[field].knowledge })),
+    unresolvedAmbiguities: d.ambiguities.filter(a => !a.resolved).map(a => ({ field: a.field, reason: a.question, blocksSearch: a.blocksSearch })),
     fieldProvenance: Object.fromEntries(DEFINITION_FIELDS.filter(k => usable(d.fields[k])).map(k => [k, d.fields[k]])), readiness: definitionReadiness(d).evidenceSearch.status };
 }
+export type ConfirmedResearchSearchIntent = ReturnType<typeof searchIntent>;
 
 export const definitionActionSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("EDIT"), field: fieldKeySchema, value: z.string().max(8000), knowledge: z.enum(["KNOWN", "UNKNOWN", "NOT_APPLICABLE"]) }).strict(),

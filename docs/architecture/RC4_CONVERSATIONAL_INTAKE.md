@@ -40,8 +40,23 @@ There are at most 12 model turns and 200 total input/action turns per project.
 Readiness explains missing topic/object/concepts and explicitly blocking
 ambiguities. Method, theory, university, sample size and dataset are not required
 for search. Scientific-design readiness always requires the separate evidence/G1
-review. Search-route change is only a confirmation precondition; its query planner,
-provider calls, translation, ranking and admission are unchanged.
+review. Phase 2.1 supersedes the former search-route-only precondition. Both the
+public route and source-discovery service now load `ResearchSearchIntent` v2 from
+the confirmed Intake snapshot and pass an explicit search input to
+reference-search-v2. New-project context reaches the unchanged planner adapter;
+unknowns, unaccepted proposals and operational country do not. Legacy projects
+use `LEGACY_COMPATIBILITY` with `LEGACY_UNVERIFIED` provenance, never invented
+confirmation. Query-planner, provider, ranking and admission algorithms are
+unchanged; query quality is a separate gate.
+
+Before provider/model work, `SEARCH_INPUT_FROZEN` stores a private, historical
+copy of the versioned intent and exact planner input in AuditLog. It records
+intake ID, confirmed draft revision, definition hash, intent hash, engine and
+planner versions, attempt ID and timestamp. `SEARCH_COMPLETED` carries the same
+trace. A later confirmation cannot overwrite the old snapshot; readers compute
+staleness from the current draft revision/hash. Unresolved
+ambiguity metadata is retained but never used as query text. No DB migration
+was required.
 
 ## Model governance
 

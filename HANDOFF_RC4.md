@@ -1,5 +1,19 @@
 # RC4 handoff
 
+## Latest checkpoint - Phase 2.1 search-intent continuity (2026-09-25)
+
+The public search route and source-discovery service now pass an explicit
+ResearchSearchIntent v2 to reference-search-v2. New projects consume only the
+confirmed Intake snapshot; legacy projects use a marked compatibility adapter.
+A private `SEARCH_INPUT_FROZEN` audit snapshot precedes provider work and
+records revision/hash, intent hash and engine/planner version. Completed search
+events carry the same trace. Query planning, providers, ranking and admission
+have not been redesigned. The owner staging fixture remains read-only; no
+search was executed. See the
+[Phase 2.1 report](docs/quality/rc4-phase2-1-search-intent.md).
+
+Five pre-existing staging-entitlement files remain outside this task's commits.
+
 ## Latest checkpoint - Phase 1 intake UX refinement (2026-09-25)
 
 The conversational definition step now presents a wide chat, a bottom composer

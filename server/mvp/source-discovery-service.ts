@@ -12,6 +12,7 @@ import {
   type SearchProjectReferencesV2Result,
   type SourceDiscoveryBatchKind,
 } from "@/server/retrieval/reference-search-v2";
+import { loadSearchInput } from "@/server/retrieval/search-intent-service";
 import {
   buildMvpApiUsageReport,
   captureMvpApiUsageSnapshot,
@@ -88,6 +89,7 @@ export async function runMvpSourceDiscovery(
   }
 
   const batchKind = options?.batchKind ?? "initial";
+  const searchInput = await loadSearchInput(userId, projectId);
   const runId = `mvp-source-discovery-${batchKind}-${randomUUID()}`;
   const usageBefore = await captureMvpApiUsageSnapshot();
 
@@ -101,7 +103,7 @@ export async function runMvpSourceDiscovery(
         source: "runMvpSourceDiscovery",
       },
       () =>
-        searchProjectReferencesV2(userId, projectId, {
+        searchProjectReferencesV2(userId, projectId, searchInput, {
           desiredTotal: options?.desiredTotal ?? (batchKind === "more" ? MAX_SELECTED_REFERENCES : 5),
           batchKind,
         }),
