@@ -56,5 +56,21 @@ Validation on 2026-09-25:
 - No application model calls, retrieval, scientific generation or payments were
   made by these tests.
 
-Staging owner UX retest is still required for live assistant quality. Deployment
-evidence and any external blocker are recorded separately in the handoff.
+## Staging deployment
+
+Feature commit `a3f9fa0` pushed normally. Only the isolated G5 staging app was
+rebuilt/recreated; DB, worker and proxy start times and restart counts were
+unchanged. App and Funnel liveness/readiness returned 200. Runtime has the
+configured model key without exposing its value.
+
+Vercel Preview `dpl_9TWc6MzM1TJ7buF93nLfmKo6Pzn8` completed as Ready and
+was assigned only to https://staging.ingeniometrix.com. The public homepage,
+workspace, new-project page and same-origin session API return 200. The public
+frontend intentionally hides `/api/health/*`; Funnel backend health is 200.
+Frontend package tracing found 24 production traces with no Prisma, worker,
+private storage or scientific backend dependency.
+
+Staging owner UX retest is still required for live assistant quality, initial
+proposal helpfulness, actual question count and mobile feel. Do not infer a
+scientific acceptance from the deterministic simulations. No retrieval or plan
+generation was run.

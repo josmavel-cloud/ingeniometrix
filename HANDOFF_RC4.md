@@ -1,5 +1,42 @@
 # RC4 handoff
 
+## Latest checkpoint - Phase 1 intake UX refinement (2026-09-25)
+
+The conversational definition step now presents a wide chat, a bottom composer
+with Enter/Shift+Enter behavior, and a secondary six-field summary. Advanced
+fields remain editable under "Más detalles". The existing Ingeniometrix logo,
+palette, typography, surfaces and button system were retained. Project header
+and navigation are compact only while a new conversational project is on Define.
+
+Fresh projects request one initial, idempotent advisor interpretation of the
+owner's idea. Prompt `conversational-academic-intake` v2.0.0 proposes first;
+a deterministic filter permits at most three material clarifications. An
+unreviewed proposal can suppress a redundant question but cannot become a
+confirmed field or make search readiness pass. ProjectDraft/Intake authority,
+provenance, ETag, explicit confirmation and SearchIntent are unchanged.
+
+Validation: three simulated cases ask 0 / 1 / at most 3 questions; four-discipline
+service checks PASS; 62/62 existing offline suites PASS; local Chrome desktop
+and mobile PASS; Prisma, TypeScript, full/worker builds and frontend-only build
+PASS, with 24 production traces and no backend/private module leaks. All model
+outputs in these checks were simulated; no application model calls, retrieval,
+scientific generation or payments were made.
+
+Commit `a3f9fa0` was pushed normally. The isolated staging app was rebuilt and
+recreated; local/Funnel liveness and readiness are 200. DB, worker and proxy
+retain their original start times and zero restarts. New Vercel Preview
+`dpl_9TWc6MzM1TJ7buF93nLfmKo6Pzn8` is Ready and the alias
+https://staging.ingeniometrix.com points to it. Homepage, workspace, new-project
+page and same-origin session API respond 200. Public frontend health routes
+intentionally return 404; backend health is checked through Funnel.
+
+Owner must now test live advisor quality and visual flow manually in staging.
+Use the [UX refinement report](docs/quality/rc4-phase1-ux-refinement.md) and
+[Phase 1 manual checklist](docs/runbooks/RC4_PHASE1_STAGING.md). Do not resume
+G5 scientific E2E until this acceptance passes; retrieval quality remains the
+separate Phase 2 issue. Existing staging entitlement work in five files remains
+unstaged and untouched.
+
 ## Latest checkpoint - conversational intake Phase 1 (2026-09-25)
 
 Implementation Gates 1-4 and software validation are complete. **Frontend staging
