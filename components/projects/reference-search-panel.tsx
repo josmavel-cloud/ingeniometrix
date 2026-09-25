@@ -31,6 +31,7 @@ type ReferenceListItem = {
     matchedQuery: string;
     matchedQueryStage: "necessary_only" | "complementary_boosted" | "optional_backup";
   } | null;
+  admission?: { state: "ADMITTED" | "NEEDS_INSPECTION" | "REJECTED_OFF_TOPIC" };
   reference: {
     id: string;
     title: string;
@@ -138,34 +139,18 @@ function mergeReferenceLists(
   }
 
   const currentByReferenceId = new Map(
-    current.map((item, index) => [item.reference.id, { item, index }] as const),
+    current.map((item) => [item.reference.id, item] as const),
   );
-  const merged = [...current];
-
-  for (const nextItem of incoming) {
-    const existing = currentByReferenceId.get(nextItem.reference.id);
-
-    if (!existing) {
-      merged.push(nextItem);
-      continue;
-    }
-
-    const preservedSelection =
-      existing.item.selected || existing.item.selectedOrder !== null
-        ? {
-            selected: existing.item.selected,
-            selectedOrder: existing.item.selectedOrder,
-          }
-        : {
-            selected: nextItem.selected,
-            selectedOrder: nextItem.selectedOrder,
-          };
-
-    merged[existing.index] = {
-      ...nextItem,
-      ...preservedSelection,
-    };
-  }
+  // A fresh recommendation response is authoritative. Retain only explicit
+  // in-progress selections from the previous view, never stale candidates.
+  const merged = incoming.map((item) => {
+    const existing = currentByReferenceId.get(item.reference.id);
+    return existing?.selected
+      ? { ...item, selected: true, selectedOrder: existing.selectedOrder }
+      : item;
+  });
+  const incomingIds = new Set(incoming.map((item) => item.reference.id));
+  merged.push(...current.filter((item) => item.selected && !incomingIds.has(item.reference.id)));
 
   return merged;
 }
@@ -607,10 +592,10 @@ export function ReferenceSearchPanel({
       {references.length === 0 ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
           <p className="font-[var(--font-heading)] text-xl font-semibold text-slate-950">
-            {copy.emptyTitle}
+            {searchSnapshot ? copy.noAdmitted : copy.emptyTitle}
           </p>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            {copy.emptyBody}
+            {searchSnapshot ? copy.noResults : copy.emptyBody}
           </p>
         </div>
       ) : (
@@ -638,6 +623,11 @@ export function ReferenceSearchPanel({
               </div>
 
               <div className="mt-4">
+                {item.selected && item.admission && item.admission.state !== "ADMITTED" ? (
+                  <p className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+                    {copy.selectionConflict}
+                  </p>
+                ) : null}
                 <h3 className="font-[var(--font-heading)] text-lg font-semibold text-slate-950">
                   {item.reference.translatedTitle ?? item.reference.title}
                 </h3>

@@ -315,7 +315,9 @@ const ES_COPY = {
     noNew:
       "No encontramos referencias nuevas en este intento, pero mantuvimos las fuentes ya cargadas en el proyecto.",
     noResults:
-      "No encontramos referencias con esta formulacion. Ajusta la definicion o intenta con un tema mas concreto.",
+      "No encontramos fuentes suficientemente pertinentes en este lote. Puedes revisar la definicion e intentar otra busqueda mas adelante.",
+    noAdmitted: "No encontramos fuentes suficientemente pertinentes en este lote.",
+    selectionConflict: "Esta fuente fue seleccionada anteriormente; conviene revisar su pertinencia antes de usarla.",
     maxSelected: (max: number) => `Puedes seleccionar hasta ${max} fuentes en esta etapa.`,
     saveRange: (min: number, max: number) =>
       `Debes seleccionar entre ${min} y ${max} fuentes para continuar.`,
@@ -666,7 +668,9 @@ const EN_COPY: typeof ES_COPY = {
     noNew:
       "No new references were found in this attempt, but the existing project sources were kept.",
     noResults:
-      "No references were found with this wording. Adjust the intake or try a more concrete topic.",
+      "We found no sufficiently relevant sources in this batch. You can review the definition and search again later.",
+    noAdmitted: "We found no sufficiently relevant sources in this batch.",
+    selectionConflict: "This source was selected earlier; review its relevance before using it.",
     maxSelected: (max: number) => `You can select up to ${max} sources at this stage.`,
     saveRange: (min: number, max: number) =>
       `You must select between ${min} and ${max} sources to continue.`,

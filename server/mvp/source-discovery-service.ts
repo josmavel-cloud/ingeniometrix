@@ -35,22 +35,14 @@ export type MvpSourceDiscoveryResult = {
   };
 };
 
-function suggestedSelectionIds(result: SearchProjectReferencesV2Result) {
-  const suggested = result.searchSnapshot.references
-    .filter((reference) => reference.suggestedSelectedOrder !== null)
+export function suggestedSelectionIds(result: SearchProjectReferencesV2Result) {
+  return result.searchSnapshot.references
+    .filter((reference) => reference.admission?.state === "ADMITTED" && reference.suggestedSelectedOrder !== null)
     .sort(
       (left, right) =>
         (left.suggestedSelectedOrder ?? 999) - (right.suggestedSelectedOrder ?? 999),
     )
-    .map((reference) => reference.referenceId);
-
-  if (suggested.length > 0) {
-    return suggested.slice(0, MAX_SELECTED_REFERENCES);
-  }
-
-  return result.searchSnapshot.references
-    .sort((left, right) => right.relevanceScore - left.relevanceScore)
-    .slice(0, MIN_SELECTED_REFERENCES)
+    .slice(0, MAX_SELECTED_REFERENCES)
     .map((reference) => reference.referenceId);
 }
 
@@ -117,7 +109,7 @@ export async function runMvpSourceDiscovery(
       where: { projectId },
     });
     const suggestedIds = suggestedSelectionIds(search);
-    const enoughCandidates = candidateSourceCount >= MIN_SELECTED_REFERENCES;
+    const enoughCandidates = search.searchSnapshot.references.length >= MIN_SELECTED_REFERENCES;
 
     return {
       project_id: projectId,
@@ -129,7 +121,7 @@ export async function runMvpSourceDiscovery(
       blockers: enoughCandidates
         ? []
         : [
-            `Discovery encontró ${candidateSourceCount} candidato(s); se requieren al menos ${MIN_SELECTED_REFERENCES} para selección MVP.`,
+            `Discovery admitió ${search.searchSnapshot.references.length} fuente(s) pertinente(s); se requieren al menos ${MIN_SELECTED_REFERENCES} para selección MVP.`,
           ],
       warnings: search.totalResults === 0 ? ["No se persistieron candidatos desde los proveedores."] : [],
       next_action_es: enoughCandidates

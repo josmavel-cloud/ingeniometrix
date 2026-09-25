@@ -26,6 +26,7 @@ import {
 } from "./crossref-client";
 import { extractAccessSignals, verifyPdfAccess } from "./reference-access";
 import { OPENALEX_QUALITY_FILTERS, searchOpenAlexWorks } from "./openalex-client";
+import { admittedOnly, decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
 
 export type ReferenceKeywordGroup = {
   label: string;
@@ -87,10 +88,21 @@ export type ProjectReferenceSearchSnapshot = {
   };
   baseSelectedReferenceIds: string[];
   metadata: ReferenceSearchV2Metadata;
+  admissionPolicyVersion?: typeof REFERENCE_ADMISSION_POLICY_VERSION;
+  candidateAdmissions?: Array<{
+    candidateKey: string;
+    title: string;
+    doi: string | null;
+    year: number | null;
+    relevanceScore: number;
+    scoreBreakdown: ReferenceScoreBreakdown;
+    admission: ReferenceAdmission;
+  }>;
   references: Array<{
     referenceId: string;
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
+    admission?: ReferenceAdmission;
     suggestedSelectedOrder: number | null;
     pdfUrl?: string | null;
     pdfAccessible?: boolean;
@@ -172,6 +184,7 @@ type RankedCandidate = {
   crossrefMetadata: CrossrefMessage | null;
   score: number;
   scoreBreakdown: ReferenceScoreBreakdown;
+  admission: ReferenceAdmission;
   pdfUrl: string | null;
   pdfAccessible: boolean;
 };
@@ -867,7 +880,7 @@ function detectVenueQualityPenalty(venue: string | null) {
   };
 }
 
-function buildRelevanceScore(input: {
+export function buildRelevanceScore(input: {
   title: string;
   abstract: string | null;
   matchedQuery: string;
@@ -1119,7 +1132,7 @@ function computeLocalLanguagePriority(input: {
   );
 }
 
-function pickDiverseCandidates(input: {
+export function pickDiverseCandidates(input: {
   rankedCandidates: RankedCandidate[];
   desiredTotal: number;
   metadata: ReferenceSearchV2Metadata;
@@ -1457,13 +1470,19 @@ export async function searchProjectReferencesV2(
       crossrefMetadata,
       score: relevance.score,
       scoreBreakdown: relevance.breakdown,
+      admission: decideReferenceAdmission({
+        title: resolvedTitle,
+        abstract: resolvedAbstract,
+        score: relevance.score,
+        breakdown: relevance.breakdown,
+      }),
       pdfUrl: pdfAccessible ? accessSignals.pdfUrl : null,
       pdfAccessible,
     });
   }
 
   const selectedCandidates = pickDiverseCandidates({
-    rankedCandidates,
+    rankedCandidates: admittedOnly(rankedCandidates),
     desiredTotal,
     metadata: searchMetadata,
     activeLanguage: languageContext.activeLanguage,
@@ -1475,6 +1494,7 @@ export async function searchProjectReferencesV2(
     referenceId: string;
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
+    admission: ReferenceAdmission;
     pdfUrl: string | null;
     pdfAccessible: boolean;
   }> = [];
@@ -1573,6 +1593,7 @@ export async function searchProjectReferencesV2(
       referenceId: reference.id,
       relevanceScore: ranked.score,
       scoreBreakdown: ranked.scoreBreakdown,
+      admission: ranked.admission,
       pdfUrl: ranked.pdfUrl,
       pdfAccessible: ranked.pdfAccessible,
     });
@@ -1611,10 +1632,21 @@ export async function searchProjectReferencesV2(
     providerBreakdown,
     baseSelectedReferenceIds,
     metadata: searchMetadata,
+    admissionPolicyVersion: REFERENCE_ADMISSION_POLICY_VERSION,
+    candidateAdmissions: rankedCandidates.map((item) => ({
+      candidateKey: buildDedupKey(item.candidate),
+      title: item.resolvedTitle,
+      doi: item.candidate.doi,
+      year: item.year,
+      relevanceScore: item.score,
+      scoreBreakdown: item.scoreBreakdown,
+      admission: item.admission,
+    })),
     references: persistedResults.map((item) => ({
       referenceId: item.referenceId,
       relevanceScore: item.relevanceScore,
       scoreBreakdown: item.scoreBreakdown,
+      admission: item.admission,
       suggestedSelectedOrder: suggestedSelectionOrders.get(item.referenceId) ?? null,
       pdfUrl: item.pdfUrl,
       pdfAccessible: item.pdfAccessible,

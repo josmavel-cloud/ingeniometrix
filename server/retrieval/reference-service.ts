@@ -23,11 +23,11 @@ import {
 } from "./crossref-client";
 import { extractAccessSignals } from "./reference-access";
 import {
-  ensureReferenceTranslationsForLanguage,
   getCachedTranslation,
   resolveReferenceSourceLanguage,
 } from "./reference-translation-service";
 import { getLatestProjectReferenceSearchSnapshot } from "./reference-search-v2";
+import { decideReferenceAdmission } from "./reference-admission";
 import { buildReferenceSearchPlan } from "./search-query-planner";
 import { searchOpenAlexWorks } from "./openalex-client";
 
@@ -576,43 +576,51 @@ export async function listProjectReferences(
           .map((item) => referencesById.get(item.referenceId))
           .filter((item): item is (typeof references)[number] => Boolean(item))
       : references;
-  const visibleReferences = orderedReferences.slice(0, MAX_SELECTED_REFERENCES);
+  // Historical snapshots stay immutable. Re-evaluate only their current
+  // presentation, and always retain explicit human selections.
+  const visibleReferences = [...references.filter((item) => item.selected), ...orderedReferences]
+    .filter((item, index, all) => all.findIndex((other) => other.referenceId === item.referenceId) === index)
+    .filter((item) => {
+      if (item.selected) return true;
+      const entry = scoreBreakdownByReferenceId.get(item.referenceId);
+      return decideReferenceAdmission({
+        title: item.reference.title,
+        abstract: item.reference.abstract,
+        score: entry?.relevanceScore ?? item.relevanceScore,
+        breakdown: entry?.scoreBreakdown ?? null,
+      }).state === "ADMITTED";
+    })
+    .slice(0, MAX_SELECTED_REFERENCES);
 
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,
     projectLanguage: project.language,
     languageOverride: options?.languageOverride,
   });
-  const translationResult = await ensureReferenceTranslationsForLanguage({
-    references: visibleReferences.map((item) => ({
-      id: item.reference.id,
-      title: item.reference.title,
-      abstract: item.reference.abstract,
-      rawOpenAlexJson: item.reference.rawOpenAlexJson,
-    })),
-    targetLanguage: languageContext.activeLanguage,
-  });
-
-  return Promise.all(visibleReferences.map(async (item) => {
+  // Listing is read-only: translation/language model work belongs to an
+  // explicit acquisition step, never a recommendation GET or page refresh.
+  return visibleReferences.map((item) => {
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: item.reference.rawOpenAlexJson,
       rawCrossrefJson: item.reference.rawCrossrefJson,
       landingPageUrl: item.reference.landingPageUrl,
       doi: item.reference.doi,
     });
-    const sourceLanguage =
-      translationResult.sourceLanguages.get(item.reference.id) ??
-      resolveReferenceSourceLanguage({
+    const sourceLanguage = resolveReferenceSourceLanguage({
         id: item.reference.id,
         title: item.reference.title,
         abstract: item.reference.abstract,
         rawOpenAlexJson: item.reference.rawOpenAlexJson,
       });
-    const cachedTranslation =
-      translationResult.translations.get(item.reference.id) ??
-      getCachedTranslation(item.reference.rawOpenAlexJson, languageContext.activeLanguage);
+    const cachedTranslation = getCachedTranslation(item.reference.rawOpenAlexJson, languageContext.activeLanguage);
     const snapshotEntry = scoreBreakdownByReferenceId.get(item.reference.id);
-    const suggestedSelectedOrder = applySuggestedSelection
+    const admission = decideReferenceAdmission({
+      title: item.reference.title,
+      abstract: item.reference.abstract,
+      score: snapshotEntry?.relevanceScore ?? item.relevanceScore,
+      breakdown: snapshotEntry?.scoreBreakdown ?? null,
+    });
+    const suggestedSelectedOrder = applySuggestedSelection && admission.state === "ADMITTED"
       ? snapshotEntry?.suggestedSelectedOrder ?? null
       : null;
     const effectiveSelected = item.selected || suggestedSelectedOrder !== null;
@@ -626,6 +634,8 @@ export async function listProjectReferences(
       selectedOrder: effectiveSelectedOrder,
       relevanceScore: snapshotEntry?.relevanceScore ?? item.relevanceScore,
       scoreBreakdown: snapshotEntry?.scoreBreakdown ?? null,
+      admission,
+      recommendationState: item.selected ? "SELECTED" : admission.state === "ADMITTED" ? "RECOMMENDED" : admission.state,
       sourceState: effectiveSelected ? "SELECTED" : "CANDIDATE",
       evidenceLevel: "UNKNOWN",
       provenance: { provider: item.sourceProvider, searchSnapshotSavedAt: searchSnapshot?.savedAt ?? null },
@@ -642,7 +652,7 @@ export async function listProjectReferences(
         pdfAccessible,
       },
     };
-  }));
+  });
 }
 
 export async function updateSelectedProjectReferences(
