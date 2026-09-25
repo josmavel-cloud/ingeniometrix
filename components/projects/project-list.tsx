@@ -20,7 +20,7 @@ type LatestProjectJob = {
 export type ProjectListItem = {
   id: string;
   title: string;
-  program: string;
+  program: string | null;
   status: string;
   updatedAt: string;
   latestJob: LatestProjectJob | null;

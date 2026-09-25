@@ -520,7 +520,7 @@ export async function ensureTopicSuggestionsForUser(userId: string, projectId: s
       const generatedSuggestions = await generateTopicSuggestionsInRealTime({
         country: project.country,
         degreeLevel: project.degreeLevel,
-        program: project.program,
+        program: project.program ?? "",
         areaLabel,
         seedText,
         taxonomyHints,
@@ -588,7 +588,7 @@ export async function regenerateTopicSuggestionsForUser(userId: string, projectI
   const generatedSuggestions = await generateTopicSuggestionsInRealTime({
     country: project.country,
     degreeLevel: project.degreeLevel,
-    program: project.program,
+    program: project.program ?? "",
     areaLabel,
     seedText,
     taxonomyHints,

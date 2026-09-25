@@ -75,7 +75,7 @@ function buildFallbackBlueprintDraft(input: {
     templateKey: string;
     degreeLevel: ResearchBlueprintCoreDraft["degree_level"];
     university: string | null;
-    program: string;
+    program: string | null;
     language: string | null;
     projectReferences: Array<{
       selectedOrder: number | null;
@@ -119,7 +119,7 @@ function buildFallbackBlueprintDraft(input: {
     template_key: input.project.templateKey,
     degree_level: input.project.degreeLevel,
     university: input.project.university ?? "",
-    program: input.project.program,
+    program: input.project.program ?? "",
     research_line:
       input.intake.researchLine ??
       (english

@@ -297,6 +297,7 @@ export function buildLegacyBlueprintFromMaster(input: {
       createdAt: new Date(),
       updatedAt: new Date(),
       searchQuery: null,
+      confirmedDefinitionJson: null,
     },
     referenceInsights,
   });

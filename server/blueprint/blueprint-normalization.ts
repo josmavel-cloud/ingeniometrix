@@ -336,7 +336,7 @@ export function normalizeBlueprintDraft(
     template_key: normalizeText(input.draft.template_key, input.project.templateKey),
     degree_level: input.project.degreeLevel,
     university: normalizeText(input.draft.university, input.project.university ?? ""),
-    program: normalizeText(input.draft.program, input.project.program),
+    program: normalizeText(input.draft.program, input.project.program ?? ""),
     research_line: normalizeText(
       input.draft.research_line,
       input.assistedContext?.research_line ??

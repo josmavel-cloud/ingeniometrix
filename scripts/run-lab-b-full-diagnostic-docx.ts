@@ -2857,7 +2857,7 @@ async function runDiagnostic(options: CliOptions) {
     projectTemplateKey: fixtures.project.templateKey,
     projectDegreeLevel: fixtures.project.degreeLevel,
     projectUniversity: fixtures.project.university,
-    projectProgram: fixtures.project.program,
+    projectProgram: fixtures.project.program ?? "",
     researchLine: fixtures.project.intake.researchLine,
     drafts: draftsWithMatrix,
     evidenceLedger: fixtures.evidenceLedger,

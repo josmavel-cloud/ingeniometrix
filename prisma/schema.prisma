@@ -252,6 +252,7 @@ model User {
   trainingConsent    Boolean                 @default(false)
   transferGrants     TransferGrant[]
   uploadedPdfs       UploadedPdf[]
+  intakeTurns        IntakeTurn[]
 }
 
 // Pre-generation business spend. Customer credits remain a separate ledger.
@@ -518,7 +519,7 @@ model Project {
   language                  String                         @default("es")
   degreeLevel               DegreeLevel
   university                University?
-  program                   String
+  program                   String?
   templateKey               TemplateKey                    @default(GENERIC_POSGRADO_PE)
   topicOriginType           TopicOriginType                @default(CATALOG)
   topicSelectionStatus      TopicSelectionStatus           @default(PENDING)
@@ -534,6 +535,7 @@ model Project {
   uploadedPdfs              UploadedPdf[]
   intake                    Intake?
   draft                     ProjectDraft?
+  intakeTurns               IntakeTurn[]
   projectReferences         ProjectReference[]
   blueprintVersions         BlueprintVersion[]
   blueprintJobs             BlueprintJob[]
@@ -579,6 +581,7 @@ model Intake {
   constructs           String?  @db.Text
   pendingDecisions     String?  @db.Text
   searchQuery          String?  @db.Text
+  confirmedDefinitionJson Json?
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
   project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -597,6 +600,28 @@ model ProjectDraft {
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   project           Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model IntakeTurn {
+  id                String   @id @default(uuid())
+  projectId         String
+  userId            String
+  sequence          Int
+  requestId         String
+  inputHash         String
+  baseRevision      Int
+  kind              String
+  inputJson         Json
+  status            String
+  resultJson        Json?
+  resultingRevision Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, requestId])
+  @@unique([projectId, sequence])
 }
 
 model Reference {

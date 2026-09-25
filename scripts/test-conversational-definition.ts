@@ -1,0 +1,66 @@
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { prisma } from "@/lib/prisma";
+import { applyDefinitionAction, definitionReadiness, emptyDefinition, legacyDefinition, projectIntake, userValue } from "@/lib/conversational-intake";
+import { changeDefinition, confirmDefinition, createConversationalProject, readConfirmedSearchIntent, readDefinition } from "@/server/projects/conversational-definition-service";
+import { confirmProjectDraft, saveProjectDraft } from "@/server/projects/project-draft-service";
+import { draftIntakeFrom } from "@/lib/project-draft-contract";
+
+async function main() {
+  if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("Isolated test database required");
+  global.fetch = async () => { throw new Error("NO_PROVIDER_CALLS"); };
+  let d = emptyDefinition();
+  assert.equal(definitionReadiness(d).evidenceSearch.status, "NEEDS_CLARIFICATION");
+  d.fields.topic = userValue("Experiencias de pertenencia de migrantes", 1, "m1");
+  d.fields.object = userValue("Relatos de migrantes", 1, "m1");
+  assert.equal(definitionReadiness(d).evidenceSearch.status, "READY");
+  assert.equal(projectIntake(d).preferredMethodology, "");
+  d = applyDefinitionAction(d, { kind: "EDIT", field: "methodPreference", value: "", knowledge: "NOT_APPLICABLE" }, 2, "m2");
+  assert.equal(d.fields.methodPreference.knowledge, "NOT_APPLICABLE");
+  d = applyDefinitionAction(d, { kind: "EDIT", field: "dataAccess", value: "", knowledge: "UNKNOWN" }, 3, "m3");
+  assert.equal(d.fields.dataAccess.value, "");
+  const legacy = legacyDefinition({ topic: "Pendiente de confirmacion", targetPopulation: "Poblacion provisional" });
+  assert.equal(legacy.fields.topic.origin, "LEGACY_UNVERIFIED");
+  assert.equal(projectIntake(legacy).topic, "", "Legacy placeholders are never promoted");
+  d.proposals.push({ id: "p", field: "methodPreference", baseRevision: 3, status: "PENDING", proposed: { ...userValue("Entrevistas", 3, "m1"), origin: "AI_PROPOSED", acceptance: "UNREVIEWED" } });
+  assert.equal(projectIntake(d).preferredMethodology, "");
+  const accepted = applyDefinitionAction(d, { kind: "ACCEPT", proposalId: "p" }, 4, "m4");
+  assert.equal(accepted.fields.methodPreference.origin, "AI_PROPOSED");
+  assert.equal(projectIntake(accepted).preferredMethodology, "Entrevistas");
+  assert.equal(applyDefinitionAction(d, { kind: "REJECT", proposalId: "p" }, 4, "m4").proposals[0].status, "REJECTED");
+  const edited = applyDefinitionAction(accepted, { kind: "EDIT", field: "methodPreference", value: "", knowledge: "UNKNOWN" }, 5, "m5");
+  assert.equal(edited.fields.methodPreference.confirmation, undefined);
+  const user = await prisma.user.create({ data: { email: `phase1-${randomUUID()}@example.test` } });
+  try {
+    const input = { intakeMode: "conversation", idea: "Diseñar un sistema de inspección geoespacial", degreeLevel: "MAESTRIA", requestId: randomUUID() };
+    const project = await createConversationalProject(user.id, input);
+    assert.equal((await createConversationalProject(user.id, input)).id, project.id);
+    assert.equal(project.program, null);
+    assert.equal(await prisma.intake.count({ where: { projectId: project.id } }), 0);
+    let v = (await readDefinition(user.id, project.id))!;
+    await assert.rejects(() => readDefinition("wrong", project.id), /NOT_FOUND/);
+    await assert.rejects(() => confirmDefinition(user.id, project.id, v.revision, v.definitionHash), /CLARIFICATION/);
+    const mutation = { requestId: randomUUID(), baseRevision: v.revision, etag: v.etag, action: { kind: "EDIT", field: "object", value: "Sistema de inspección geoespacial", knowledge: "KNOWN" } };
+    const next = await changeDefinition(user.id, project.id, mutation);
+    assert.equal((await changeDefinition(user.id, project.id, mutation)).revision, next.revision);
+    await assert.rejects(() => changeDefinition(user.id, project.id, { ...mutation, requestId: randomUUID() }), /borrador cambió/);
+    await assert.rejects(() => confirmDefinition(user.id, project.id, next.revision, "wrong"), /borrador cambió/);
+    await confirmDefinition(user.id, project.id, next.revision, next.definitionHash);
+    await confirmDefinition(user.id, project.id, next.revision, next.definitionHash);
+    assert.equal(await prisma.auditLog.count({ where: { projectId: project.id, eventType: "RESEARCH_DEFINITION_CONFIRMED" } }), 1);
+    const intent = await readConfirmedSearchIntent(user.id, project.id);
+    assert.equal(intent.context, null, "Account PE is not scientific geography");
+    assert.equal(intent.methodologicalSignals.length, 0);
+    v = (await readDefinition(user.id, project.id))!;
+    const tabs = await Promise.allSettled(["A", "B"].map(value => changeDefinition(user.id, project.id, { requestId: randomUUID(), baseRevision: v.revision, etag: v.etag, action: { kind: "EDIT", field: "scope", value, knowledge: "KNOWN" } })));
+    assert.equal(tabs.filter(t => t.status === "fulfilled").length, 1);
+    await assert.rejects(() => readConfirmedSearchIntent(user.id, project.id), /CONFIRMATION_REQUIRED/);
+    const current = (await readDefinition(user.id, project.id))!;
+    await assert.rejects(() => confirmProjectDraft(user.id, project.id, current.revision), /CONVERSATIONAL/);
+    await assert.rejects(() => saveProjectDraft(user.id, project.id, current.revision, draftIntakeFrom({ topic: "Bypass" })), /CONVERSATIONAL/);
+    const turn = await prisma.intakeTurn.findFirstOrThrow({ where: { projectId: project.id } });
+    await assert.rejects(() => prisma.intakeTurn.update({ where: { id: turn.id }, data: { kind: "OVERWRITE" } }), /immutable/);
+    console.log("PASS Phase1 Gate1: provenance, unknown, not applicable, proposal acceptance/rejection, legacy quarantine, optional program, idempotency, owner, exact confirmation, two-tab conflict, immutable turns, no implicit confirmation; provider calls=0");
+  } finally { await prisma.user.delete({ where: { id: user.id } }); await prisma.$disconnect(); }
+}
+main().catch(e => { console.error(e); process.exitCode = 1; });

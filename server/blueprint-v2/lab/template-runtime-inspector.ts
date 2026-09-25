@@ -621,7 +621,7 @@ async function inspectInstitutionalRuntime(
     project_template_key: fixtures.project.templateKey,
     project_university: fixtures.project.university,
     project_degree_level: fixtures.project.degreeLevel,
-    project_program: fixtures.project.program,
+    project_program: fixtures.project.program ?? "",
   };
 
   try {
@@ -629,7 +629,7 @@ async function inspectInstitutionalRuntime(
       projectTemplateKey: fixtures.project.templateKey,
       projectUniversity: fixtures.project.university,
       projectDegreeLevel: fixtures.project.degreeLevel,
-      projectProgram: fixtures.project.program,
+      projectProgram: fixtures.project.program ?? "",
     });
     const shouldUseExample = shouldUseLabInstitutionalExample(resolved.runtime);
     const exampleRuntime = shouldUseExample ? await loadLabInstitutionalExampleRuntime() : null;
@@ -750,7 +750,7 @@ export async function buildTemplateRuntimeInspectionArtifact(
       university: fixtures.project.university ?? "",
       template_key: fixtures.project.templateKey,
       degree_level: fixtures.project.degreeLevel,
-      program: fixtures.project.program,
+      program: fixtures.project.program ?? "",
     },
     master,
     institutional,

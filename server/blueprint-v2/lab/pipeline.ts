@@ -435,7 +435,7 @@ async function executeStep(
         projectTemplateKey: fixtures.project.templateKey,
         projectDegreeLevel: fixtures.project.degreeLevel,
         projectUniversity: fixtures.project.university,
-        projectProgram: fixtures.project.program,
+        projectProgram: fixtures.project.program ?? "",
         researchLine: fixtures.project.intake.researchLine,
         drafts: state.draftsWithMatrix ?? [],
         evidenceLedger: fixtures.evidenceLedger,

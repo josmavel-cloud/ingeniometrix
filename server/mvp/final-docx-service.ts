@@ -132,7 +132,7 @@ function buildEvidenceFindings(sources: SelectedSource[]) {
 }
 
 function buildSections(input: {
-  project: { title: string; program: string; country: string; language: string };
+  project: { title: string; program: string | null; country: string; language: string };
   intake: {
     topic: string;
     problemContext: string | null;

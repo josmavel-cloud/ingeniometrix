@@ -460,6 +460,7 @@ export async function loadBlueprintLaunchLatestFixtureSet(): Promise<LoadedMaste
       constructs: null,
       pendingDecisions: null,
       searchQuery: intakeSearchQuery,
+      confirmedDefinitionJson: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     },

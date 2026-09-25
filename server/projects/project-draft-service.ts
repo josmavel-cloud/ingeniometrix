@@ -21,6 +21,7 @@ function invalidations(previous: DraftIntake, next: DraftIntake) {
 export async function lockCanonicalDraftMutation(tx: Prisma.TransactionClient, projectId: string) {
   await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
   const draft = await tx.projectDraft.findUnique({ where: { projectId } });
+  if (draft && (draft.contentJson as Record<string, unknown>).researchDefinition) throw new Error("USE_CONVERSATIONAL_DEFINITION");
   if (draft && draft.confirmedRevision !== draft.revision) throw new DraftConflict();
 }
 // Keep existing explicit intake/topic operations compatible with the draft authority.
@@ -67,6 +68,7 @@ export async function saveProjectDraft(userId: string, projectId: string, expect
   return prisma.$transaction(async (tx) => {
     const project = await owned(tx, userId, projectId);
     const previous = project.draft;
+    if (previous && (previous.contentJson as Record<string, unknown>).researchDefinition) throw new Error("USE_CONVERSATIONAL_DEFINITION");
     const previousIntake = previous ? draftIntakeFrom((previous.contentJson as { intake?: unknown }).intake) : draftIntakeFrom(project.intake);
     const currentEtag = previous ? etag(previous.revision, previous.contentHash) : etag(0, fingerprint(previousIntake));
     if (expectedEtag && expectedEtag !== currentEtag) throw new DraftConflict();
@@ -85,6 +87,7 @@ export async function confirmProjectDraft(userId: string, projectId: string, exp
   return prisma.$transaction(async (tx) => {
     const project = await owned(tx, userId, projectId);
     if (!project.draft || project.draft.revision !== expectedRevision) throw new DraftConflict();
+    if ((project.draft.contentJson as Record<string, unknown>).researchDefinition) throw new Error("USE_CONVERSATIONAL_CONFIRMATION");
     const intake = draftIntakeFrom((project.draft.contentJson as { intake: unknown }).intake);
     if (!intake.topic.trim()) throw new Error("Completa el tema antes de confirmar.");
     const values = Object.fromEntries(Object.entries(intake).map(([key, value]) => [key, key === "topic" ? value : value || null])) as Record<keyof DraftIntake, string | null> & { topic: string };
