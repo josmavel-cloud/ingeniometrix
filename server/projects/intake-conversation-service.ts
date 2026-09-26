@@ -10,6 +10,27 @@ import { checkRevision, definitionView, jsonValue, lockedDefinition, nextTurnSeq
 import { intakeModelPolicy } from "./intake-model-policy";
 import { INTAKE_PROMPT } from "./prompts/conversational-intake.v2";
 
+type IntakeFailureStage = "PREPARATION" | "MODEL_REQUEST" | "STRUCTURED_PARSE" | "OUTPUT_VALIDATION" | "DRAFT_PERSISTENCE";
+function intakeFailureCategory(error: unknown) {
+  if (error instanceof z.ZodError || error instanceof SyntaxError) return "STRUCTURED_OUTPUT_ERROR";
+  const message = error instanceof Error ? error.message : "";
+  if (message === "MODEL_REVISION_MISMATCH" || message === "USE_EXPLICIT_FIELD_CONTROL" || message === "DUPLICATE_PROPOSED_FIELD" || message === "INVALID_PROPOSAL_PROVENANCE" || message === "UNKNOWN_MUST_BE_EMPTY" || message === "REJECTED_PROPOSAL_REPEATED") return message;
+  if (message.includes("incomplete") || message.includes("contenido estructurado")) return "STRUCTURED_OUTPUT_ERROR";
+  if (message.includes("PRE_JOB_COST_LIMIT") || message.includes("LLM_BUDGET_BLOCKED") || message.includes("UNPRICED_INTAKE_MODEL")) return "COST_POLICY_REJECTED";
+  const status = error && typeof error === "object" && "status" in error ? error.status : null;
+  if (status === 401 || status === 403) return "PROVIDER_AUTH_ERROR";
+  if (status === 429) return "RATE_LIMIT";
+  if (status === 400 || status === 422) return "INVALID_MODEL_PARAMETERS_OR_SCHEMA";
+  if (message.includes("timeout") || message.includes("Timeout")) return "TIMEOUT";
+  return "OTHER";
+}
+function safeProviderFailure(error: unknown) {
+  if (!error || typeof error !== "object") return {};
+  const status = "status" in error && typeof error.status === "number" && error.status >= 400 && error.status < 600 ? error.status : null;
+  const code = "code" in error && typeof error.code === "string" && ["invalid_api_key", "insufficient_quota", "model_not_found", "unsupported_country_region_territory", "rate_limit_exceeded"].includes(error.code) ? error.code : null;
+  return { ...(status ? { providerHttpStatus: status } : {}), ...(code ? { providerSafeCode: code } : {}) };
+}
+
 // Dependency injection is available only to local tests; never from HTTP/environment.
 type ModelCall = (prompt: string) => Promise<unknown>;
 export async function submitIntakeTurn(userId: string, projectId: string, raw: unknown, testModel?: ModelCall) {
@@ -32,6 +53,7 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
     return { turn, claimed: true, view };
   });
   if (!claim.claimed) return { status: claim.turn.status, state: await readDefinition(userId, projectId) };
+  let failureStage: IntakeFailureStage = "PREPARATION";
   try {
     const history = await prisma.intakeTurn.findMany({ where: { projectId, userId, kind: { in: ["INITIAL_IDEA", "MESSAGE", "ACTION"] } }, orderBy: { sequence: "desc" }, take: 12,
       select: { requestId: true, inputJson: true, kind: true } });
@@ -43,10 +65,13 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
     if (Buffer.byteLength(prompt) > 100000) throw new Error("INTAKE_CONTEXT_LIMIT");
     const result = await withPaidOperation({ userId, projectId, draftId: claim.view.id, requestId: `intake:${input.requestId}`, purpose: INTAKE_PROMPT.id,
       revision: String(input.baseRevision), inputs: { input, promptVersion: INTAKE_PROMPT.version, policy } }, async () => {
+      failureStage = "MODEL_REQUEST";
       const rawResult = testModel ? await testModel(prompt) : await getConfiguredLlmProvider().generateStructuredObject({ ...policy,
         prompt, schemaName: "intake_turn_v1", schema: z.toJSONSchema(intakeTurnResultSchema), trackingLabel: "conversational-intake.v2",
         trackingAttribution: { stage: "intake", source: INTAKE_PROMPT.id, promptVersion: INTAKE_PROMPT.version, promptHash: fingerprint(INTAKE_PROMPT.instructions) } });
+      failureStage = "STRUCTURED_PARSE";
       const parsed = intakeTurnResultSchema.parse(rawResult);
+      failureStage = "OUTPUT_VALIDATION";
       if (parsed.baseRevision !== input.baseRevision) throw new Error("MODEL_REVISION_MISMATCH");
       if ([...parsed.ambiguities, ...(parsed.nextQuestion ? [parsed.nextQuestion] : [])].some(a => ["originalIdea", "academicLevel"].includes(a.field))) throw new Error("USE_EXPLICIT_FIELD_CONTROL");
       if (new Set(parsed.proposedChanges.map(p => p.field)).size !== parsed.proposedChanges.length) throw new Error("DUPLICATE_PROPOSED_FIELD");
@@ -57,6 +82,7 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
       }
       return { ...parsed, ambiguities: materialAmbiguities(parsed), nextQuestion: materialQuestion(parsed, claim.view.definition, previousQuestions) };
     });
+    failureStage = "DRAFT_PERSISTENCE";
     return await prisma.$transaction(async tx => {
       const { draft, view } = await lockedDefinition(tx, userId, projectId);
       if (view.revision !== input.baseRevision || view.confirmedRevision !== claim.view.confirmedRevision) {
@@ -78,8 +104,8 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
       await tx.intakeTurn.update({ where: { id: claim.turn.id }, data: { status: "COMPLETE", resultJson: jsonValue(result), resultingRevision: row.revision } });
       return { status: "COMPLETE", state: definitionView(row) };
     });
-  } catch {
-    await prisma.intakeTurn.updateMany({ where: { id: claim.turn.id, status: "RUNNING" }, data: { status: "FAILED", resultJson: { safeError: "INTAKE_ASSISTANCE_UNAVAILABLE" } } });
+  } catch (error) {
+    await prisma.intakeTurn.updateMany({ where: { id: claim.turn.id, status: "RUNNING" }, data: { status: "FAILED", resultJson: { safeError: "INTAKE_ASSISTANCE_UNAVAILABLE", failureStage, failureCategory: intakeFailureCategory(error), ...safeProviderFailure(error) } } });
     return { status: "FAILED", state: await readDefinition(userId, projectId) };
   }
 }

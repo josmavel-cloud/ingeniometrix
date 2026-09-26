@@ -49,6 +49,20 @@ async function main() {
       const failure = await submitIntakeTurn(user.id, p.id, { ...staleInput, requestId: randomUUID(), baseRevision: latest.revision, etag: latest.etag }, async () => { throw new Error("Provider unavailable"); });
       assert.equal(failure.status, "FAILED");
       assert.equal(failure.state!.revision, latest.revision);
+      const failedTurn = await prisma.intakeTurn.findFirstOrThrow({ where: { projectId: p.id, status: "FAILED" }, orderBy: { sequence: "desc" } });
+      assert.deepEqual(failedTurn.resultJson, { safeError: "INTAKE_ASSISTANCE_UNAVAILABLE", failureStage: "MODEL_REQUEST", failureCategory: "OTHER" });
+      const invalidInput = { ...staleInput, requestId: randomUUID(), baseRevision: latest.revision, etag: latest.etag };
+      const invalid = await submitIntakeTurn(user.id, p.id, invalidInput, async () => ({ schemaVersion: "wrong" }));
+      assert.equal(invalid.status, "FAILED");
+      const invalidTurn = await prisma.intakeTurn.findUniqueOrThrow({ where: { projectId_requestId: { projectId: p.id, requestId: invalidInput.requestId } } });
+      assert.deepEqual(invalidTurn.resultJson, { safeError: "INTAKE_ASSISTANCE_UNAVAILABLE", failureStage: "STRUCTURED_PARSE", failureCategory: "STRUCTURED_OUTPUT_ERROR" });
+      assert.equal(JSON.stringify(invalidTurn.resultJson).includes("Provider unavailable"), false, "Never persist raw provider errors");
+      const authInput = { ...staleInput, requestId: randomUUID(), baseRevision: latest.revision, etag: latest.etag };
+      const authFailure = await submitIntakeTurn(user.id, p.id, authInput, async () => { throw Object.assign(new Error("SECRET_SHOULD_NOT_LEAK"), { status: 401, code: "invalid_api_key" }); });
+      assert.equal(authFailure.status, "FAILED");
+      const authTurn = await prisma.intakeTurn.findUniqueOrThrow({ where: { projectId_requestId: { projectId: p.id, requestId: authInput.requestId } } });
+      assert.deepEqual(authTurn.resultJson, { safeError: "INTAKE_ASSISTANCE_UNAVAILABLE", failureStage: "MODEL_REQUEST", failureCategory: "PROVIDER_AUTH_ERROR", providerHttpStatus: 401, providerSafeCode: "invalid_api_key" });
+      assert.equal(JSON.stringify(authTurn.resultJson).includes("SECRET_SHOULD_NOT_LEAK"), false);
       assert.equal(await prisma.intake.count({ where: { projectId: p.id } }), 0);
     }
     console.log("PASS Phase1 Gate2: four disciplines, mocked structured model, proposal-only, exact provenance, no provider, idempotent replay, delayed result stale, unavailable model preserved, persistent PaidOperation");
