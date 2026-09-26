@@ -56,7 +56,15 @@ async function main() {
     v = await changeDefinition(user.id, p.id, { requestId: randomUUID(), baseRevision: v.revision, etag: v.etag, action: { kind: "EDIT", field: "context", value: "Lima", knowledge: "KNOWN" } });
     await assert.rejects(() => confirmDefinition(user.id, p.id, reviewed.revision, reviewed.definitionHash), /borrador cambió/);
     assert.equal(await prisma.intake.count({ where: { projectId: p.id } }), 0);
-    await confirmDefinition(user.id, p.id, v.revision, v.definitionHash);
+    const lateInput = { requestId: randomUUID(), baseRevision: v.revision, etag: v.etag, message: "Una respuesta tardía" };
+    const late = await submitIntakeTurn(user.id, p.id, lateInput, async () => {
+      // Model response outlives its HTTP client. Manual confirmation remains
+      // possible, but its revision must not be invalidated by the late result.
+      await confirmDefinition(user.id, p.id, v.revision, v.definitionHash);
+      return { schemaVersion: "intake-turn.v1", baseRevision: v.revision, assistantText: "Propuesta tardía", proposedChanges: [], ambiguities: [], nextQuestion: null };
+    });
+    assert.equal(late.status, "STALE");
+    assert.equal((await readDefinition(user.id, p.id))!.revision, v.revision);
     const snapshot = (await prisma.intake.findUniqueOrThrow({ where: { projectId: p.id } })).confirmedDefinitionJson as any;
     assert.equal(snapshot.revision, v.revision); assert.equal(snapshot.definitionHash, v.definitionHash);
     const intent = await readConfirmedSearchIntent(user.id, p.id);

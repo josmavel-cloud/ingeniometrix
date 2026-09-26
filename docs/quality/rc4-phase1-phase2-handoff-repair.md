@@ -91,7 +91,9 @@ React array. Foreign-owner projects remain inaccessible; no ownership bypass.
    guarded; 409 offers explicit reload/comparison. Autosave flush never confirms.
    A conversation request times out after 90 seconds without creating an
    automatic retry, releasing the UI for manual repair. Persistent RUNNING
-   operations are not resumed or billed speculatively.
+   operations are not resumed or billed speculatively. A model response that
+   arrives after manual confirmation is marked STALE even though confirmation
+   does not increment the draft revision; it cannot invalidate that snapshot.
 7. Successful confirmation pushes `?step=evidence` and refreshes canonical data.
    Existing deterministic resume logic already chooses Evidence for confirmed
    projects without a plan, Define for unconfirmed ones. Presentation status

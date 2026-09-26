@@ -59,7 +59,10 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
     });
     return await prisma.$transaction(async tx => {
       const { draft, view } = await lockedDefinition(tx, userId, projectId);
-      if (view.revision !== input.baseRevision) {
+      if (view.revision !== input.baseRevision || view.confirmedRevision !== claim.view.confirmedRevision) {
+        // Confirmation does not increment draft revision. A timed-out client
+        // may confirm manually while the model is still running: do not append
+        // a late proposal and invalidate that explicit confirmation afterward.
         await tx.intakeTurn.update({ where: { id: claim.turn.id }, data: { status: "STALE", resultJson: jsonValue(result) } });
         return { status: "STALE", state: view };
       }
