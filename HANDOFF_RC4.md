@@ -19,6 +19,13 @@ is still required before Gate 2B. See the
 [repair report and checklist](docs/quality/rc4-phase1-phase2-handoff-repair.md).
 The five pre-existing G5 files remain outside these commits.
 
+Staging deployed: frontend `b5fbf72`, Preview
+`dpl_5neDvpymjJFcCKZEx3142suuir2d`; backend `96029e4`, image `9b2979054c17`.
+Only app recreated; local/Funnel readiness 200. The late-response fence prevents
+a timed-out conversational response from invalidating a manual confirmation.
+Owner project state remains untouched. Follow the report checklist without
+starting a scholarly search or a new model turn; Phase 2B remains stopped.
+
 ## Latest checkpoint - Phase 2.1 search-intent continuity (2026-09-25)
 
 The public search route and source-discovery service now pass an explicit

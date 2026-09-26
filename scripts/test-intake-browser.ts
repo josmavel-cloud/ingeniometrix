@@ -14,6 +14,7 @@ const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
 async function main() {
   if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("Isolated DB only");
   const user = await prisma.user.create({ data: { email: `phase1-browser-${randomUUID()}@example.test` } });
+  const otherUser = await prisma.user.create({ data: { email: `phase1-browser-other-${randomUUID()}@example.test` } });
   const token = await issueSessionToken({ userId: user.id }); // Disposable test identity, never owner's cookie.
   const profile = await mkdtemp(path.join(tmpdir(), "imx-phase1-chrome-"));
   const chrome = spawn("/usr/bin/google-chrome", ["--headless=new", "--no-sandbox", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: "ignore" });
@@ -131,13 +132,22 @@ async function main() {
     assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: "RESEARCH_DEFINITION_CONFIRMED" } }), 1);
     assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: "SEARCH_COMPLETED" } }), 1, "Only the explicit offline fixture");
     assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: "SEARCH_INPUT_FROZEN" } }), 0);
+    const otherToken = await issueSessionToken({ userId: otherUser.id });
+    await call("Network.setCookie", { name: "imx_session", value: otherToken, url: origin, httpOnly: true, sameSite: "Strict" });
+    const denied = await evaluate(`Promise.all(['/api/ui/detail/${projectId}','/api/projects/${projectId}/definition'].map(url=>fetch(url).then(r=>r.status)))`);
+    assert.equal(denied[0], 404); assert.notEqual(denied[1], 200);
+    await call("Page.navigate", { url: `${origin}/projects` });
+    await until("document.body.innerText.includes('Aun no tienes proyectos')");
+    assert.equal(await evaluate(`Boolean(document.querySelector('a[href="/projects/${projectId}"]'))`), false);
     console.log("PASS Phase1 real headless browser: canonical creation, autosave, query navigation flush, stale ambiguity/proposal acceptance, exact confirmation, automatic Sources navigation, search-intent, both empty states, reload, project-list resume, fresh-session resume, mobile, absent session denied; no executed searches; paid calls=0.");
   } finally {
     ws?.close(); chrome.kill("SIGTERM"); await delay(800);
     await rm(profile, { recursive: true, force: true });
     await prisma.auditLog.deleteMany({ where: { userId: user.id } });
+    await prisma.auditLog.deleteMany({ where: { userId: otherUser.id } });
     await prisma.paidOperation.deleteMany({ where: { userId: user.id } });
-    await prisma.user.delete({ where: { id: user.id } }); await prisma.$disconnect();
+    await prisma.user.delete({ where: { id: user.id } });
+    await prisma.user.delete({ where: { id: otherUser.id } }); await prisma.$disconnect();
   }
 }
 main().catch(e => { console.error(e instanceof Error ? e.message : "Browser test failed"); process.exitCode = 1; });

@@ -116,7 +116,9 @@ React array. Foreign-owner projects remain inaccessible; no ownership bypass.
   and answer; disabled CTA becomes enabled after explicit acceptance; second-tab
   update causes 409 and explicit recovery; confirmation enters Sources; reload,
   project-list reopen and fresh-session resume preserve Sources; missing session
-  denied; desktop/mobile layout checked.
+  denied; a second disposable authenticated user receives 404 for the first
+  user's detail API and cannot see that project in the list; desktop/mobile
+  layout checked.
 - Browser verifies both initial and zero-admission states. The latter uses a
   labelled isolated audit fixture, not a provider execution or staging mutation.
   No SEARCH_INPUT_FROZEN event; no search events before the fixture is inserted.
@@ -162,3 +164,29 @@ code; do not run an older strict parser against drafts containing createdRevisio
 without first assessing compatibility. Do not remove that data automatically.
 The five G5 changes, staging sessions, DB, worker, proxy, Funnel, payments and
 entitlements are preserved. No change to Phase 2A ranking/admission or Phase 2B.
+
+## Deployment acceptance
+
+- Implementation commits: `b5fbf72` (handoff) and `96029e4` (late-response fence),
+  pushed normally to the feature branch only; no merge or production cutover.
+- Backend source `96029e4a5305c56576301548d9e651843bef09ad`, image
+  `sha256:9b2979054c176057eaf94cc247d89010f68ab8ab23ec9a99bdfb7871cda050f5`.
+  Built from a clean detached worktree; full and worker builds PASS.
+- Only `imx-rc4-g5-staging-app-1` recreated, at 2026-09-26T18:55:49Z.
+  DB, worker and proxy original start times are unchanged; Funnel unchanged.
+- Frontend source `b5fbf72fb99b4deaa7c2b98460860465db53f23e` (the subsequent
+  fix is backend-only). All 73 packaged source modules match that commit.
+  Frontend-only local and Vercel builds PASS; 24 traces pass isolation.
+- Vercel Preview `dpl_5neDvpymjJFcCKZEx3142suuir2d`,
+  `https://ingeniometrix-gzlh98qa5-josmavel-clouds-projects.vercel.app`, READY.
+  Alias `https://staging.ingeniometrix.com` moved to that Preview only.
+- Local and public Funnel readiness HTTP 200 after deployment.
+- SHA256 of the five pre-existing files unchanged. Read-only hashes of the
+  three staging projects (draft, intake, turns, references, audit history)
+  unchanged throughout diagnosis/implementation.
+- The historical five negatives, using their original September 24 snapshot,
+  classify 5 REJECTED_OFF_TOPIC / 0 ADMITTED. The newer existing September 26
+  search snapshot is separate, with zero recommendations; neither was modified.
+
+Software handoff and 2A checks PASS. Owner-authenticated staging manual
+acceptance is PENDING, not replaced by local browser tests. Gate 2B NOT STARTED.
