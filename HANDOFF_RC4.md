@@ -1,5 +1,24 @@
 # RC4 handoff
 
+## Latest checkpoint - Phase 1 / Phase 2 entry repair (2026-09-26)
+
+The real owner's disabled confirmation was traced to a stale context ambiguity:
+the answer had arrived as a pending proposal, but accepting/editing fields did
+not resolve older questions. Readiness remains shared and explicit. Later
+accepted answer proposals now resolve older questions; optional uncertainty can
+be explicitly deferred without turning UNKNOWN into fact. Blocking controls are
+visible, confirmation protects the reviewed revision/hash, and success navigates
+to Evidence without any retrieval. Confirmed early-stage projects no longer
+display the contradictory "Base por definir" label.
+
+Real local authenticated Chromium validates the complete handoff, 409 recovery,
+reload/list/fresh-session resume and both empty states, using an isolated DB and
+simulated conversation only. Phase 1 / 2.1 / 2A, G2, G4 auth and B4 checks pass.
+The owner's staging projects remain unchanged; authenticated manual acceptance
+is still required before Gate 2B. See the
+[repair report and checklist](docs/quality/rc4-phase1-phase2-handoff-repair.md).
+The five pre-existing G5 files remain outside these commits.
+
 ## Latest checkpoint - Phase 2.1 search-intent continuity (2026-09-25)
 
 The public search route and source-discovery service now pass an explicit

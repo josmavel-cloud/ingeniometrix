@@ -80,6 +80,7 @@ export function ProjectList({
   const router = useRouter();
   const t = copy[language];
   const [projects, setProjects] = useState(initialProjects);
+  useEffect(() => setProjects(initialProjects), [initialProjects]);
   const hasActiveProject = useMemo(
     () => projects.some((project) => isActiveJob(project.latestJob?.status)),
     [projects],

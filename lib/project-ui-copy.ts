@@ -346,9 +346,9 @@ const ES_COPY = {
       "La recencia suma peso, pero anos futuros y placeholders se descartan.",
     ],
     variantJoiner: "o",
-    emptyTitle: "Aun no hay referencias cargadas.",
+    emptyTitle: "Busca fuentes académicas para comenzar.",
     emptyBody:
-      "Guarda una definicion suficiente y ejecuta la busqueda. Si sigue vacio, prueba con un tema menos largo o mas especifico.",
+      "La búsqueda comienza solo cuando pulses Buscar fuentes. Entrar en esta pantalla no inicia ninguna búsqueda.",
     selectedOrder: (order: number) => `Seleccion ${order}`,
     notSelected: "No seleccionada",
     noDate: "Sin fecha",

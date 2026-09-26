@@ -1,8 +1,8 @@
-import { usable, type ResearchDefinition } from "./conversational-intake";
+import { SEARCH_MATERIAL_FIELDS, usable, type ResearchDefinition } from "./conversational-intake";
 import type { IntakeTurnResult } from "./intake-turn-contract";
 
 const coreFields = new Set(["topic", "problem", "object", "concepts"]);
-const materialFields = new Set([...coreFields, "purpose", "context", "intendedOutput", "scope"]);
+const materialFields = SEARCH_MATERIAL_FIELDS;
 
 export function materialAmbiguities(result: IntakeTurnResult) {
   return result.ambiguities.map(a => ({ ...a, blocksSearch: a.blocksSearch && materialFields.has(a.field) }));

@@ -6,12 +6,21 @@ import { getTopicProjectForUser, listTopicSuggestionsForUser } from "@/server/pr
 import { purchaseForUser } from "@/server/commercial/purchases";
 import type { PageContract } from "@/lib/hybrid-contracts";
 
+// Older conversational confirmations intentionally left Project.status=DRAFT.
+// Derive the display state from the canonical confirmation, without backfilling
+// history or changing later scientific/commercial workflow states.
+function presentationStatus(p: Awaited<ReturnType<typeof listProjectsForUser>>[number] | NonNullable<Awaited<ReturnType<typeof getProjectForUser>>>) {
+  const conversational = Boolean((p.draft?.contentJson as Record<string, unknown> | null)?.researchDefinition);
+  if (!conversational || !["DRAFT", "INTAKE_READY"].includes(p.status)) return p.status;
+  return p.intake?.confirmedDefinitionJson && p.draft?.revision === p.draft?.confirmedRevision ? "INTAKE_READY" : "DRAFT";
+}
+
 export async function ownedPageData(userId: string, kind: string, id?: string) {
   if (kind === "projects" && !id) {
     const projects = await listProjectsForUser(userId);
     return projects.map((p) => {
       const job = p.blueprintJobs[0];
-      return { id: p.id, title: p.title, program: p.program, status: p.status, updatedAt: p.updatedAt.toISOString(),
+      return { id: p.id, title: p.title, program: p.program, status: presentationStatus(p), updatedAt: p.updatedAt.toISOString(),
         latestJob: job ? { id: job.id, status: job.status, currentStage: job.currentStage, progress: job.progress,
           errorMessage: job.errorMessage, updatedAt: job.updatedAt.toISOString(), shouldNudge: false } : null,
         artifactCount: p.generatedArtifacts.length, hasDocx: p.generatedArtifacts.some((a) => a.kind === "BLUEPRINT_DOCX"),
@@ -29,7 +38,7 @@ export async function ownedPageData(userId: string, kind: string, id?: string) {
     ]);
     return {
       project: { id: p.id, title: p.title, catalogTopicId: p.catalogTopicId, country: p.country,
-        degreeLevel: p.degreeLevel, status: p.status, topicAreaLabel: p.topicAreaLabel,
+        degreeLevel: p.degreeLevel, status: presentationStatus(p), topicAreaLabel: p.topicAreaLabel,
         activeBlueprintVersionId: p.activeBlueprintVersionId, intake: p.intake,
         conversationalIntake: Boolean((p.draft?.contentJson as Record<string, unknown> | null)?.researchDefinition),
         definitionConfirmed: Boolean(p.intake?.confirmedDefinitionJson && p.draft?.revision === p.draft?.confirmedRevision),

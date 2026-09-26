@@ -70,7 +70,7 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
           proposed: { value: p.value, origin: p.origin, acceptance: "UNREVIEWED", knowledge: p.knowledge, sourceMessageIds: p.sourceMessageIds,
             interpretationConfidence: p.interpretationConfidence, lastChangedRevision: view.revision } });
       }
-      for (const [i, a] of result.ambiguities.entries()) d.ambiguities.push({ ...a, id: `${input.requestId}:a${i}`, resolved: false });
+      for (const [i, a] of result.ambiguities.entries()) d.ambiguities.push({ ...a, id: `${input.requestId}:a${i}`, resolved: false, createdRevision: view.revision + 1 });
       const row = await writeDefinition(tx, draft, definitionSchema.parse(d));
       await tx.intakeTurn.update({ where: { id: claim.turn.id }, data: { status: "COMPLETE", resultJson: jsonValue(result), resultingRevision: row.revision } });
       return { status: "COMPLETE", state: definitionView(row) };

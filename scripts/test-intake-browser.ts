@@ -6,6 +6,8 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { issueSessionToken } from "@/server/auth/session";
+import { readDefinition } from "@/server/projects/conversational-definition-service";
+import { submitIntakeTurn } from "@/server/projects/intake-conversation-service";
 
 const origin = "http://127.0.0.1:3417";
 const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -31,7 +33,7 @@ async function main() {
       const result = await call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
       if (result.exceptionDetails) throw new Error(`Browser expression failed: ${expression}; ${result.exceptionDetails.text}`); return result.result.value;
     };
-    const until = async (expression: string) => { for (let i = 0; i < 120; i++) { if (await evaluate(expression)) return; await delay(150); } const safePage = await evaluate("({path:location.pathname,title:document.title,text:document.body.innerText.slice(0,500)})"); throw new Error(`Browser condition timeout: ${expression}; page=${JSON.stringify(safePage)}`); };
+    const until = async (expression: string) => { for (let i = 0; i < 120; i++) { if (await evaluate(`Boolean(document.body) && (${expression})`)) return; await delay(150); } const safePage = await evaluate("({path:location.pathname,title:document.title,text:document.body?.innerText.slice(0,500)})"); throw new Error(`Browser condition timeout: ${expression}; page=${JSON.stringify(safePage)}`); };
     const fill = (selector: string, value: string) => evaluate(`(() => { const e=document.querySelector(${JSON.stringify(selector)}); const p=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(p,'value').set.call(e,${JSON.stringify(value)}); e.dispatchEvent(new Event(e.tagName==='SELECT'?'change':'input',{bubbles:true})); })()`);
     const click = (text: string) => evaluate(`Array.from(document.querySelectorAll('button')).find(e=>e.textContent===${JSON.stringify(text)}).click()`);
     await call("Network.enable"); await call("Page.enable");
@@ -55,17 +57,61 @@ async function main() {
     await evaluate(`document.querySelector('a[href="/projects/${projectId}?step=evidence"]').click()`);
     await until("location.search === '?step=evidence'");
     assert.equal(await prisma.intake.count({ where: { projectId } }), 0);
+    // Simulated conversation reproduces the real stale-ambiguity bug; no model
+    // or provider request. Browser still uses the normal action/confirm routes.
+    for (const answering of [false, true]) {
+      const v = (await readDefinition(user.id, projectId))!;
+      const requestId = randomUUID();
+      const result = await submitIntakeTurn(user.id, projectId, { requestId, baseRevision: v.revision, etag: v.etag, message: answering ? "Relatos en Lima" : "Precisar el contexto" }, async () => ({
+        schemaVersion: "intake-turn.v1", baseRevision: v.revision, assistantText: answering ? "Propongo conservar el contexto que indicaste." : "¿Qué contexto quieres conservar?",
+        proposedChanges: answering ? [{ field: "context", value: "Relatos de estudiantes migrantes en Lima", origin: "AI_INFERRED", knowledge: "KNOWN", sourceMessageIds: [requestId], interpretationConfidence: "HIGH" }] : [],
+        ambiguities: answering ? [] : [{ field: "context", question: "¿Qué contexto quieres conservar?", blocksSearch: true }], nextQuestion: null,
+      }));
+      assert.equal(result.status, "COMPLETE");
+    }
     await call("Page.navigate", { url: `${origin}/projects/${projectId}?step=define` });
     await until("document.body.innerText.includes('Relatos y experiencias de estudiantes migrantes')");
+    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Guardar aclaración')");
+    await click("Revisar definición");
+    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Confirmar para buscar evidencia' && e.disabled)");
+    await click("Correcto");
+    await until("!Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Guardar aclaración')");
     await click("Revisar definición"); await until("document.body.innerText.includes('Esto entendimos para buscar evidencia')");
+    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Confirmar para buscar evidencia' && !e.disabled)");
+    // Another tab edits after this tab reviewed: server must reject the old
+    // confirmation and the UI must offer explicit conflict recovery.
+    const otherTabStatus = await evaluate(`(async()=>{const {state}=await fetch('/api/projects/${projectId}/definition').then(r=>r.json()); return (await fetch('/api/projects/${projectId}/definition',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({requestId:crypto.randomUUID(),baseRevision:state.revision,etag:state.etag,action:{kind:'EDIT',field:'purpose',value:'Comprender las experiencias de pertenencia',knowledge:'KNOWN'}})})).status})()`);
+    assert.equal(otherTabStatus, 200);
     await click("Confirmar para buscar evidencia");
-    await until("document.body.innerText.includes('Definición confirmada')");
+    await until("document.body.innerText.includes('Cargar revisión para comparar')");
+    assert.equal(await prisma.intake.count({ where: { projectId } }), 0);
+    await click("Cargar revisión para comparar");
+    await until("!document.body.innerText.includes('Cargar revisión para comparar')");
+    await click("Revisar definición");
+    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Confirmar para buscar evidencia' && !e.disabled)");
+    await click("Confirmar para buscar evidencia");
+    await until("location.search === '?step=evidence' && document.body.innerText.includes('Busca fuentes académicas para comenzar')");
     const intake = await prisma.intake.findUniqueOrThrow({ where: { projectId } });
     assert.equal(intake.targetPopulation, "Relatos y experiencias de estudiantes migrantes");
     assert.ok(intake.confirmedDefinitionJson);
     const api = await evaluate(`fetch('/api/projects/${projectId}/definition?view=search-intent').then(r=>r.json())`);
     assert.equal(api.intent.readiness, "READY"); assert.equal(api.intent.methodologicalSignals.length, 0);
-    await call("Page.reload"); await until("document.body.innerText.includes('Definición confirmada')");
+    await call("Page.reload"); await until("document.body.innerText.includes('Busca fuentes académicas para comenzar')");
+    assert.ok(await evaluate("document.body.innerText.toLowerCase().includes('investigacion definida')"), "Confirmed definition is not labelled Base por definir");
+    await call("Page.navigate", { url: `${origin}/projects` });
+    await until(`Boolean(document.querySelector('a[href="/projects/${projectId}"]'))`);
+    await evaluate(`document.querySelector('a[href="/projects/${projectId}"]').click()`);
+    await until("document.body.innerText.includes('Busca fuentes académicas para comenzar')");
+    assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: { in: ["SEARCH_INPUT_FROZEN", "SEARCH_COMPLETED"] } } }), 0);
+    // Isolated audit fixture, not a scholarly search: distinguish post-search
+    // zero-admission from the pre-search state through the real rendering path.
+    await prisma.auditLog.create({ data: { userId: user.id, projectId, actorType: "SYSTEM", eventType: "SEARCH_COMPLETED", payloadJson: { referenceSearchVersion: "v2", searchSnapshot: {
+      referenceSearchVersion: "v2", savedAt: new Date().toISOString(), searchQuery: "offline fixture", attemptedQueries: [], totalResults: 0,
+      providerBreakdown: { openAlex: 0, crossref: 0 }, baseSelectedReferenceIds: [], references: [],
+      metadata: { planSource: "fallback", normalizedTopic: "offline fixture", intentSummary: "Offline acceptance only", keywordGroups: { necessary: [], complementary: [], optional: [] }, queryPack: { necessaryOnly: [], complementaryBoosted: [], optionalBackups: [] }, focusTerms: [], scoringRules: [] },
+    } } } });
+    await call("Page.reload");
+    await until("document.body.innerText.includes('No encontramos fuentes suficientemente pertinentes en este lote.')");
     const artifact = path.resolve("artifacts-local/rc4/phase1-browser"); await mkdir(artifact, { recursive: true });
     const screenshot = await call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
     await writeFile(path.join(artifact, "desktop.png"), Buffer.from(screenshot.data, "base64"));
@@ -77,11 +123,20 @@ async function main() {
     await until("location.pathname === '/workspace'");
     const unauthorized = await fetch(`${origin}/api/projects/${projectId}/definition`, { redirect: "manual" });
     assert.notEqual(unauthorized.status, 200);
-    console.log("PASS Phase1 real headless browser: canonical creation, manual edit, autosave, query navigation flush, no implicit confirmation, explicit snapshot, search-intent, reload, mobile no overflow, expired/absent session denied. Model unavailable fallback visible; paid calls=0.");
+    // Fresh session for this disposable identity, not a copied owner session.
+    const resumed = await issueSessionToken({ userId: user.id });
+    await call("Network.setCookie", { name: "imx_session", value: resumed, url: origin, httpOnly: true, sameSite: "Strict" });
+    await call("Page.navigate", { url: `${origin}/projects/${projectId}` });
+    await until("document.body.innerText.includes('No encontramos fuentes suficientemente pertinentes en este lote.')");
+    assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: "RESEARCH_DEFINITION_CONFIRMED" } }), 1);
+    assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: "SEARCH_COMPLETED" } }), 1, "Only the explicit offline fixture");
+    assert.equal(await prisma.auditLog.count({ where: { projectId, eventType: "SEARCH_INPUT_FROZEN" } }), 0);
+    console.log("PASS Phase1 real headless browser: canonical creation, autosave, query navigation flush, stale ambiguity/proposal acceptance, exact confirmation, automatic Sources navigation, search-intent, both empty states, reload, project-list resume, fresh-session resume, mobile, absent session denied; no executed searches; paid calls=0.");
   } finally {
     ws?.close(); chrome.kill("SIGTERM"); await delay(800);
     await rm(profile, { recursive: true, force: true });
     await prisma.auditLog.deleteMany({ where: { userId: user.id } });
+    await prisma.paidOperation.deleteMany({ where: { userId: user.id } });
     await prisma.user.delete({ where: { id: user.id } }); await prisma.$disconnect();
   }
 }

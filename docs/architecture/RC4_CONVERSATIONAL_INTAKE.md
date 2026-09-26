@@ -49,6 +49,17 @@ use `LEGACY_COMPATIBILITY` with `LEGACY_UNVERIFIED` provenance, never invented
 confirmation. Query-planner, provider, ranking and admission algorithms are
 unchanged; query quality is a separate gate.
 
+2026-09-26 handoff correction: shared policy `initial-evidence.v2` also filters
+historical optional ambiguities through the material-field policy. A later
+explicitly accepted answer proposal (or explicit usable field edit) resolves
+that field's older question; an unaccepted/same-turn proposal does not. Optional
+`createdRevision` in ambiguity JSON supports ordering without a migration.
+DEFER is an explicit revisioned action for non-core uncertainty; it retains the
+unresolved question and never accepts a field. Confirmation now navigates to
+Evidence; reading that screen has no provider/model side effects. Gate 2A
+(`60d131b`) adds deterministic admission before diversity and recommendation
+reads, preserving historical snapshots and manual selections.
+
 Before provider/model work, `SEARCH_INPUT_FROZEN` stores a private, historical
 copy of the versioned intent and exact planner input in AuditLog. It records
 intake ID, confirmed draft revision, definition hash, intent hash, engine and

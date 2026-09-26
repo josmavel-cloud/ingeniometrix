@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DEFINITION_FIELDS, FIELD_LABELS, definitionReadiness, usable, type ConversationalView, type DefinitionAction, type DefinitionField } from "@/lib/conversational-intake";
+import { DEFINITION_FIELDS, FIELD_LABELS, ambiguityBlocksSearch, canDeferAmbiguity, definitionReadiness, usable, type ConversationalView, type DefinitionAction, type DefinitionField } from "@/lib/conversational-intake";
 import type { IntakeTurnResult } from "@/lib/intake-turn-contract";
 import { DefinitionSaveQueue } from "@/lib/definition-save-queue";
 import { registerDraftFlush } from "@/lib/draft-save-queue";
@@ -21,6 +21,9 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
   const [notice, setNotice] = useState("Recuperando tu definición…"), [error, setError] = useState("");
   const [modelBusy, setModelBusy] = useState(false), [review, setReview] = useState(false), [conflict, setConflict] = useState(false);
   const [edit, setEdit] = useState<Edit | null>(null), [dirty, setDirty] = useState(false);
+  const [actionBusy, setActionBusy] = useState(false), [confirming, setConfirming] = useState(false);
+  const reviewing = useRef<{ revision: number; definitionHash: string } | null>(null);
+  const actionLock = useRef(false), confirmationLock = useRef(false);
   const queue = useRef<DefinitionSaveQueue | null>(null), pending = useRef<Edit | null>(null), conflictRef = useRef(false);
   const submitted = useRef<{ requestId: string; message: string; baseRevision: number; etag: string; initial?: true } | null>(null);
   const initialStarted = useRef(false), thread = useRef<HTMLDivElement | null>(null), advanced = useRef<HTMLDetailsElement | null>(null);
@@ -93,7 +96,10 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
     try { const v = await flush(); advanced.current!.open = true; setEdit({ field, value: v.definition.fields[field].value, knowledge: v.definition.fields[field].knowledge }); } catch {}
   };
   const action = async (a: DefinitionAction) => {
-    try { await flush(); const v = await queue.current!.save(a); adopt(v); setReview(false); setNotice(`Guardado · revisión ${v.revision}`); } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar."); }
+    if (actionLock.current || confirmationLock.current || conflictRef.current) return;
+    actionLock.current = true; setActionBusy(true); setReview(false);
+    try { await flush(); const v = await queue.current!.save(a); adopt(v); setNotice(`Guardado · revisión ${v.revision}`); } catch (e) { setError(e instanceof Error ? e.message : "No se pudo guardar."); }
+    finally { actionLock.current = false; setActionBusy(false); }
   };
   const submit = async (text: string, initial = false) => {
     if (!text.trim() || !available || modelBusy || conflictRef.current) return;
@@ -101,7 +107,7 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
     try {
       const v = await flush();
       submitted.current ??= { requestId: crypto.randomUUID(), baseRevision: v.revision, etag: v.etag, message: text, ...(initial ? { initial: true as const } : {}) };
-      const r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submitted.current) });
+      const r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submitted.current), signal: AbortSignal.timeout(90000) });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "No se pudo enviar. Reintenta la misma solicitud.");
       submitted.current = null; if (!initial) setMessage("");
@@ -132,16 +138,19 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
   const latest = [...turns].reverse().find(t => t.kind === "MESSAGE" && t.status === "COMPLETE");
   const proposedQuestion = latest?.resultJson?.nextQuestion;
   const question = proposedQuestion && d.fields[proposedQuestion.field].lastChangedRevision <= (latest?.resultJson?.baseRevision ?? 0) ? proposedQuestion : null;
-  const proposals = d.proposals.filter(p => p.status === "PENDING");
+  const blocking = d.ambiguities.filter(ambiguityBlocksSearch);
+  const proposals = d.proposals.filter(p => p.status === "PENDING").sort((a, b) => Number(blocking.some(q => q.field === b.field)) - Number(blocking.some(q => q.field === a.field)));
+  const busy = actionBusy || confirming;
+  const confirmReason = conflict ? "Carga la revisión actual y resuelve el conflicto antes de continuar." : dirty ? "Guardando los cambios antes de continuar…" : modelBusy ? "Espera a que termine la respuesta; después revisa la definición." : busy ? "Guardando la definición…" : readiness.evidenceSearch.reasons[0];
   const summaryFields: DefinitionField[] = ["topic", d.fields.purpose.value ? "purpose" : "problem", "object", "context", "concepts", "intendedOutput"];
   const shownFields = summaryFields.filter(k => k === "topic" || (k === "object" && !usable(d.fields.concepts)) || usable(d.fields[k]));
   const otherConfirmed = DEFINITION_FIELDS.filter(k => usable(d.fields[k]) && !shownFields.includes(k));
   const proposalCard = (p: typeof proposals[number]) => <article key={p.id} className="rounded-[20px] border border-[var(--color-line)] bg-white/90 p-3 sm:p-4">
     <p className="text-xs font-medium text-[var(--color-muted)]">Sugerencia · {FIELD_LABELS[p.field]}</p>
     <p className="mt-1 text-sm leading-6">{p.proposed.value || (p.proposed.knowledge === "UNKNOWN" ? "Por definir" : "No aplica")}</p>
-    <div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" className={primary} onClick={() => void action({ kind: "ACCEPT", proposalId: p.id })}>Correcto</button>
+    <div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" className={primary} disabled={busy || conflict} onClick={() => void action({ kind: "ACCEPT", proposalId: p.id })}>Correcto</button>
       <button type="button" className={button} onClick={() => { advanced.current!.open = true; setEdit({ field: p.field, value: p.proposed.value, knowledge: p.proposed.knowledge }); requestAnimationFrame(() => document.getElementById("definition-value")?.focus()); }}>Cambiar</button>
-      <button type="button" className="px-2 text-xs text-[var(--color-muted)] underline" onClick={() => void action({ kind: "REJECT", proposalId: p.id })}>Descartar</button></div>
+      <button type="button" disabled={busy || conflict} className="px-2 text-xs text-[var(--color-muted)] underline" onClick={() => void action({ kind: "REJECT", proposalId: p.id })}>Descartar</button></div>
   </article>;
   return <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(255px,320px)] lg:items-start">
     <section className="surface-panel flex h-[min(48vh,30rem)] min-h-[23rem] min-w-0 flex-col rounded-[32px] p-4 sm:h-[min(60vh,44rem)] sm:min-h-[27rem] sm:p-6" aria-labelledby="conversation-title">
@@ -196,22 +205,34 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
           {edit.field !== "academicLevel" && <div className="flex gap-2"><button className={button} onClick={() => changeEdit({ ...edit, value: "", knowledge: "UNKNOWN" })}>No lo sé</button><button className={button} onClick={() => changeEdit({ ...edit, value: "", knowledge: "NOT_APPLICABLE" })}>No aplica</button></div>}
           <button className={button} disabled={conflict} onClick={() => void flush().catch(() => undefined)}>Guardar este campo</button>
         </div>}
-        {d.ambiguities.filter(a => !a.resolved).map(a => <form key={a.id} className="mt-3 rounded-xl border p-3 text-sm" onSubmit={e => { e.preventDefault(); const answer = String(new FormData(e.currentTarget).get("answer") ?? ""); void action({ kind: "RESOLVE", ambiguityId: a.id, answer }); }}>
+        {d.ambiguities.filter(a => !a.resolved && !ambiguityBlocksSearch(a)).map(a => <form key={a.id} className="mt-3 rounded-xl border p-3 text-sm" onSubmit={e => { e.preventDefault(); const answer = String(new FormData(e.currentTarget).get("answer") ?? ""); void action({ kind: "RESOLVE", ambiguityId: a.id, answer }); }}>
           <label>{a.question}<input required name="answer" maxLength={2000} className="mt-2 w-full rounded border p-2" /></label><button className={button}>Resolver</button></form>)}
       </details>
       <div className="mt-5 border-t border-[var(--color-line)] pt-4">
         {readiness.evidenceSearch.reasons.map(r => <p key={r} className="my-2 text-xs text-[var(--color-muted)]">{r}</p>)}
-        <button className={primary} disabled={modelBusy || conflict} onClick={() => { void flush().then(() => setReview(true)).catch(() => undefined); }}>Revisar definición</button>
+        {blocking.map(a => <form key={a.id} className="my-3 rounded-xl border border-[var(--color-line)] p-3 text-sm" onSubmit={e => { e.preventDefault(); void action({ kind: "RESOLVE", ambiguityId: a.id, answer: String(new FormData(e.currentTarget).get("answer") ?? "") }); }}>
+          <label>{a.question}<input required name="answer" maxLength={2000} className="mt-2 w-full rounded border p-2" /></label>
+          <button className={button} disabled={busy || conflict}>Guardar aclaración</button>
+          {canDeferAmbiguity(a) && <button type="button" className="mt-2 text-xs underline" disabled={busy || conflict} onClick={() => void action({ kind: "DEFER", ambiguityId: a.id })}>Dejar pendiente; buscar con la definición aceptada</button>}
+        </form>)}
+        <button className={primary} disabled={modelBusy || conflict || busy} onClick={() => { void flush().then(v => { reviewing.current = { revision: v.revision, definitionHash: v.definitionHash }; setReview(true); }).catch(() => undefined); }}>Revisar definición</button>
         {review && <div className="mt-4 text-sm" aria-label="Revisión antes de confirmar"><h3 className="font-semibold">Esto entendimos para buscar evidencia</h3><dl>{shownFields.filter(k => usable(d.fields[k])).map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap">{publicValue(k, d.fields[k].value)}</dd></div>)}</dl>
           {otherConfirmed.length > 0 && <details><summary className="cursor-pointer text-[var(--color-plum)]">Ver otros valores que se incluirán</summary><dl>{otherConfirmed.map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap">{publicValue(k, d.fields[k].value)}</dd></div>)}</dl></details>}
           <p className="my-3 text-xs text-[var(--color-muted)]">{proposals.length ? `${proposals.length} propuestas sin aceptar no se incluirán. ` : ""}{readiness.evidenceSearch.reasons.length ? "Resuelve los puntos anteriores para continuar. " : ""}La confirmación prepara la búsqueda; no inicia una generación.</p>
           <button type="button" className="mb-3 text-sm text-[var(--color-plum)] underline" onClick={() => { setReview(false); document.getElementById("intake-message")?.focus(); }}>Seguir aclarando</button>
-          <button className={primary} disabled={readiness.evidenceSearch.status !== "READY" || dirty} onClick={async () => {
+          {confirmReason && <p id="confirmation-reason" role="status" className="my-2 text-xs">{confirmReason}</p>}
+          <button className={primary} aria-describedby={confirmReason ? "confirmation-reason" : undefined} disabled={readiness.evidenceSearch.status !== "READY" || dirty || conflict || modelBusy || busy} onClick={async () => {
+            if (confirmationLock.current || actionLock.current || conflictRef.current) return;
+            confirmationLock.current = true; setConfirming(true);
             try {
-              const v = await flush(); if (v.definitionHash !== state.definitionHash) { setReview(false); throw new Error("Hay cambios nuevos; revisa de nuevo antes de confirmar."); }
-              const r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation: "confirm", revision: state.revision, definitionHash: state.definitionHash }) });
-              const data = await r.json(); if (!r.ok) throw new Error(data.error); adopt(data.state); setNotice("Definición confirmada. No se ejecutó retrieval."); setReview(false); router.refresh();
+              const v = await flush(); if (v.definitionHash !== reviewing.current?.definitionHash || v.revision !== reviewing.current?.revision) { setReview(false); throw new Error("Hay cambios nuevos; revisa de nuevo antes de confirmar."); }
+              const r = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ operation: "confirm", revision: v.revision, definitionHash: v.definitionHash }) });
+              const data = await r.json();
+              if (!r.ok) { if (r.status === 409) { conflictRef.current = true; setConflict(true); setReview(false); } throw new Error(data.error); }
+              adopt(data.state); setNotice("Definición confirmada. Puedes buscar fuentes cuando lo decidas."); setReview(false);
+              router.push(`/projects/${projectId}?step=evidence`); router.refresh();
             } catch (e) { setError(e instanceof Error ? e.message : "No se pudo confirmar."); }
+            finally { confirmationLock.current = false; setConfirming(false); }
           }}>Confirmar para buscar evidencia</button>
         </div>}
       </div>
