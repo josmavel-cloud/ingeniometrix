@@ -75,6 +75,9 @@ export type SearchTerm = EnrichmentOutput["terms"][number] & {
 };
 export type SearchEnrichment = {
   scientificConceptPlan?: ScientificConceptPlan;
+  // Private acceptance/audit evidence. This is the validated structured model
+  // response before any term is normalized or rejected; never shown as science.
+  rawPlannerOutput?: EnrichmentOutput;
   schemaVersion: typeof ENRICHMENT_VERSION; searchIntentHash: string; policyVersion: typeof SEMANTIC_POLICY_VERSION;
   planMode: "SEMANTIC" | "DEGRADED"; status: "READY" | "NEEDS_CLARIFICATION";
   terms: SearchTerm[]; ambiguities: SemanticPlannerInput["ambiguities"];

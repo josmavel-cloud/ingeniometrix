@@ -124,6 +124,7 @@ async function main() {
     },
   });
   assert.equal(metadataCalls, 2, "incomplete historical language coverage requests one bounded recovery batch");
+  assert.deepEqual(metadata.enrichment?.rawPlannerOutput, seismicTerms, "raw structured planner terms survive normalization in the paid plan audit");
   assert.equal(metadata.enrichment?.translationRecovery?.status, "LIMITED", "invalid simulated recovery preserves original-language queries");
   assert.equal(metadata.enrichment?.planMode, "SEMANTIC");
   assert.ok(metadata.queryPack.necessaryOnly.some(q => !q.includes("2026") && !q.includes("Perú")));

@@ -27,7 +27,7 @@ async function main() {
   const actualFetch = global.fetch;
   let calls = 0;
   let openAlexCalls = 0, modelCalls = 0;
-  const requests: Array<{ query?: string; httpStatus: number; latencyMs: number; resultCount?: number }> = [];
+  const requests: Array<{ kind: "MODEL" | "OPENALEX"; query?: string; httpStatus: number; latencyMs: number; resultCount?: number }> = [];
   global.fetch = async (request, init) => {
     const url = new URL(typeof request === "string" ? request : request instanceof URL ? request : request.url);
     const isModel = url.protocol === "https:" && url.hostname === "api.openai.com" && url.pathname === "/v1/responses";
@@ -37,7 +37,7 @@ async function main() {
     calls++;
     const started = Date.now();
     const response = await actualFetch(request, { ...init, redirect: "error" });
-    const record = { httpStatus: response.status, latencyMs: Date.now() - started,
+    const record = { kind: isModel ? "MODEL" as const : "OPENALEX" as const, httpStatus: response.status, latencyMs: Date.now() - started,
       ...(isOpenAlex ? { query: url.searchParams.get("search") ?? undefined, resultCount: ((await response.clone().json()) as { results?: unknown[] }).results?.length } : {}) };
     requests.push(record);
     return response;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { LlmProvider } from "@/llm/provider";
-import { enrichmentModelOutputSchema, fallbackSearchEnrichment, validateSearchEnrichment, type SemanticPlannerInput } from "@/lib/retrieval-semantic-plan";
+import { enrichmentModelOutputSchema, enrichmentOutputSchema, fallbackSearchEnrichment, validateSearchEnrichment, type SemanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 
@@ -22,7 +22,9 @@ export async function planSemanticSearch(input: SemanticPlannerInput, provider: 
       trackingLabel: "structured:reference_search_v2_plan",
       trackingAttribution: { stage: "source_discovery", promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version },
     });
-    const plan = validateSearchEnrichment(input, raw);
+    const parsedRaw = enrichmentOutputSchema.parse(raw);
+    const plan = validateSearchEnrichment(input, parsedRaw);
+    plan.rawPlannerOutput = parsedRaw;
     return plan.status === "READY" ? plan : fallbackSearchEnrichment(input, "ENRICHMENT_INSUFFICIENT");
   } catch {
     return fallbackSearchEnrichment(input, "ENRICHMENT_UNAVAILABLE_OR_INVALID");
