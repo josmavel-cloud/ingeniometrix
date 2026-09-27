@@ -9,7 +9,12 @@ mandatory long qualified objects; planner prompt 2.3.0 requests central English
 equivalents. Offline historical-label simulation retains 19/27 positives versus
 5/27 previously, without false positives; this is not live model validation.
 See [2B1.3 report](docs/quality/rc4-phase2b13-semantic-admission.md).
-Live acceptance pending; no 2C. Five unrelated G5 changes remain uncommitted.
+Staging app is cb87912; tests/builds/health pass. One live mini planner call
+(USD 0.007199) lacked central English equivalents; all queries remained original-
+language only. Acceptance STOPPED BEFORE OpenAlex: scholarly calls=0, semantic
+review calls=0. Gate remains FAIL/not closed; no new shortlist. Diagnose accepted
+versus discarded translations offline before requesting another live acceptance.
+No 2C. Five unrelated G5 changes remain uncommitted.
 
 ## Latest checkpoint - 2B1.2 offline scientific anchors (2026-09-27)
 
