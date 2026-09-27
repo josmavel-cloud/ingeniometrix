@@ -1,7 +1,7 @@
 import type { SemanticKeywordGroup } from "./retrieval-semantic-plan";
 import { containsConcept, conceptWordCount, highAuthorityTerms, normalizeConcept, type ScientificConcept, type ScientificConceptPlan } from "./retrieval-scientific-concepts";
 
-export const QUERY_COMPOSITION_VERSION = "scientific-query-composition.v3";
+export const QUERY_COMPOSITION_VERSION = "scientific-query-composition.v4";
 export type QueryFamily = "CORE_PHENOMENON" | "OBJECT_OR_SYSTEM" | "METHOD_PRECEDENT" | "RESEARCH_ACTION_PRECEDENT" | "THEORETICAL_OR_MECHANISTIC" | "CONTEXTUAL_OR_LOCAL";
 export type ScientificQuery = {
   id: string; family: QueryFamily; familyType: QueryFamily; purpose: string;
@@ -12,7 +12,9 @@ export type ScientificQuery = {
   whyValid: string[]; query: string; reason: string;
 };
 type Groups = { necessary: SemanticKeywordGroup[]; complementary: SemanticKeywordGroup[]; optional: SemanticKeywordGroup[]; conceptPlan?: ScientificConceptPlan };
-const science = (c: ScientificConcept) => ["PHENOMENON", "RESEARCH_ACTION", "CORE_CONCEPT"].includes(c.role);
+// A generic research verb supplies intent, but not a scientific phenomenon.
+export const genericResearchAction = (c: ScientificConcept) => c.role === "RESEARCH_ACTION" && /^(?:evaluate|evaluar|evaluation|evaluacion|study|estudiar|investigate|investigar|understand|comprender|design|diseno|analyse|analyze|analizar|compare|comparar|validate|validar)$/.test(normalizeConcept(c.value));
+const science = (c: ScientificConcept) => ["PHENOMENON", "RESEARCH_ACTION", "CORE_CONCEPT"].includes(c.role) && !genericResearchAction(c);
 const domain = (c: ScientificConcept) => ["OBJECT_OR_SYSTEM", "CORE_CONCEPT"].includes(c.role);
 const central = (c: ScientificConcept) => c.authority === "CENTRAL" && highAuthorityTerms(c).length > 0;
 const precedentUsable = (c: ScientificConcept) => c.authority !== "EXPLORATORY" && highAuthorityTerms(c).length > 0 && ["METHOD_OR_TECHNIQUE", "THEORY_OR_FRAMEWORK"].includes(c.role);
@@ -36,6 +38,7 @@ export function validateScientificFamily(q: ScientificQuery, plan: ScientificCon
   const scientific = anchors.filter(c => precedent ? c.role === precedent : science(c));
   const domains = anchors.filter(domain);
   if (!scientific.length) reasons.push("SCIENTIFIC_ANCHOR_MISSING");
+  if (anchors.some(genericResearchAction) && !anchors.some(c => science(c) && c.role !== "RESEARCH_ACTION")) reasons.push("GENERIC_ACTION_WITHOUT_SCIENTIFIC_IDENTITY");
   if (!domains.length) reasons.push("OBJECT_OR_DOMAIN_ANCHOR_MISSING");
   if (!scientific.some(a => domains.some(b => a.id !== b.id))) reasons.push("INDEPENDENT_SCIENTIFIC_ANCHORS_REQUIRED");
   if (anchors.some(c => ["QUALIFIER", "CONTEXT", "GEOGRAPHY", "TIME_OR_STANDARD"].includes(c.role))) reasons.push("REFINER_PROMOTED_TO_CORE");
@@ -107,7 +110,14 @@ export function composeSemanticQueries(input: Groups) {
     add("CORE_PHENOMENON", 1, [phenomenon, object], [], "Scientific phenomenon/action and domain; no contextual restriction");
     const qualifiedObject = domains.find(c => c.id !== object.id && c.role === "OBJECT_OR_SYSTEM" && containsConcept(c.value, object.value));
     const qualifier = concepts.find(c => c.role === "QUALIFIER" && c.authority === "REFINER" && c.sourceFields.some(f => ["object", "concepts"].includes(f)));
-    if (qualifiedObject) add("OBJECT_OR_SYSTEM", 0, [phenomenon, qualifiedObject], [], "Qualified object, preserving the scientific phenomenon/action");
+    // A long qualified object remains available as an optional refinement. Do
+    // not require its whole literal phrase when a grounded broader object exists.
+    if (qualifiedObject && conceptWordCount(qualifiedObject.value) <= 4) add("OBJECT_OR_SYSTEM", 0, [phenomenon, qualifiedObject], [], "Qualified object, preserving the scientific phenomenon/action");
+    else if (qualifiedObject) {
+      const coreQuery = plannedQueries[0];
+      if (coreQuery) coreQuery.optionalConceptIds.push(qualifiedObject.id);
+      diagnostics.push("LONG_OBJECT_PRESERVED_AS_OPTIONAL_REFINEMENT");
+    }
     else if (qualifier) add("OBJECT_OR_SYSTEM", 0, [phenomenon, object], [qualifier], "Object qualification, never a replacement for scientific identity");
     const alternative = anchors.find(c => c.id !== phenomenon.id && c.role === "RESEARCH_ACTION");
     if (alternative) add("RESEARCH_ACTION_PRECEDENT", 2, [alternative, object], [], "Explicitly grounded alternate research action");

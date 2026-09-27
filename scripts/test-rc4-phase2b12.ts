@@ -17,7 +17,7 @@ for (const model of ["nano", "mini"]) {
   const plan = semanticQueryPack(enrichmentGroups(enrichment));
   assert.equal(plan.validation.valid, true);
   assert.deepEqual(validateScientificQueryPlan(plan), []);
-  assert.ok(plan.plannedQueries.length >= 2 && plan.plannedQueries.length <= 4);
+  assert.ok(plan.plannedQueries.length >= 1 && plan.plannedQueries.length <= 4, "long qualified object is optional, no redundant quota");
   assert.ok(plan.plannedQueries.every(q => /simulaci[oó]n s[ií]smica/i.test(q.query)), "qualifier cannot replace research action");
   assert.ok(plan.plannedQueries.filter(q => q.family !== "CONTEXTUAL_OR_LOCAL").every(q => !q.query.includes("Perú") && !q.query.includes("2026")));
   assert.ok(plan.plannedQueries.every(q => q.translationStatus === "ORIGINAL_ONLY_ENGLISH_INCOMPLETE"));

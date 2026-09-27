@@ -1,5 +1,16 @@
 # RC4 handoff
 
+## Latest checkpoint - 2B1.3 semantic candidate admission (2026-09-27)
+
+Bounded title/abstract review follows deterministic coarse filtering and precedes
+deterministic final admission/diversity. Existing acquisition and provider clients
+remain unchanged. Query composition v4 rejects generic-action anchors and avoids
+mandatory long qualified objects; planner prompt 2.3.0 requests central English
+equivalents. Offline historical-label simulation retains 19/27 positives versus
+5/27 previously, without false positives; this is not live model validation.
+See [2B1.3 report](docs/quality/rc4-phase2b13-semantic-admission.md).
+Live acceptance pending; no 2C. Five unrelated G5 changes remain uncommitted.
+
 ## Latest checkpoint - 2B1.2 offline scientific anchors (2026-09-27)
 
 Scientific role validation and deterministic family composition are deployed to

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import type { StructuredObjectInput } from "@/llm/provider";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import type { ConversationalView } from "@/lib/conversational-intake";
@@ -15,10 +16,14 @@ async function main() {
   const unique = randomUUID();
   const refs: string[] = [];
   let modelCalls = 0, mockedRequests = 0;
-  let acceptance = false, empty = false;
+  let acceptance = false, empty = false, reviewPool = false;
   global.fetch = async request => {
     const url = new URL(String(request)); mockedRequests++;
-    if (url.hostname === "api.openalex.org") return Response.json({ results: empty ? [] : [
+    if (url.hostname === "api.openalex.org") return Response.json({ results: empty ? [] : reviewPool ? Array.from({length:8}, (_,i) => ({
+      id:`https://openalex.org/${unique}-review-${i}`, doi:`https://doi.org/10.test/${unique}-review-${i}`,
+      display_name:`Learning in digital mathematics setting ${i}`, publication_year:2020,
+      abstract_inverted_index:{Feedback:[0],in:[1],digital:[2],mathematics:[3]},
+    })) : [
       { id: `https://openalex.org/${unique}-positive`, doi: `https://doi.org/10.test/${unique}-positive`, display_name: "Feedback in digital mathematics",
         publication_year: 1981, type: "article", abstract_inverted_index: { Feedback: [0], in: [1], digital: [2], mathematics: [3] },
         best_oa_location: { pdf_url: "https://example.test/not-fetched.pdf" } },
@@ -75,6 +80,25 @@ async function main() {
     assert.equal(accepted.providerBreakdown.crossref, 0);
     assert.equal(accepted.attemptedQueries.length, planned.metadata.queryPack.necessaryOnly.length);
     assert.ok(accepted.searchSnapshot.candidateAdmissions?.every(c => c.inspectionMetadata));
+    reviewPool = true;
+    let reviewCalls = 0;
+    const semantic = await searchProjectReferencesV2(user.id, project.id, input, {openAlexOnlyAcceptance:{...options.openAlexOnlyAcceptance, semanticReview:true}}, {
+      async generateStructuredObject<T>(request: StructuredObjectInput) {
+        reviewCalls++; assert.equal(request.schemaName, "candidate_semantic_review_v1");
+        return {reviews:Array.from({length:8},(_,i)=>({candidateId:`doi:10.test/${unique}-review-${i}`, relevance:"RELEVANT",role:i%2?"METHODOLOGICAL":"DIRECT",
+          matchedIntentDimensions:["concepts"], mismatches:[], confidence:"HIGH", rationale:"La informacion suministrada apoya la pertinencia.",
+          evidence:[{field:"abstract",quote:"Feedback in digital mathematics"}]}))} as T;
+      }
+    });
+    refs.push(...semantic.searchSnapshot.references.map(r=>r.referenceId));
+    assert.equal(reviewCalls,1); assert.equal(semantic.totalResults,8,"admission is not a five-source quota");
+    assert.equal(semantic.searchSnapshot.semanticReview?.status,"COMPLETED");
+    const beforeReviewReads=mockedRequests;
+    assert.equal((await listProjectReferences(user.id,project.id)).length,8,"validated semantic admission survives read/list boundary");
+    assert.equal(mockedRequests,beforeReviewReads); assert.equal(reviewCalls,1);
+    assert.equal(await prisma.projectReference.count({where:{projectId:project.id,selected:true}}),0);
+    assert.equal(JSON.stringify((await prisma.auditLog.findUniqueOrThrow({where:{id:audit.id}})).payloadJson),original);
+    reviewPool = false;
     empty = true;
     const zero = await searchProjectReferencesV2(user.id, project.id, input, options, providerForbidden);
     assert.equal(zero.totalResults, 0, "zero OpenAlex cannot invoke Crossref or pad quota");

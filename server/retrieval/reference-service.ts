@@ -28,6 +28,7 @@ import {
 } from "./reference-translation-service";
 import { getLatestProjectReferenceSearchSnapshot } from "./reference-search-v2";
 import { decideReferenceAdmission } from "./reference-admission";
+import { MAX_RECOMMENDATIONS } from "./candidate-review-policy";
 import { buildReferenceSearchPlan } from "./search-query-planner";
 import { searchOpenAlexWorks } from "./openalex-client";
 
@@ -590,7 +591,7 @@ export async function listProjectReferences(
         breakdown: entry?.scoreBreakdown ?? null,
       }).state === "ADMITTED";
     })
-    .slice(0, MAX_SELECTED_REFERENCES);
+    .slice(0, searchSnapshot?.semanticReview ? MAX_RECOMMENDATIONS : MAX_SELECTED_REFERENCES);
 
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,

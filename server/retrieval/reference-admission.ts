@@ -1,4 +1,5 @@
 import type { ReferenceScoreBreakdown } from "./reference-search-v2";
+import { CANDIDATE_REVIEW_VERSION, finalCandidateAdmission } from "./candidate-review-policy";
 
 export const REFERENCE_ADMISSION_POLICY_VERSION = "reference-admission-v1";
 
@@ -28,6 +29,11 @@ export function decideReferenceAdmission(input: {
   });
   const breakdown = input.breakdown;
   if (!breakdown) return decision("NEEDS_INSPECTION", "RELEVANCE_CONTEXT_UNAVAILABLE");
+  if (breakdown.candidateAssessment) {
+    const review = breakdown.candidateAssessment;
+    if (review.policyVersion !== CANDIDATE_REVIEW_VERSION || !review.searchIntentHash || !review.metadataHash) return decision("NEEDS_INSPECTION", "REVIEW_CONTEXT_UNAVAILABLE");
+    return decision(finalCandidateAdmission(review), `${review.policyVersion}:${review.relevance}:${review.role}`);
+  }
   if (breakdown.semanticRelevance) {
     const semantic = breakdown.semanticRelevance;
     return { policyVersion: REFERENCE_ADMISSION_POLICY_VERSION,

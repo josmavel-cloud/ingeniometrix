@@ -23,6 +23,8 @@ import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-sea
 import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-relevance";
 import { QUERY_COMPOSITION_VERSION, validateScientificQueryPlan, type ScientificQuery } from "@/lib/retrieval-query-composition";
 import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
+import { reviewCandidateBatch } from "./candidate-semantic-review";
+import { candidateMetadataHash, CANDIDATE_REVIEW_VERSION, MAX_RECOMMENDATIONS, type CandidateAssessment, type ReviewCandidate } from "./candidate-review-policy";
 
 import {
   type CrossrefMessage,
@@ -72,6 +74,7 @@ export type ReferenceSearchV2Metadata = {
 };
 
 export type ReferenceScoreBreakdown = {
+  candidateAssessment?: CandidateAssessment;
   semanticRelevance?: SemanticRelevance;
   label: "ALTO" | "MEDIO" | "BAJO" | "MINIMO";
   necessaryMatches: string[];
@@ -88,6 +91,7 @@ export type ReferenceScoreBreakdown = {
 };
 
 export type ProjectReferenceSearchSnapshot = {
+  semanticReview?: Awaited<ReturnType<typeof reviewCandidateBatch>>["trace"];
   referenceSearchVersion: "v2";
   inputTrace?: SearchInputTrace;
   stale?: boolean;
@@ -1191,7 +1195,10 @@ export function pickDiverseCandidates(input: {
   metadata: ReferenceSearchV2Metadata;
   activeLanguage: string | null | undefined;
 }) {
-  const sortedGlobal = [...input.rankedCandidates].sort((left, right) => right.score - left.score);
+  const compare = (left: RankedCandidate, right: RankedCandidate) => right.score - left.score ||
+    Number(Boolean(right.pdfUrl)) - Number(Boolean(left.pdfUrl)) ||
+    Number(extractAccessSignals(right.candidate).isOpenAccess) - Number(extractAccessSignals(left.candidate).isOpenAccess);
+  const sortedGlobal = [...input.rankedCandidates].sort(compare);
   const selected = new Map<string, RankedCandidate>();
   const add = (candidate: RankedCandidate) => {
     selected.set(buildDedupKey(candidate.candidate), candidate);
@@ -1230,7 +1237,7 @@ export function pickDiverseCandidates(input: {
   }
 
   return Array.from(selected.values())
-    .sort((left, right) => right.score - left.score)
+    .sort(compare)
     .slice(0, input.desiredTotal);
 }
 
@@ -1268,7 +1275,7 @@ export async function searchProjectReferencesV2(
     desiredTotal?: number;
     batchKind?: SourceDiscoveryBatchKind;
     // Internal acceptance capability; never accepted from public route bodies.
-    openAlexOnlyAcceptance?: { planOperationId: string; maxQueries: number };
+    openAlexOnlyAcceptance?: { planOperationId: string; maxQueries: number; semanticReview?: boolean };
   },
   planningProvider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">,
 ): Promise<SearchProjectReferencesV2Result> {
@@ -1551,9 +1558,32 @@ export async function searchProjectReferencesV2(
     });
   }
 
+  let semanticReview: ProjectReferenceSearchSnapshot["semanticReview"];
+  const conceptPlan = searchMetadata.enrichment?.scientificConceptPlan;
+  if (conceptPlan && (!acceptance || acceptance.semanticReview)) {
+    const reviewInputs: ReviewCandidate[] = rankedCandidates.map(item => ({ candidateId: buildDedupKey(item.candidate),
+      title: item.resolvedTitle, abstract: item.abstract, authors: item.authors, year: item.year, venue: item.venue,
+      workType: item.workType, query: item.candidate.matchedQuery,
+      deterministicSignals: item.scoreBreakdown.semanticRelevance }));
+    const review = await reviewCandidateBatch(semanticPlannerInput(input.intent, fingerprint(input.intent)), conceptPlan, reviewInputs,
+      { generateStructuredObject: request => (planningProvider ?? getConfiguredLlmProvider()).generateStructuredObject(request) }, searchMetadata.enrichment?.explicitExclusions);
+    semanticReview = review.trace;
+    for (let i = 0; i < rankedCandidates.length; i++) {
+      const item = rankedCandidates[i], original = reviewInputs[i];
+      const assessment = review.assessments.get(original.candidateId) ?? {
+        policyVersion: CANDIDATE_REVIEW_VERSION, candidateId: original.candidateId, searchIntentHash: conceptPlan.searchIntentHash,
+        metadataHash: candidateMetadataHash(original), origin: "DETERMINISTIC" as const, relevance: "INSUFFICIENT_METADATA" as const,
+        role: "NONE" as const, confidence: "LOW" as const, rationale: "BOUNDED_REVIEW_DEFERRED_OR_UNAVAILABLE", matchedIntentDimensions: [], mismatches: [], evidence: [],
+      };
+      item.scoreBreakdown.candidateAssessment = assessment;
+      item.admission = decideReferenceAdmission({ title: item.resolvedTitle, abstract: item.abstract, score: item.score, breakdown: item.scoreBreakdown });
+      item.score = item.admission.state === "ADMITTED" ? assessment.relevance === "HIGHLY_RELEVANT" ? 200 : 100 : 0;
+      item.scoreBreakdown.label = item.admission.state === "ADMITTED" ? "ALTO" : "BAJO";
+    }
+  }
   const selectedCandidates = pickDiverseCandidates({
     rankedCandidates: admittedOnly(rankedCandidates),
-    desiredTotal,
+    desiredTotal: semanticReview ? Math.min(options?.desiredTotal ?? MAX_RECOMMENDATIONS, MAX_RECOMMENDATIONS) : desiredTotal,
     metadata: searchMetadata,
     activeLanguage: languageContext.activeLanguage,
   });
@@ -1692,6 +1722,7 @@ export async function searchProjectReferencesV2(
   });
 
   const searchSnapshot: ProjectReferenceSearchSnapshot = {
+    ...(semanticReview ? { semanticReview } : {}),
     referenceSearchVersion: "v2",
     inputTrace,
     batchKind,
