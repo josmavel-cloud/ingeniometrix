@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { DEFINITION_FIELDS, type DefinitionField, type FieldValue } from "./conversational-intake";
 import type { ResearchSearchIntent } from "./retrieval-search-input";
 import { composeSemanticQueries } from "./retrieval-query-composition";
-import { SCIENTIFIC_ROLES, validateScientificConcepts, type ScientificConceptPlan } from "./retrieval-scientific-concepts";
+import { SCIENTIFIC_ROLES, normalizeConcept, validateScientificConcepts, type ScientificConceptPlan } from "./retrieval-scientific-concepts";
 
 export const PLANNER_INPUT_VERSION = "research-planner-input.v1";
 export const ENRICHMENT_VERSION = "search-enrichment.v1";
@@ -80,6 +81,17 @@ export type SearchEnrichment = {
   researchActionInterpretation: SearchTerm[]; likelyEvidenceRoles: Array<"DIRECT" | "METHODOLOGICAL" | "THEORETICAL" | "CONTEXTUAL">;
   confidence: "UNASSESSED"; reasonCodes: string[];
   explicitExclusions: string[];
+  translationTrace?: TranslationTrace[];
+  plannerOutputTermCount?: number;
+  translationRecovery?: { status: "NOT_NEEDED" | "COMPLETE" | "LIMITED"; model: string; promptVersion: string; requestedIds: string[]; cacheHits: number };
+};
+export type TranslationTrace = {
+  translationId: string; sourceConceptId: string; originalText: string; translatedText: string;
+  sourceLanguage: string; targetLanguage: string; expansionType: "TRANSLATION" | "ACADEMIC_SYNONYM";
+  origin: "MAIN_PLANNER" | "TRANSLATION_RECOVERY" | "TRANSLATION_CACHE";
+  authority: SearchTerm["authority"] | "UNRESOLVED"; sourceFields: DefinitionField[];
+  plannerOperationId?: string | null;
+  validationStatus: "ACCEPTED" | "REJECTED"; validationReason: string;
 };
 export const normalizeSearchText = (s: string) => s.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 const includesPhrase = (s: string, phrase: string) => (` ${normalizeSearchText(s)} `).includes(` ${normalizeSearchText(phrase)} `);
@@ -113,23 +125,48 @@ export function validateSearchEnrichment(input: SemanticPlannerInput, raw: unkno
   const parsed = enrichmentOutputSchema.parse(raw);
   const terms: SearchTerm[] = [];
   const rejected: string[] = [];
+  const proposed: Array<{ term: EnrichmentOutput["terms"][number]; reason: string | null }> = [];
   for (const term of parsed.terms) {
     const source = input.signals.find(s => s.sourceField === term.sourceField);
-    if (!source?.value || source.knowledge !== "KNOWN" || source.category === "UNRESOLVED_OR_UNKNOWN" ||
-      !includesPhrase(source.value, term.anchor) || ["constraints", "advisorNotes", "dataAccess", "academicLevel"].includes(term.sourceField) ||
-      (term.type === "EXACT_TERM" && !includesPhrase(term.anchor, term.text)) ||
-      /["(){}\n]|\b(?:AND|OR|NOT)\b/.test(term.text) ||
-      (term.text.match(/\d+/g) ?? []).some(n => !term.anchor.includes(n))) {
-      rejected.push("UNSUPPORTED_OR_UNSAFE_TERM"); continue;
+    const reason = !source?.value || source.knowledge !== "KNOWN" || source.category === "UNRESOLVED_OR_UNKNOWN" ? "INELIGIBLE_OR_UNKNOWN_SOURCE" :
+      !includesPhrase(source.value, term.anchor) ? "ANCHOR_NOT_IN_CONFIRMED_FIELD" :
+      ["constraints", "advisorNotes", "dataAccess", "academicLevel"].includes(term.sourceField) ? "NON_SEMANTIC_SOURCE_FIELD" :
+      term.type === "EXACT_TERM" && !includesPhrase(term.anchor, term.text) ? "EXACT_TEXT_NOT_IN_ANCHOR" :
+      /["(){}\n]|\b(?:AND|OR|NOT)\b/.test(term.text) ? "UNSAFE_SYNTAX" :
+      (term.text.match(/\d+/g) ?? []).some(n => !term.anchor.includes(n)) ? "UNSUPPORTED_NUMBER" : null;
+    if (reason) {
+      rejected.push("UNSUPPORTED_OR_UNSAFE_TERM"); proposed.push({ term, reason }); continue;
     }
     // Low-confidence and related concepts are exploration, never core evidence.
+    const eligibleSource = source!;
     const exploratory = term.confidence !== "HIGH" || term.type === "RELATED_TERM";
     const contextOnly = /\d{4}/.test(term.anchor) || input.signals.some(s => s.sourceField === "context" && s.value && includesPhrase(s.value, term.anchor));
-    terms.push({ ...term, sourceFields: [term.sourceField], role: source.role, tier: source.tier,
-      authority: exploratory ? "EXPLORATORY" : source.tier === 1 && !contextOnly ? "CENTRAL" : "REFINER",
+    terms.push({ ...term, sourceFields: [term.sourceField], role: eligibleSource.role, tier: eligibleSource.tier,
+      authority: exploratory ? "EXPLORATORY" : eligibleSource.tier === 1 && !contextOnly ? "CENTRAL" : "REFINER",
       provenance: "AI_DERIVED_FOR_SEARCH" });
+    proposed.push({ term, reason: null });
   }
   const result = finish(input, terms, "SEMANTIC", [...new Set(rejected)]);
+  result.plannerOutputTermCount = parsed.terms.length;
+  result.translationTrace = proposed.filter(x => x.term.type === "TRANSLATION" || x.term.type === "ACADEMIC_SYNONYM").map(({ term, reason }) => {
+    const acceptedTerm = terms.find(t => t.sourceField === term.sourceField && t.anchor === term.anchor && t.text === term.text && t.type === term.type);
+    const concept = result.scientificConceptPlan?.concepts.find(c => c.sourceFields.includes(term.sourceField) && normalizeConcept(c.value) === normalizeConcept(term.anchor) &&
+      c.terms.some(t => t.value === term.text && t.language === term.language &&
+        (t.expansionType === "VALIDATED_TRANSLATION" || t.expansionType === "ACADEMIC_EQUIVALENT")));
+    const statusReason = reason ?? (!term.language || term.language === "und" ? "TARGET_LANGUAGE_UNVERIFIED" :
+      !concept ? "SCIENTIFIC_CONCEPT_REJECTED_OR_MISMATCHED" :
+      acceptedTerm?.authority === "EXPLORATORY" ? "LOW_AUTHORITY_EXPLORATORY" : "VALIDATED_CONCEPT_TERM");
+    const accepted = statusReason === "VALIDATED_CONCEPT_TERM";
+    const originalText = concept?.value ?? term.anchor;
+    const translationId = createHash("sha256").update(JSON.stringify([input.searchIntentHash, term.sourceField, term.anchor, term.text, term.type, term.language])).digest("hex");
+    return { translationId, sourceConceptId: concept?.id ?? `unresolved:${normalizeConcept(term.anchor)}`, originalText,
+      translatedText: term.text, sourceLanguage: terms.some(t => t.sourceField === term.sourceField && t.anchor === term.anchor && t.type === "EXACT_TERM" && t.language === "es") ? "es" :
+        terms.some(t => t.sourceField === term.sourceField && t.anchor === term.anchor && t.type === "EXACT_TERM" && t.language === "en") ? "en" : "original",
+      targetLanguage: term.language ?? "und", expansionType: term.type as "TRANSLATION" | "ACADEMIC_SYNONYM",
+      origin: "MAIN_PLANNER" as const, authority: acceptedTerm?.authority ?? "UNRESOLVED" as const,
+      sourceFields: [term.sourceField], plannerOperationId: null,
+      validationStatus: accepted ? "ACCEPTED" as const : "REJECTED" as const, validationReason: statusReason };
+  });
   result.ambiguities = [...input.ambiguities, ...parsed.ambiguities.map(a => ({ field: a.sourceField, reason: a.reason, blocksSearch: false }))];
   return result;
 }

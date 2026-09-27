@@ -118,11 +118,13 @@ async function main() {
   let metadataCalls = 0;
   const metadata = await buildSearchMetadata({ intakeId: "offline", intent: historical.intent, plannerInput: plannerIntake(historical.intent) }, {
     async generateStructuredObject<T>(request: import("@/llm/provider").StructuredObjectInput) {
-      metadataCalls++; assert.match(request.prompt, /intendedOutput/); assert.match(request.prompt, /UNKNOWN/);
+      metadataCalls++;
+      if (request.schemaName !== "search_concept_translation_v1") { assert.match(request.prompt, /intendedOutput/); assert.match(request.prompt, /UNKNOWN/); }
       return seismicTerms as T;
     },
   });
-  assert.equal(metadataCalls, 1);
+  assert.equal(metadataCalls, 2, "incomplete historical language coverage requests one bounded recovery batch");
+  assert.equal(metadata.enrichment?.translationRecovery?.status, "LIMITED", "invalid simulated recovery preserves original-language queries");
   assert.equal(metadata.enrichment?.planMode, "SEMANTIC");
   assert.ok(metadata.queryPack.necessaryOnly.some(q => !q.includes("2026") && !q.includes("Perú")));
   const groups = metadata.keywordGroups as ReturnType<typeof enrichmentGroups>;

@@ -1,5 +1,21 @@
 # RC4 handoff
 
+## Latest checkpoint - 2B1.4 concept translation recovery (2026-09-27)
+
+Central concept translations now have per-term accepted/rejected traceability.
+When the semantic planner leaves required central concepts without English
+equivalents, one budgeted batch can recover them; a private cache prevents a
+repeat charge. Original-language families remain valid in limited mode if
+recovery fails. Offline seismic and multilingual fixtures pass; 2B1.3 semantic
+candidate review is unchanged. No live model, OpenAlex, Crossref or document
+calls were made in this gate. See [2B1.4 report](docs/quality/rc4-phase2b14-translation-recovery.md).
+
+The 2B1.3 artifact did not save the raw planner response and no provider audit
+file exists, so historical model omission versus term rejection cannot be
+proven. Future plans record every proposed translation and validation reason.
+Gate 2B1 remains open; do not start 2C or call providers without a separate
+acceptance authorization. Five unrelated G5 changes remain outside scope.
+
 ## Latest checkpoint - 2B1.3 semantic candidate admission (2026-09-27)
 
 Bounded title/abstract review follows deterministic coarse filtering and precedes

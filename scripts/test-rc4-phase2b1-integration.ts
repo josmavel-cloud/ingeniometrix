@@ -16,6 +16,8 @@ async function main() {
   const unique = randomUUID();
   const refs: string[] = [];
   let modelCalls = 0, mockedRequests = 0;
+  const plannerTerms = ["feedback", "digital mathematics"].map((text, i) => ({ sourceField: "concepts", anchor: text, text,
+    type: "EXACT_TERM", confidence: "HIGH", scientificRole: i ? "CORE_CONCEPT" : "PHENOMENON", language: "en" }));
   let acceptance = false, empty = false, reviewPool = false;
   global.fetch = async request => {
     const url = new URL(String(request)); mockedRequests++;
@@ -41,10 +43,17 @@ async function main() {
     await confirmDefinition(user.id, project.id, view.revision, view.definitionHash);
     const before = await prisma.projectDraft.findUniqueOrThrow({ where: { projectId: project.id } });
     const result = await searchProjectReferencesV2(user.id, project.id, await loadSearchInput(user.id, project.id), { desiredTotal: 5 }, {
-      async generateStructuredObject<T>() { modelCalls++; return { terms: ["feedback", "digital mathematics"].map(text => ({ sourceField: "concepts", anchor: text, text, type: "EXACT_TERM", confidence: "HIGH" })), ambiguities: [] } as T; },
+      async generateStructuredObject<T>(request: StructuredObjectInput) {
+        modelCalls++;
+        if (request.schemaName === "candidate_semantic_review_v1") return { reviews: [{ candidateId:`doi:10.test/${unique}-positive`,
+          relevance:"RELEVANT", role:"DIRECT", matchedIntentDimensions:["concepts"], mismatches:[], confidence:"HIGH",
+          rationale:"El titulo coincide con el tema.", evidence:[{field:"title",quote:"Feedback in digital mathematics"}] }] } as T;
+        return { terms: plannerTerms, ambiguities: [] } as T;
+      },
     });
     refs.push(...result.searchSnapshot.references.map(r => r.referenceId));
-    assert.equal(modelCalls, 1);
+    assert.equal(modelCalls, 2, "one planner and one bounded candidate review; translation recovery not needed");
+    assert.equal(result.searchSnapshot.metadata.enrichment?.translationRecovery?.status,"NOT_NEEDED");
     assert.equal(result.totalResults, 1, "no quota refill");
     assert.equal(result.searchSnapshot.references[0].pdfAccessible, false);
     assert.equal(result.searchSnapshot.references[0].accessStatus, "REPORTED_PDF");
@@ -62,7 +71,7 @@ async function main() {
     // those from human selection. Discovery must not write that selection.
     assert.equal((await prisma.projectReference.findFirstOrThrow({ where: { projectId: project.id } })).selected, false);
     assert.equal(mockedRequests, readsBefore, "recommendation reads cannot call providers");
-    assert.equal(modelCalls, 1);
+    assert.equal(modelCalls, 2);
     assert.equal(JSON.stringify((await prisma.auditLog.findUniqueOrThrow({ where: { id: audit.id } })).payloadJson), original);
     assert.equal(JSON.stringify((await prisma.projectDraft.findUniqueOrThrow({ where: { projectId: project.id } })).contentJson), JSON.stringify(before.contentJson));
     acceptance = true;
@@ -72,7 +81,7 @@ async function main() {
     const requestId = randomUUID();
     const searchIntentHash = fingerprint(input.intent);
     const planned = await withPaidOperation({ userId: user.id, projectId: project.id, requestId, purpose: "rc4-query-composition-plan", revision: searchIntentHash, inputs: {} }, async () => ({ searchIntentHash,
-      metadata: await buildSearchMetadata(input, { async generateStructuredObject<T>() { return { terms: ["feedback", "digital mathematics"].map(text => ({ sourceField: "concepts", anchor: text, text, type: "EXACT_TERM", confidence: "HIGH" })), ambiguities: [] } as T; } }) }));
+      metadata: await buildSearchMetadata(input, { async generateStructuredObject<T>() { return { terms: plannerTerms, ambiguities: [] } as T; } }) }));
     const op = await prisma.paidOperation.findUniqueOrThrow({ where: { userId_requestId: { userId: user.id, requestId } } });
     const providerForbidden = { async generateStructuredObject<T>(): Promise<T> { throw new Error("PLANNER_REPLAY_FORBIDDEN"); } };
     const options = { openAlexOnlyAcceptance: { planOperationId: op.id, maxQueries: 4 } };

@@ -24,6 +24,9 @@ import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-rele
 import { QUERY_COMPOSITION_VERSION, validateScientificQueryPlan, type ScientificQuery } from "@/lib/retrieval-query-composition";
 import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
 import { reviewCandidateBatch } from "./candidate-semantic-review";
+import { recoverCentralTranslations, recoveryModel } from "./search-concept-translation";
+import { SEARCH_CONCEPT_TRANSLATION_PROMPT } from "@/server/mvp/prompts/search-concept-translation.v1";
+import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { candidateMetadataHash, CANDIDATE_REVIEW_VERSION, MAX_RECOMMENDATIONS, type CandidateAssessment, type ReviewCandidate } from "./candidate-review-policy";
 
 import {
@@ -815,9 +818,12 @@ async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<Refere
 export async function buildSearchMetadata(input: SearchInput, provider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">): Promise<ReferenceSearchV2Metadata> {
   if (input.intent.sourceKind === "LEGACY_COMPATIBILITY") return buildReferenceSearchMetadata(input.plannerInput);
   const structured = semanticPlannerInput(input.intent, fingerprint(input.intent));
+  let llm = provider;
   let enrichment: SearchEnrichment;
-  try { enrichment = await planSemanticSearch(structured, provider ?? getConfiguredLlmProvider()); }
+  try { llm ??= getConfiguredLlmProvider(); enrichment = await planSemanticSearch(structured, llm); }
   catch { enrichment = fallbackSearchEnrichment(structured); }
+  if (enrichment.translationTrace?.length) enrichment.translationTrace = enrichment.translationTrace.map(t => ({ ...t, plannerOperationId: currentPaidOperation()?.id ?? null }));
+  if (llm && enrichment.planMode === "SEMANTIC" && enrichment.status === "READY") enrichment = await recoverCentralTranslations(structured, enrichment, llm);
   const keywordGroups = enrichmentGroups(enrichment);
   const queryPack = semanticQueryPack(keywordGroups);
   if (enrichment.status !== "READY" || !queryPack.validation.valid || validateScientificQueryPlan(queryPack).length) throw new Error("SEARCH_NEEDS_CLARIFICATION");
@@ -825,7 +831,8 @@ export async function buildSearchMetadata(input: SearchInput, provider?: Pick<im
     enrichment, planSource: enrichment.planMode === "SEMANTIC" ? "llm" : "fallback",
     planning: { model: searchEnrichmentModel(), promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version, policyVersion: structured.policyVersion,
       cacheKey: fingerprint({ searchIntentHash: structured.searchIntentHash, promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version,
-        model: searchEnrichmentModel(), policyVersion: structured.policyVersion }) },
+        model: searchEnrichmentModel(), policyVersion: structured.policyVersion,
+        translationPromptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version, translationModel: recoveryModel() }) },
     normalizedTopic: input.intent.topic ?? "", intentSummary: input.intent.coreProblem ?? input.intent.topic ?? "",
     keywordGroups, queryPack,
     focusTerms: enrichment.terms.filter(t => t.authority === "CENTRAL").map(t => t.text), localObjectTerms: [],

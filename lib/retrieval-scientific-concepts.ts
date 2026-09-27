@@ -87,7 +87,7 @@ export function validateScientificConcepts(input: SemanticPlannerInput, terms: S
     const expansionType: ConceptTerm["expansionType"] = term.confidence !== "HIGH" ? "EXPLORATORY_TERM" :
       term.type === "EXACT_TERM" ? "EXACT_ORIGINAL" : term.type === "TRANSLATION" ? "VALIDATED_TRANSLATION" : term.type === "ACADEMIC_SYNONYM" ? "ACADEMIC_EQUIVALENT" : term.type === "RELATED_TERM" ? "RELATED_TERM" : "SYNONYM";
     const language = term.language ?? (term.type === "EXACT_TERM" ? "original" : "und");
-    if (term.type === "TRANSLATION" && language === "und") reject("TRANSLATION_LANGUAGE_UNVERIFIED");
+    if (term.type === "TRANSLATION" && language === "und") { reject("TRANSLATION_LANGUAGE_UNVERIFIED"); concepts.set(id, concept); continue; }
     if (!concept.terms.some(t => t.value === term.text && t.language === language)) concept.terms.push({ value: term.text, language, expansionType, origin: term.provenance, confidence: term.confidence, ...(term.type === "TRANSLATION" ? { translationOf: id } : {}) });
     concepts.set(id, concept);
   }

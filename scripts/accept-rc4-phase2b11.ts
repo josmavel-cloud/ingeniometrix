@@ -11,6 +11,7 @@ async function main() {
   const args = Object.fromEntries(process.argv.slice(2).map(a => { const i = a.indexOf("="); return [a.slice(0, i), a.slice(i + 1)]; }));
   const { mode, projectId, userId, requestId, model, planOperationId } = args;
   const semanticReview = args.review === "1";
+  const allowTranslationRecovery = args.allowRecovery === "1";
   if (new URL(process.env.DATABASE_URL!).pathname !== "/imx_g5_staging" || process.env.APP_ORIGIN !== "https://staging.ingeniometrix.com" || process.env.IMX_PAYMENT_MODE !== "sandbox" || process.env.IMX_ENABLE_DEEP_RESEARCH === "1") throw new Error("STAGING_ONLY");
   if (!["inspect", "plan", "search"].includes(mode) || !projectId || !userId) throw new Error("INVALID_ARGUMENTS");
   const input = await loadSearchInput(userId, projectId);
@@ -32,7 +33,7 @@ async function main() {
     const isModel = url.protocol === "https:" && url.hostname === "api.openai.com" && url.pathname === "/v1/responses";
     const isOpenAlex = url.protocol === "https:" && url.hostname === "api.openalex.org" && url.pathname === "/works";
     const allowed = mode === "plan" ? isModel : isOpenAlex || semanticReview && isModel;
-    if (!allowed || isModel && ++modelCalls > 1 || isOpenAlex && ++openAlexCalls > 4) throw new Error("ACCEPTANCE_NETWORK_BOUNDARY");
+    if (!allowed || isModel && ++modelCalls > (mode === "plan" && allowTranslationRecovery ? 2 : 1) || isOpenAlex && ++openAlexCalls > 4) throw new Error("ACCEPTANCE_NETWORK_BOUNDARY");
     calls++;
     const started = Date.now();
     const response = await actualFetch(request, { ...init, redirect: "error" });
@@ -44,7 +45,8 @@ async function main() {
   const started = Date.now();
   const purpose = mode === "plan" ? "rc4-query-composition-plan" : "rc4-openalex-only-acceptance";
   const result = await withPaidOperation({ userId, projectId, requestId, purpose, revision: searchIntentHash,
-    inputs: { mode, model: model ?? null, planOperationId: planOperationId ?? null, searchIntentHash, ...(semanticReview ? { semanticReview: true } : {}) } }, async () => {
+    inputs: { mode, model: model ?? null, planOperationId: planOperationId ?? null, searchIntentHash,
+      ...(semanticReview ? { semanticReview: true } : {}), ...(allowTranslationRecovery ? { allowTranslationRecovery: true } : {}) } }, async () => {
     if (mode === "plan") {
       const trace = await freezeSearchInput(userId, input);
       return { searchIntentHash, trace, metadata: await buildSearchMetadata(input) };
