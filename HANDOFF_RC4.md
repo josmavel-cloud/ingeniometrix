@@ -1,5 +1,16 @@
 # RC4 handoff
 
+## Latest checkpoint - Gate 2B1 offline implementation (2026-09-27)
+
+Remaining Sources plan: 2B1 -> 2C -> 2B2 -> 2D -> 2E -> 2F -> 2G.
+See [revised evidence/asset plan](docs/architecture/RC4_PHASE2_EVIDENCE_PLAN.md)
+and [2B1 implementation/verification](docs/quality/rc4-phase2b1-semantic-planning.md).
+Complete confirmed-intent projection, retrieval-only enrichment, role-aware
+admission and honest reported access are implemented. Legacy planning is kept.
+Offline fixtures/regressions and builds pass; live planner/search acceptance is
+NOT RUN. No provider/model/document calls. Do not start 2C or Astra web without
+the next task. Pre-existing five G5 changes remain untouched and uncommitted.
+
 ## Latest checkpoint - Phase 1 / Phase 2 entry repair (2026-09-26)
 
 The real owner's disabled confirmation was traced to a stale context ambiguity:

@@ -28,6 +28,12 @@ export function decideReferenceAdmission(input: {
   });
   const breakdown = input.breakdown;
   if (!breakdown) return decision("NEEDS_INSPECTION", "RELEVANCE_CONTEXT_UNAVAILABLE");
+  if (breakdown.semanticRelevance) {
+    const semantic = breakdown.semanticRelevance;
+    return { policyVersion: REFERENCE_ADMISSION_POLICY_VERSION,
+      state: semantic.classification === "HIGH_RELEVANCE" ? "ADMITTED" : semantic.classification === "OFF_TOPIC" ? "REJECTED_OFF_TOPIC" : "NEEDS_INSPECTION",
+      reasons: [semantic.policyVersion, ...semantic.reasons] };
+  }
 
   const necessary = breakdown.necessaryMatches.length;
   const complementary = breakdown.complementaryMatches.length;

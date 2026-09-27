@@ -6,6 +6,8 @@ import { legacySearchIntent, plannerIntake, type ResearchSearchIntent } from "@/
 import type { IntakeInput } from "@/server/projects/project-validation";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { REFERENCE_SEARCH_V2_1_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v1";
+import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
+import { semanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 
 export type SearchInput = { intakeId: string; intent: ResearchSearchIntent; plannerInput: IntakeInput };
 export type SearchInputTrace = {
@@ -40,7 +42,7 @@ export async function freezeSearchInput(userId: string, input: SearchInput): Pro
     searchAttemptId: randomUUID(), projectId: intent.projectId, intakeId: input.intakeId,
     confirmedDraftRevision: intent.confirmedDraftRevision, definitionHash: intent.definitionHash,
     researchSearchIntentSchemaVersion: intent.schemaVersion, searchIntentHash: fingerprint(intent),
-    searchEngineVersion: "reference-search-v2", plannerVersion: REFERENCE_SEARCH_V2_1_PROMPT.version,
+    searchEngineVersion: "reference-search-v2", plannerVersion: intent.sourceKind === "CONFIRMED_DEFINITION" ? REFERENCE_SEARCH_V2_2_PROMPT.version : REFERENCE_SEARCH_V2_1_PROMPT.version,
     timestamp: new Date().toISOString(),
   };
   await prisma.$transaction(async tx => {
@@ -53,7 +55,8 @@ export async function freezeSearchInput(userId: string, input: SearchInput): Pro
         (current.intake.confirmedDefinitionJson as { definitionHash?: string } | null)?.definitionHash !== intent.definitionHash) throw new Error("SEARCH_INPUT_STALE");
     } else if ((current.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition) throw new Error("SEARCH_INPUT_STALE");
     await tx.auditLog.create({ data: { eventType: "SEARCH_INPUT_FROZEN", actorType: "SYSTEM", userId,
-      projectId: intent.projectId, payloadJson: JSON.parse(JSON.stringify({ ...trace, intent, plannerInput: input.plannerInput })) as Prisma.InputJsonValue } });
+      projectId: intent.projectId, payloadJson: JSON.parse(JSON.stringify({ ...trace, intent, plannerInput: input.plannerInput,
+        semanticPlannerInput: intent.sourceKind === "CONFIRMED_DEFINITION" ? semanticPlannerInput(intent, trace.searchIntentHash) : null })) as Prisma.InputJsonValue } });
   });
   return trace;
 }

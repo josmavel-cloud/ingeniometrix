@@ -17,6 +17,10 @@ import { definitionSchema } from "@/lib/conversational-intake";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { freezeSearchInput, searchInputIsStale, type SearchInput, type SearchInputTrace } from "./search-intent-service";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
+import { enrichmentGroups, semanticPlannerInput, semanticQueryPack, fallbackSearchEnrichment, type SearchEnrichment, type SemanticKeywordGroup } from "@/lib/retrieval-semantic-plan";
+import { planSemanticSearch, searchEnrichmentModel } from "./semantic-search-planner";
+import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
+import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-relevance";
 
 import {
   type CrossrefMessage,
@@ -24,16 +28,18 @@ import {
   resolveCrossrefTitle,
   searchCrossrefWorks,
 } from "./crossref-client";
-import { extractAccessSignals, verifyPdfAccess } from "./reference-access";
+import { extractAccessSignals } from "./reference-access";
 import { OPENALEX_QUALITY_FILTERS, searchOpenAlexWorks } from "./openalex-client";
 import { admittedOnly, decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
 
 export type ReferenceKeywordGroup = {
   label: string;
   variants: string[];
-};
+} & Partial<Omit<SemanticKeywordGroup, "label" | "variants">>;
 
 export type ReferenceSearchV2Metadata = {
+  enrichment?: SearchEnrichment;
+  planning?: { model: string; promptVersion: string; policyVersion: string; cacheKey: string };
   planSource: "llm" | "fallback";
   normalizedTopic: string;
   intentSummary: string;
@@ -59,6 +65,7 @@ export type ReferenceSearchV2Metadata = {
 };
 
 export type ReferenceScoreBreakdown = {
+  semanticRelevance?: SemanticRelevance;
   label: "ALTO" | "MEDIO" | "BAJO" | "MINIMO";
   necessaryMatches: string[];
   complementaryMatches: string[];
@@ -106,6 +113,7 @@ export type ProjectReferenceSearchSnapshot = {
     suggestedSelectedOrder: number | null;
     pdfUrl?: string | null;
     pdfAccessible?: boolean;
+    accessStatus?: "REPORTED_PDF" | "UNKNOWN";
   }>;
 };
 
@@ -792,6 +800,29 @@ async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<Refere
   }
 }
 
+export async function buildSearchMetadata(input: SearchInput, provider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">): Promise<ReferenceSearchV2Metadata> {
+  if (input.intent.sourceKind === "LEGACY_COMPATIBILITY") return buildReferenceSearchMetadata(input.plannerInput);
+  const structured = semanticPlannerInput(input.intent, fingerprint(input.intent));
+  let enrichment: SearchEnrichment;
+  try { enrichment = await planSemanticSearch(structured, provider ?? getConfiguredLlmProvider()); }
+  catch { enrichment = fallbackSearchEnrichment(structured); }
+  const keywordGroups = enrichmentGroups(enrichment);
+  const queryPack = semanticQueryPack(keywordGroups);
+  if (enrichment.status !== "READY" || !queryPack.necessaryOnly.length) throw new Error("SEARCH_NEEDS_CLARIFICATION");
+  return {
+    enrichment, planSource: enrichment.planMode === "SEMANTIC" ? "llm" : "fallback",
+    planning: { model: searchEnrichmentModel(), promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version, policyVersion: structured.policyVersion,
+      cacheKey: fingerprint({ searchIntentHash: structured.searchIntentHash, promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version,
+        model: searchEnrichmentModel(), policyVersion: structured.policyVersion }) },
+    normalizedTopic: input.intent.topic ?? "", intentSummary: input.intent.coreProblem ?? input.intent.topic ?? "",
+    keywordGroups, queryPack,
+    focusTerms: enrichment.terms.filter(t => t.authority === "CENTRAL").map(t => t.text), localObjectTerms: [],
+    scoringRules: ["SEMANTIC_ROLES_NOT_GROUP_POSITION", "RELEVANCE_BEFORE_QUALITY_ACCESS", "REFINERS_NEVER_UNIVERSAL", "NO_QUOTA_PADDING"],
+    openAlexQueryPack: { strictBoolean: queryPack.necessaryOnly, precisionBoolean: queryPack.complementaryBoosted,
+      fallbackPlain: queryPack.necessaryOnly, localLanguage: [] },
+  };
+}
+
 function getRecencyBand(year: number | null) {
   const currentYear = new Date().getFullYear();
 
@@ -895,7 +926,21 @@ export function buildRelevanceScore(input: {
   language: string | null | undefined;
   activeLanguage: string | null | undefined;
   localObjectTerms?: string[];
+  explicitExclusions?: string[];
 }) {
+  if (input.keywordGroups.necessary.some(g => g.role)) {
+    const semanticRelevance = assessSemanticRelevance({ title: input.title, abstract: input.abstract,
+      explicitExclusions: input.explicitExclusions,
+      groups: input.keywordGroups as Parameters<typeof assessSemanticRelevance>[0]["groups"] });
+    const matched = (groups: ReferenceKeywordGroup[]) => groups.filter(g => semanticRelevance.matchedGroups.includes(g.label)).map(g => g.label);
+    // Score orders already classified candidates; it is NOT an admission threshold.
+    // No local-language, group-position, recency, popularity or PDF penalties.
+    return { score: semanticRelevance.classification === "HIGH_RELEVANCE" ? 100 + semanticRelevance.supportingEvidence.filter(e => e.location === "TITLE").length : 0,
+      breakdown: { label: semanticRelevance.classification === "HIGH_RELEVANCE" ? "ALTO" as const : "BAJO" as const,
+        necessaryMatches: matched(input.keywordGroups.necessary), complementaryMatches: matched(input.keywordGroups.complementary), optionalMatches: [],
+        recencyBand: getRecencyBand(input.year).label, recencyBonus: 0, matchedQuery: input.matchedQuery, matchedQueryStage: input.matchedQueryStage,
+        semanticRelevance } };
+  }
   const normalizedTitle = normalizeTitle(input.title);
   const normalizedAbstract = normalizeTitle(input.abstract);
   const normalizedVenue = normalizeTitle(input.venue);
@@ -1144,7 +1189,7 @@ export function pickDiverseCandidates(input: {
     selected.set(buildDedupKey(candidate.candidate), candidate);
   };
 
-  const localLane = sortedGlobal
+  const localLane = (input.metadata.enrichment ? [] : sortedGlobal)
     .map((candidate) => ({
       candidate,
       priority: computeLocalLanguagePriority({
@@ -1215,6 +1260,7 @@ export async function searchProjectReferencesV2(
     desiredTotal?: number;
     batchKind?: SourceDiscoveryBatchKind;
   },
+  planningProvider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">,
 ): Promise<SearchProjectReferencesV2Result> {
   const batchKind = options?.batchKind ?? "initial";
   const requestedTotal = options?.desiredTotal ?? (batchKind === "more" ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE);
@@ -1260,9 +1306,7 @@ export async function searchProjectReferencesV2(
     userLocale: user?.locale,
     projectLanguage: project.language,
   });
-  const searchMetadata = await buildReferenceSearchMetadata(
-    input.plannerInput,
-  );
+  const searchMetadata = await buildSearchMetadata(input, planningProvider);
   const searchQuery = searchMetadata.normalizedTopic;
   const openAlexQueryPack = searchMetadata.openAlexQueryPack ??
     buildOpenAlexQueryPack(searchMetadata.keywordGroups, input.plannerInput);
@@ -1272,14 +1316,14 @@ export async function searchProjectReferencesV2(
       queries: openAlexQueryPack.strictBoolean.length > 0
         ? openAlexQueryPack.strictBoolean
         : searchMetadata.queryPack.necessaryOnly,
-      openAlexFilters: OPENALEX_QUALITY_FILTERS,
+      openAlexFilters: searchMetadata.enrichment ? ["is_retracted:false", "is_paratext:false"] : OPENALEX_QUALITY_FILTERS,
     },
     {
       stage: "complementary_boosted" as const,
       queries: openAlexQueryPack.precisionBoolean.length > 0
         ? openAlexQueryPack.precisionBoolean
         : searchMetadata.queryPack.complementaryBoosted,
-      openAlexFilters: OPENALEX_QUALITY_FILTERS,
+      openAlexFilters: searchMetadata.enrichment ? ["is_retracted:false", "is_paratext:false"] : OPENALEX_QUALITY_FILTERS,
     },
     {
       stage: "optional_backup" as const,
@@ -1438,7 +1482,8 @@ export async function searchProjectReferencesV2(
       landingPageUrl: resolvedLandingPageUrl,
       doi: result.doi,
     });
-    const pdfAccessible = Boolean(accessSignals.pdfUrl);
+    // This stage only sees provider-reported locations; no download/verification.
+    const pdfAccessible = false;
     const relevance = buildRelevanceScore({
       title: resolvedTitle,
       abstract: resolvedAbstract,
@@ -1447,13 +1492,14 @@ export async function searchProjectReferencesV2(
       keywordGroups: searchMetadata.keywordGroups,
       citationCount: result.citationCount,
       year: resolvedYear,
-      hasPdfUrl: pdfAccessible,
+      hasPdfUrl: Boolean(accessSignals.pdfUrl),
       hasDoi: Boolean(result.doi),
       workType: resolvedWorkType,
       venue: resolvedVenue,
       language: result.language,
       activeLanguage: languageContext.activeLanguage,
       localObjectTerms: searchMetadata.localObjectTerms,
+      explicitExclusions: searchMetadata.enrichment?.explicitExclusions,
     });
 
     rankedCandidates.push({
@@ -1476,7 +1522,7 @@ export async function searchProjectReferencesV2(
         score: relevance.score,
         breakdown: relevance.breakdown,
       }),
-      pdfUrl: pdfAccessible ? accessSignals.pdfUrl : null,
+      pdfUrl: accessSignals.pdfUrl,
       pdfAccessible,
     });
   }
@@ -1650,6 +1696,7 @@ export async function searchProjectReferencesV2(
       suggestedSelectedOrder: suggestedSelectionOrders.get(item.referenceId) ?? null,
       pdfUrl: item.pdfUrl,
       pdfAccessible: item.pdfAccessible,
+      accessStatus: item.pdfUrl ? "REPORTED_PDF" : "UNKNOWN",
     })),
   };
 
