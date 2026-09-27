@@ -54,4 +54,60 @@ in the public API. Administrative acceptance is explicitly owner-scoped.
   and owner/hash/limit guards.
 - Transport test proves one 429 attempt with no hidden retry.
 
-Live status remains pending until the bounded staging run is recorded below.
+## Live result: FAIL, stopped before OpenAlex
+
+Backend implementation revision: `69ea2089b8b78fb2aef644813197dd420e998193`.
+App recreated at 2026-09-27T20:19:24Z. Local/public readiness and staging web
+returned HTTP 200. DB, worker and proxy start timestamps were unchanged.
+Frontend modules did not change; frontend-only build and dependency isolation
+passed. No frontend redeployment was needed.
+
+Both evaluations used identical confirmed input, prompt 2.1.0, low reasoning,
+normal PaidOperation reservation/settlement and no retry. Both provider requests
+returned HTTP 200 and their operations completed without exceeding reservations.
+
+| Model | Input/output tokens | Estimated USD (settled micros) | Request/operation latency | Assessment |
+| --- | --- | --- | --- | --- |
+| gpt-5.4-nano-2026-03-17 | 1828 / 879 | 0.001465 | 5335 / 5488 ms | FAIL: untranslated object; limited coverage |
+| gpt-5.4-mini-2026-03-17 | 1828 / 1165 | 0.006614 | 7203 / 7367 ms | FAIL: qualifier promoted to phenomenon |
+
+Total: two model requests, 5700 tokens, USD 0.008079. Zero OpenAlex, Crossref,
+web, document, Deep Research or scientific-generation calls.
+No runtime model migration: neither model clearly passes the full rubric.
+
+Nano produced:
+
+1. `("Simulación sísmica" OR "Seismic simulation") AND ("albañilería")`
+2. `("Simulación sísmica" OR "Seismic simulation") AND ("especímenes de albañilería de escala natural")`
+
+Mini produced:
+
+1. `("full-scale") AND ("masonry")`
+2. `("seismic simulation") AND ("masonry")`
+
+The mini first query drops the seismic phenomenon. The deterministic composer
+accepted a qualifier as a CONCEPT and selected it using its generic tie-break.
+Its redundancy validator passes structurally distinct queries but does not yet
+prove scientific-role adequacy. The live semantic review caught this before any
+scholarly request. Mini also attached distinct contextual concepts to one broad
+anchor; those were not executed. No invented scientific facts were established,
+but semantic composition is not adequate for live approval.
+
+The historical replay and six-domain synthetic fixtures pass; these two live
+plans expose gaps in that offline coverage. Do not interpret green tests as a
+live PASS. Further repair needs explicit qualifier/phenomenon separation and
+anchor/equivalence validation, with both outputs retained as regressions, before
+another authorized live evaluation. Do not start 2C.
+
+Private complete plans and accounting receipts:
+`artifacts-local/rc4/phase2b11-live-acceptance-2026-09-27.json`.
+The reference project's confirmed revision 10, definitionHash and
+searchIntentHash remain unchanged, with all 11 eligible fields available.
+Only normal planning audit/PaidOperation records were created; no new search
+results, user selections, project science, or balances were manually edited.
+
+Validation passed: 2B1/2B1.1 unit and isolated integration tests, 2A admission and
+listing, 2.1 SearchIntent, Phase 1 definition/conversation/readiness/navigation,
+G2, evidence continuity, keyword expansion, TypeScript, full build, worker build,
+frontend-only build, Vercel isolation and diff-check. Full local build retains
+pre-existing broad artifact-glob warnings; the clean container build passed.

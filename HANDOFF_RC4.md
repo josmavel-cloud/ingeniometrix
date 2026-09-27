@@ -1,5 +1,18 @@
 # RC4 handoff
 
+## Latest checkpoint - 2B1.1 live evaluation stopped (2026-09-27)
+
+Query composition repair is deployed on the staging app at `69ea208`.
+Two accountable planner evaluations (nano and mini) completed, but neither
+passes scientific query composition. Mini promoted the full-scale qualifier to
+the main phenomenon; nano omitted English object variants. The pre-provider
+review stopped acceptance: zero OpenAlex/Crossref/document calls. No 2C work.
+Runtime planner default remains unchanged; no model is approved by this test.
+See [the complete result](docs/quality/rc4-phase2b11-query-composition.md).
+Next: repair qualifier/phenomenon and equivalence handling offline, then request
+a new bounded live evaluation. Do not silently repeat the exhausted two calls.
+The five unrelated G5 files remain uncommitted and unchanged.
+
 ## Latest checkpoint - Gate 2B1 offline implementation (2026-09-27)
 
 Remaining Sources plan: 2B1 -> 2C -> 2B2 -> 2D -> 2E -> 2F -> 2G.

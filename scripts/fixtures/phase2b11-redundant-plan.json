@@ -1,4 +1,22 @@
 {
+  "oldGroups": {
+    "central": 8,
+    "refiner": 6,
+    "exploratory": 1
+  },
+  "oldQueries": {
+    "necessaryOnly": [
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"albañilería\" OR \"masonry\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"escala natural\" OR \"full-scale\")"
+    ],
+    "complementaryBoosted": [
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\") AND (\"diseño sismorresistente\" OR \"seismic-resistant design\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\") AND (\"nueva norma de diseño sismorresistente del 2026\" OR \"new seismic-resistant design code for 2026\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\") AND (\"criterios de la nueva norma de diseño sismorresistente 2026\" OR \"criteria of the new seismic-resistant design code 2026\")"
+    ],
+    "optionalBackups": []
+  },
   "rawOutput": {
     "terms": [
       {

@@ -7,6 +7,8 @@ global.fetch = async () => { throw new Error("NETWORK_FORBIDDEN"); };
 const historical = JSON.parse(readFileSync("scripts/fixtures/phase2b1-seismic.json", "utf8"));
 const failed = JSON.parse(readFileSync("scripts/fixtures/phase2b11-redundant-plan.json", "utf8"));
 assert.equal(failed.rawOutput.terms.length, 30);
+assert.equal(failed.oldQueries.necessaryOnly.length, 3);
+assert.ok(failed.oldQueries.necessaryOnly.every((q: string) => q.includes('"Simulación sísmica de especímenes de escala natural de albañilería"')));
 const input = semanticPlannerInput(historical.intent, "offline");
 const enrichment = validateSearchEnrichment(input, failed.rawOutput);
 assert.equal(enrichment.terms.length, 28);
