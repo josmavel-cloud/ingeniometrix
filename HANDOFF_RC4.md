@@ -1,5 +1,17 @@
 # RC4 handoff
 
+## Latest checkpoint - 2B1.2 offline scientific anchors (2026-09-27)
+
+Scientific role validation and deterministic family composition are deployed to
+staging app `a9227e2`. Stored nano/mini plans cannot promote a qualifier into the
+scientific anchor. Missing/unverified English coverage preserves original-language
+queries with explicit degraded coverage; no translations/facts were invented.
+Prompt 2.2.0 requires role/language fields; runtime model selection is DEFERRED.
+Offline regressions/builds and staging health pass. No live model/provider or
+document calls; no 2C. DB/worker/proxy and five pre-existing G5 files preserved.
+See [2B1.2 report](docs/quality/rc4-phase2b12-scientific-anchors.md).
+Ready for a separately authorized final live acceptance, not a live PASS.
+
 ## Latest checkpoint - 2B1.1 live evaluation stopped (2026-09-27)
 
 Query composition repair is deployed on the staging app at `69ea208`.

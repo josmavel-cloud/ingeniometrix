@@ -83,6 +83,10 @@ async function main() {
     await assert.rejects(searchProjectReferencesV2(user.id, project.id, input, { openAlexOnlyAcceptance: { planOperationId: "missing", maxQueries: 4 } }), /STALE_OR_UNAUTHORIZED/);
     await assert.rejects(searchProjectReferencesV2(user.id, project.id, { ...input, intent: { ...input.intent, definitionHash: "changed" } }, options), /STALE_OR_UNAUTHORIZED/);
     assert.equal(mockedRequests, beforeInvalid);
+    await assert.rejects(searchProjectReferencesV2(user.id, project.id, input, undefined, {
+      async generateStructuredObject<T>() { return { terms: ["feedback", "digital mathematics"].map(text => ({ sourceField: "concepts", anchor: text, text, type: "EXACT_TERM", confidence: "HIGH", scientificRole: "QUALIFIER", language: "en" })), ambiguities: [] } as T; },
+    }), /SEARCH_NEEDS_CLARIFICATION/);
+    assert.equal(mockedRequests, beforeInvalid, "invalid scientific roles stop the canonical path before providers");
     console.log("PASS OpenAlex-only acceptance: completed plan reuse, no planner replay, empty result cannot fall back, owner/hash/limit guards, inspection metadata retained");
     console.log("PASS 2B1 canonical mocked path: confirmed input -> one simulated planner -> mock records -> score -> admission -> diversity -> persistence -> read; draft/history unchanged; no real network");
   } finally {

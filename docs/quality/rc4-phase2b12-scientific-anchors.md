@@ -114,4 +114,32 @@ Role/provenance validation is not an omniscient semantic verifier. A newly
 authorized live plan must still be inspected before any OpenAlex request.
 Do not approve 2C or perform an automatic live smoke after deployment.
 
-Deployment status and final validation are recorded after verification below.
+## Final verification and staging
+
+Offline status: PASS_WITH_LIMITATIONS (legacy international-language coverage
+is explicitly incomplete/unverified; no live quality claim).
+Ready for a separately authorized, inspected final live acceptance: YES.
+
+Passed: 2B1.2 stored/new-role tests, six disciplines, 2B1 and 2B1.1 fixtures,
+OpenAlex-only isolated integration including invalid roles rejected before any
+provider, bounded transport, 2A admission/listing, 2.1 SearchIntent, Phase 1
+definition/conversation/readiness/navigation, G2, keyword expansion, evidence
+continuity, TypeScript, frontend-only build, full backend build, worker build,
+Vercel dependency isolation (24 traces), diff-check and clean Docker build.
+The ordinary local full build retains existing artifact-glob warnings.
+
+App deployed from `a9227e2b985fa98b786bcf4433b5dcb404d97bb1` at
+2026-09-27T20:50:41Z, image
+`c2c818bd36c33bb68c4d97dd07630fc00a561c4a5db94d9a2548fbef2e35a2a3`.
+Web and local/public readiness: HTTP 200. DB/worker/proxy timestamps unchanged;
+no Funnel changes, migration, runtime model switch or frontend redeployment.
+The frontend module boundary remains unchanged and its build passed.
+
+Complete offline family explanations are retained privately in
+`artifacts-local/rc4/phase2b12-offline-plans-2026-09-27.json`.
+No live planner, OpenAlex, Crossref, Astra/web, document, Deep Research or
+scientific-generation request was issued. No real project was mutated.
+
+Stop here. The next authorization must specify the live budget; inspect the
+new role/language-labelled plan before provider execution. Do not reuse an old
+2B1.1 paid plan as if it passed the new composition/prompt version.
