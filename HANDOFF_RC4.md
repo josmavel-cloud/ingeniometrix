@@ -11,6 +11,12 @@ Offline fixtures/regressions and builds pass; live planner/search acceptance is
 NOT RUN. No provider/model/document calls. Do not start 2C or Astra web without
 the next task. Pre-existing five G5 changes remain untouched and uncommitted.
 
+App-only staging deployment verified for implementation `763d84e`, image
+`081c7274c297`: new planner/enrichment/admission contracts present; web, session
+endpoint and public backend health HTTP 200. DB/worker/proxy not restarted.
+Frontend remains READY deployment `dpl_5neDvpymjJFcCKZEx3142suuir2d`; no frontend
+executable changes in this gate. See report for revision/fixture limitations.
+
 ## Latest checkpoint - Phase 1 / Phase 2 entry repair (2026-09-26)
 
 The real owner's disabled confirmation was traced to a stale context ambiguity:

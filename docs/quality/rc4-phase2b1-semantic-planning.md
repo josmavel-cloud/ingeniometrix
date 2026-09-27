@@ -27,6 +27,9 @@ read-only; mutation tests ran only in imx_b4_validation_rc4 on port 55440.
   A stable cache identity is recorded, but durable cross-attempt reuse is 2C.
 - Confirmed-only phrase fallback is DEGRADED with UNASSESSED semantic confidence;
   inadequate core input fails before scholarly execution as NEEDS_CLARIFICATION.
+  Mode/reasons are visible in response/snapshot metadata. The existing frontend
+  hides its planner diagnostics; a user-facing degraded banner is not implemented
+  in this backend gate and must be handled with Sources UX in 2D.
 - Existing necessary/complementary/optional groups now retain roles/source fields.
   Core queries do not universally require context/year/country/method. No
   positional assumption that group 2 is population. Legacy planner stays intact.
@@ -89,4 +92,31 @@ false negatives and false positives before expanding the provider batch.
 
 Rollback: deploy the prior app image; no migration/data rollback is needed.
 Five pre-existing G5 files are excluded from this commit and byte-preserved.
-Deployment evidence will be recorded after the isolated app has been verified.
+
+## Staging deployment evidence
+
+- Implementation commit: `763d84ebe62d6792acceff4c2981acd66e545478`, pushed normally
+  to `feat/rc4-scientific-commercial`. The later evidence-only commit does not
+  change executable code or require another deployment.
+- Runtime built from a clean `git archive` of that commit, excluding all five
+  uncommitted G5 files. Full backend/worker builds also passed inside Docker.
+- Image: `sha256:081c7274c2978c50edd76d27cd3bead7e2d5d8f7c80f6c56f1286a38c93d2eca`;
+  OCI revision label matches the implementation commit. The deployed server
+  contains research-planner-input.v1, search-enrichment.v1 and role-admission.v1.
+- Only `imx-rc4-g5-staging-app-1` recreated, started
+  `2026-09-27T19:47:16.215276794Z`, healthy. DB, worker and proxy start times
+  remained unchanged; no migrations, env changes or worker restart.
+- Local readiness, public Funnel readiness/liveness, staging homepage and
+  same-origin session endpoint all HTTP 200. Session check was unauthenticated;
+  it is not a new Google/browser acceptance claim.
+- Vercel inspection of `https://staging.ingeniometrix.com` resolves to unchanged
+  READY Preview `dpl_5neDvpymjJFcCKZEx3142suuir2d`. Its previously recorded
+  frontend package source is `b5fbf72fb99b4deaa7c2b98460860465db53f23e`.
+  The CLI inspection exposes deployment identity, not an independent source-SHA
+  attestation. No frontend executable changes are included in 2B1; the current
+  frontend-only package was nevertheless built and isolation-checked offline.
+- No scholarly/model/web/document requests or staging search were executed.
+  Real precision/model quality remains pending separately authorized acceptance.
+
+Software gate: offline tests/builds and app deployment PASS. This is NOT live
+retrieval acceptance. Stop here; do not start 2C or execute providers implicitly.
