@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { semanticPlannerInput, validateSearchEnrichment, enrichmentGroups, semanticQueryPack } from "@/lib/retrieval-semantic-plan";
+import { queryRedundancyReasons } from "@/lib/retrieval-query-composition";
+
+global.fetch = async () => { throw new Error("NETWORK_FORBIDDEN"); };
+const historical = JSON.parse(readFileSync("scripts/fixtures/phase2b1-seismic.json", "utf8"));
+const failed = JSON.parse(readFileSync("scripts/fixtures/phase2b11-redundant-plan.json", "utf8"));
+assert.equal(failed.rawOutput.terms.length, 30);
+const input = semanticPlannerInput(historical.intent, "offline");
+const enrichment = validateSearchEnrichment(input, failed.rawOutput);
+assert.equal(enrichment.terms.length, 28);
+const groups = enrichmentGroups(enrichment);
+const plan = semanticQueryPack(groups);
+assert.equal(plan.validation.valid, true);
+assert.equal(plan.plannedQueries.length, 4);
+assert.equal(plan.plannedQueries[0].family, "CORE_PHENOMENON");
+assert.deepEqual(plan.plannedQueries[0].requiredConcepts, ["respuesta sísmica", "albañilería"]);
+assert.ok(plan.plannedQueries.some(q => q.family === "MODELING_OR_ANALYSIS_PRECEDENT"));
+assert.ok(plan.plannedQueries.some(q => q.family === "OBJECT_OR_SYSTEM"));
+assert.ok(plan.plannedQueries.filter(q => q.family !== "CONTEXTUAL_OR_LOCAL").every(q => !q.query.includes("Perú") && !q.query.includes("2026")));
+assert.ok(plan.plannedQueries.every(q => !q.query.includes("Simulación sísmica de especímenes de escala natural de albañilería")));
+assert.deepEqual(semanticQueryPack({ ...groups, necessary: [...groups.necessary].reverse() }).necessaryOnly, plan.necessaryOnly);
+assert.ok(queryRedundancyReasons([plan.plannedQueries[0], { ...plan.plannedQueries[0], id: "duplicate" }]).some(r => r.includes("DUPLICATE")));
+assert.deepEqual(queryRedundancyReasons(plan.plannedQueries), []);
+assert.equal(semanticQueryPack({ necessary: [groups.necessary[0]], complementary: [], optional: [] }).validation.valid, false);
+console.log(JSON.stringify({ status: "PASS", historicalTerms: 30, validatedTerms: 28, plan }, null, 2));

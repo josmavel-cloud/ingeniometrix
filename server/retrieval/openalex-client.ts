@@ -9,6 +9,7 @@ export type OpenAlexSearchOptions = {
   filters?: string[];
   sort?: string;
   select?: string[];
+  retryRateLimit?: boolean;
 };
 
 export type OpenAlexWork = {
@@ -208,7 +209,7 @@ export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearc
     signal: AbortSignal.timeout(20_000),
   });
 
-  if (response.status === 429) {
+  if (response.status === 429 && options?.retryRateLimit !== false) {
     const retryAfterSeconds = Number.parseFloat(response.headers.get("retry-after") ?? "");
     if (retryAfterSeconds > 10) throw new Error(`OpenAlex HTTP 429: Retry-After ${retryAfterSeconds}s excede la espera interactiva; usar otro proveedor soportado o reintentar despues.`);
     await delay(Number.isFinite(retryAfterSeconds)

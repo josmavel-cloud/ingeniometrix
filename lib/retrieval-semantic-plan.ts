@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { DEFINITION_FIELDS, type DefinitionField, type FieldValue } from "./conversational-intake";
 import type { ResearchSearchIntent } from "./retrieval-search-input";
+import { composeSemanticQueries } from "./retrieval-query-composition";
 
 export const PLANNER_INPUT_VERSION = "research-planner-input.v1";
 export const ENRICHMENT_VERSION = "search-enrichment.v1";
-export const SEMANTIC_POLICY_VERSION = "semantic-retrieval.v1";
+export const SEMANTIC_POLICY_VERSION = "semantic-retrieval.v2";
 export type SourceAccessStatus = "UNKNOWN" | "REPORTED_PDF" | "VERIFIED_PDF" | "MATERIALIZED_FULL_TEXT";
 export type SearchRole = "PROBLEM" | "OBJECT" | "PURPOSE" | "CONCEPT" | "CONTEXT" | "METHOD_SIGNAL" | "OUTPUT";
 type FieldPolicy = { role: SearchRole; tier: 1 | 2 | 3; category: "CORE_SEARCH_SIGNALS" | "SUPPORTING_SEARCH_SIGNALS" | "ADVANCED_REFINEMENT_SIGNALS" | "UNRESOLVED_OR_UNKNOWN" };
@@ -139,17 +140,5 @@ export function enrichmentGroups(enrichment: SearchEnrichment) {
 }
 
 export function semanticQueryPack(groups: ReturnType<typeof enrichmentGroups>) {
-  const quote = (s: string) => `"${s.replace(/["(){}\n]/g, " ").trim()}"`;
-  const clause = (g: SemanticKeywordGroup) => `(${g.variants.slice(0, 4).map(quote).join(" OR ")})`;
-  const cores = groups.necessary;
-  const objects = cores.filter(g => g.role === "OBJECT" || g.role === "CONCEPT");
-  const problems = cores.filter(g => g.role === "PROBLEM" || g.role === "CONCEPT");
-  const pairs: SemanticKeywordGroup[][] = [];
-  for (const problem of problems) for (const object of objects) {
-    if (normalizeSearchText(problem.anchor) !== normalizeSearchText(object.anchor)) pairs.push([problem, object]);
-  }
-  const unique = (queries: string[]) => [...new Set(queries)].slice(0, 3);
-  const necessaryOnly = unique(pairs.map(pair => pair.map(clause).join(" AND ")));
-  const complementaryBoosted = necessaryOnly.length ? groups.complementary.slice(0, 3).map(g => `${necessaryOnly[0]} AND ${clause(g)}`) : [];
-  return { necessaryOnly, complementaryBoosted, optionalBackups: [] as string[] };
+  return composeSemanticQueries(groups);
 }

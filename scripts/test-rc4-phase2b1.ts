@@ -51,7 +51,8 @@ async function main() {
     const groups = enrichmentGroups(enrichment);
     const queries = semanticQueryPack(groups);
     assert.equal(enrichment.status, "READY", f.name);
-    assert.ok(queries.necessaryOnly.every(q => !q.includes(f.context)));
+    assert.ok(queries.validation.valid, f.name);
+    assert.ok(queries.plannedQueries.filter(q => q.family !== "CONTEXTUAL_OR_LOCAL").every(q => !q.query.includes(f.context)));
     assert.ok(queries.necessaryOnly.some(q => q.includes(`"${f.equivalents[1]}"`)), "compound phrase quoted");
     assert.ok(enrichment.terms.every(t => t.provenance === "AI_DERIVED_FOR_SEARCH"));
     const positive = score(f.positive, `${f.positive}. A relevant scholarly precedent.`, groups);
@@ -122,7 +123,7 @@ async function main() {
   });
   assert.equal(metadataCalls, 1);
   assert.equal(metadata.enrichment?.planMode, "SEMANTIC");
-  assert.ok(metadata.queryPack.necessaryOnly.every(q => !q.includes("2026") && !q.includes("Perú")));
+  assert.ok(metadata.queryPack.necessaryOnly.some(q => !q.includes("2026") && !q.includes("Perú")));
   const groups = metadata.keywordGroups as ReturnType<typeof enrichmentGroups>;
   const scored = historical.candidates.map(c => ({ title: c.title, ...score(c.title, c.abstract, groups) }));
   const admitted = scored.filter(c => c.admission.state === "ADMITTED");

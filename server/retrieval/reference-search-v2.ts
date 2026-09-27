@@ -21,6 +21,7 @@ import { enrichmentGroups, semanticPlannerInput, semanticQueryPack, fallbackSear
 import { planSemanticSearch, searchEnrichmentModel } from "./semantic-search-planner";
 import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
 import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-relevance";
+import { QUERY_COMPOSITION_VERSION, queryRedundancyReasons, type ScientificQuery } from "@/lib/retrieval-query-composition";
 
 import {
   type CrossrefMessage,
@@ -49,6 +50,9 @@ export type ReferenceSearchV2Metadata = {
     optional: ReferenceKeywordGroup[];
   };
   queryPack: {
+    compositionVersion?: string;
+    plannedQueries?: ScientificQuery[];
+    validation?: { valid: boolean; reasons: string[] };
     necessaryOnly: string[];
     complementaryBoosted: string[];
     optionalBackups: string[];
@@ -104,6 +108,7 @@ export type ProjectReferenceSearchSnapshot = {
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
     admission: ReferenceAdmission;
+    inspectionMetadata?: { abstract: string | null; authors: string[]; venue: string | null; access: ReturnType<typeof extractAccessSignals> };
   }>;
   references: Array<{
     referenceId: string;
@@ -1259,6 +1264,8 @@ export async function searchProjectReferencesV2(
   options?: {
     desiredTotal?: number;
     batchKind?: SourceDiscoveryBatchKind;
+    // Internal acceptance capability; never accepted from public route bodies.
+    openAlexOnlyAcceptance?: { planOperationId: string; maxQueries: number };
   },
   planningProvider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">,
 ): Promise<SearchProjectReferencesV2Result> {
@@ -1294,6 +1301,17 @@ export async function searchProjectReferencesV2(
   if (!project || input.intent.projectId !== projectId || input.intent.readiness !== "READY") {
     throw new Error("El proyecto no existe o aun no tiene intake.");
   }
+  const acceptance = options?.openAlexOnlyAcceptance;
+  let preparedMetadata: ReferenceSearchV2Metadata | undefined;
+  if (acceptance) {
+    if (batchKind !== "initial" || !Number.isInteger(acceptance.maxQueries) || acceptance.maxQueries < 1 || acceptance.maxQueries > 4) throw new Error("INVALID_ACCEPTANCE_LIMIT");
+    const operation = await prisma.paidOperation.findFirst({ where: { id: acceptance.planOperationId, userId, projectId, status: "COMPLETED", purpose: "rc4-query-composition-plan" } });
+    const result = operation?.resultJson as { searchIntentHash?: string; metadata?: ReferenceSearchV2Metadata } | null;
+    if (result?.searchIntentHash !== fingerprint(input.intent)) throw new Error("ACCEPTANCE_PLAN_STALE_OR_UNAUTHORIZED");
+    preparedMetadata = result.metadata;
+    const pack = preparedMetadata?.queryPack;
+    if (preparedMetadata?.enrichment?.planMode !== "SEMANTIC" || pack?.compositionVersion !== QUERY_COMPOSITION_VERSION || !pack.validation?.valid || !pack.plannedQueries?.length || queryRedundancyReasons(pack.plannedQueries).length || preparedMetadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version) throw new Error("ACCEPTANCE_PLAN_INVALID");
+  }
   const inputTrace = await freezeSearchInput(userId, input);
 
   const baseSelectedReferenceIds = existingProjectReferences
@@ -1306,7 +1324,7 @@ export async function searchProjectReferencesV2(
     userLocale: user?.locale,
     projectLanguage: project.language,
   });
-  const searchMetadata = await buildSearchMetadata(input, planningProvider);
+  const searchMetadata = preparedMetadata ?? await buildSearchMetadata(input, planningProvider);
   const searchQuery = searchMetadata.normalizedTopic;
   const openAlexQueryPack = searchMetadata.openAlexQueryPack ??
     buildOpenAlexQueryPack(searchMetadata.keywordGroups, input.plannerInput);
@@ -1345,7 +1363,7 @@ export async function searchProjectReferencesV2(
     ? exhaustiveQueryStages
     : exhaustiveQueryStages.slice(0, 1).map((stage) => ({
         ...stage,
-        queries: stage.queries.slice(0, 3),
+        queries: stage.queries.slice(0, acceptance?.maxQueries ?? 3),
       }));
   const attemptedQueries: string[] = [];
 
@@ -1381,7 +1399,9 @@ export async function searchProjectReferencesV2(
         filters: queryStage.openAlexFilters,
         perPage: 35,
         sort: "relevance_score:desc,cited_by_count:desc",
+        retryRateLimit: !acceptance,
       }).catch((error) => {
+        if (acceptance) throw new Error("OPENALEX_ACCEPTANCE_PROVIDER_FAILED", { cause: error });
         openAlexUnavailable = true;
         console.warn("OpenAlex no disponible; se usara Crossref:", error instanceof Error ? error.message : String(error));
         return [];
@@ -1410,7 +1430,7 @@ export async function searchProjectReferencesV2(
     }
   }
 
-  if (aggregatedResults.size < desiredTotal) {
+  if (!acceptance && aggregatedResults.size < desiredTotal) {
     for (const queryStage of [...queryStages].reverse()) {
       for (const attemptQuery of [...queryStage.queries].reverse()) {
         const crossrefResults = await searchCrossrefWorks(attemptQuery);
@@ -1687,6 +1707,7 @@ export async function searchProjectReferencesV2(
       relevanceScore: item.score,
       scoreBreakdown: item.scoreBreakdown,
       admission: item.admission,
+      ...(acceptance ? { inspectionMetadata: { abstract: item.candidate.abstract, authors: item.candidate.authors, venue: item.candidate.venue, access: extractAccessSignals(item.candidate) } } : {}),
     })),
     references: persistedResults.map((item) => ({
       referenceId: item.referenceId,
