@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { LlmProvider } from "@/llm/provider";
-import { enrichmentOutputSchema, fallbackSearchEnrichment, validateSearchEnrichment, type SemanticPlannerInput } from "@/lib/retrieval-semantic-plan";
+import { enrichmentModelOutputSchema, fallbackSearchEnrichment, validateSearchEnrichment, type SemanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 
@@ -12,7 +12,7 @@ export async function planSemanticSearch(input: SemanticPlannerInput, provider: 
     // budget/idempotency and transport retry policy remain in charge.
     const raw = await provider.generateStructuredObject({
       model: searchEnrichmentModel(), reasoningEffort: "low", maxOutputTokens: 4500,
-      schemaName: "research_search_enrichment_v1", schema: z.toJSONSchema(enrichmentOutputSchema),
+      schemaName: "research_search_enrichment_roles_v2", schema: z.toJSONSchema(enrichmentModelOutputSchema),
       prompt: renderVersionedPrompt(REFERENCE_SEARCH_V2_2_PROMPT, { var_0: JSON.stringify({
         schemaVersion: input.schemaVersion, policyVersion: input.policyVersion,
         signals: input.signals.map(({ provenance, ...signal }) => ({ ...signal,

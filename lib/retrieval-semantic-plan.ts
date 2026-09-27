@@ -2,10 +2,11 @@ import { z } from "zod";
 import { DEFINITION_FIELDS, type DefinitionField, type FieldValue } from "./conversational-intake";
 import type { ResearchSearchIntent } from "./retrieval-search-input";
 import { composeSemanticQueries } from "./retrieval-query-composition";
+import { SCIENTIFIC_ROLES, validateScientificConcepts, type ScientificConceptPlan } from "./retrieval-scientific-concepts";
 
 export const PLANNER_INPUT_VERSION = "research-planner-input.v1";
 export const ENRICHMENT_VERSION = "search-enrichment.v1";
-export const SEMANTIC_POLICY_VERSION = "semantic-retrieval.v2";
+export const SEMANTIC_POLICY_VERSION = "semantic-retrieval.v3";
 export type SourceAccessStatus = "UNKNOWN" | "REPORTED_PDF" | "VERIFIED_PDF" | "MATERIALIZED_FULL_TEXT";
 export type SearchRole = "PROBLEM" | "OBJECT" | "PURPOSE" | "CONCEPT" | "CONTEXT" | "METHOD_SIGNAL" | "OUTPUT";
 type FieldPolicy = { role: SearchRole; tier: 1 | 2 | 3; category: "CORE_SEARCH_SIGNALS" | "SUPPORTING_SEARCH_SIGNALS" | "ADVANCED_REFINEMENT_SIGNALS" | "UNRESOLVED_OR_UNKNOWN" };
@@ -55,9 +56,16 @@ export const enrichmentOutputSchema = z.object({
     text: z.string().min(2).max(160),
     type: z.enum(["EXACT_TERM", "LINGUISTIC_VARIANT", "TRANSLATION", "ACADEMIC_SYNONYM", "RELATED_TERM"]),
     confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
+    scientificRole: z.enum(SCIENTIFIC_ROLES).nullable().optional(),
+    language: z.enum(["es", "en", "pt", "und"]).nullable().optional(),
   }).strict()).max(48),
   ambiguities: z.array(z.object({ sourceField: z.enum(DEFINITION_FIELDS), reason: z.string().max(400) }).strict()).max(8),
 }).strict();
+// New provider responses require explicit nullable fields. Historical outputs
+// remain readable through the compatibility parser above, never fabricated.
+export const enrichmentModelOutputSchema = enrichmentOutputSchema.extend({ terms: z.array(enrichmentOutputSchema.shape.terms.element.extend({
+  scientificRole: z.enum(SCIENTIFIC_ROLES).nullable(), language: z.enum(["es", "en", "pt", "und"]).nullable(),
+})).max(48) });
 export type EnrichmentOutput = z.infer<typeof enrichmentOutputSchema>;
 export type SearchTerm = EnrichmentOutput["terms"][number] & {
   sourceFields: DefinitionField[]; role: SearchRole; tier: 1 | 2 | 3;
@@ -65,6 +73,7 @@ export type SearchTerm = EnrichmentOutput["terms"][number] & {
   provenance: "CONFIRMED_EXTRACT" | "AI_DERIVED_FOR_SEARCH";
 };
 export type SearchEnrichment = {
+  scientificConceptPlan?: ScientificConceptPlan;
   schemaVersion: typeof ENRICHMENT_VERSION; searchIntentHash: string; policyVersion: typeof SEMANTIC_POLICY_VERSION;
   planMode: "SEMANTIC" | "DEGRADED"; status: "READY" | "NEEDS_CLARIFICATION";
   terms: SearchTerm[]; ambiguities: SemanticPlannerInput["ambiguities"];
@@ -91,7 +100,7 @@ function finish(input: SemanticPlannerInput, terms: SearchTerm[], planMode: Sear
   const hasProblem = central.some(t => ["PROBLEM", "CONCEPT", "PURPOSE"].includes(t.role));
   return { schemaVersion: ENRICHMENT_VERSION, searchIntentHash: input.searchIntentHash, policyVersion: SEMANTIC_POLICY_VERSION,
     planMode, status: input.readiness === "READY" && hasObject && hasProblem && new Set(central.map(t => normalizeSearchText(t.anchor))).size >= 2 ? "READY" : "NEEDS_CLARIFICATION",
-    terms, ambiguities: input.ambiguities, researchActionInterpretation: terms.filter(t => t.role === "PURPOSE"),
+    terms, scientificConceptPlan: validateScientificConcepts(input, terms), ambiguities: input.ambiguities, researchActionInterpretation: terms.filter(t => t.role === "PURPOSE"),
     likelyEvidenceRoles: ["DIRECT", ...(terms.some(t => t.role === "METHOD_SIGNAL") ? ["METHODOLOGICAL" as const] : []),
       ...(terms.some(t => t.role === "CONCEPT") ? ["THEORETICAL" as const] : []), ...(terms.some(t => t.role === "CONTEXT") ? ["CONTEXTUAL" as const] : [])],
     confidence: "UNASSESSED", reasonCodes,
@@ -136,7 +145,7 @@ export function enrichmentGroups(enrichment: SearchEnrichment) {
     grouped.set(key, group);
   }
   const groups = [...grouped.values()];
-  return { necessary: groups.filter(g => g.authority === "CENTRAL"), complementary: groups.filter(g => g.authority === "REFINER"), optional: groups.filter(g => g.authority === "EXPLORATORY") };
+  return { necessary: groups.filter(g => g.authority === "CENTRAL"), complementary: groups.filter(g => g.authority === "REFINER"), optional: groups.filter(g => g.authority === "EXPLORATORY"), conceptPlan: enrichment.scientificConceptPlan };
 }
 
 export function semanticQueryPack(groups: ReturnType<typeof enrichmentGroups>) {

@@ -21,7 +21,8 @@ import { enrichmentGroups, semanticPlannerInput, semanticQueryPack, fallbackSear
 import { planSemanticSearch, searchEnrichmentModel } from "./semantic-search-planner";
 import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
 import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-relevance";
-import { QUERY_COMPOSITION_VERSION, queryRedundancyReasons, type ScientificQuery } from "@/lib/retrieval-query-composition";
+import { QUERY_COMPOSITION_VERSION, validateScientificQueryPlan, type ScientificQuery } from "@/lib/retrieval-query-composition";
+import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
 
 import {
   type CrossrefMessage,
@@ -50,6 +51,8 @@ export type ReferenceSearchV2Metadata = {
     optional: ReferenceKeywordGroup[];
   };
   queryPack: {
+    conceptPlan?: ScientificConceptPlan;
+    coverageMode?: string;
     compositionVersion?: string;
     plannedQueries?: ScientificQuery[];
     validation?: { valid: boolean; reasons: string[] };
@@ -813,7 +816,7 @@ export async function buildSearchMetadata(input: SearchInput, provider?: Pick<im
   catch { enrichment = fallbackSearchEnrichment(structured); }
   const keywordGroups = enrichmentGroups(enrichment);
   const queryPack = semanticQueryPack(keywordGroups);
-  if (enrichment.status !== "READY" || !queryPack.necessaryOnly.length) throw new Error("SEARCH_NEEDS_CLARIFICATION");
+  if (enrichment.status !== "READY" || !queryPack.validation.valid || validateScientificQueryPlan(queryPack).length) throw new Error("SEARCH_NEEDS_CLARIFICATION");
   return {
     enrichment, planSource: enrichment.planMode === "SEMANTIC" ? "llm" : "fallback",
     planning: { model: searchEnrichmentModel(), promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version, policyVersion: structured.policyVersion,
@@ -1310,7 +1313,8 @@ export async function searchProjectReferencesV2(
     if (result?.searchIntentHash !== fingerprint(input.intent)) throw new Error("ACCEPTANCE_PLAN_STALE_OR_UNAUTHORIZED");
     preparedMetadata = result.metadata;
     const pack = preparedMetadata?.queryPack;
-    if (preparedMetadata?.enrichment?.planMode !== "SEMANTIC" || pack?.compositionVersion !== QUERY_COMPOSITION_VERSION || !pack.validation?.valid || !pack.plannedQueries?.length || queryRedundancyReasons(pack.plannedQueries).length || preparedMetadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version) throw new Error("ACCEPTANCE_PLAN_INVALID");
+    if (preparedMetadata?.enrichment?.planMode !== "SEMANTIC" || pack?.compositionVersion !== QUERY_COMPOSITION_VERSION || !pack.validation?.valid || validateScientificQueryPlan(pack).length || preparedMetadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version) throw new Error("ACCEPTANCE_PLAN_INVALID");
+    if (JSON.stringify(preparedMetadata.openAlexQueryPack?.strictBoolean) !== JSON.stringify(pack.necessaryOnly)) throw new Error("ACCEPTANCE_RENDERING_MISMATCH");
   }
   const inputTrace = await freezeSearchInput(userId, input);
 

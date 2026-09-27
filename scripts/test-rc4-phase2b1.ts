@@ -45,6 +45,7 @@ async function main() {
     const before = JSON.stringify(current);
     const output: EnrichmentOutput = { terms: [
       ...f.anchors.flatMap((anchor, i) => [term("concepts", anchor), term("concepts", anchor, f.equivalents[i], "TRANSLATION")]),
+      term("object", f.object),
       term("context", f.context),
     ], ambiguities: [] };
     const enrichment = validateSearchEnrichment(input, output);
@@ -53,7 +54,7 @@ async function main() {
     assert.equal(enrichment.status, "READY", f.name);
     assert.ok(queries.validation.valid, f.name);
     assert.ok(queries.plannedQueries.filter(q => q.family !== "CONTEXTUAL_OR_LOCAL").every(q => !q.query.includes(f.context)));
-    assert.ok(queries.necessaryOnly.some(q => q.includes(`"${f.equivalents[1]}"`)), "compound phrase quoted");
+    assert.ok(queries.necessaryOnly.some(q => q.includes(`"${f.anchors[1]}"`) || q.includes(`"${f.object}"`)), "original compound phrase preserved; legacy translation language is unverified");
     assert.ok(enrichment.terms.every(t => t.provenance === "AI_DERIVED_FOR_SEARCH"));
     const positive = score(f.positive, `${f.positive}. A relevant scholarly precedent.`, groups);
     assert.equal(positive.admission.state, "ADMITTED", f.name);
