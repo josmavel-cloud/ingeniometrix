@@ -44,22 +44,38 @@ async function main() {
   const firstRows = simulated.reviews.filter(r=>first.some(c=>c.candidateId===r.candidateId));
   const missing = validateCandidateReviews({reviews:firstRows.slice(1)}, first, pool, dimensions, plan.searchIntentHash);
   assert.equal(missing.statuses.get(first[0].candidateId),"INCOMPLETE");
+  assert.equal(missing.diagnostics.get(first[0].candidateId)?.reason,"MISSING_OUTPUT");
   const forged = structuredClone(firstRows); forged[0].supportingEvidenceIds[0] = "fabricated";
   const salvaged = validateCandidateReviews({reviews:forged}, first, pool, dimensions, plan.searchIntentHash);
   assert.equal(salvaged.statuses.get(first[0].candidateId),"INVALID_UNGROUNDED");
+  assert.equal(salvaged.diagnostics.get(first[0].candidateId)?.reason,"INVALID_EVIDENCE_ID");
+  assert.deepEqual(salvaged.diagnostics.get(first[0].candidateId)?.returnedEvidenceRefs,["fabricated"]);
+  assert(salvaged.diagnostics.get(first[0].candidateId)?.availableEvidenceRefs.includes(first[0].evidenceUnits[0].evidenceId));
   assert.equal(salvaged.assessments.size, first.length-1,"one bad citation cannot invalidate valid peers");
+  const absentGrounding = structuredClone(firstRows); absentGrounding[0].supportingEvidenceIds = [];
+  assert.equal(validateCandidateReviews({reviews:absentGrounding},first,pool,dimensions,plan.searchIntentHash)
+    .diagnostics.get(first[0].candidateId)?.reason,"MISSING_REQUIRED_GROUNDING");
+  const duplicateEvidence = structuredClone(firstRows); duplicateEvidence[0].supportingEvidenceIds.push(duplicateEvidence[0].supportingEvidenceIds[0]);
+  assert.equal(validateCandidateReviews({reviews:duplicateEvidence},first,pool,dimensions,plan.searchIntentHash)
+    .diagnostics.get(first[0].candidateId)?.reason,"DUPLICATE_EVIDENCE_ID");
   const alien = structuredClone(firstRows); alien[0].candidateId = "invented";
   const alienResult = validateCandidateReviews({reviews:alien}, first, pool, dimensions, plan.searchIntentHash);
   assert.equal(alienResult.statuses.get(first[0].candidateId),"INCOMPLETE");
+  assert.equal(alienResult.diagnostics.get("invented")?.reason,"UNKNOWN_CANDIDATE");
   const duplicate = structuredClone(firstRows); duplicate[0] = duplicate[1];
   const duplicateResult = validateCandidateReviews({reviews:duplicate}, first, pool, dimensions, plan.searchIntentHash);
   assert.equal(duplicateResult.statuses.get(first[1].candidateId),"INVALID_CANDIDATE");
+  assert.equal(duplicateResult.diagnostics.get(first[1].candidateId)?.reason,"DUPLICATE_ITEM");
   const crossCandidate = structuredClone(firstRows);
   crossCandidate[0].supportingEvidenceIds[0] = first[1].evidenceUnits[0].evidenceId;
   assert.equal(validateCandidateReviews({reviews:crossCandidate},first,pool,dimensions,plan.searchIntentHash).statuses.get(first[0].candidateId),"INVALID_UNGROUNDED");
+  assert.equal(validateCandidateReviews({reviews:crossCandidate},first,pool,dimensions,plan.searchIntentHash)
+    .diagnostics.get(first[0].candidateId)?.reason,"WRONG_CANDIDATE_EVIDENCE");
   const badSchema = structuredClone(firstRows) as unknown as Array<Record<string,unknown>>;
   badSchema[0].role = "FABRICATED_ROLE";
   assert.equal(validateCandidateReviews({reviews:badSchema},first,pool,dimensions,plan.searchIntentHash).statuses.get(first[0].candidateId),"INVALID_SCHEMA");
+  assert.equal(validateCandidateReviews({reviews:badSchema},first,pool,dimensions,plan.searchIntentHash)
+    .diagnostics.get(first[0].candidateId)?.reason,"INVALID_SCHEMA");
   const roleCandidate = first.find(c=>c.reviewTask==="ROLE_ONLY");
   if (roleCandidate) {
     const previous = prepared.assessments.get(roleCandidate.candidateId)!;

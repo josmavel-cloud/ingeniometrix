@@ -34,6 +34,11 @@ export type CandidateEvidenceUnit = { evidenceId: string; sourceField: "TITLE" |
 export type ReviewTask = "RELEVANCE_AND_ROLE" | "ROLE_ONLY";
 export type CandidateReviewRequest = ReviewCandidate & { reviewTask: ReviewTask; evidenceUnits: CandidateEvidenceUnit[] };
 export type ItemValidationStatus = "VALID" | "INVALID_UNGROUNDED" | "INVALID_SCHEMA" | "INVALID_CANDIDATE" | "INCOMPLETE";
+export type ItemValidationReason = "INVALID_EVIDENCE_ID" | "WRONG_CANDIDATE_EVIDENCE" | "DUPLICATE_EVIDENCE_ID" |
+  "MISSING_REQUIRED_GROUNDING" | "INVALID_SCHEMA" | "DUPLICATE_ITEM" | "UNKNOWN_CANDIDATE" |
+  "MISSING_OUTPUT";
+export type ItemValidationDiagnostic = { reason: ItemValidationReason; returnedEvidenceRefs: string[];
+  availableEvidenceRefs: string[]; relevance: string | null; role: string | null };
 export function candidateEvidenceUnits(candidate: ReviewCandidate): CandidateEvidenceUnit[] {
   const units: CandidateEvidenceUnit[] = [];
   const add = (sourceField: CandidateEvidenceUnit["sourceField"], text: string) => {
@@ -118,7 +123,18 @@ export function validateCandidateReviews(raw: unknown, batch: CandidateReviewReq
   const originalById = new Map(originals.map(c => [c.candidateId, c]));
   const result = new Map<string, CandidateAssessment>();
   const statuses = new Map<string, ItemValidationStatus>();
+  const diagnostics = new Map<string, ItemValidationDiagnostic>();
   const counts = new Map<string, number>();
+  const evidenceOwner = new Map(originals.flatMap(c => candidateEvidenceUnits(c).map(u => [u.evidenceId, c.candidateId] as const)));
+  const diagnose = (id: string, row: unknown, reason: ItemValidationReason) => {
+    const value = row && typeof row === "object" ? row as Record<string, unknown> : {};
+    const refs = [value.supportingEvidenceIds, value.mismatchEvidenceIds].flatMap(list =>
+      Array.isArray(list) ? list.filter((ref): ref is string => typeof ref === "string" && ref.length <= 80) : []).slice(0, 40);
+    diagnostics.set(id, { reason, returnedEvidenceRefs: refs,
+      availableEvidenceRefs: byId.get(id)?.evidenceUnits.map(u => u.evidenceId) ?? [],
+      relevance: typeof value.relevance === "string" ? value.relevance : null,
+      role: typeof value.role === "string" ? value.role : null });
+  };
   for (const row of rows) {
     const id = row && typeof row === "object" && typeof (row as { candidateId?: unknown }).candidateId === "string"
       ? (row as { candidateId: string }).candidateId : null;
@@ -130,24 +146,30 @@ export function validateCandidateReviews(raw: unknown, batch: CandidateReviewReq
     const parsed = reviewItemSchema.safeParse(row);
     const id = row && typeof row === "object" && typeof (row as { candidateId?: unknown }).candidateId === "string"
       ? (row as { candidateId: string }).candidateId : null;
-    if (!id || !byId.has(id)) { statuses.set(id ?? `unknown:${statuses.size}`, "INVALID_CANDIDATE"); continue; }
-    if ((counts.get(id) ?? 0) > 1) { statuses.set(id, "INVALID_CANDIDATE"); continue; }
-    if (!parsed.success) { statuses.set(id, "INVALID_SCHEMA"); continue; }
+    if (!id || !byId.has(id)) { const key = id ?? `unknown:${statuses.size}`;
+      statuses.set(key, "INVALID_CANDIDATE"); diagnose(key, row, "UNKNOWN_CANDIDATE"); continue; }
+    if ((counts.get(id) ?? 0) > 1) { statuses.set(id, "INVALID_CANDIDATE"); diagnose(id, row, "DUPLICATE_ITEM"); continue; }
+    if (!parsed.success) { statuses.set(id, "INVALID_SCHEMA"); diagnose(id, row, "INVALID_SCHEMA"); continue; }
     const item = parsed.data, candidate = byId.get(id)!, original = originalById.get(id);
     if (!original || item.rationale.length > 1000 || item.matchedIntentDimensions.some(f => !allowedFields.includes(f))) {
-      statuses.set(id, "INVALID_SCHEMA"); continue;
+      statuses.set(id, "INVALID_SCHEMA"); diagnose(id, row, "INVALID_SCHEMA"); continue;
     }
     const evidenceById = new Map(candidate.evidenceUnits.map(u => [u.evidenceId, u]));
     const citedIds = [...item.supportingEvidenceIds, ...item.mismatchEvidenceIds];
-    if (citedIds.some(eid => !evidenceById.has(eid)) || new Set(citedIds).size !== citedIds.length) {
-      statuses.set(id, "INVALID_UNGROUNDED"); continue;
+    if (citedIds.some(eid => !evidenceById.has(eid))) {
+      statuses.set(id, "INVALID_UNGROUNDED");
+      diagnose(id, row, citedIds.some(eid => evidenceOwner.has(eid) && evidenceOwner.get(eid) !== id)
+        ? "WRONG_CANDIDATE_EVIDENCE" : "INVALID_EVIDENCE_ID"); continue;
+    }
+    if (new Set(citedIds).size !== citedIds.length) {
+      statuses.set(id, "INVALID_UNGROUNDED"); diagnose(id, row, "DUPLICATE_EVIDENCE_ID"); continue;
     }
     const positive = item.relevance === "HIGHLY_RELEVANT" || item.relevance === "RELEVANT";
     if (positive && (!item.supportingEvidenceIds.length || !item.matchedIntentDimensions.length || item.role === "NONE")) {
-      statuses.set(id, "INVALID_UNGROUNDED"); continue;
+      statuses.set(id, "INVALID_UNGROUNDED"); diagnose(id, row, "MISSING_REQUIRED_GROUNDING"); continue;
     }
     if (candidate.reviewTask === "ROLE_ONLY" && (item.role === "NONE" || !item.supportingEvidenceIds.length)) {
-      statuses.set(id, "INVALID_UNGROUNDED"); continue;
+      statuses.set(id, "INVALID_UNGROUNDED"); diagnose(id, row, "MISSING_REQUIRED_GROUNDING"); continue;
     }
     const retained = candidate.reviewTask === "ROLE_ONLY" ? prior.get(id) : undefined;
     // Role-only review cannot silently downgrade deterministic relevance.
@@ -161,8 +183,10 @@ export function validateCandidateReviews(raw: unknown, batch: CandidateReviewReq
       policyVersion: CANDIDATE_REVIEW_VERSION, searchIntentHash, metadataHash: candidateMetadataHash(original), origin: "MODEL_REVIEW" });
     statuses.set(id, "VALID");
   }
-  for (const candidate of batch) if (!statuses.has(candidate.candidateId)) statuses.set(candidate.candidateId, "INCOMPLETE");
-  return { assessments: result, statuses };
+  for (const candidate of batch) if (!statuses.has(candidate.candidateId)) {
+    statuses.set(candidate.candidateId, "INCOMPLETE"); diagnose(candidate.candidateId, null, "MISSING_OUTPUT");
+  }
+  return { assessments: result, statuses, diagnostics };
 }
 
 export function finalCandidateAdmission(a: CandidateAssessment) {

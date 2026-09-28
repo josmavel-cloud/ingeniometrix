@@ -26,7 +26,9 @@ export async function reviewCandidateBatch(input: SemanticPlannerInput, plan: Sc
     model: candidateReviewModel(), searchIntentHash: input.searchIntentHash, batchIds: prepared.batches.map(b => b.map(c => c.candidateId)),
     deferredIds: prepared.deferredIds, status: "NOT_NEEDED", failureCategory: null as string | null, latencyMs: 0,
     batches: [] as Array<{ requested: number; validated: number; itemFailures: number; systemicFailure: string | null; latencyMs: number }>,
-    itemValidation: [] as Array<{ candidateId: string; status: string }> };
+    itemValidation: [] as Array<{ candidateId: string; status: string; diagnostic?: {
+      reason: string; returnedEvidenceRefs: string[]; availableEvidenceRefs: string[];
+      relevance: string | null; role: string | null } }> };
   if (!prepared.batches.length) return { ...prepared, trace };
   const start = Date.now();
   const signals = input.signals.filter(s => s.knowledge === "KNOWN" && s.value && s.provenance?.acceptance === "ACCEPTED" && s.provenance.origin !== "SYSTEM_DEFAULT");
@@ -44,7 +46,8 @@ export async function reviewCandidateBatch(input: SemanticPlannerInput, plan: Sc
       phase = "VALIDATION";
       const validated = validateCandidateReviews(raw, batch, candidates, signals.map(s => s.sourceField), input.searchIntentHash, prepared.assessments);
       for (const [id, a] of validated.assessments) prepared.assessments.set(id, a);
-      for (const [candidateId, status] of validated.statuses) trace.itemValidation.push({ candidateId, status });
+      for (const [candidateId, status] of validated.statuses) trace.itemValidation.push({ candidateId, status,
+        ...(validated.diagnostics.has(candidateId) ? { diagnostic: validated.diagnostics.get(candidateId) } : {}) });
       trace.batches.push({ requested: batch.length, validated: validated.assessments.size,
         itemFailures: [...validated.statuses.values()].filter(status => status !== "VALID").length, systemicFailure: null, latencyMs: Date.now() - batchStart });
       trace.status = trace.batches.some(b => b.itemFailures) ? "PARTIAL" : "COMPLETED";
