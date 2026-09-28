@@ -59,7 +59,7 @@ async function main() {
     const isModel = url.protocol === "https:" && url.hostname === "api.openai.com" && url.pathname === "/v1/responses";
     const isOpenAlex = url.protocol === "https:" && url.hostname === "api.openalex.org" && url.pathname === "/works";
     const allowed = mode === "plan" ? isModel : isOpenAlex || semanticReview && isModel;
-    if (!allowed || isModel && ++modelCalls > (mode === "plan" && allowTranslationRecovery ? 2 : 1) || isOpenAlex && ++openAlexCalls > 4) throw new Error("ACCEPTANCE_NETWORK_BOUNDARY");
+    if (!allowed || isModel && ++modelCalls > (mode === "plan" && allowTranslationRecovery ? 2 : mode === "search" && semanticReview ? 2 : 1) || isOpenAlex && ++openAlexCalls > (mode === "search" ? 2 : 4)) throw new Error("ACCEPTANCE_NETWORK_BOUNDARY");
     calls++;
     const started = Date.now();
     const response = await actualFetch(request, { ...init, redirect: "error" });
@@ -82,7 +82,7 @@ async function main() {
       const trace = await freezeSearchInput(userId, input);
       return { searchIntentHash, trace, metadata: await buildSearchMetadata(input) };
     }
-    return searchProjectReferencesV2(userId, projectId, input, { openAlexOnlyAcceptance: { planOperationId, maxQueries: 4, semanticReview } });
+    return searchProjectReferencesV2(userId, projectId, input, { openAlexOnlyAcceptance: { planOperationId, maxQueries: 2, semanticReview } });
   });
   const operation = await prisma.paidOperation.findUniqueOrThrow({ where: { userId_requestId: { userId, requestId } },
     select: { id: true, status: true, committedMicros: true, boundBreached: true, calls: { select: { model: true, actualModel: true, status: true, reservedMicros: true, estimatedMicros: true, usageJson: true } } } });

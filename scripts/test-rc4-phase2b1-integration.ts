@@ -46,9 +46,12 @@ async function main() {
     const result = await searchProjectReferencesV2(user.id, project.id, await loadSearchInput(user.id, project.id), { desiredTotal: 5 }, {
       async generateStructuredObject<T>(request: StructuredObjectInput) {
         modelCalls++;
-        if (request.schemaName === "candidate_semantic_review_v1") return { reviews: [{ candidateId:`doi:10.test/${unique}-positive`,
+        if (request.schemaName === "candidate_semantic_review_v2") {
+          const batch = JSON.parse(request.prompt.split("CANDIDATES AND EVIDENCE UNITS:\n")[1]) as Array<{candidateId:string;evidenceUnits:Array<{evidenceId:string}>}>;
+          return { reviews: [{ candidateId:`doi:10.test/${unique}-positive`,
           relevance:"RELEVANT", role:"DIRECT", matchedIntentDimensions:["concepts"], mismatches:[], confidence:"HIGH",
-          rationale:"El titulo coincide con el tema.", evidence:[{field:"title",quote:"Feedback in digital mathematics"}] }] } as T;
+          rationale:"El titulo coincide con el tema.", supportingEvidenceIds:[batch[0].evidenceUnits[0].evidenceId], mismatchEvidenceIds:[] }] } as T;
+        }
         return { terms: plannerTerms, ambiguities: [] } as T;
       },
     });
@@ -94,10 +97,11 @@ async function main() {
     let reviewCalls = 0;
     const semantic = await searchProjectReferencesV2(user.id, project.id, input, {openAlexOnlyAcceptance:{...options.openAlexOnlyAcceptance, semanticReview:true}}, {
       async generateStructuredObject<T>(request: StructuredObjectInput) {
-        reviewCalls++; assert.equal(request.schemaName, "candidate_semantic_review_v1");
-        return {reviews:Array.from({length:8},(_,i)=>({candidateId:`doi:10.test/${unique}-review-${i}`, relevance:"RELEVANT",role:i%2?"METHODOLOGICAL":"DIRECT",
+        reviewCalls++; assert.equal(request.schemaName, "candidate_semantic_review_v2");
+        const batch = JSON.parse(request.prompt.split("CANDIDATES AND EVIDENCE UNITS:\n")[1]) as Array<{candidateId:string;evidenceUnits:Array<{evidenceId:string}>}>;
+        return {reviews:batch.map((c,i)=>({candidateId:c.candidateId, relevance:"RELEVANT",role:i%2?"METHODOLOGICAL":"DIRECT",
           matchedIntentDimensions:["concepts"], mismatches:[], confidence:"HIGH", rationale:"La informacion suministrada apoya la pertinencia.",
-          evidence:[{field:"abstract",quote:"Feedback in digital mathematics"}]}))} as T;
+          supportingEvidenceIds:[c.evidenceUnits[0].evidenceId],mismatchEvidenceIds:[]}))} as T;
       }
     });
     refs.push(...semantic.searchSnapshot.references.map(r=>r.referenceId));

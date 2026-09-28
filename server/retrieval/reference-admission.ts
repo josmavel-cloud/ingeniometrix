@@ -31,7 +31,8 @@ export function decideReferenceAdmission(input: {
   if (!breakdown) return decision("NEEDS_INSPECTION", "RELEVANCE_CONTEXT_UNAVAILABLE");
   if (breakdown.candidateAssessment) {
     const review = breakdown.candidateAssessment;
-    if (review.policyVersion !== CANDIDATE_REVIEW_VERSION || !review.searchIntentHash || !review.metadataHash) return decision("NEEDS_INSPECTION", "REVIEW_CONTEXT_UNAVAILABLE");
+    // Historical v1 snapshots remain readable; new model reviews use evidence IDs.
+    if (![CANDIDATE_REVIEW_VERSION, "candidate-semantic-review.v1"].includes(review.policyVersion) || !review.searchIntentHash || !review.metadataHash) return decision("NEEDS_INSPECTION", "REVIEW_CONTEXT_UNAVAILABLE");
     return decision(finalCandidateAdmission(review), `${review.policyVersion}:${review.relevance}:${review.role}`);
   }
   if (breakdown.semanticRelevance) {
