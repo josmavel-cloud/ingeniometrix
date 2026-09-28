@@ -46,7 +46,8 @@ export type ReferenceKeywordGroup = {
 
 export type ReferenceSearchV2Metadata = {
   enrichment?: SearchEnrichment;
-  planning?: { model: string; promptVersion: string; policyVersion: string; cacheKey: string };
+  planning?: { model: string; promptVersion: string; policyVersion: string; cacheKey: string;
+    replayedFromCompositionVersion?: string; replayedFromPlanOperationId?: string };
   planSource: "llm" | "fallback";
   normalizedTopic: string;
   intentSummary: string;
@@ -842,6 +843,22 @@ export async function buildSearchMetadata(input: SearchInput, provider?: Pick<im
   };
 }
 
+// Operator-only acceptance reuses the paid semantic graph. The historical paid
+// result remains immutable; only query composition is replayed under this code.
+export function recomposeAcceptedSearchMetadata(source: ReferenceSearchV2Metadata, planOperationId: string): ReferenceSearchV2Metadata {
+  if (source.enrichment?.planMode !== "SEMANTIC" || source.enrichment.status !== "READY" ||
+      !source.enrichment.scientificConceptPlan || !source.planning) throw new Error("ACCEPTANCE_PLAN_INVALID");
+  const queryPack = semanticQueryPack(enrichmentGroups(source.enrichment));
+  if (!queryPack.validation.valid || validateScientificQueryPlan(queryPack).length) throw new Error("ACCEPTANCE_RECOMPOSITION_INVALID");
+  return { ...source,
+    planning: { ...source.planning, replayedFromCompositionVersion: source.queryPack.compositionVersion ?? "UNVERSIONED",
+      replayedFromPlanOperationId: planOperationId },
+    queryPack,
+    openAlexQueryPack: { strictBoolean: queryPack.necessaryOnly, precisionBoolean: queryPack.complementaryBoosted,
+      fallbackPlain: queryPack.necessaryOnly, localLanguage: [] },
+  };
+}
+
 function getRecencyBand(year: number | null) {
   const currentYear = new Date().getFullYear();
 
@@ -1325,7 +1342,8 @@ export async function searchProjectReferencesV2(
     const operation = await prisma.paidOperation.findFirst({ where: { id: acceptance.planOperationId, userId, projectId, status: "COMPLETED", purpose: "rc4-query-composition-plan" } });
     const result = operation?.resultJson as { searchIntentHash?: string; metadata?: ReferenceSearchV2Metadata } | null;
     if (result?.searchIntentHash !== fingerprint(input.intent)) throw new Error("ACCEPTANCE_PLAN_STALE_OR_UNAUTHORIZED");
-    preparedMetadata = result.metadata;
+    preparedMetadata = result.metadata?.queryPack.compositionVersion === QUERY_COMPOSITION_VERSION
+      ? result.metadata : result.metadata && recomposeAcceptedSearchMetadata(result.metadata, acceptance.planOperationId);
     const pack = preparedMetadata?.queryPack;
     if (preparedMetadata?.enrichment?.planMode !== "SEMANTIC" || pack?.compositionVersion !== QUERY_COMPOSITION_VERSION || !pack.validation?.valid || validateScientificQueryPlan(pack).length || preparedMetadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version) throw new Error("ACCEPTANCE_PLAN_INVALID");
     if (JSON.stringify(preparedMetadata.openAlexQueryPack?.strictBoolean) !== JSON.stringify(pack.necessaryOnly)) throw new Error("ACCEPTANCE_RENDERING_MISMATCH");

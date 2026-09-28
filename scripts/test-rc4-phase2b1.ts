@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { emptyDefinition, searchIntent, userValue, type DefinitionField, type ConfirmedResearchSearchIntent } from "@/lib/conversational-intake";
 import { plannerIntake } from "@/lib/retrieval-search-input";
 import { semanticPlannerInput, validateSearchEnrichment, fallbackSearchEnrichment, enrichmentGroups, semanticQueryPack, type EnrichmentOutput } from "@/lib/retrieval-semantic-plan";
-import { buildSearchMetadata, buildRelevanceScore, pickDiverseCandidates } from "@/server/retrieval/reference-search-v2";
+import { buildSearchMetadata, buildRelevanceScore, pickDiverseCandidates, recomposeAcceptedSearchMetadata } from "@/server/retrieval/reference-search-v2";
 import { admittedOnly, decideReferenceAdmission } from "@/server/retrieval/reference-admission";
 import { planSemanticSearch } from "@/server/retrieval/semantic-search-planner";
 
@@ -127,6 +127,13 @@ async function main() {
   assert.deepEqual(metadata.enrichment?.rawPlannerOutput, seismicTerms, "raw structured planner terms survive normalization in the paid plan audit");
   assert.equal(metadata.enrichment?.translationRecovery?.status, "LIMITED", "invalid simulated recovery preserves original-language queries");
   assert.equal(metadata.enrichment?.planMode, "SEMANTIC");
+  const oldPlan = structuredClone(metadata);
+  oldPlan.queryPack.compositionVersion = "scientific-query-composition.v4";
+  const replayed = recomposeAcceptedSearchMetadata(oldPlan, "offline-paid-operation");
+  assert.equal(replayed.queryPack.compositionVersion, "scientific-query-composition.v5");
+  assert.deepEqual(replayed.openAlexQueryPack?.strictBoolean, replayed.queryPack.necessaryOnly);
+  assert.equal(replayed.planning?.replayedFromPlanOperationId, "offline-paid-operation");
+  assert.equal(oldPlan.queryPack.compositionVersion, "scientific-query-composition.v4", "paid plan stays immutable");
   assert.ok(metadata.queryPack.necessaryOnly.some(q => !q.includes("2026") && !q.includes("Perú")));
   const groups = metadata.keywordGroups as ReturnType<typeof enrichmentGroups>;
   const scored = historical.candidates.map(c => ({ title: c.title, ...score(c.title, c.abstract, groups) }));

@@ -49,14 +49,16 @@ const fixtures = [
   ["humanities", "recepción literaria", "corpus de traducciones", "literary reception", "translation corpus"],
 ] as const;
 for (const [name, phenomenon, object, englishPhenomenon, englishObject] of fixtures) {
-  const i = input({ originalIdea: `${phenomenon}: ${object}`, topic: `${phenomenon}: ${object}`, problem: phenomenon, object, context: "Perú", concepts: `${phenomenon}; ${object}` });
-  const raw: EnrichmentOutput = { terms: [term("problem", phenomenon, "PHENOMENON"), term("problem", phenomenon, "PHENOMENON", englishPhenomenon, "TRANSLATION", "en"), term("object", object, "OBJECT_OR_SYSTEM"), term("object", object, "OBJECT_OR_SYSTEM", englishObject, "TRANSLATION", "en"), term("context", "Perú", "GEOGRAPHY")], ambiguities: [] };
+  const i = input({ originalIdea: `${phenomenon}: ${object}`, topic: `${phenomenon}: ${object}`, problem: phenomenon, purpose: `Evaluar ${phenomenon}`, object, context: "Perú", concepts: `${phenomenon}; ${object}` });
+  const raw: EnrichmentOutput = { terms: [term("problem", phenomenon, "PHENOMENON"), term("problem", phenomenon, "PHENOMENON", englishPhenomenon, "TRANSLATION", "en"), term("purpose", "Evaluar", "RESEARCH_ACTION"), term("object", object, "OBJECT_OR_SYSTEM"), term("object", object, "OBJECT_OR_SYSTEM", englishObject, "TRANSLATION", "en"), term("context", "Perú", "GEOGRAPHY")], ambiguities: [] };
   const plan = semanticQueryPack(enrichmentGroups(validateSearchEnrichment(i, raw)));
   assert.equal(plan.validation.valid, true, name);
   assert.equal(plan.plannedQueries[0].translationStatus, "ENGLISH_COMPLETE", name);
   assert.ok(plan.plannedQueries[0].query.includes(englishObject));
   assert.ok(!plan.plannedQueries[0].query.includes("Perú"));
   assert.equal(plan.plannedQueries.length, 2, "one core and one contextual family, no padding");
+  assert.ok(!plan.plannedQueries.some(q => q.family === "RESEARCH_ACTION_PRECEDENT" || q.query.includes('"Evaluar"')));
+  assert.ok(plan.plannedQueries[0].optionalConceptIds.some(id => plan.conceptPlan!.concepts.find(c => c.id === id)?.role === "RESEARCH_ACTION"));
   assert.deepEqual(validateScientificQueryPlan(plan), []);
   const duplicate = [...plan.plannedQueries, { ...plan.plannedQueries[0], id: "duplicate" }];
   assert.ok(queryRedundancyReasons(duplicate).length);
@@ -70,6 +72,23 @@ for (const [name, phenomenon, object, englishPhenomenon, englishObject] of fixtu
   assert.ok(!guarded.concepts.some(c => c.value === "Perú" && c.role === "OBJECT_OR_SYSTEM"));
   console.log(`PASS ${name}: explicit roles, domain, language completeness, separate context`);
 }
+
+const actionInput = input({ topic: "Respuesta sísmica de albañilería", problem: "Determinar respuesta sísmica", object: "albañilería", purpose: "Evaluar respuesta sísmica" });
+const actionPlan = semanticQueryPack(enrichmentGroups(validateSearchEnrichment(actionInput, { terms: [
+  term("problem", "respuesta sísmica", "PHENOMENON"), term("problem", "Determinar", "RESEARCH_ACTION"),
+  term("purpose", "Evaluar", "RESEARCH_ACTION"), term("object", "albañilería", "OBJECT_OR_SYSTEM"),
+], ambiguities: [] })));
+assert.equal(actionPlan.validation.valid, true);
+assert.equal(actionPlan.plannedQueries.length, 1, "generic actions do not pad a narrow scientific plan");
+for (const verb of ["Determinar", "Evaluar"]) {
+  const action = actionPlan.conceptPlan!.concepts.find(c => c.value === verb)!;
+  const object = actionPlan.conceptPlan!.concepts.find(c => c.value === "albañilería")!;
+  const bad = { ...actionPlan.plannedQueries[0], family: "RESEARCH_ACTION_PRECEDENT" as const,
+    requiredConceptIds: [action.id, object.id], requiredConcepts: [action.value, object.value] };
+  assert.ok(validateScientificFamily(bad, actionPlan.conceptPlan!).includes("GENERIC_ACTION_NOT_SCIENTIFIC_ANCHOR"));
+  assert.ok(validateScientificFamily(bad, actionPlan.conceptPlan!).includes("RESEARCH_ACTION_IS_OPTIONAL_REFINER"));
+}
+assert.ok(actionPlan.plannedQueries[0].query.includes('"respuesta sísmica"'));
 
 const i = input({ topic: "Simulación sísmica de albañilería a escala natural", problem: "respuesta sísmica", object: "albañilería a escala natural", concepts: "simulación sísmica; escala natural", context: "Perú norma 2026", academicLevel: "MAESTRIA" });
 const guarded = validateSearchEnrichment(i, { terms: [

@@ -1,7 +1,7 @@
 import type { SemanticKeywordGroup } from "./retrieval-semantic-plan";
 import { containsConcept, conceptWordCount, highAuthorityTerms, normalizeConcept, type ScientificConcept, type ScientificConceptPlan } from "./retrieval-scientific-concepts";
 
-export const QUERY_COMPOSITION_VERSION = "scientific-query-composition.v4";
+export const QUERY_COMPOSITION_VERSION = "scientific-query-composition.v5";
 export type QueryFamily = "CORE_PHENOMENON" | "OBJECT_OR_SYSTEM" | "METHOD_PRECEDENT" | "RESEARCH_ACTION_PRECEDENT" | "THEORETICAL_OR_MECHANISTIC" | "CONTEXTUAL_OR_LOCAL";
 export type ScientificQuery = {
   id: string; family: QueryFamily; familyType: QueryFamily; purpose: string;
@@ -13,8 +13,11 @@ export type ScientificQuery = {
 };
 type Groups = { necessary: SemanticKeywordGroup[]; complementary: SemanticKeywordGroup[]; optional: SemanticKeywordGroup[]; conceptPlan?: ScientificConceptPlan };
 // A generic research verb supplies intent, but not a scientific phenomenon.
-export const genericResearchAction = (c: ScientificConcept) => c.role === "RESEARCH_ACTION" && /^(?:evaluate|evaluar|evaluation|evaluacion|study|estudiar|investigate|investigar|understand|comprender|design|diseno|analyse|analyze|analizar|compare|comparar|validate|validar)$/.test(normalizeConcept(c.value));
-const science = (c: ScientificConcept) => ["PHENOMENON", "RESEARCH_ACTION", "CORE_CONCEPT"].includes(c.role) && !genericResearchAction(c);
+export const genericResearchAction = (c: ScientificConcept) => c.role === "RESEARCH_ACTION" && /^(?:determine|determinar|assess|evaluar|evaluate|evaluation|evaluacion|study|estudiar|investigate|investigar|understand|comprender|design|diseno|analyse|analyze|analizar|compare|comparar|validate|validar)$/.test(normalizeConcept(c.value));
+// A bare research verb is intent, not science. A grounded compound action
+// such as "seismic simulation" can still identify a scientific process.
+const science = (c: ScientificConcept) => ["PHENOMENON", "CORE_CONCEPT"].includes(c.role) ||
+  c.role === "RESEARCH_ACTION" && conceptWordCount(c.value) > 1 && !genericResearchAction(c);
 const domain = (c: ScientificConcept) => ["OBJECT_OR_SYSTEM", "CORE_CONCEPT"].includes(c.role);
 const central = (c: ScientificConcept) => c.authority === "CENTRAL" && highAuthorityTerms(c).length > 0;
 const precedentUsable = (c: ScientificConcept) => c.authority !== "EXPLORATORY" && highAuthorityTerms(c).length > 0 && ["METHOD_OR_TECHNIQUE", "THEORY_OR_FRAMEWORK"].includes(c.role);
@@ -38,12 +41,17 @@ export function validateScientificFamily(q: ScientificQuery, plan: ScientificCon
   const scientific = anchors.filter(c => precedent ? c.role === precedent : science(c));
   const domains = anchors.filter(domain);
   if (!scientific.length) reasons.push("SCIENTIFIC_ANCHOR_MISSING");
+  const genericActions = anchors.filter(c => c.role === "RESEARCH_ACTION" && !science(c));
+  if (genericActions.length) reasons.push("RESEARCH_ACTION_IS_OPTIONAL_REFINER");
+  if (genericActions.length && !scientific.length) reasons.push("GENERIC_ACTION_NOT_SCIENTIFIC_ANCHOR");
+  if (q.family === "RESEARCH_ACTION_PRECEDENT" && !anchors.some(c => ["PHENOMENON", "CORE_CONCEPT"].includes(c.role))) reasons.push("RESEARCH_ACTION_FAMILY_REQUIRES_DOMAIN_IDENTITY");
   if (anchors.some(genericResearchAction) && !anchors.some(c => science(c) && c.role !== "RESEARCH_ACTION")) reasons.push("GENERIC_ACTION_WITHOUT_SCIENTIFIC_IDENTITY");
   if (!domains.length) reasons.push("OBJECT_OR_DOMAIN_ANCHOR_MISSING");
   if (!scientific.some(a => domains.some(b => a.id !== b.id))) reasons.push("INDEPENDENT_SCIENTIFIC_ANCHORS_REQUIRED");
   if (anchors.some(c => ["QUALIFIER", "CONTEXT", "GEOGRAPHY", "TIME_OR_STANDARD"].includes(c.role))) reasons.push("REFINER_PROMOTED_TO_CORE");
   if (plan.objectRequired && !domains.some(c => c.role === "OBJECT_OR_SYSTEM")) reasons.push("ACCEPTED_OBJECT_NOT_REPRESENTED");
   if (q.refinerConceptIds.some(id => !byId.get(id)?.known || !byId.get(id)?.traceable || byId.get(id)!.authority === "EXPLORATORY" || !highAuthorityTerms(byId.get(id)!).length)) reasons.push("UNSUPPORTED_REFINER");
+  if (q.optionalConceptIds.some(id => !byId.get(id)?.known || !byId.get(id)?.traceable || byId.get(id)!.authority === "EXPLORATORY")) reasons.push("UNSUPPORTED_OPTIONAL_CONCEPT");
   if (q.language === "original+en" && anchors.some(c => !highAuthorityTerms(c).some(t => t.language === "en"))) reasons.push("CENTRAL_TRANSLATION_MISSING");
   if (anchors.some(c => !highAuthorityTerms(c).some(t => t.expansionType === "EXACT_ORIGINAL"))) reasons.push("ORIGINAL_ANCHOR_MISSING");
   return reasons;
@@ -85,7 +93,7 @@ export function composeSemanticQueries(input: Groups) {
   const domains = cores.filter(domain).sort((a, b) => Number(b.role === "OBJECT_OR_SYSTEM") - Number(a.role === "OBJECT_OR_SYSTEM") || conceptWordCount(a.value) - conceptWordCount(b.value) || a.id.localeCompare(b.id));
   const object = domains[0];
   const anchors = cores.filter(c => science(c) && c.id !== object?.id && !containsConcept(object?.value ?? "", c.value) && !containsConcept(c.value, object?.value ?? ""))
-    .sort((a, b) => ["PHENOMENON", "RESEARCH_ACTION", "CORE_CONCEPT"].indexOf(a.role) - ["PHENOMENON", "RESEARCH_ACTION", "CORE_CONCEPT"].indexOf(b.role) || Number(b.sourceFields.includes("problem")) - Number(a.sourceFields.includes("problem")) || a.id.localeCompare(b.id));
+    .sort((a, b) => ["PHENOMENON", "CORE_CONCEPT", "RESEARCH_ACTION"].indexOf(a.role) - ["PHENOMENON", "CORE_CONCEPT", "RESEARCH_ACTION"].indexOf(b.role) || Number(b.sourceFields.includes("problem")) - Number(a.sourceFields.includes("problem")) || a.id.localeCompare(b.id));
   const phenomenon = anchors[0];
   const add = (family: QueryFamily, level: ScientificQuery["relaxationLevel"], required: ScientificConcept[], refiners: ScientificConcept[], purpose: string) => {
     if (!plan || plannedQueries.length >= 4) return;
@@ -119,8 +127,13 @@ export function composeSemanticQueries(input: Groups) {
       diagnostics.push("LONG_OBJECT_PRESERVED_AS_OPTIONAL_REFINEMENT");
     }
     else if (qualifier) add("OBJECT_OR_SYSTEM", 0, [phenomenon, object], [qualifier], "Object qualification, never a replacement for scientific identity");
-    const alternative = anchors.find(c => c.id !== phenomenon.id && c.role === "RESEARCH_ACTION");
-    if (alternative) add("RESEARCH_ACTION_PRECEDENT", 2, [alternative, object], [], "Explicitly grounded alternate research action");
+    const action = cores.find(c => c.role === "RESEARCH_ACTION" && !science(c));
+    if (action && plannedQueries[0]) {
+      // Adding only a generic verb cannot create a distinct evidence purpose.
+      // Keep the action as optional intent metadata, not a provider requirement.
+      plannedQueries[0].optionalConceptIds.push(action.id);
+      diagnostics.push("REDUNDANT_ACTION_FAMILY_DROPPED");
+    }
   }
   if (object) {
     const method = concepts.find(c => c.role === "METHOD_OR_TECHNIQUE" && precedentUsable(c));

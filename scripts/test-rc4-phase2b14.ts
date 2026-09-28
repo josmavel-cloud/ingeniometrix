@@ -15,34 +15,34 @@ async function main() {
   taxonomy.value = `${taxonomy.value} ${randomUUID()}`;
   const base = accepted.enrichment as unknown as SearchEnrichment;
   const missing = missingCentralTranslations(base.scientificConceptPlan!);
-  assert.deepEqual(missing.map(c => c.value).sort(), ["albañilería", "especímenes de albañilería", "respuesta sísmica", "simulación sísmica"].sort());
+  assert.deepEqual(missing.map(c => c.value).sort(), ["albañilería", "especímenes de albañilería", "respuesta sísmica"].sort(), "unused action family does not incur translation cost");
   const english = new Map([["albañilería", "masonry"], ["especímenes de albañilería", "masonry specimens"],
     ["respuesta sísmica", "seismic response"], ["simulación sísmica", "seismic simulation"]]);
   let calls = 0;
   const provider = { async generateStructuredObject<T>(request: {schemaName:string; prompt:string}) {
     calls++; assert.equal(request.schemaName, "search_concept_translation_v1");
     const batch = JSON.parse(request.prompt.split("Input:\n")[1]) as {concepts: Array<{conceptId:string;originalText:string;sourceLanguage:"es"|"en"|"pt"|"und";targetLanguage:"en"|"es"|"pt";role:string}>};
-    assert.equal(batch.concepts.length, 4);
+    assert.equal(batch.concepts.length, missing.length);
     return { translations: batch.concepts.map(c => ({ conceptId:c.conceptId, status:"TRANSLATED", sourceLanguage:c.sourceLanguage,targetLanguage:c.targetLanguage,role:c.role,
       translatedTerm:english.get(c.originalText), academicEquivalent:null, confidence:"HIGH", notes:null })) } as T;
   } };
   const recovered = await recoverCentralTranslations(input, base, provider);
   assert.equal(calls,1); assert.equal(recovered.translationRecovery?.status,"COMPLETE");
-  assert.equal(recovered.translationTrace?.filter(t => t.origin === "TRANSLATION_RECOVERY" && t.validationStatus === "ACCEPTED").length,4);
+  assert.equal(recovered.translationTrace?.filter(t => t.origin === "TRANSLATION_RECOVERY" && t.validationStatus === "ACCEPTED").length,missing.length);
   assert.equal(missingCentralTranslations(recovered.scientificConceptPlan!).length,0);
   const family = composeSemanticQueries({necessary:[],complementary:[],optional:[],conceptPlan:recovered.scientificConceptPlan});
   assert.equal(family.coverageMode,"MULTILINGUAL");
   assert(family.plannedQueries.some(q => q.query.includes("seismic response") && q.query.includes("masonry")));
-  assert(family.plannedQueries.some(q => q.query.includes("seismic simulation") && q.query.includes("masonry")));
-  assert(!family.plannedQueries.slice(0,3).some(q => q.query.includes("Perú") || q.query.includes("2026")));
+  assert(family.plannedQueries.some(q => q.query.includes("seismic response") && q.query.includes("masonry specimens")));
+  assert(!family.plannedQueries.filter(q=>q.family!=="CONTEXTUAL_OR_LOCAL").some(q => q.query.includes("Perú") || q.query.includes("2026")));
   for(const concept of recovered.scientificConceptPlan!.concepts) {
     const old=base.scientificConceptPlan!.concepts.find(c=>c.id===concept.id)!;
     assert.equal(concept.role,old.role); assert.equal(concept.authority,old.authority);
   }
   const again = await recoverCentralTranslations(input, base, provider);
   assert.equal(calls,1,"durable cache hit prevents duplicate paid call");
-  assert.equal(again.translationRecovery?.cacheHits,4);
-  assert.equal(again.translationTrace?.filter(t=>t.origin==="TRANSLATION_CACHE").length,4);
+  assert.equal(again.translationRecovery?.cacheHits,missing.length);
+  assert.equal(again.translationTrace?.filter(t=>t.origin==="TRANSLATION_CACHE").length,missing.length);
   const noRecovery = await recoverCentralTranslations(input,recovered,provider);
   assert.equal(calls,1); assert.equal(noRecovery.translationRecovery?.status,"NOT_NEEDED");
   const raw = { terms: [
@@ -140,9 +140,9 @@ async function main() {
       translatedTerm:null,academicEquivalent:null,confidence:"LOW",notes:"Ambiguous technical term"}))} as T;
   }});
   assert.equal(abstained.translationRecovery?.status,"LIMITED");
-  assert.equal(missingCentralTranslations(abstained.scientificConceptPlan!).length,4);
+  assert.equal(missingCentralTranslations(abstained.scientificConceptPlan!).length,missing.length);
   const abstainedAgain=await recoverCentralTranslations(ambiguousInput,base,{async generateStructuredObject<T>():Promise<T>{throw new Error("negative cache miss")}});
-  assert.equal(abstainedAgain.translationRecovery?.cacheHits,4);
+  assert.equal(abstainedAgain.translationRecovery?.cacheHits,missing.length);
   assert.equal(abstainedAgain.translationRecovery?.status,"LIMITED");
   const wrongRoleInput=structuredClone(input);
   wrongRoleInput.signals.find(s=>s.sourceField==="taxonomy")!.value+=randomUUID();
@@ -155,7 +155,7 @@ async function main() {
   }});
   assert.equal(wrongRoleCalls,1,"invalid batch is not retried");
   assert.equal(wrongRole.translationRecovery?.status,"LIMITED");
-  assert.equal(missingCentralTranslations(wrongRole.scientificConceptPlan!).length,4);
+  assert.equal(missingCentralTranslations(wrongRole.scientificConceptPlan!).length,missing.length);
   console.log(JSON.stringify({status:"PASS",historicalRawAvailable:false,missingCentral:missing.map(c=>c.value),recoveredEnglish:family.plannedQueries.map(q=>q.query),cacheHits:again.translationRecovery?.cacheHits,plannerRejectReasons:parsed.translationTrace?.map(t=>t.validationReason),calls,multidisciplinaryFixtures:6}));
 }
 main().catch(e=>{console.error(e);process.exitCode=1});

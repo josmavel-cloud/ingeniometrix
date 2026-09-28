@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { withPaidOperation } from "@/server/mvp/pre-job-budget";
 import { loadSearchInput, freezeSearchInput } from "@/server/retrieval/search-intent-service";
-import { buildSearchMetadata, searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
+import { buildSearchMetadata, recomposeAcceptedSearchMetadata, searchProjectReferencesV2, type ReferenceSearchV2Metadata } from "@/server/retrieval/reference-search-v2";
+import { validateScientificQueryPlan } from "@/lib/retrieval-query-composition";
 import { semanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 
 async function main() {
@@ -13,11 +14,24 @@ async function main() {
   const semanticReview = args.review === "1";
   const allowTranslationRecovery = args.allowRecovery === "1";
   if (new URL(process.env.DATABASE_URL!).pathname !== "/imx_g5_staging" || process.env.APP_ORIGIN !== "https://staging.ingeniometrix.com" || process.env.IMX_PAYMENT_MODE !== "sandbox" || process.env.IMX_ENABLE_DEEP_RESEARCH === "1") throw new Error("STAGING_ONLY");
-  if (!["inspect", "plan", "search"].includes(mode) || !projectId || !userId) throw new Error("INVALID_ARGUMENTS");
+  if (!["inspect", "recompose", "plan", "search"].includes(mode) || !projectId || !userId) throw new Error("INVALID_ARGUMENTS");
   const input = await loadSearchInput(userId, projectId);
   const searchIntentHash = fingerprint(input.intent);
   if (mode === "inspect") {
     console.log(JSON.stringify({ input, plannerInput: semanticPlannerInput(input.intent, searchIntentHash), searchIntentHash }));
+    return;
+  }
+  if (mode === "recompose") {
+    if (!planOperationId) throw new Error("PLAN_OPERATION_REQUIRED");
+    const operation = await prisma.paidOperation.findFirst({ where: { id: planOperationId, userId, projectId,
+      status: "COMPLETED", purpose: "rc4-query-composition-plan" }, select: { resultJson: true } });
+    const saved = operation?.resultJson as { searchIntentHash?: string; metadata?: ReferenceSearchV2Metadata } | null;
+    if (saved?.searchIntentHash !== searchIntentHash || !saved.metadata) throw new Error("ACCEPTANCE_PLAN_STALE_OR_UNAUTHORIZED");
+    const metadata = recomposeAcceptedSearchMetadata(saved.metadata, planOperationId);
+    console.log(JSON.stringify({ mode, planOperationId, searchIntentHash, queryPack: metadata.queryPack,
+      scientificValidation: validateScientificQueryPlan(metadata.queryPack),
+      rawPlannerTermCount: metadata.enrichment?.rawPlannerOutput?.terms.length ?? null,
+      translationTraceCount: metadata.enrichment?.translationTrace?.length ?? null }));
     return;
   }
   if (!requestId || (mode === "plan" && !["gpt-5.4-nano", "gpt-5.4-mini"].includes(model))) throw new Error("INVALID_ACCEPTANCE_REQUEST");
