@@ -4,6 +4,8 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fingerprint } from "./job-execution-context";
 import { withLlmUsageContext, type LlmUsageAttribution } from "@/server/llm-usage-registry";
+import { WEB_DISCOVERY_PURPOSE } from "@/server/retrieval/web-discovery-contract";
+import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
 
 type OperationContext = { id: string; userId: string; requestId: string; revision: string; projectId?: string; draftId?: string };
 const context = new AsyncLocalStorage<OperationContext>();
@@ -13,9 +15,9 @@ export function usdMicros(usd: number) {
   if (!Number.isFinite(usd) || usd < 0 || usd > 1000) throw new Error("INVALID_COST");
   return Math.ceil(usd * 1_000_000);
 }
-function configuredMicros(name: string, fallback: number) {
+function configuredMicros(name: string, fallback: number, maximum = 2) {
   const value = Number(process.env[name] ?? fallback);
-  if (!Number.isFinite(value) || value <= 0 || value > 2) throw new Error(`INVALID_PRE_JOB_POLICY: ${name}`);
+  if (!Number.isFinite(value) || value <= 0 || value > maximum) throw new Error(`INVALID_PRE_JOB_POLICY: ${name}`);
   return usdMicros(value);
 }
 const rollingDay = () => new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -35,7 +37,10 @@ export async function withPaidOperation<T>(input: { userId: string; requestId: s
     }
     // Bound even no-provider/fallback request spam before entering expensive services.
     if (await tx.paidOperation.count({ where: { userId: input.userId, createdAt: { gte: rollingDay() } } }) >= 100) throw new Error("PRE_JOB_REQUEST_LIMIT");
-    return tx.paidOperation.create({ data: { userId: input.userId, projectId: input.projectId, draftId: input.draftId, revision: input.revision, requestId: input.requestId, purpose: input.purpose, inputFingerprint: hash, hardCapMicros: configuredMicros("IMX_PRE_JOB_REQUEST_CAP_USD", 0.25) } });
+    // Web discovery has its own reviewed ceiling; ordinary pre-job calls retain 0.25 USD.
+    const web = input.purpose === WEB_DISCOVERY_PURPOSE;
+    return tx.paidOperation.create({ data: { userId: input.userId, projectId: input.projectId, draftId: input.draftId, revision: input.revision, requestId: input.requestId, purpose: input.purpose, inputFingerprint: hash,
+      hardCapMicros: web ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_REQUEST_CAP_USD", 0.25) } });
   });
   if (operation.status === "COMPLETED") return operation.resultJson as T;
   return context.run({ id: operation.id, userId: input.userId, requestId: input.requestId, revision: input.revision, projectId: input.projectId, draftId: input.draftId }, () => withLlmUsageContext({ userId: input.userId, projectId: input.projectId, draftId: input.draftId, revision: input.revision, requestId: input.requestId }, async () => {
@@ -70,7 +75,8 @@ export async function reservePreJobCall(purpose: string, model: string, maximumU
     const record = await tx.paidOperation.findUniqueOrThrow({ where: { id: operation.id } });
     const daily = await tx.paidOperation.aggregate({ where: { userId: operation.userId, OR: [{ createdAt: { gte: rollingDay() } }, { calls: { some: { estimatedMicros: null } } }] }, _sum: { committedMicros: true } });
     const breached = await tx.paidOperation.count({ where: { userId: operation.userId, boundBreached: true } });
-    if (record.status !== "RUNNING" || breached || record.committedMicros + maximum > record.hardCapMicros || (daily._sum.committedMicros ?? 0) + maximum > configuredMicros("IMX_PRE_JOB_DAILY_CAP_USD", 1)) throw new Error("PRE_JOB_COST_LIMIT");
+    const dailyCap = record.purpose === WEB_DISCOVERY_PURPOSE ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_DAILY_CAP_USD", 1);
+    if (record.status !== "RUNNING" || breached || record.committedMicros + maximum > record.hardCapMicros || (daily._sum.committedMicros ?? 0) + maximum > dailyCap) throw new Error("PRE_JOB_COST_LIMIT");
     await tx.paidOperation.update({ where: { id: record.id }, data: { committedMicros: { increment: maximum } } });
     return tx.paidOperationCall.create({ data: { operationId: record.id, purpose, model, reservedMicros: maximum, attributionJson: json({ ...attribution, ...operation }) } });
   });
