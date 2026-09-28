@@ -58,7 +58,8 @@ const support = (text: string, values: string[]) => {
 };
 const precedentSignal = (s: string) => /\b(?:model\w*|analys\w*|analis\w*|experiment\w*|test\w*|ensay\w*|teori\w*|theor\w*|framework|marco|concept\w*|interpret\w*|simula\w*)\b/.test(normalizeConcept(s));
 
-export function prepareCandidateReview(candidates: ReviewCandidate[], plan: ScientificConceptPlan, exclusions: string[] = []) {
+export function prepareCandidateReview(candidates: ReviewCandidate[], plan: ScientificConceptPlan, exclusions: string[] = [],
+  recheckRelevanceIds: ReadonlySet<string> = new Set()) {
   const assessments = new Map<string, CandidateAssessment>();
   const science = plan.concepts.filter(c => c.authority !== "EXPLORATORY" && !genericResearchAction(c) && ["PHENOMENON", "CORE_CONCEPT", "RESEARCH_ACTION", "METHOD_OR_TECHNIQUE", "THEORY_OR_FRAMEWORK"].includes(c.role));
   const domains = plan.concepts.filter(c => c.authority === "CENTRAL" && ["OBJECT_OR_SYSTEM", "CORE_CONCEPT"].includes(c.role));
@@ -84,10 +85,11 @@ export function prepareCandidateReview(candidates: ReviewCandidate[], plan: Scie
       // Screening decision, not a claim that unseen full text is irrelevant.
       decide("OFF_TOPIC", "NONE", "NO_SCIENTIFIC_OR_PRECEDENT_SUPPORT_IN_AVAILABLE_METADATA"); continue;
     }
-    if (exactScience && exactDomain && exactScience.id !== exactDomain.id && c.abstract?.trim()) {
+    if (exactScience && exactDomain && exactScience.id !== exactDomain.id && (c.abstract?.trim() || recheckRelevanceIds.has(c.candidateId))) {
       const role = exactScience.role === "METHOD_OR_TECHNIQUE" ? "METHODOLOGICAL" : exactScience.role === "THEORY_OR_FRAMEWORK" ? "THEORETICAL" : "DIRECT";
       decide("HIGHLY_RELEVANT", role, "INDEPENDENT_SCIENTIFIC_AND_DOMAIN_PHRASES_IN_TITLE");
-      if (role === "DIRECT" && precedentSignal(text)) roleOnly.push(c);
+      if (recheckRelevanceIds.has(c.candidateId)) pending.push({ candidate: c, priority: 100 });
+      else if (role === "DIRECT" && precedentSignal(text)) roleOnly.push(c);
       continue;
     }
     pending.push({ candidate: c, priority: Number(Boolean(c.abstract)) * 6 + Math.min(titleScientific, 3) * 3 + Math.min(titleObject, 3) * 3 + Math.min(scientific, 3) + Math.min(object, 3) });

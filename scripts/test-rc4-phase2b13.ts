@@ -4,11 +4,15 @@ import seismic from "./fixtures/phase2b1-seismic.json";
 import { composeSemanticQueries, validateScientificFamily } from "@/lib/retrieval-query-composition";
 import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
 import { prepareCandidateReview, validateCandidateReviews, finalCandidateAdmission, MAX_REVIEW_CANDIDATES, candidateEvidenceUnits, type ReviewItem } from "@/server/retrieval/candidate-review-policy";
-import { reviewCandidateBatch } from "@/server/retrieval/candidate-semantic-review";
+import { classifyCandidateReviewFailure, reviewCandidateBatch } from "@/server/retrieval/candidate-semantic-review";
+import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { semanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 import type { ResearchSearchIntent } from "@/lib/retrieval-search-input";
 
 async function main() {
+  assert.equal(classifyCandidateReviewFailure(new SyntaxError("private output"), "PROVIDER"), "REVIEW_STRUCTURED_OUTPUT_PARSE_FAILURE");
+  assert.equal(classifyCandidateReviewFailure(new IncompleteStructuredOutputError("private output", "max_output_tokens"), "PROVIDER"), "REVIEW_PROVIDER_OUTPUT_INCOMPLETE");
+  assert.equal(classifyCandidateReviewFailure(Object.assign(new Error("private path"), { code: "EROFS" }), "PROVIDER"), "REVIEW_POST_PROVIDER_USAGE_RECORD_FAILURE");
   const plan = fixture.metadata.enrichment.scientificConceptPlan as ScientificConceptPlan;
   const pool = fixture.candidates;
   const prepared = prepareCandidateReview(pool, plan);
@@ -81,6 +85,9 @@ async function main() {
   assert.equal(invalid.trace.failureCategory, "REVIEW_GROSS_CANDIDATE_SET_MISMATCH");
   const timeout = await reviewCandidateBatch(input, plan, pool, { generateStructuredObject: async () => { throw new Error("timeout"); } });
   assert.equal(timeout.trace.status, "DEGRADED");
+  assert.equal(timeout.trace.failureCategory, "REVIEW_PROVIDER_OR_POST_PROCESSING_FAILURE");
+  const parseFailure = await reviewCandidateBatch(input, plan, pool, { generateStructuredObject: async () => { throw new SyntaxError("private output"); } });
+  assert.equal(parseFailure.trace.failureCategory, "REVIEW_STRUCTURED_OUTPUT_PARSE_FAILURE");
   let batchCalls = 0;
   const itemFailure = await reviewCandidateBatch(input,plan,pool,{async generateStructuredObject<T>(request: {prompt:string}) {
     batchCalls++;
@@ -108,6 +115,17 @@ async function main() {
     assert.equal(finalCandidateAdmission({...a, confidence:"LOW"}), "NEEDS_INSPECTION");
     assert.equal(finalCandidateAdmission({...a, relevance:"PARTIALLY_RELEVANT"}), "NEEDS_INSPECTION");
   }
+  const arch = { candidateId: "peripheral-arch", title: "Seismic response of masonry arches: static tests on a scale model",
+    abstract: "A scale model of a masonry arch was assessed under static loading.", year: 2014 };
+  const reconsidered = prepareCandidateReview([arch], plan, [], new Set([arch.candidateId]));
+  assert.equal(reconsidered.batch[0]?.reviewTask, "RELEVANCE_AND_ROLE", "a human-reviewed strong positive can receive full contextual reconsideration");
+  const archRow: ReviewItem = { candidateId: arch.candidateId, relevance: "PARTIALLY_RELEVANT", role: "METHODOLOGICAL",
+    matchedIntentDimensions: ["problem"], mismatches: ["different structural typology and scale"], confidence: "MEDIUM",
+    rationale: "Title and abstract describe a scaled arch, not the same study object.", supportingEvidenceIds: [],
+    mismatchEvidenceIds: [reconsidered.batch[0].evidenceUnits[0].evidenceId] };
+  const archAssessment = validateCandidateReviews({ reviews: [archRow] }, reconsidered.batch, [arch], dimensions, plan.searchIntentHash, reconsidered.assessments).assessments.get(arch.candidateId)!;
+  assert.equal(archAssessment.role, "METHODOLOGICAL");
+  assert.equal(finalCandidateAdmission(archAssessment), "NEEDS_INSPECTION", "a grounded peripheral source cannot remain a main recommendation");
   console.log(JSON.stringify({status:"PASS",evaluation:"simulated reviewer using persisted independent labels",baselineRetention:"5/27",afterRetention:`${tp.length}/27`,precision:`${tp.length}/${admitted.length}`,falsePositives:fp,batchSize:prepared.batch.length,coarseRejected:coarseOff.length,deferred:prepared.deferredIds.length,queries:queries.necessaryOnly}));
 }
 main().catch(e=>{console.error(e);process.exitCode=1});
