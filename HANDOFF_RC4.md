@@ -1,5 +1,27 @@
 # RC4 handoff
 
+## Latest checkpoint - Phase 2C posterior technical decision (2026-09-27)
+
+The earlier final review-only acceptance was reported FAIL under its then-current
+criterion requiring zero unknown evidence IDs *returned*. The owner subsequently
+revised that criterion to zero unknown or foreign evidence IDs *accepted or used
+as grounding*. This is a later decision; the prior FAIL is not erased.
+Exact historical replay improved from 15/30 to 30/30 after the candidate-local
+dual-use grounding fix. The one final live diagnostic returned 30/30 items;
+28/30 validated (93.3%), while two nonexistent evidence IDs were rejected in
+their own items. No invalid model review was accepted, no cross-candidate
+reference was accepted and no systemic failure occurred. Twenty-eight newly
+valid reviews plus one prior deterministic assessment explain the 29 available
+assessments; the other invalid item has no usable assessment.
+
+Under the revised criterion, Phase 2C technical status is
+**PASS_WITH_LIMITATIONS**. This does not certify scientific relevance or roles,
+does not update the public Sources list and does not complete Phase 2. No new
+LLM/scholarly call, DB mutation or deployment was made for this decision. See
+[posterior 2C decision](docs/quality/rc4-phase2c-technical-closure.md).
+Prepare only the 2B2 Astra web-gap-discovery handoff; do not implement or run it
+without separate authorization. Preserve the five unrelated G5 changes.
+
 ## Latest checkpoint - 2B1.4 concept translation recovery (2026-09-27)
 
 Central concept translations now have per-term accepted/rejected traceability.
