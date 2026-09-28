@@ -1433,10 +1433,15 @@ export async function searchProjectReferencesV2(
       ],
     },
   ];
-  const priorExecutions: ExecutedProviderQuery[] = priorSnapshots.flatMap(snapshot => snapshot.executedQueries ?? []);
+  const currentFamilyQueries = new Set(searchMetadata.queryPack.plannedQueries?.map(item => item.query) ?? exhaustiveQueryStages[0].queries);
+  const currentFamilyIds = new Set(searchMetadata.queryPack.plannedQueries?.map(item => item.id) ?? []);
+  const priorExecutions: ExecutedProviderQuery[] = priorSnapshots.flatMap(snapshot => snapshot.executedQueries ?? [])
+    .filter(item => item.provider === "OPENALEX" ? currentFamilyQueries.has(item.renderedQuery)
+      : currentFamilyIds.has(item.familyId));
   // Older immutable snapshots predate query-level tracking. Their recorded
   // page-one queries still count as executed; do not replay them for MORE.
   for (const snapshot of priorSnapshots.filter(item => !item.executedQueries?.length)) for (const query of snapshot.attemptedQueries ?? []) {
+    if (!currentFamilyQueries.has(query)) continue;
     const family = searchMetadata.queryPack.plannedQueries?.find(item => item.query === query);
     const oldQuery: ProviderQuery = { familyId: family?.id ?? "legacy", familyType: family?.family ?? "LEGACY",
       provider: "OPENALEX", renderedQuery: query, filters: exhaustiveQueryStages[0].openAlexFilters, page: 1 };

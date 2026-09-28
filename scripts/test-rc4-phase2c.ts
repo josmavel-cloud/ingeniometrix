@@ -97,6 +97,9 @@ async function main() {
     const repeated = await searchProjectReferencesV2(user.id, project.id, input, { batchKind: "initial" }, provider);
     assert.equal(openAlexCalls, callsBeforeCache, "same successful provider query must use the bounded cache");
     assert.ok((repeated.searchSnapshot.cacheHits ?? 0) > 0);
+    await prisma.auditLog.create({ data: { userId: user.id, projectId: project.id, actorType: "SYSTEM", eventType: "SEARCH_COMPLETED",
+      payloadJson: JSON.parse(JSON.stringify({ referenceSearchVersion: "v2", searchSnapshot: {
+        ...first.searchSnapshot, executedQueries: undefined, attemptedQueries: ["UNRELATED HISTORICAL QUERY"] } })) } });
     const query = first.searchSnapshot.metadata.queryPack.plannedQueries![0];
     const renderedCrossref = renderCrossrefFamily(query, first.searchSnapshot.metadata.queryPack.conceptPlan!);
     assert.ok(renderedCrossref.includes("feedback") && !renderedCrossref.includes(" AND "));
@@ -123,6 +126,7 @@ async function main() {
     assert.equal(plannerCalls, beforeMorePlanner, "MORE must reuse the semantic plan");
     assert.ok(second.searchSnapshot.executedQueries?.some(q => q.page === 2));
     assert.ok(second.searchSnapshot.executedQueries?.filter(q => q.page === 1).every(q => q.executedAt !== undefined));
+    assert.ok(second.searchSnapshot.executedQueries?.every(q => q.renderedQuery !== "UNRELATED HISTORICAL QUERY"));
     assert.ok(second.searchSnapshot.references.some(r => r.referenceId === firstId));
     assert.equal((await prisma.projectReference.findFirstOrThrow({ where: { projectId: project.id, referenceId: firstId } })).selected, true);
     const listed = await listProjectReferences(user.id, project.id);
