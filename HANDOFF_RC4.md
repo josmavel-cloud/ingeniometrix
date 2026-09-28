@@ -1,5 +1,23 @@
 # RC4 handoff
 
+## Latest checkpoint - Phase 2B2.2 adapter and isolated smoke (2026-09-28)
+
+Server-only Astra web discovery adapter, strict proposal schema, actual web-tool
+URL observation registry, safety checks, separate cost bound, and PaidOperation
+idempotency are implemented at `57bedf7`. Offline tests/builds and Vercel
+isolation pass. Only the staging app was deployed from the clean pushed commit;
+project web discovery remains disabled. The five unrelated G5 changes remain
+outside the commit.
+
+The **single** isolated compatibility smoke used a public technical fixture,
+not the real project. It returned usage and one search action with 33 observed
+URLs, but **two web tool events** despite `max_tool_calls=1`. The application
+rejected the result as `INVALID_TOOL_PROVENANCE`; no candidate entered Sources,
+and source/selection state was unchanged. PaidOperation settled an estimated
+USD 0.151225. No second call was made. 2B2.2 is not ready for 2B2.3 until the
+tool-event-cap semantics are investigated under a separately authorized task.
+See [2B2.2 adapter and smoke report](docs/quality/rc4-phase2b22-web-adapter.md).
+
 ## Latest checkpoint - Phase 2B2.1 offline gap/coverage engine (2026-09-28)
 
 Implemented pure versioned EvidenceGap/Coverage contracts and a read-only adapter
