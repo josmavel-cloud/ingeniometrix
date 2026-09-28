@@ -1,5 +1,25 @@
 # RC4 handoff
 
+## Latest checkpoint - Phase 2B2.1 offline gap/coverage engine (2026-09-28)
+
+Implemented pure versioned EvidenceGap/Coverage contracts and a read-only adapter
+for current private search snapshots. Materiality requires a grounded confirmed
+dimension plus inspected insufficiency; source counts are not quotas. ACCESS and
+IDENTITY route away from web discovery. Invalid/stale reviews do not cover gaps;
+unknown methodology does not become an invented requirement. No upstream search,
+semantic review, admission, cost or selection behavior changed.
+
+Read-only evaluation of the current real project's 135-source pool identifies
+one material future-web candidate: authoritative confirmation of the user's
+unverified normative premise. Full-scale and local-context metadata already have
+some coverage; exact applicability is not certified. Diagnostic review results
+were not applied to Sources. See [2B2.1 evidence and limits](docs/quality/rc4-phase2b21-evidence-coverage.md).
+
+Offline multidiscipline/regression tests, typecheck and backend build pass.
+No migration, deployment, provider/model call or document fetch. Ready for review
+before 2B2.2 web adapter; it is NOT implemented or authorized to execute here.
+Preserve the five unrelated G5 changes and the earlier 2C acceptance limitations.
+
 ## Latest checkpoint - Phase 2C posterior technical decision (2026-09-27)
 
 The earlier final review-only acceptance was reported FAIL under its then-current
