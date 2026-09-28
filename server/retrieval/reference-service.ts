@@ -591,7 +591,7 @@ export async function listProjectReferences(
         breakdown: entry?.scoreBreakdown ?? null,
       }).state === "ADMITTED";
     })
-    .slice(0, searchSnapshot?.semanticReview ? MAX_RECOMMENDATIONS : MAX_SELECTED_REFERENCES);
+    .slice(0, searchSnapshot?.semanticReview ? MAX_RECOMMENDATIONS * 2 : MAX_SELECTED_REFERENCES * 2);
 
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,

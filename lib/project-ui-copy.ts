@@ -314,6 +314,7 @@ const ES_COPY = {
       `Busqueda completada. Revisa las primeras ${count} fuentes y selecciona entre ${min} y ${max} referencias para continuar.`,
     noNew:
       "No encontramos referencias nuevas en este intento, pero mantuvimos las fuentes ya cargadas en el proyecto.",
+    searchExhausted: "No quedan búsquedas nuevas en este plan. Conservamos las fuentes existentes.",
     noResults:
       "No encontramos fuentes suficientemente pertinentes en este lote. Puedes revisar la definicion e intentar otra busqueda mas adelante.",
     noAdmitted: "No encontramos fuentes suficientemente pertinentes en este lote.",
@@ -378,7 +379,7 @@ const ES_COPY = {
     originalTitle: "Titulo original",
     originalAbstract: "Resumen original disponible en el registro recuperado.",
     seeMore: (count: number) => `Ver ${count} mas`,
-    searchMore: (count: number) => `Buscar ${count} mas`,
+    searchMore: () => "Buscar más fuentes",
     loading: "Cargando...",
     saveHint: "Guarda la seleccion para continuar al plan de tesis.",
     saveSelection: "Guardar seleccion",
@@ -667,6 +668,7 @@ const EN_COPY: typeof ES_COPY = {
       `Search complete. Review the first ${count} sources and select between ${min} and ${max} references to continue.`,
     noNew:
       "No new references were found in this attempt, but the existing project sources were kept.",
+    searchExhausted: "No unused searches remain in this plan. Existing sources were kept.",
     noResults:
       "We found no sufficiently relevant sources in this batch. You can review the definition and search again later.",
     noAdmitted: "We found no sufficiently relevant sources in this batch.",
@@ -731,7 +733,7 @@ const EN_COPY: typeof ES_COPY = {
     originalTitle: "Original title",
     originalAbstract: "Original abstract available in the recovered record.",
     seeMore: (count: number) => `View ${count} more`,
-    searchMore: (count: number) => `Search ${count} more`,
+    searchMore: () => "Search for more sources",
     loading: "Loading...",
     saveHint: "Save the selection to continue to the blueprint.",
     saveSelection: "Save selection",

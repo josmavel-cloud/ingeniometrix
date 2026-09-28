@@ -31,14 +31,15 @@ import { candidateMetadataHash, CANDIDATE_REVIEW_VERSION, MAX_RECOMMENDATIONS, t
 
 import {
   type CrossrefMessage,
-  fetchCrossrefWorkByDoi,
   resolveCrossrefTitle,
   searchCrossrefWorks,
 } from "./crossref-client";
 import { extractAccessSignals } from "./reference-access";
-import { OPENALEX_QUALITY_FILTERS, searchOpenAlexWorks } from "./openalex-client";
+import { OPENALEX_QUALITY_FILTERS, OpenAlexRequestError, searchOpenAlexWorks } from "./openalex-client";
 import { settleFailedSearch } from "./search-failure-state";
 import { admittedOnly, decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
+import { PROVIDER_CACHE_TTL_MS, PROVIDER_QUERY_POLICY_VERSION, providerQueryHash, renderCrossrefFamily,
+  sameScientificWork, selectProviderQueries, normalizeScholarlyDoi, scholarlyVersionClass, type ExecutedProviderQuery, type ProviderQuery } from "./provider-query-policy";
 
 export type ReferenceKeywordGroup = {
   label: string;
@@ -109,6 +110,12 @@ export type ProjectReferenceSearchSnapshot = {
     openAlex: number;
     crossref: number;
   };
+  queryPlanHash?: string;
+  executedQueries?: ExecutedProviderQuery[];
+  cacheHits?: number;
+  cacheMisses?: number;
+  discoveryObservations?: Array<{ candidateKey: string; provider: "OPENALEX" | "CROSSREF"; queryHash: string }>;
+  resultState?: "NO_RELEVANT_INITIAL_RESULTS" | "MORE_FOUND_NEW_RESULTS" | "NO_NEW_RELEVANT_RESULTS" | "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN";
   baseSelectedReferenceIds: string[];
   metadata: ReferenceSearchV2Metadata;
   admissionPolicyVersion?: typeof REFERENCE_ADMISSION_POLICY_VERSION;
@@ -860,6 +867,17 @@ export function recomposeAcceptedSearchMetadata(source: ReferenceSearchV2Metadat
   };
 }
 
+function reusableMetadata(snapshot: ProjectReferenceSearchSnapshot | null | undefined, intentHash: string,
+  confirmed: boolean): ReferenceSearchV2Metadata | null {
+  if (snapshot?.inputTrace?.searchIntentHash !== intentHash || !snapshot.metadata) return null;
+  const metadata = snapshot.metadata;
+  if (!confirmed) return metadata.planSource === "fallback" ? metadata : null;
+  if (metadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version ||
+      metadata.queryPack.compositionVersion !== QUERY_COMPOSITION_VERSION ||
+      !metadata.queryPack.validation?.valid || validateScientificQueryPlan(metadata.queryPack).length) return null;
+  return metadata;
+}
+
 function getRecencyBand(year: number | null) {
   const currentYear = new Date().getFullYear();
 
@@ -1156,9 +1174,10 @@ export function buildRelevanceScore(input: {
 }
 
 function buildDedupKey(result: SearchCandidate) {
-  return result.doi
-    ? `doi:${result.doi.toLowerCase()}`
-    : `title:${normalizeTitle(result.title)}:${result.year ?? "na"}`;
+  const doi = normalizeScholarlyDoi(result.doi);
+  const version = scholarlyVersionClass(result.workType);
+  return doi ? `doi:${doi}${version === "other" || version === "journal" ? "" : `:${version}`}` : result.openAlexId ? `openalex:${result.openAlexId}`
+    : `unresolved:${fingerprint({ title: normalizeTitle(result.title), year: result.year, authors: result.authors, type: result.workType, url: result.landingPageUrl })}`;
 }
 
 
@@ -1310,7 +1329,6 @@ export async function searchProjectReferencesV2(
     Math.max(requestedTotal, MIN_SELECTED_REFERENCES),
     batchKind === "more" ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE,
   );
-  const aggregationTarget = batchKind === "more" ? Math.max(desiredTotal * 7, 40) : Math.max(desiredTotal * 4, 20);
   const [project, user, existingProjectReferences] = await Promise.all([
     prisma.project.findFirst({
       where: {
@@ -1336,6 +1354,12 @@ export async function searchProjectReferencesV2(
   if (!project || input.intent.projectId !== projectId || input.intent.readiness !== "READY") {
     throw new Error("El proyecto no existe o aun no tiene intake.");
   }
+  const intentHash = fingerprint(input.intent);
+  const recentSearchAudits = await prisma.auditLog.findMany({ where: { projectId, eventType: "SEARCH_COMPLETED" },
+    orderBy: { createdAt: "desc" }, take: 20, select: { payloadJson: true } });
+  const priorSnapshots = recentSearchAudits.map(row => (row.payloadJson as { searchSnapshot?: ProjectReferenceSearchSnapshot } | null)?.searchSnapshot)
+    .filter((snapshot): snapshot is ProjectReferenceSearchSnapshot => Boolean(snapshot?.inputTrace?.searchIntentHash === intentHash));
+  const priorSnapshot = priorSnapshots[0] ?? null;
   const acceptance = options?.openAlexOnlyAcceptance;
   let preparedMetadata: ReferenceSearchV2Metadata | undefined;
   if (acceptance) {
@@ -1348,6 +1372,16 @@ export async function searchProjectReferencesV2(
     const pack = preparedMetadata?.queryPack;
     if (preparedMetadata?.enrichment?.planMode !== "SEMANTIC" || pack?.compositionVersion !== QUERY_COMPOSITION_VERSION || !pack.validation?.valid || validateScientificQueryPlan(pack).length || preparedMetadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version) throw new Error("ACCEPTANCE_PLAN_INVALID");
     if (JSON.stringify(preparedMetadata.openAlexQueryPack?.strictBoolean) !== JSON.stringify(pack.necessaryOnly)) throw new Error("ACCEPTANCE_RENDERING_MISMATCH");
+  }
+  if (!preparedMetadata && !(batchKind === "initial" && planningProvider)) preparedMetadata = priorSnapshots.map(snapshot => reusableMetadata(snapshot, intentHash,
+    input.intent.sourceKind === "CONFIRMED_DEFINITION")).find((metadata): metadata is ReferenceSearchV2Metadata => Boolean(metadata)) ?? undefined;
+  if (batchKind === "more" && !preparedMetadata) throw new Error("MORE_REQUIRES_REUSABLE_INITIAL_PLAN");
+  if (batchKind === "initial" && !acceptance && !planningProvider && priorSnapshot &&
+      reusableMetadata(priorSnapshot, intentHash, input.intent.sourceKind === "CONFIRMED_DEFINITION") &&
+      Date.now() - Date.parse(priorSnapshot.savedAt) < PROVIDER_CACHE_TTL_MS) {
+    return { batchKind, searchQuery: priorSnapshot.searchQuery, attemptedQueries: [],
+      totalResults: priorSnapshot.references.length, createdCount: 0, updatedCount: 0,
+      providerBreakdown: { openAlex: 0, crossref: 0 }, searchSnapshot: priorSnapshot };
   }
   const inputTrace = await freezeSearchInput(userId, input);
 
@@ -1362,6 +1396,9 @@ export async function searchProjectReferencesV2(
     projectLanguage: project.language,
   });
   const searchMetadata = preparedMetadata ?? await buildSearchMetadata(input, planningProvider);
+  const queryPlanHash = fingerprint({ intentHash, plannerCacheKey: searchMetadata.planning?.cacheKey ?? null,
+    compositionVersion: searchMetadata.queryPack.compositionVersion ?? null, queryPack: searchMetadata.queryPack.necessaryOnly,
+    policy: PROVIDER_QUERY_POLICY_VERSION });
   const searchQuery = searchMetadata.normalizedTopic;
   const openAlexQueryPack = searchMetadata.openAlexQueryPack ??
     buildOpenAlexQueryPack(searchMetadata.keywordGroups, input.plannerInput);
@@ -1396,15 +1433,24 @@ export async function searchProjectReferencesV2(
       ],
     },
   ];
-  const queryStages = batchKind === "more"
-    ? exhaustiveQueryStages
-    : exhaustiveQueryStages.slice(0, 1).map((stage) => ({
-        ...stage,
-        queries: stage.queries.slice(0, acceptance?.maxQueries ?? 3),
-      }));
+  const priorExecutions: ExecutedProviderQuery[] = priorSnapshots.flatMap(snapshot => snapshot.executedQueries ?? []);
+  // Older immutable snapshots predate query-level tracking. Their recorded
+  // page-one queries still count as executed; do not replay them for MORE.
+  for (const snapshot of priorSnapshots.filter(item => !item.executedQueries?.length)) for (const query of snapshot.attemptedQueries ?? []) {
+    const family = searchMetadata.queryPack.plannedQueries?.find(item => item.query === query);
+    const oldQuery: ProviderQuery = { familyId: family?.id ?? "legacy", familyType: family?.family ?? "LEGACY",
+      provider: "OPENALEX", renderedQuery: query, filters: exhaustiveQueryStages[0].openAlexFilters, page: 1 };
+    priorExecutions.push({ ...oldQuery, queryHash: providerQueryHash(queryPlanHash, oldQuery), executedAt: snapshot.savedAt,
+      resultCount: -1, newCandidateCount: -1, cacheHit: false, errorCategory: null });
+  }
+  const providerQueries = selectProviderQueries({ batchKind, planHash: queryPlanHash,
+    families: searchMetadata.queryPack.plannedQueries ?? [],
+    fallbackQueries: exhaustiveQueryStages[0].queries,
+    filters: exhaustiveQueryStages[0].openAlexFilters, prior: priorExecutions,
+    maxOpenAlexQueries: acceptance?.maxQueries ?? 2 });
   const attemptedQueries: string[] = [];
 
-  if (!searchQuery || queryStages.every((entry) => entry.queries.length === 0)) {
+  if (!searchQuery || (batchKind === "initial" && providerQueries.length === 0)) {
     throw new Error("No hay suficiente informacion para buscar fuentes.");
   }
 
@@ -1425,82 +1471,113 @@ export async function searchProjectReferencesV2(
 
   const aggregatedResults = new Map<string, SearchCandidate>();
   const attemptSummaries: Array<{ query: string; resultCount: number }> = [];
+  const executedQueries: ExecutedProviderQuery[] = [];
+  const discoveryObservations: NonNullable<ProjectReferenceSearchSnapshot["discoveryObservations"]> = [];
+  const priorSeen = new Set(priorSnapshots.flatMap(snapshot => snapshot.candidateAdmissions?.map(item => item.candidateKey) ?? []));
+  let cacheHits = 0, cacheMisses = 0;
+  async function cachedProviderResults<T>(query: ProviderQuery, execute: () => Promise<T[]>): Promise<T[]> {
+    // The explicit operator acceptance path measures the provider itself and
+    // must not confuse a previous fixture response with a live result.
+    if (acceptance) { cacheMisses++; return execute(); }
+    const queryHash = providerQueryHash(queryPlanHash, query);
+    const row = await prisma.auditLog.findFirst({ where: { projectId, eventType: "SOURCE_PROVIDER_QUERY_COMPLETED",
+      createdAt: { gte: new Date(Date.now() - PROVIDER_CACHE_TTL_MS) }, payloadJson: { path: ["queryHash"], equals: queryHash } },
+      orderBy: { createdAt: "desc" }, select: { payloadJson: true } });
+    const cached = row?.payloadJson as { results?: T[] } | undefined;
+    if (Array.isArray(cached?.results)) { cacheHits++; return cached.results; }
+    cacheMisses++;
+    const results = await execute(); // Only successful responses are cached. Never cache a 429/timeout as empty.
+    await logAuditEvent({ eventType: "SOURCE_PROVIDER_QUERY_COMPLETED", actorType: "SYSTEM",
+      provider: query.provider === "OPENALEX" ? Provider.OPENALEX : Provider.CROSSREF, userId, projectId,
+      payloadJson: JSON.parse(JSON.stringify({ queryHash, queryPlanHash,
+        query: { ...query, renderedQueryHash: fingerprint(query.renderedQuery), renderedQuery: undefined },
+        resultCount: results.length, results, executedAt: new Date().toISOString() })) as Prisma.InputJsonValue });
+    return results;
+  }
   const providerBreakdown = {
     openAlex: 0,
     crossref: 0,
   };
   let openAlexUnavailable = false;
 
-  for (const queryStage of queryStages) {
-    for (const attemptQuery of queryStage.queries) {
-      if (openAlexUnavailable) break;
-      attemptedQueries.push(attemptQuery);
-      const attemptResults = await searchOpenAlexWorks(attemptQuery, {
-        filters: queryStage.openAlexFilters,
-        perPage: 35,
-        sort: "relevance_score:desc,cited_by_count:desc",
-        retryRateLimit: !acceptance,
-      }).catch((error) => {
-        if (acceptance) throw error;
-        openAlexUnavailable = true;
-        console.warn("OpenAlex no disponible; se usara Crossref:", error instanceof Error ? error.message : String(error));
-        return [];
-      });
-      attemptSummaries.push({
-        query: attemptQuery,
-        resultCount: attemptResults.length,
-      });
-
-      for (const result of attemptResults) {
-        const candidate: SearchCandidate = {
-          ...result,
-          matchedQuery: attemptQuery,
-          matchedQueryStage: queryStage.stage,
-          rawCrossrefJson: null,
-          sourceProvider: Provider.OPENALEX,
-        };
-        const dedupKey = buildDedupKey(candidate);
-
-        if (!aggregatedResults.has(dedupKey)) {
-          aggregatedResults.set(dedupKey, candidate);
-          providerBreakdown.openAlex += 1;
-        }
-      }
-
+  for (const query of providerQueries) {
+    if (openAlexUnavailable) break;
+    const queryHash = providerQueryHash(queryPlanHash, query);
+    attemptedQueries.push(query.renderedQuery);
+    const oldHits = cacheHits;
+    let attemptResults: Awaited<ReturnType<typeof searchOpenAlexWorks>>;
+    try {
+      attemptResults = await cachedProviderResults(query, () => searchOpenAlexWorks(query.renderedQuery, {
+        filters: query.filters, page: query.page, perPage: 35,
+        sort: "relevance_score:desc,cited_by_count:desc", retryRateLimit: !acceptance,
+      }));
+    } catch (error) {
+      if (acceptance) throw error;
+      if (!(error instanceof OpenAlexRequestError)) throw error;
+      openAlexUnavailable = true;
+      executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: 0,
+        newCandidateCount: 0, cacheHit: false, errorCategory: error instanceof Error ? error.message : "OPENALEX_PROVIDER_ERROR" });
+      break;
     }
+    let newCandidateCount = 0;
+    attemptSummaries.push({ query: query.renderedQuery, resultCount: attemptResults.length });
+    for (const result of attemptResults) {
+      const candidate: SearchCandidate = { ...result, matchedQuery: query.renderedQuery,
+        matchedQueryStage: query.familyType === "CONTEXTUAL_OR_LOCAL" ? "optional_backup" : "necessary_only",
+        rawCrossrefJson: null, sourceProvider: Provider.OPENALEX };
+      const dedupKey = buildDedupKey(candidate);
+      discoveryObservations.push({ candidateKey: dedupKey, provider: "OPENALEX", queryHash });
+      if (batchKind === "more" && priorSeen.has(dedupKey)) continue;
+      if (!aggregatedResults.has(dedupKey)) { aggregatedResults.set(dedupKey, candidate); providerBreakdown.openAlex++; newCandidateCount++; }
+    }
+    executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: attemptResults.length,
+      newCandidateCount, cacheHit: cacheHits > oldHits, errorCategory: null });
   }
 
-  if (!acceptance && aggregatedResults.size < desiredTotal) {
-    for (const queryStage of [...queryStages].reverse()) {
-      for (const attemptQuery of [...queryStage.queries].reverse()) {
-        const crossrefResults = await searchCrossrefWorks(attemptQuery);
-
+  // Crossref discovery is bounded and secondary: only a provider failure or an
+  // explicit MORE request with no new OpenAlex candidate justifies it.
+  if (!acceptance && (openAlexUnavailable || batchKind === "more" && aggregatedResults.size === 0)) {
+    const family = searchMetadata.queryPack.plannedQueries?.[0];
+    if (family && searchMetadata.queryPack.conceptPlan) {
+      const renderedQuery = renderCrossrefFamily(family, searchMetadata.queryPack.conceptPlan);
+      const query: ProviderQuery = { familyId: family.id, familyType: family.family, provider: "CROSSREF", renderedQuery,
+        filters: [], page: 1 };
+      const queryHash = providerQueryHash(queryPlanHash, query);
+      if (!priorExecutions.some(item => item.queryHash === queryHash && item.errorCategory === null)) {
+        const oldHits = cacheHits;
+        const crossrefResults = await cachedProviderResults(query, () => searchCrossrefWorks(renderedQuery));
+        let newCandidateCount = 0;
         for (const result of crossrefResults) {
-          const candidate: SearchCandidate = {
-            ...result,
-            matchedQuery: attemptQuery,
-            matchedQueryStage: queryStage.stage,
-            normalizedTitle: result.title,
-            sourceProvider: Provider.CROSSREF,
-          };
+          const candidate: SearchCandidate = { ...result, matchedQuery: renderedQuery, matchedQueryStage: "necessary_only",
+            normalizedTitle: result.title, sourceProvider: Provider.CROSSREF };
           const dedupKey = buildDedupKey(candidate);
-
-          if (!aggregatedResults.has(dedupKey)) {
-            aggregatedResults.set(dedupKey, candidate);
-            providerBreakdown.crossref += 1;
+          discoveryObservations.push({ candidateKey: dedupKey, provider: "CROSSREF", queryHash });
+          if (batchKind === "more" && priorSeen.has(dedupKey)) {
+            const doi = normalizeScholarlyDoi(candidate.doi);
+            if (doi && candidate.rawCrossrefJson) {
+              const linked = await prisma.projectReference.findFirst({ where: { projectId, reference: { doi } },
+                include: { reference: true } });
+              if (linked && !linked.reference.rawCrossrefJson) await prisma.reference.update({ where: { id: linked.referenceId },
+                data: { crossrefId: doi, rawCrossrefJson: candidate.rawCrossrefJson as Prisma.InputJsonValue } });
+            }
+            continue;
           }
+          const existing = [...aggregatedResults.entries()].find(([, item]) => sameScientificWork(item, candidate));
+          if (existing) {
+            // One work, two observations; do not discard the richer OpenAlex representation.
+            existing[1].rawCrossrefJson = candidate.rawCrossrefJson;
+            continue;
+          }
+          aggregatedResults.set(dedupKey, candidate); providerBreakdown.crossref++; newCandidateCount++;
         }
-
-        if (aggregatedResults.size >= aggregationTarget) {
-          break;
-        }
-      }
-
-      if (aggregatedResults.size >= aggregationTarget) {
-        break;
+        attemptedQueries.push(renderedQuery);
+        attemptSummaries.push({ query: renderedQuery, resultCount: crossrefResults.length });
+        executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: crossrefResults.length,
+          newCandidateCount, cacheHit: cacheHits > oldHits, errorCategory: null });
       }
     }
   }
+  if (openAlexUnavailable && !executedQueries.some(item => item.errorCategory === null)) throw new Error("OPENALEX_PROVIDER_TEMPORARILY_UNAVAILABLE");
 
   const candidatePool = Array.from(aggregatedResults.values());
   const rankedCandidates: RankedCandidate[] = [];
@@ -1509,15 +1586,8 @@ export async function searchProjectReferencesV2(
   for (const result of candidatePool) {
     let crossrefMetadata: CrossrefMessage | null = result.rawCrossrefJson ?? null;
 
-    // Keep discovery fast and provider-neutral: rank candidates from their retrieval metadata.
-    // DOI/source health checks happen in the later inspection gate, not during initial discovery.
-    if (!crossrefMetadata && result.doi && result.sourceProvider === Provider.CROSSREF) {
-      try {
-        crossrefMetadata = await fetchCrossrefWorkByDoi(result.doi);
-      } catch {
-        crossrefMetadata = null;
-      }
-    }
+    // Crossref discovery already supplied its metadata. DOI verification is a
+    // later inspection task, never an unbounded hidden provider request here.
 
     const resolvedTitle = result.title?.trim() || resolveCrossrefTitle(crossrefMetadata);
     const normalizedCandidateTitle = normalizeTitle(resolvedTitle);
@@ -1630,52 +1700,65 @@ export async function searchProjectReferencesV2(
 
   for (const ranked of selectedCandidates) {
     const result = ranked.candidate;
+    const canonicalDoi = normalizeScholarlyDoi(result.doi);
     const lookupKeys: Array<{ doi: string } | { openAlexId: string }> = [];
 
-    if (result.doi) {
-      lookupKeys.push({ doi: result.doi });
+    if (canonicalDoi) {
+      lookupKeys.push({ doi: canonicalDoi });
+      if (result.doi !== canonicalDoi) lookupKeys.push({ doi: result.doi! });
     }
 
     if (result.openAlexId) {
       lookupKeys.push({ openAlexId: result.openAlexId });
     }
 
-    const existingReference = await prisma.reference.findFirst({
+    const exactIdentity = lookupKeys.length ? await prisma.reference.findFirst({
       where:
         lookupKeys.length > 1
           ? { OR: lookupKeys }
-          : lookupKeys.length === 1
-            ? lookupKeys[0]
-            : {
-                normalizedTitle: ranked.normalizedTitle,
-                year: ranked.year ?? undefined,
-              },
-    });
+          : lookupKeys[0],
+    }) : null;
+    const titleMatches = !exactIdentity && !canonicalDoi && !result.openAlexId ? await prisma.reference.findMany({
+      where: { normalizedTitle: ranked.normalizedTitle, year: ranked.year ?? undefined }, take: 8 }) : [];
+    const exactIdentityCompatible = exactIdentity ? sameScientificWork({ ...result, title: ranked.resolvedTitle, authors: ranked.authors, year: ranked.year }, {
+      doi: exactIdentity.doi, openAlexId: exactIdentity.openAlexId, landingPageUrl: exactIdentity.landingPageUrl,
+      title: exactIdentity.title, year: exactIdentity.year,
+      authors: Array.isArray(exactIdentity.authorsJson) ? exactIdentity.authorsJson.filter((author): author is string => typeof author === "string") : [],
+      workType: exactIdentity.workType }) : false;
+    if (exactIdentity && !exactIdentityCompatible) {
+      ranked.admission = { policyVersion: REFERENCE_ADMISSION_POLICY_VERSION, state: "NEEDS_INSPECTION", reasons: ["UNCERTAIN_VERSION_IDENTITY"] };
+      continue;
+    }
+    const existingReference = (exactIdentityCompatible ? exactIdentity : null) ?? titleMatches.find(item => sameScientificWork({ ...result,
+      title: ranked.resolvedTitle, authors: ranked.authors, year: ranked.year }, {
+      doi: item.doi, openAlexId: item.openAlexId, landingPageUrl: item.landingPageUrl,
+      title: item.title, year: item.year, authors: Array.isArray(item.authorsJson) ? item.authorsJson.filter((author): author is string => typeof author === "string") : [],
+      workType: item.workType })) ?? null;
 
     const reference = existingReference
       ? await prisma.reference.update({
           where: { id: existingReference.id },
           data: {
-            doi: result.doi ?? existingReference.doi,
-            openAlexId: result.openAlexId,
+            doi: canonicalDoi ?? existingReference.doi,
+            openAlexId: result.openAlexId ?? existingReference.openAlexId,
             crossrefId: ranked.crossrefMetadata?.DOI ?? existingReference.crossrefId,
             title: ranked.resolvedTitle,
             normalizedTitle: ranked.normalizedTitle,
             authorsJson: ranked.authors,
-            abstract: ranked.abstract,
-            venue: ranked.venue,
+            abstract: ranked.abstract ?? existingReference.abstract,
+            venue: ranked.venue ?? existingReference.venue,
             year: ranked.year ?? existingReference.year,
             workType: ranked.workType,
             landingPageUrl: ranked.landingPageUrl,
             citationCount: ranked.citationCount,
-            rawOpenAlexJson: (result.rawOpenAlexJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            rawOpenAlexJson: (result.rawOpenAlexJson ?? existingReference.rawOpenAlexJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
             rawCrossrefJson:
-              (ranked.crossrefMetadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+              (ranked.crossrefMetadata ?? existingReference.rawCrossrefJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
           },
         })
       : await prisma.reference.create({
           data: {
-            doi: result.doi,
+            doi: canonicalDoi,
             openAlexId: result.openAlexId,
             crossrefId: ranked.crossrefMetadata?.DOI ?? null,
             title: ranked.resolvedTitle,
@@ -1707,7 +1790,7 @@ export async function searchProjectReferencesV2(
         },
       },
       update: {
-        sourceProvider: result.sourceProvider,
+        sourceProvider: existingReference?.rawOpenAlexJson ? Provider.OPENALEX : result.sourceProvider,
         relevanceScore: ranked.score,
       },
       create: {
@@ -1760,10 +1843,20 @@ export async function searchProjectReferencesV2(
     attemptedQueries,
     totalResults: persistedResults.length,
     providerBreakdown,
+    queryPlanHash,
+    executedQueries: [...priorExecutions, ...executedQueries]
+      .filter((item, index, all) => all.findIndex(other => other.queryHash === item.queryHash && other.errorCategory === item.errorCategory) === index),
+    cacheHits,
+    cacheMisses,
+    discoveryObservations: [...(batchKind === "more" ? priorSnapshot?.discoveryObservations ?? [] : []), ...discoveryObservations]
+      .filter((item, index, all) => all.findIndex(other => other.candidateKey === item.candidateKey && other.provider === item.provider && other.queryHash === item.queryHash) === index),
+    resultState: batchKind === "initial" ? persistedResults.length ? undefined : "NO_RELEVANT_INITIAL_RESULTS"
+      : persistedResults.length ? "MORE_FOUND_NEW_RESULTS"
+      : !providerQueries.length && !executedQueries.length ? "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN" : "NO_NEW_RELEVANT_RESULTS",
     baseSelectedReferenceIds,
     metadata: searchMetadata,
     admissionPolicyVersion: REFERENCE_ADMISSION_POLICY_VERSION,
-    candidateAdmissions: rankedCandidates.map((item) => ({
+    candidateAdmissions: [...(batchKind === "more" ? priorSnapshot?.candidateAdmissions ?? [] : []), ...rankedCandidates.map((item) => ({
       candidateKey: buildDedupKey(item.candidate),
       title: item.resolvedTitle,
       doi: item.candidate.doi,
@@ -1772,8 +1865,8 @@ export async function searchProjectReferencesV2(
       scoreBreakdown: item.scoreBreakdown,
       admission: item.admission,
       ...(acceptance ? { inspectionMetadata: { abstract: item.candidate.abstract, authors: item.candidate.authors, venue: item.candidate.venue, access: extractAccessSignals(item.candidate) } } : {}),
-    })),
-    references: persistedResults.map((item) => ({
+    }))].filter((item, index, all) => all.findIndex(other => other.candidateKey === item.candidateKey) === index),
+    references: [...(batchKind === "more" ? priorSnapshot?.references ?? [] : []), ...persistedResults.map((item) => ({
       referenceId: item.referenceId,
       relevanceScore: item.relevanceScore,
       scoreBreakdown: item.scoreBreakdown,
@@ -1781,8 +1874,8 @@ export async function searchProjectReferencesV2(
       suggestedSelectedOrder: suggestedSelectionOrders.get(item.referenceId) ?? null,
       pdfUrl: item.pdfUrl,
       pdfAccessible: item.pdfAccessible,
-      accessStatus: item.pdfUrl ? "REPORTED_PDF" : "UNKNOWN",
-    })),
+      accessStatus: item.pdfUrl ? "REPORTED_PDF" as const : "UNKNOWN" as const,
+    }))].filter((item, index, all) => all.findIndex(other => other.referenceId === item.referenceId) === index),
   };
 
   await logAuditEvent({
@@ -1806,6 +1899,11 @@ export async function searchProjectReferencesV2(
       updatedCount,
       skippedCount,
       providerBreakdown,
+      queryPlanHash,
+      executedQueries,
+      cacheHits,
+      cacheMisses,
+      discoveryObservations,
       searchSnapshot,
       providerFallback: openAlexUnavailable ? "OpenAlex unavailable; supported Crossref fallback used" : null,
     },
@@ -1858,5 +1956,5 @@ export async function getLatestProjectReferenceSearchSnapshot(projectId: string)
   const draft = await prisma.projectDraft.findUnique({ where: { projectId } });
   const raw = (draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
   const currentHash = raw ? fingerprint(definitionSchema.parse(raw)) : null;
-  return { ...snapshot, stale: searchInputIsStale(snapshot.inputTrace, { revision: draft?.revision ?? null, definitionHash: currentHash }) };
+  return { ...snapshot, stale: searchInputIsStale(snapshot.inputTrace, { revision: draft?.confirmedRevision ?? null, definitionHash: currentHash }) };
 }

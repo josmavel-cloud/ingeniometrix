@@ -22,6 +22,8 @@ export async function POST(_request: Request, context: RouteContext) {
       desiredTotal?: number;
       batchKind?: "initial" | "more";
     };
+    if (body.batchKind !== undefined && body.batchKind !== "initial" && body.batchKind !== "more") throw new Error("INVALID_SEARCH_BATCH_KIND");
+    if (body.desiredTotal !== undefined && (!Number.isInteger(body.desiredTotal) || body.desiredTotal < 1 || body.desiredTotal > 40)) throw new Error("INVALID_SEARCH_SIZE");
     const result = await withPaidRequest(_request, user.id, id, body, () => searchProjectReferencesV2(user.id, id, searchInput, {
       desiredTotal: body.desiredTotal,
       batchKind: body.batchKind,

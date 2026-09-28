@@ -117,6 +117,8 @@ export async function readConfirmedSearchIntent(userId: string, projectId: strin
   const p = await prisma.project.findFirst({ where: { id: projectId, userId }, include: { draft: true, intake: true } });
   if (!p) throw new Error("PROJECT_NOT_FOUND");
   const saved = p.intake?.confirmedDefinitionJson as { definition: unknown; revision: number; definitionHash: string } | null;
-  if (!saved || p.draft?.confirmedRevision !== p.draft?.revision) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
+  const rawDefinition = (p.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
+  if (!saved || !rawDefinition || p.draft?.confirmedRevision !== saved.revision ||
+      fingerprint(definitionSchema.parse(rawDefinition)) !== saved.definitionHash) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
   return searchIntent(projectId, saved.revision, saved.definitionHash, definitionSchema.parse(saved.definition));
 }

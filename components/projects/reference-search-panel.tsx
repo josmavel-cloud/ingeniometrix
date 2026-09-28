@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
 
@@ -53,6 +53,7 @@ type ReferenceListItem = {
 
 type ReferenceSearchSnapshot = {
   referenceSearchVersion: "v2";
+  resultState?: "NO_RELEVANT_INITIAL_RESULTS" | "MORE_FOUND_NEW_RESULTS" | "NO_NEW_RELEVANT_RESULTS" | "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN";
   savedAt: string;
   searchQuery: string;
   attemptedQueries: string[];
@@ -141,8 +142,8 @@ function mergeReferenceLists(
   const currentByReferenceId = new Map(
     current.map((item) => [item.reference.id, item] as const),
   );
-  // A fresh recommendation response is authoritative. Retain only explicit
-  // in-progress selections from the previous view, never stale candidates.
+  // The backend returns a cumulative, admitted recommendation snapshot for
+  // MORE. Keep local in-progress selections even if the snapshot is refreshed.
   const merged = incoming.map((item) => {
     const existing = currentByReferenceId.get(item.reference.id);
     return existing?.selected
@@ -177,6 +178,7 @@ export function ReferenceSearchPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isSearching, startSearchTransition] = useTransition();
+  const searchRequestPending = useRef(false);
   const [isSaving, startSaveTransition] = useTransition();
 
   const selectedCount = useMemo(
@@ -187,8 +189,9 @@ export function ReferenceSearchPanel({
     () => references.slice(0, visibleCount),
     [references, visibleCount],
   );
-  const nextVisibleTarget = Math.min(visibleCount + REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES);
-  const canExpand = visibleCount < Math.min(references.length, MAX_SELECTED_REFERENCES);
+  const maxVisibleRecommendations = 40;
+  const nextVisibleTarget = Math.min(visibleCount + REFERENCE_BATCH_SIZE, maxVisibleRecommendations);
+  const canExpand = visibleCount < Math.min(references.length, maxVisibleRecommendations);
   const statusMeta = getProjectStatusMetaForLanguage(status, language);
   const intakeChecklist = [
     {
@@ -232,7 +235,8 @@ export function ReferenceSearchPanel({
     });
   }
 
-  function runSearch(desiredTotal: number) {
+  function runSearch(desiredTotal: number, batchKind: "initial" | "more" = "initial") {
+    if (isSearching || searchRequestPending.current) return;
     setError(null);
     setMessage(null);
     setInfo(null);
@@ -242,14 +246,16 @@ export function ReferenceSearchPanel({
       return;
     }
 
+    searchRequestPending.current = true;
     startSearchTransition(async () => {
       try {
         const response = await fetch(`/api/projects/${projectId}/search`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
           },
-          body: JSON.stringify({ desiredTotal }),
+          body: JSON.stringify({ desiredTotal, batchKind }),
         });
 
         const payload = (await response.json().catch(() => ({}))) as {
@@ -277,13 +283,12 @@ export function ReferenceSearchPanel({
           return;
         }
 
-        let mergedReferencesLength = refreshPayload.references.length;
-        let newUniqueCount = refreshPayload.references.length;
+        const priorIds = new Set(references.map(item => item.reference.id));
+        const newUniqueCount = refreshPayload.references.filter(item => !priorIds.has(item.reference.id)).length;
+        const mergedReferencesLength = mergeReferenceLists(references, refreshPayload.references).length;
 
         setReferences((current) => {
           const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
-          mergedReferencesLength = merged.length;
-          newUniqueCount = Math.max(0, merged.length - current.length);
           return merged;
         });
         setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
@@ -295,7 +300,7 @@ export function ReferenceSearchPanel({
 
         if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
           setMessage(
-            desiredTotal > REFERENCE_BATCH_SIZE
+            batchKind === "more"
               ? copy.addedNew(newUniqueCount)
               : copy.searchCompleted(
                   Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE),
@@ -304,6 +309,9 @@ export function ReferenceSearchPanel({
                 ),
           );
           setInfo(null);
+        } else if (refreshPayload.searchSnapshot?.resultState === "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN") {
+          setMessage(null);
+          setInfo(copy.searchExhausted);
         } else if (mergedReferencesLength > 0) {
           setMessage(null);
           setInfo(copy.noNew);
@@ -313,6 +321,8 @@ export function ReferenceSearchPanel({
         }
       } catch {
         setError(copy.searchError);
+      } finally {
+        searchRequestPending.current = false;
       }
     });
   }
@@ -327,11 +337,11 @@ export function ReferenceSearchPanel({
       return;
     }
 
-    if (!hasIntakeMinimum || references.length >= MAX_SELECTED_REFERENCES) {
+    if (!hasIntakeMinimum || references.length >= maxVisibleRecommendations) {
       return;
     }
 
-    runSearch(nextVisibleTarget);
+    runSearch(nextVisibleTarget, "more");
   }
 
   function saveSelection() {
@@ -716,11 +726,12 @@ export function ReferenceSearchPanel({
         </div>
       )}
 
-      {references.length > 0 && visibleCount < MAX_SELECTED_REFERENCES ? (
+      {searchSnapshot && (references.length === 0 || visibleCount < maxVisibleRecommendations) ? (
         <div className="mt-6 flex justify-start">
           <button
             className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-            disabled={isSearching || (!canExpand && references.length >= MAX_SELECTED_REFERENCES)}
+            disabled={isSearching || searchSnapshot.resultState === "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN" ||
+              (!canExpand && references.length >= maxVisibleRecommendations)}
             onClick={expandReferences}
             type="button"
           >
@@ -728,7 +739,7 @@ export function ReferenceSearchPanel({
               ? copy.loading
               : canExpand
                 ? copy.seeMore(Math.min(REFERENCE_BATCH_SIZE, references.length - visibleCount))
-                : copy.searchMore(Math.min(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES - references.length))}
+                : copy.searchMore()}
           </button>
         </div>
       ) : null}

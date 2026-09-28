@@ -6,6 +6,7 @@ let lastComplexQueryAt = 0;
 
 export type OpenAlexSearchOptions = {
   perPage?: number;
+  page?: number;
   filters?: string[];
   sort?: string;
   select?: string[];
@@ -180,6 +181,7 @@ function buildOpenAlexUrl(query: string, options?: OpenAlexSearchOptions) {
   const url = new URL("/works", OPENALEX_BASE_URL);
   url.searchParams.set("search", query);
   url.searchParams.set("per-page", String(options?.perPage ?? 35));
+  if (options?.page && options.page > 1) url.searchParams.set("page", String(options.page));
   url.searchParams.set("filter", (options?.filters ?? DEFAULT_FILTERS).join(","));
   url.searchParams.set("sort", options?.sort ?? "relevance_score:desc,cited_by_count:desc");
   url.searchParams.set("select", (options?.select ?? DEFAULT_SELECT_FIELDS).join(","));

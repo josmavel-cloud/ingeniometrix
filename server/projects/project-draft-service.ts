@@ -43,7 +43,9 @@ export async function syncSourceSelectionToDraft(tx: Prisma.TransactionClient, p
   const contentHash = fingerprint(content);
   if (contentHash === project.draft.contentHash) return;
   const scopes = [...new Set([...staleScopes(project.draft.staleScopesJson), "EVIDENCE_PACK", "RESEARCH_DESIGN", "SECTIONS", "CONSISTENCY_MATRIX", "ASSETS"] )];
-  const confirmedRevision = previousContent.researchDefinition && project.draft.confirmedRevision !== project.draft.revision ? project.draft.confirmedRevision : project.draft.revision + 1;
+  // Selection is an evidence edit, never a new confirmation of scientific
+  // definition. Keep its confirmed revision as the Intake snapshot authority.
+  const confirmedRevision = previousContent.researchDefinition ? project.draft.confirmedRevision : project.draft.revision + 1;
   await tx.projectDraft.update({ where: { id: project.draft.id }, data: { contentJson: json(content), contentHash, revision: { increment: 1 }, confirmedRevision, staleScopesJson: json(scopes), lastInvalidatedAt: new Date() } });
 }
 async function owned(tx: Prisma.TransactionClient, userId: string, projectId: string) {
