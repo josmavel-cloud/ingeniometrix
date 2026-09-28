@@ -7,6 +7,8 @@ import { loadSearchInput, freezeSearchInput } from "@/server/retrieval/search-in
 import { buildSearchMetadata, recomposeAcceptedSearchMetadata, searchProjectReferencesV2, type ReferenceSearchV2Metadata } from "@/server/retrieval/reference-search-v2";
 import { validateScientificQueryPlan } from "@/lib/retrieval-query-composition";
 import { semanticPlannerInput } from "@/lib/retrieval-semantic-plan";
+import { getOpenAlexRateLimitStatus, openAlexCapability } from "@/server/retrieval/openalex-client";
+import { recoverHistoricalFailedSearch } from "@/server/retrieval/search-failure-state";
 
 async function main() {
   const args = Object.fromEntries(process.argv.slice(2).map(a => { const i = a.indexOf("="); return [a.slice(0, i), a.slice(i + 1)]; }));
@@ -14,9 +16,19 @@ async function main() {
   const semanticReview = args.review === "1";
   const allowTranslationRecovery = args.allowRecovery === "1";
   if (new URL(process.env.DATABASE_URL!).pathname !== "/imx_g5_staging" || process.env.APP_ORIGIN !== "https://staging.ingeniometrix.com" || process.env.IMX_PAYMENT_MODE !== "sandbox" || process.env.IMX_ENABLE_DEEP_RESEARCH === "1") throw new Error("STAGING_ONLY");
-  if (!["inspect", "recompose", "plan", "search"].includes(mode) || !projectId || !userId) throw new Error("INVALID_ARGUMENTS");
+  if (!["inspect", "recompose", "recover", "status", "plan", "search"].includes(mode) || !projectId || !userId) throw new Error("INVALID_ARGUMENTS");
   const input = await loadSearchInput(userId, projectId);
   const searchIntentHash = fingerprint(input.intent);
+  if (mode === "status") {
+    console.log(JSON.stringify({ mode, openAlexKey: openAlexCapability(), rateLimit: await getOpenAlexRateLimitStatus() }));
+    return;
+  }
+  if (mode === "recover") {
+    if (!args.failedOperationId) throw new Error("FAILED_SEARCH_OPERATION_REQUIRED");
+    console.log(JSON.stringify({ mode, ...await recoverHistoricalFailedSearch({ userId, projectId,
+      failedOperationId: args.failedOperationId }) }));
+    return;
+  }
   if (mode === "inspect") {
     console.log(JSON.stringify({ input, plannerInput: semanticPlannerInput(input.intent, searchIntentHash), searchIntentHash }));
     return;
@@ -41,7 +53,7 @@ async function main() {
   const actualFetch = global.fetch;
   let calls = 0;
   let openAlexCalls = 0, modelCalls = 0;
-  const requests: Array<{ kind: "MODEL" | "OPENALEX"; query?: string; httpStatus: number; latencyMs: number; resultCount?: number }> = [];
+  const requests: Array<{ kind: "MODEL" | "OPENALEX"; query?: string; httpStatus: number; latencyMs: number; resultCount?: number; remaining?: number | null }> = [];
   global.fetch = async (request, init) => {
     const url = new URL(typeof request === "string" ? request : request instanceof URL ? request : request.url);
     const isModel = url.protocol === "https:" && url.hostname === "api.openai.com" && url.pathname === "/v1/responses";
@@ -51,8 +63,13 @@ async function main() {
     calls++;
     const started = Date.now();
     const response = await actualFetch(request, { ...init, redirect: "error" });
+    const resultCount = isOpenAlex && response.ok
+      ? ((await response.clone().json()) as { results?: unknown[] }).results?.length : undefined;
+    const remainingHeader = response.headers.get("x-ratelimit-remaining");
+    const remaining = remainingHeader === null ? null : Number(remainingHeader);
     const record = { kind: isModel ? "MODEL" as const : "OPENALEX" as const, httpStatus: response.status, latencyMs: Date.now() - started,
-      ...(isOpenAlex ? { query: url.searchParams.get("search") ?? undefined, resultCount: ((await response.clone().json()) as { results?: unknown[] }).results?.length } : {}) };
+      ...(isOpenAlex ? { query: url.searchParams.get("search") ?? undefined, resultCount,
+        remaining: Number.isFinite(remaining) ? remaining : null } : {}) };
     requests.push(record);
     return response;
   };

@@ -12,6 +12,49 @@ export type OpenAlexSearchOptions = {
   retryRateLimit?: boolean;
 };
 
+export type OpenAlexFailureCode =
+  | "OPENALEX_AUTH_ERROR"
+  | "OPENALEX_DAILY_BUDGET_EXHAUSTED"
+  | "OPENALEX_RATE_LIMIT_BURST"
+  | "OPENALEX_TIMEOUT"
+  | "OPENALEX_PROVIDER_ERROR";
+
+export type OpenAlexRateLimit = { limit: number | null; remaining: number | null; resetSeconds: number | null };
+
+export class OpenAlexRequestError extends Error {
+  constructor(readonly code: OpenAlexFailureCode, readonly httpStatus: number | null,
+    readonly rateLimit: OpenAlexRateLimit) {
+    super(code);
+    this.name = "OpenAlexRequestError";
+  }
+}
+
+const positiveNumber = (value: string | null) => {
+  if (value === null) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+};
+
+export function openAlexRateLimitFromHeaders(headers: Headers): OpenAlexRateLimit {
+  return {
+    limit: positiveNumber(headers.get("x-ratelimit-limit")),
+    remaining: positiveNumber(headers.get("x-ratelimit-remaining")),
+    resetSeconds: positiveNumber(headers.get("retry-after") ?? headers.get("x-ratelimit-reset")),
+  };
+}
+
+export function classifyOpenAlexFailure(status: number, headers: Headers): OpenAlexRequestError {
+  const rateLimit = openAlexRateLimitFromHeaders(headers);
+  const code: OpenAlexFailureCode = status === 401 || status === 403 ? "OPENALEX_AUTH_ERROR"
+    : status === 429 && rateLimit.remaining === 0 && (rateLimit.resetSeconds ?? 0) >= 3600 ? "OPENALEX_DAILY_BUDGET_EXHAUSTED"
+    : status === 429 ? "OPENALEX_RATE_LIMIT_BURST" : "OPENALEX_PROVIDER_ERROR";
+  return new OpenAlexRequestError(code, status, rateLimit);
+}
+
+export function openAlexCapability() {
+  return process.env.OPENALEX_API_KEY?.trim() ? "CONFIGURED" as const : "MISSING" as const;
+}
+
 export type OpenAlexWork = {
   id: string;
   doi: string | null;
@@ -201,34 +244,21 @@ export async function fetchOpenAlexWorksCiting(openAlexIdOrUrl: string, options?
 export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearchOptions) {
   const url = buildOpenAlexUrl(query, options);
   await respectOpenAlexComplexQueryLimit(query);
-  let response = await fetch(url, {
-    headers: {
-      Accept: "application/json",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-  });
-
-  if (response.status === 429 && options?.retryRateLimit !== false) {
-    const retryAfterSeconds = Number.parseFloat(response.headers.get("retry-after") ?? "");
-    if (retryAfterSeconds > 10) throw new Error(`OpenAlex HTTP 429: Retry-After ${retryAfterSeconds}s excede la espera interactiva; usar otro proveedor soportado o reintentar despues.`);
-    await delay(Number.isFinite(retryAfterSeconds)
-      ? Math.max(COMPLEX_QUERY_MIN_INTERVAL_MS, retryAfterSeconds * 1_000)
-      : COMPLEX_QUERY_MIN_INTERVAL_MS);
-    lastComplexQueryAt = Date.now();
-    response = await fetch(url, {
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    signal: AbortSignal.timeout(20_000),
-    });
+  let response: Response | undefined;
+  for (let attempt = 0; attempt <= (options?.retryRateLimit === false ? 0 : 2); attempt++) {
+    try {
+      response = await fetch(url, { headers: buildOpenAlexHeaders(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+    } catch (error) {
+      throw new OpenAlexRequestError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+        ? "OPENALEX_TIMEOUT" : "OPENALEX_PROVIDER_ERROR", null, { limit: null, remaining: null, resetSeconds: null });
+    }
+    if (response.ok) break;
+    const failure = classifyOpenAlexFailure(response.status, response.headers);
+    if (failure.code !== "OPENALEX_RATE_LIMIT_BURST" || attempt >= 2 || options?.retryRateLimit === false ||
+        (failure.rateLimit.resetSeconds ?? 0) > 10) throw failure;
+    await delay(Math.max(COMPLEX_QUERY_MIN_INTERVAL_MS * 2 ** attempt, (failure.rateLimit.resetSeconds ?? 0) * 1_000));
   }
-
-  if (!response.ok) {
-    const detail = (await response.text()).replace(/\s+/g, " ").trim().slice(0, 320);
-    throw new Error(
-      `OpenAlex no respondio correctamente (HTTP ${response.status})${detail ? `: ${detail}` : "."}`,
-    );
-  }
+  if (!response?.ok) throw new OpenAlexRequestError("OPENALEX_PROVIDER_ERROR", null, { limit: null, remaining: null, resetSeconds: null });
 
   const payload = (await response.json()) as OpenAlexResponse;
 
@@ -253,4 +283,36 @@ export async function searchOpenAlexWorks(query: string, options?: OpenAlexSearc
     citationCount: work.cited_by_count ?? 0,
     rawOpenAlexJson: work,
   }));
+}
+
+// Backend-only capability probe. Never returns or logs the credential or URL.
+export async function getOpenAlexRateLimitStatus(): Promise<OpenAlexRateLimit> {
+  if (openAlexCapability() === "MISSING") throw new Error("OPENALEX_API_KEY_MISSING");
+  const url = new URL("/rate-limit", OPENALEX_BASE_URL);
+  appendOpenAlexAuth(url);
+  let response: Response;
+  try {
+    response = await fetch(url, { headers: buildOpenAlexHeaders(), cache: "no-store", signal: AbortSignal.timeout(20_000) });
+  } catch (error) {
+    throw new OpenAlexRequestError(error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")
+      ? "OPENALEX_TIMEOUT" : "OPENALEX_PROVIDER_ERROR", null, { limit: null, remaining: null, resetSeconds: null });
+  }
+  if (!response.ok) throw classifyOpenAlexFailure(response.status, response.headers);
+  const body = await response.json() as Record<string, unknown>;
+  const nested = body.rate_limit && typeof body.rate_limit === "object" && !Array.isArray(body.rate_limit)
+    ? body.rate_limit as Record<string, unknown> : {};
+  const numeric = (value: unknown) => {
+    const parsed = typeof value === "number" || typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value)
+      ? Number(value) : NaN;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  };
+  const reset = body.reset_seconds ?? body.reset_in_seconds ?? body.reset ?? body.daily_reset ?? nested.reset;
+  const resetSeconds = numeric(reset) ?? (typeof reset === "string" && Number.isFinite(Date.parse(reset))
+    ? Math.max(0, Math.ceil((Date.parse(reset) - Date.now()) / 1000)) : null);
+  const headers = openAlexRateLimitFromHeaders(response.headers);
+  return {
+    limit: numeric(body.daily_limit ?? body.limit ?? body.rate_limit ?? nested.limit) ?? headers.limit,
+    remaining: numeric(body.daily_remaining ?? body.rate_limit_remaining ?? body.remaining ?? nested.remaining) ?? headers.remaining,
+    resetSeconds: resetSeconds ?? headers.resetSeconds,
+  };
 }

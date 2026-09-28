@@ -18,9 +18,10 @@ async function main() {
   let modelCalls = 0, mockedRequests = 0;
   const plannerTerms = ["feedback", "digital mathematics"].map((text, i) => ({ sourceField: "concepts", anchor: text, text,
     type: "EXACT_TERM", confidence: "HIGH", scientificRole: i ? "CORE_CONCEPT" : "PHENOMENON", language: "en" }));
-  let acceptance = false, empty = false, reviewPool = false;
+  let acceptance = false, empty = false, reviewPool = false, providerFailure = false;
   global.fetch = async request => {
     const url = new URL(String(request)); mockedRequests++;
+    if (url.hostname === "api.openalex.org" && providerFailure) return new Response("rate limited", { status: 429, headers: { "retry-after": "2" } });
     if (url.hostname === "api.openalex.org") return Response.json({ results: empty ? [] : reviewPool ? Array.from({length:8}, (_,i) => ({
       id:`https://openalex.org/${unique}-review-${i}`, doi:`https://doi.org/10.test/${unique}-review-${i}`,
       display_name:`Learning in digital mathematics setting ${i}`, publication_year:2020,
@@ -111,6 +112,16 @@ async function main() {
     empty = true;
     const zero = await searchProjectReferencesV2(user.id, project.id, input, options, providerForbidden);
     assert.equal(zero.totalResults, 0, "zero OpenAlex cannot invoke Crossref or pad quota");
+    providerFailure = true;
+    const beforeFailure = mockedRequests;
+    await assert.rejects(searchProjectReferencesV2(user.id, project.id, input, options, providerForbidden),
+      /OPENALEX_RATE_LIMIT_BURST/);
+    assert.equal(mockedRequests, beforeFailure + 1, "acceptance failure has no hidden retry or Crossref fallback");
+    assert.equal((await prisma.project.findUniqueOrThrow({ where: { id: project.id } })).status, "SOURCES_REVIEW",
+      "terminal provider failure cannot leave the project SEARCHING");
+    const failed = await prisma.auditLog.findFirstOrThrow({ where: { projectId: project.id, eventType: "SEARCH_FAILED_RETRYABLE" }, orderBy: { createdAt: "desc" } });
+    assert.equal((failed.payloadJson as { failureCode: string }).failureCode, "OPENALEX_RATE_LIMIT_BURST");
+    providerFailure = false;
     const beforeInvalid = mockedRequests;
     await assert.rejects(searchProjectReferencesV2(user.id, project.id, input, { openAlexOnlyAcceptance: { planOperationId: op.id, maxQueries: 5 } }), /INVALID_ACCEPTANCE_LIMIT/);
     await assert.rejects(searchProjectReferencesV2(user.id, project.id, input, { openAlexOnlyAcceptance: { planOperationId: "missing", maxQueries: 4 } }), /STALE_OR_UNAUTHORIZED/);

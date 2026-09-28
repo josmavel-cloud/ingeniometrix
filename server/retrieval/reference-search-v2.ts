@@ -37,6 +37,7 @@ import {
 } from "./crossref-client";
 import { extractAccessSignals } from "./reference-access";
 import { OPENALEX_QUALITY_FILTERS, searchOpenAlexWorks } from "./openalex-client";
+import { settleFailedSearch } from "./search-failure-state";
 import { admittedOnly, decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
 
 export type ReferenceKeywordGroup = {
@@ -1407,7 +1408,9 @@ export async function searchProjectReferencesV2(
     throw new Error("No hay suficiente informacion para buscar fuentes.");
   }
 
-  await prisma.project.update({
+  let searchingUpdatedAt: Date | null = null;
+  try {
+  const searchingProject = await prisma.project.update({
     where: { id: project.id },
     data: {
       status: ProjectStatus.SEARCHING,
@@ -1418,6 +1421,7 @@ export async function searchProjectReferencesV2(
       },
     },
   });
+  searchingUpdatedAt = searchingProject.updatedAt;
 
   const aggregatedResults = new Map<string, SearchCandidate>();
   const attemptSummaries: Array<{ query: string; resultCount: number }> = [];
@@ -1437,7 +1441,7 @@ export async function searchProjectReferencesV2(
         sort: "relevance_score:desc,cited_by_count:desc",
         retryRateLimit: !acceptance,
       }).catch((error) => {
-        if (acceptance) throw new Error("OPENALEX_ACCEPTANCE_PROVIDER_FAILED", { cause: error });
+        if (acceptance) throw error;
         openAlexUnavailable = true;
         console.warn("OpenAlex no disponible; se usara Crossref:", error instanceof Error ? error.message : String(error));
         return [];
@@ -1817,6 +1821,17 @@ export async function searchProjectReferencesV2(
     providerBreakdown,
     searchSnapshot,
   };
+  } catch (error) {
+    if (searchingUpdatedAt) {
+      try {
+        await settleFailedSearch({ userId, projectId, searchingUpdatedAt, error,
+          searchIntentHash: fingerprint(input.intent), attemptedQueries });
+      } catch {
+        console.warn("SEARCH_FAILURE_SETTLEMENT_FAILED");
+      }
+    }
+    throw error;
+  }
 }
 
 export async function getLatestProjectReferenceSearchSnapshot(projectId: string) {
