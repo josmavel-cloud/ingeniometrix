@@ -41,14 +41,14 @@ export function extractWebObservations(response: Pick<OpenAI.Responses.Response,
   for (const call of calls) {
     if (call.status !== "completed" || call.action.type !== "search") continue;
     searchActionCount++;
-    for (const raw of call.action.sources ?? []) {
+    for (const [sourceIndex, raw] of (call.action.sources ?? []).entries()) {
       const normalizedUrl = normalizePublicWebUrl(raw.url);
       if (!normalizedUrl) continue;
       observations.push({ observationId: createHash("sha256").update(JSON.stringify([operationId,response.id,call.id,raw.url])).digest("hex"),
         operationId, responseId: response.id, toolCallId: call.id, actionType: "search",
         queryIfAvailable: call.action.queries?.join(" | ") || call.action.query || null,
         observedUrl: raw.url, normalizedUrl, observedTitleIfAvailable: null,
-        observedAt: new Date(response.created_at * 1000).toISOString() });
+        observedAt: new Date(response.created_at * 1000).toISOString(), sourceIndex });
     }
   }
   return { toolCallCount: calls.length, searchActionCount, observations };

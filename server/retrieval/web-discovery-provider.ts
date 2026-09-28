@@ -6,6 +6,8 @@ import { ASTRA_WEB_COST_POLICY, webDiscoveryActualCost, webDiscoveryCostBound } 
 import { WEB_DISCOVERY_PURPOSE, WEB_DISCOVERY_SCHEMA_VERSION,
   type WebDiscoveryInput, type WebDiscoveryProvider, type WebDiscoveryResult } from "./web-discovery-contract";
 import { WEB_DISCOVERY_JSON_SCHEMA, extractWebObservations, validateWebDiscoveryProposals } from "./web-discovery-validation";
+import { WEB_DISCOVERY_DIAGNOSTIC_VERSION, persistWebDiscoveryDiagnostic, webDiscoveryRequestDiagnostic,
+  webDiscoveryResponseDiagnostic, webDiscoverySettlementDiagnostic, type WebDiscoveryDiagnostic } from "./web-discovery-diagnostics";
 
 // The installed SDK predates the documented max_tool_calls/web options.
 type ResponseParams = OpenAI.Responses.ResponseCreateParamsNonStreaming & { max_tool_calls: number };
@@ -56,11 +58,18 @@ export function createOpenAiWebDiscoveryProvider(config: {
     const bound = webDiscoveryCostBound({ requestBytes: Buffer.byteLength(JSON.stringify(params)),
       maxOutputTokens: input.policy.maxOutputTokens, maxToolCalls: input.policy.maxToolCalls });
     if (!bound) throw new Error("COST_BOUND_UNAVAILABLE");
+    const diagnostics: WebDiscoveryDiagnostic = { version: WEB_DISCOVERY_DIAGNOSTIC_VERSION,
+      request: webDiscoveryRequestDiagnostic(params) };
+    // The trace is derived from the same params object passed to responses.create.
+    // It is persisted before any provider dispatch, even if the process later dies.
+    await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics);
     const ticket = await reservePaidCall(WEB_DISCOVERY_PURPOSE, ASTRA_WEB_COST_POLICY.model, bound.maximumUsd);
     let response: Response;
     try { response = config.createResponse ? await config.createResponse(params) : await client!.responses.create(params); }
     catch (error) {
       await ticket.fail();
+      diagnostics.settlement = webDiscoverySettlementDiagnostic({ toolCallCount: 0, usage: null, totalSettledCostUsd: null });
+      await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics);
       const status = (error as { status?: number }).status;
       const name = (error as { name?: string }).name ?? "";
       const state: WebDiscoveryResult["state"] = /timeout|connection/i.test(name) ? "TIMEOUT_UNKNOWN_USAGE" :
@@ -68,10 +77,15 @@ export function createOpenAiWebDiscoveryProvider(config: {
       return { schemaVersion: WEB_DISCOVERY_SCHEMA_VERSION, state, operationId: input.operationContext.operationId,
         responseId: null, model: ASTRA_WEB_COST_POLICY.model, searchActionCount: 0, toolCallCount: 0,
         observations: [], candidates: [], rejectedProposals: [], usage: null, estimatedCostUsd: null,
-        costPolicyVersion: ASTRA_WEB_COST_POLICY.version };
+        costPolicyVersion: ASTRA_WEB_COST_POLICY.version, diagnostics };
     }
     const usage = response.usage;
     const web = extractWebObservations(response, input.operationContext.operationId);
+    diagnostics.response = webDiscoveryResponseDiagnostic(response, web.observations, input.operationContext.smoke);
+    // Retain the final output-item trace before any acceptance or candidate filter.
+    let diagnosticWriteError: unknown = null;
+    try { await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics); }
+    catch (error) { diagnosticWriteError = error; }
     const used = usage ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
       reasoningTokens: usage.output_tokens_details?.reasoning_tokens ?? 0,
       cachedInputTokens: usage.input_tokens_details?.cached_tokens ?? 0 } : null;
@@ -79,11 +93,15 @@ export function createOpenAiWebDiscoveryProvider(config: {
     if (actualCost === null) await ticket.fail();
     else await ticket.complete(actualCost, { ...used, webSearchToolCalls: web.toolCallCount,
       pricingVersion: ASTRA_WEB_COST_POLICY.version }, response.model);
+    diagnostics.settlement = webDiscoverySettlementDiagnostic({ toolCallCount: web.toolCallCount,
+      usage: used, totalSettledCostUsd: actualCost });
+    if (diagnosticWriteError) throw diagnosticWriteError;
+    await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics);
     const base: Omit<WebDiscoveryResult, "state" | "candidates" | "rejectedProposals"> = {
       schemaVersion: WEB_DISCOVERY_SCHEMA_VERSION, operationId: input.operationContext.operationId,
       responseId: response.id, model: response.model, searchActionCount: web.searchActionCount,
       toolCallCount: web.toolCallCount, observations: web.observations, usage: used,
-      estimatedCostUsd: actualCost, costPolicyVersion: ASTRA_WEB_COST_POLICY.version };
+      estimatedCostUsd: actualCost, costPolicyVersion: ASTRA_WEB_COST_POLICY.version, diagnostics };
     const result = (state: WebDiscoveryResult["state"], candidates: WebDiscoveryResult["candidates"] = [],
       rejectedProposals: WebDiscoveryResult["rejectedProposals"] = []): WebDiscoveryResult =>
       ({ ...base, state, candidates, rejectedProposals });

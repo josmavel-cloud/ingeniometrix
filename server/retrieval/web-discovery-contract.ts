@@ -1,4 +1,5 @@
 import type { EvidenceGap } from "./evidence-gap-contract";
+import type { WebDiscoveryDiagnostic } from "./web-discovery-diagnostics";
 
 export const WEB_DISCOVERY_SCHEMA_VERSION = "web-discovery-result.v1";
 export const WEB_DISCOVERY_POLICY_VERSION = "astra-web-discovery-policy.v1";
@@ -26,6 +27,7 @@ export type WebSourceObservation = {
   observationId: string; operationId: string; responseId: string; toolCallId: string;
   actionType: "search"; queryIfAvailable: string | null;
   observedUrl: string; normalizedUrl: string; observedTitleIfAvailable: string | null; observedAt: string;
+  sourceIndex?: number;
 };
 export type ValidatedWebCandidate = {
   proposal: WebDiscoveryProposal; observationIds: string[];
@@ -42,6 +44,7 @@ export type WebDiscoveryResult = {
   rejectedProposals: Array<{ localCandidateRef: string; reason: string }>;
   usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; cachedInputTokens: number } | null;
   estimatedCostUsd: number | null; costPolicyVersion: string;
+  diagnostics?: WebDiscoveryDiagnostic;
 };
 export type ResearchDiscoveryContext = { searchIntentHash: string; scientificSignals: Array<{ field: string; value: string }> };
 export type WebDiscoveryInput = {
