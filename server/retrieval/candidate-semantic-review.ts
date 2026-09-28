@@ -5,7 +5,7 @@ import type { SemanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
 import { CANDIDATE_SEMANTIC_REVIEW_PROMPT_V2 } from "@/server/mvp/prompts/candidate-semantic-review.v2";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
-import { candidateReviewSchema, prepareCandidateReview, validateCandidateReviews, type ReviewCandidate } from "./candidate-review-policy";
+import { CANDIDATE_REVIEW_VALIDATOR_VERSION, candidateReviewSchema, prepareCandidateReview, validateCandidateReviews, type ReviewCandidate } from "./candidate-review-policy";
 
 export function candidateReviewModel() { return process.env.SOURCE_CANDIDATE_REVIEW_MODEL?.trim() || "gpt-5.4-mini"; }
 export function classifyCandidateReviewFailure(error: unknown, phase: "PROVIDER" | "VALIDATION") {
@@ -22,11 +22,12 @@ export function classifyCandidateReviewFailure(error: unknown, phase: "PROVIDER"
 export async function reviewCandidateBatch(input: SemanticPlannerInput, plan: ScientificConceptPlan, candidates: ReviewCandidate[], provider: Pick<LlmProvider, "generateStructuredObject">, exclusions: string[] = [],
   recheckRelevanceIds: ReadonlySet<string> = new Set()) {
   const prepared = prepareCandidateReview(candidates, plan, exclusions, recheckRelevanceIds);
-  const trace = { policyVersion: "candidate-semantic-review.v2", promptVersion: CANDIDATE_SEMANTIC_REVIEW_PROMPT_V2.version,
+  const trace = { policyVersion: "candidate-semantic-review.v2", validatorPolicyVersion: CANDIDATE_REVIEW_VALIDATOR_VERSION,
+    promptVersion: CANDIDATE_SEMANTIC_REVIEW_PROMPT_V2.version,
     model: candidateReviewModel(), searchIntentHash: input.searchIntentHash, batchIds: prepared.batches.map(b => b.map(c => c.candidateId)),
     deferredIds: prepared.deferredIds, status: "NOT_NEEDED", failureCategory: null as string | null, latencyMs: 0,
     batches: [] as Array<{ requested: number; validated: number; itemFailures: number; systemicFailure: string | null; latencyMs: number }>,
-    itemValidation: [] as Array<{ candidateId: string; status: string; diagnostic?: {
+    itemValidation: [] as Array<{ candidateId: string; status: string; dualUseEvidenceIds?: string[]; diagnostic?: {
       reason: string; returnedEvidenceRefs: string[]; availableEvidenceRefs: string[];
       relevance: string | null; role: string | null } }> };
   if (!prepared.batches.length) return { ...prepared, trace };
@@ -47,6 +48,7 @@ export async function reviewCandidateBatch(input: SemanticPlannerInput, plan: Sc
       const validated = validateCandidateReviews(raw, batch, candidates, signals.map(s => s.sourceField), input.searchIntentHash, prepared.assessments);
       for (const [id, a] of validated.assessments) prepared.assessments.set(id, a);
       for (const [candidateId, status] of validated.statuses) trace.itemValidation.push({ candidateId, status,
+        ...(validated.dualUseEvidenceIds.has(candidateId) ? { dualUseEvidenceIds: validated.dualUseEvidenceIds.get(candidateId) } : {}),
         ...(validated.diagnostics.has(candidateId) ? { diagnostic: validated.diagnostics.get(candidateId) } : {}) });
       trace.batches.push({ requested: batch.length, validated: validated.assessments.size,
         itemFailures: [...validated.statuses.values()].filter(status => status !== "VALID").length, systemicFailure: null, latencyMs: Date.now() - batchStart });

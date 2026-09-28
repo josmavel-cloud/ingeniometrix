@@ -4,6 +4,8 @@ import { containsConcept, highAuthorityTerms, normalizeConcept, type ScientificC
 import { genericResearchAction } from "@/lib/retrieval-query-composition";
 
 export const CANDIDATE_REVIEW_VERSION = "candidate-semantic-review.v2";
+// Validator semantics are versioned separately from the unchanged v2 model wire contract.
+export const CANDIDATE_REVIEW_VALIDATOR_VERSION = "candidate-review-validator.v2.1";
 export const MAX_REVIEW_CANDIDATES = 30;
 export const MAX_REVIEW_BATCHES = 2;
 export const MAX_RECOMMENDATIONS = 20; // Presentation cap, independent of scientific admission/selection.
@@ -124,6 +126,7 @@ export function validateCandidateReviews(raw: unknown, batch: CandidateReviewReq
   const result = new Map<string, CandidateAssessment>();
   const statuses = new Map<string, ItemValidationStatus>();
   const diagnostics = new Map<string, ItemValidationDiagnostic>();
+  const dualUseEvidenceIds = new Map<string, string[]>();
   const counts = new Map<string, number>();
   const evidenceOwner = new Map(originals.flatMap(c => candidateEvidenceUnits(c).map(u => [u.evidenceId, c.candidateId] as const)));
   const diagnose = (id: string, row: unknown, reason: ItemValidationReason) => {
@@ -161,7 +164,8 @@ export function validateCandidateReviews(raw: unknown, batch: CandidateReviewReq
       diagnose(id, row, citedIds.some(eid => evidenceOwner.has(eid) && evidenceOwner.get(eid) !== id)
         ? "WRONG_CANDIDATE_EVIDENCE" : "INVALID_EVIDENCE_ID"); continue;
     }
-    if (new Set(citedIds).size !== citedIds.length) {
+    if (new Set(item.supportingEvidenceIds).size !== item.supportingEvidenceIds.length ||
+        new Set(item.mismatchEvidenceIds).size !== item.mismatchEvidenceIds.length) {
       statuses.set(id, "INVALID_UNGROUNDED"); diagnose(id, row, "DUPLICATE_EVIDENCE_ID"); continue;
     }
     const positive = item.relevance === "HIGHLY_RELEVANT" || item.relevance === "RELEVANT";
@@ -181,12 +185,14 @@ export function validateCandidateReviews(raw: unknown, batch: CandidateReviewReq
       mismatches: item.mismatches, evidence: evidence.length ? evidence : retained?.evidence ?? [],
       supportingEvidenceIds: item.supportingEvidenceIds, mismatchEvidenceIds: item.mismatchEvidenceIds,
       policyVersion: CANDIDATE_REVIEW_VERSION, searchIntentHash, metadataHash: candidateMetadataHash(original), origin: "MODEL_REVIEW" });
+    const dualUse = item.supportingEvidenceIds.filter(eid => item.mismatchEvidenceIds.includes(eid));
+    if (dualUse.length) dualUseEvidenceIds.set(id, dualUse);
     statuses.set(id, "VALID");
   }
   for (const candidate of batch) if (!statuses.has(candidate.candidateId)) {
     statuses.set(candidate.candidateId, "INCOMPLETE"); diagnose(candidate.candidateId, null, "MISSING_OUTPUT");
   }
-  return { assessments: result, statuses, diagnostics };
+  return { assessments: result, statuses, diagnostics, dualUseEvidenceIds };
 }
 
 export function finalCandidateAdmission(a: CandidateAssessment) {

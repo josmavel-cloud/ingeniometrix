@@ -58,6 +58,16 @@ async function main() {
   const duplicateEvidence = structuredClone(firstRows); duplicateEvidence[0].supportingEvidenceIds.push(duplicateEvidence[0].supportingEvidenceIds[0]);
   assert.equal(validateCandidateReviews({reviews:duplicateEvidence},first,pool,dimensions,plan.searchIntentHash)
     .diagnostics.get(first[0].candidateId)?.reason,"DUPLICATE_EVIDENCE_ID");
+  const duplicateMismatch = structuredClone(firstRows) as ReviewItem[];
+  duplicateMismatch[0].mismatchEvidenceIds = [first[0].evidenceUnits[0].evidenceId, first[0].evidenceUnits[0].evidenceId];
+  assert.equal(validateCandidateReviews({reviews:duplicateMismatch},first,pool,dimensions,plan.searchIntentHash)
+    .diagnostics.get(first[0].candidateId)?.reason,"DUPLICATE_EVIDENCE_ID");
+  const dualUse = structuredClone(firstRows) as ReviewItem[];
+  dualUse[0].mismatchEvidenceIds = [first[0].evidenceUnits[0].evidenceId];
+  const dualUseResult = validateCandidateReviews({reviews:dualUse},first,pool,dimensions,plan.searchIntentHash);
+  assert.equal(dualUseResult.statuses.get(first[0].candidateId),"VALID");
+  assert.deepEqual(dualUseResult.dualUseEvidenceIds.get(first[0].candidateId),[first[0].evidenceUnits[0].evidenceId]);
+  assert.equal(dualUseResult.assessments.size,first.length);
   const alien = structuredClone(firstRows); alien[0].candidateId = "invented";
   const alienResult = validateCandidateReviews({reviews:alien}, first, pool, dimensions, plan.searchIntentHash);
   assert.equal(alienResult.statuses.get(first[0].candidateId),"INCOMPLETE");
@@ -84,6 +94,12 @@ async function main() {
       supportingEvidenceIds:[roleCandidate.evidenceUnits[0].evidenceId],mismatchEvidenceIds:[]}]},[roleCandidate],pool,dimensions,plan.searchIntentHash,prepared.assessments);
     assert.equal(roleResult.assessments.get(roleCandidate.candidateId)?.relevance,previous.relevance,"role-only cannot downgrade relevance");
     assert.equal(roleResult.assessments.get(roleCandidate.candidateId)?.role,"METHODOLOGICAL");
+    const roleDual = validateCandidateReviews({reviews:[{candidateId:roleCandidate.candidateId,relevance:"OFF_TOPIC",role:"METHODOLOGICAL",
+      matchedIntentDimensions:previous.matchedIntentDimensions,mismatches:[],confidence:"MEDIUM",rationale:"One passage supports the method and limits transfer.",
+      supportingEvidenceIds:[roleCandidate.evidenceUnits[0].evidenceId],mismatchEvidenceIds:[roleCandidate.evidenceUnits[0].evidenceId]}]},
+    [roleCandidate],pool,dimensions,plan.searchIntentHash,prepared.assessments);
+    assert.equal(roleDual.statuses.get(roleCandidate.candidateId),"VALID");
+    assert.equal(roleDual.assessments.get(roleCandidate.candidateId)?.relevance,previous.relevance);
   }
   const original = JSON.stringify(plan);
   const queries = composeSemanticQueries({necessary: [], complementary: [], optional: [], conceptPlan:plan});
@@ -113,6 +129,7 @@ async function main() {
   }});
   assert.equal(batchCalls,prepared.batches.length,"item failure does not trigger a paid retry or skip the second planned batch");
   assert.equal(itemFailure.trace.itemValidation.filter(x=>x.status==="INVALID_UNGROUNDED").length,1);
+  assert.equal(itemFailure.trace.validatorPolicyVersion,"candidate-review-validator.v2.1");
   assert.equal(itemFailure.trace.status,"PARTIAL");
   assert.equal(itemFailure.trace.batches.reduce((n,b)=>n+b.validated,0),prepared.batches.flat().length-1);
   // Role outcomes stay separate from relevance/access, with no required population or geography.
@@ -128,6 +145,10 @@ async function main() {
     const row: ReviewItem = { candidateId:name, relevance:"RELEVANT", role:role as ReviewItem["role"], matchedIntentDimensions:["problem"], mismatches:[], confidence:"MEDIUM", rationale:"Title supports the stated role; no unseen text claims.", supportingEvidenceIds:[request.evidenceUnits[0].evidenceId],mismatchEvidenceIds:[] };
     const a = validateCandidateReviews({reviews:[row]}, [request], [candidate], ["problem"], "test").assessments.get(name)!;
     assert.equal(finalCandidateAdmission(a), "ADMITTED"); assert.equal(a.role, role);
+    const shared = { ...row, mismatchEvidenceIds: [request.evidenceUnits[0].evidenceId] };
+    const dual = validateCandidateReviews({reviews:[shared]}, [request], [candidate], ["problem"], "test");
+    assert.equal(dual.statuses.get(name),"VALID",`${name}: a passage may establish both relevance and limitation`);
+    assert.deepEqual(dual.dualUseEvidenceIds.get(name),[request.evidenceUnits[0].evidenceId]);
     assert.equal(finalCandidateAdmission({...a, confidence:"LOW"}), "NEEDS_INSPECTION");
     assert.equal(finalCandidateAdmission({...a, relevance:"PARTIALLY_RELEVANT"}), "NEEDS_INSPECTION");
   }
