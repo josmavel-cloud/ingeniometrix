@@ -1,5 +1,24 @@
 # RC4 handoff
 
+## Latest checkpoint - 2B2.2a web-tool diagnostics (2026-09-28)
+
+The Astra web adapter now persists sanitized request, final response-item,
+observation-linkage, counter, and settlement diagnostics in the private
+PaidOperation. It records the params object before SDK dispatch, but does not
+claim to have captured the HTTP wire request. The raw output-item count remains
+the acceptance and settlement count; no tool/cost/admission policy changed.
+Offline fixtures and regressions pass, including same-ID versus distinct-ID
+outputs, incomplete items, search/open/find actions, 33 sources under one call,
+redaction and unchanged excess-item rejection. No LLM, web-search or scholarly
+call occurred. The staging app alone is healthy at code revision `b967e9f`,
+image `603edad99e59`; DB, worker and proxy were not restarted. The isolated
+smoke fixture has a new idempotency identity so a later authorized run does
+not reuse the historical result. See
+[2B2.2a report](docs/quality/rc4-phase2b22a-tool-diagnostics.md).
+This cannot reconstruct the earlier response. A fresh diagnostic smoke still
+requires separate authorization before 2B2.3. Five unrelated G5 changes remain
+outside the scoped commit and staging image.
+
 ## Latest checkpoint - Phase 2B2.2 adapter and isolated smoke (2026-09-28)
 
 Server-only Astra web discovery adapter, strict proposal schema, actual web-tool

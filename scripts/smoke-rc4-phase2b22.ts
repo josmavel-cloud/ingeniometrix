@@ -22,7 +22,8 @@ async function main() {
   const intentHash = createHash("sha256").update(fixture).digest("hex");
   const provider = createOpenAiWebDiscoveryProvider({apiKey});
   const result = await runWebDiscoveryOperation({userId:owner.userId,smoke:true,
-    gapSetHash:createHash("sha256").update("isolated-rfc9110-gap.v1").digest("hex"),
+    // A new, explicitly authorized diagnostic smoke must not reuse the completed v1 PaidOperation.
+    gapSetHash:createHash("sha256").update("isolated-rfc9110-gap.v2-diagnostic").digest("hex"),
     seenSetHash:createHash("sha256").update("isolated-empty-seen-set.v1").digest("hex"),
     researchIntentProjection:{searchIntentHash:intentHash,scientificSignals:[{field:"purpose",value:fixture}]},
     evidenceGaps:[{gapId:"isolated-public-technical-reference",searchIntentHash:intentHash,
