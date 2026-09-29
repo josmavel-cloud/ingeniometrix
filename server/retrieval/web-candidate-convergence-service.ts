@@ -128,7 +128,7 @@ export async function convergePaidWebDiscoveryOperation(input: {
         const payload = prior.payloadJson as { result: WebCandidateConvergenceResult };
         results.push(payload.result); continue;
       }
-      const result = convergeWebCandidate({ context, discovery, candidate, existing });
+      let result = convergeWebCandidate({ context, discovery, candidate, existing });
       let referenceId = result.scientificSourceId;
       if (result.identityOutcome === "NEW_SOURCE_CANDIDATE") {
         // A web proposal is discoverable but not recommended. No proposed DOI
@@ -146,6 +146,7 @@ export async function convergePaidWebDiscoveryOperation(input: {
           rawOpenAlexJson: Prisma.JsonNull, rawCrossrefJson: Prisma.JsonNull } });
         await tx.projectReference.create({ data: { projectId: input.projectId, referenceId: ref.id,
           sourceProvider: Provider.OPENAI, relevanceScore: null, selected: false } });
+        result = { ...result, candidateId: ref.id };
         existing.push({ id: ref.id, title: ref.title, authors: proposal.identityProposal.authors,
           year: ref.year, doi: null, workType: ref.workType, observedUrls: [proposal.observedUrl],
           selected: false, assessmentValid: false, doiProvenance: "MODEL_PROPOSED" });

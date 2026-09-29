@@ -92,6 +92,7 @@ async function main() {
     assert.equal(links.find(l => l.referenceId === referenceId)?.selected, true);
     const newLink = links.find(l => l.referenceId !== referenceId)!;
     newReferenceId = newLink.referenceId;
+    assert.equal(first[1].candidateId, newReferenceId);
     assert.equal(newLink.selected, false);
     assert.equal(newLink.reference.doi, null);
     assert.equal(newLink.reference.year, null);

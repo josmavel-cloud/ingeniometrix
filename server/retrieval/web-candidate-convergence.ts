@@ -28,7 +28,8 @@ export type ConvergenceInput = {
 };
 export type WebCandidateConvergenceResult = {
   version: typeof WEB_CONVERGENCE_VERSION; proposalId: string; identityOutcome: ConvergenceOutcome;
-  scientificSourceId: string | null; matchedBy: "OBSERVED_URL" | "VERIFIED_DOI" | null;
+  scientificSourceId: string | null; candidateId: string | null;
+  matchedBy: "OBSERVED_URL" | "VERIFIED_DOI" | null;
   discoveryObservationIds: string[]; fieldProvenance: Record<"title" | "authors" | "year" | "doi" | "issuer" | "sourceType" | "observedUrl" | "access", FieldProvenance>;
   admission: ReferenceAdmission | null; admissionRequired: boolean; semanticReviewRequired: boolean;
   selectedPreserved: boolean; reasons: string[];
@@ -75,7 +76,8 @@ export function convergeWebCandidate(input: ConvergenceInput): WebCandidateConve
   const proposal = candidate.proposal;
   const base: WebCandidateConvergenceResult = {
     version: WEB_CONVERGENCE_VERSION, proposalId: convergenceKey(context.operationId, proposal.localCandidateRef, candidate.observationIds),
-    identityOutcome: "REJECTED", scientificSourceId: null, matchedBy: null, discoveryObservationIds: [],
+    identityOutcome: "REJECTED", scientificSourceId: null, candidateId: null,
+    matchedBy: null, discoveryObservationIds: [],
     fieldProvenance: { title: candidate.metadataProvenance.title, authors: candidate.metadataProvenance.authors,
       year: candidate.metadataProvenance.year, doi: candidate.metadataProvenance.doi,
       issuer: candidate.metadataProvenance.issuer, sourceType: candidate.metadataProvenance.sourceType,
