@@ -6,7 +6,7 @@ import { evaluateEvidenceCoverage } from "./evidence-coverage";
 // Read-only adapter for existing private search snapshots. Diagnostic PaidOperation results
 // are deliberately not an input: they have not been integrated into the current Sources pool.
 export function evaluateSnapshotCoverage(intent: ResearchSearchIntent, snapshot: ProjectReferenceSearchSnapshot,
-  history: ProjectReferenceSearchSnapshot[] = []) {
+  history: ProjectReferenceSearchSnapshot[] = [], additionalSources: CoverageSource[] = []) {
   const trace = snapshot.inputTrace;
   if (snapshot.stale || !trace || trace.projectId !== intent.projectId || trace.definitionHash !== intent.definitionHash ||
       trace.confirmedDraftRevision !== intent.confirmedDraftRevision) throw new Error("COVERAGE_SNAPSHOT_INTENT_MISMATCH");
@@ -31,5 +31,5 @@ export function evaluateSnapshotCoverage(intent: ResearchSearchIntent, snapshot:
       access: { reportedPdf: Boolean(row.inspectionMetadata?.access.pdfUrl), materializedFullText: false } };
   });
   return evaluateEvidenceCoverage({ intent, searchIntentHash: trace.searchIntentHash, sourcePoolIntentHash: trace.searchIntentHash,
-    sources, enrichment: snapshot.metadata.enrichment });
+    sources: [...sources, ...additionalSources], enrichment: snapshot.metadata.enrichment });
 }

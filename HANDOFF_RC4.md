@@ -577,3 +577,17 @@ decisions still visible. Report: `docs/quality/rc4-g3-document-acceptance.md`.
 
 Next action: implement and validate G5 hybrid deployment architecture without enabling
 production payments or changing the accepted G1-G3 scientific/document contracts.
+# Phase 2B2.3 offline convergence checkpoint (2026-09-28)
+
+Web-discovery proposals now have a disabled-by-default, versioned convergence
+path into the common `Reference`/`ProjectReference` pool. Completed web-tool
+observations and field provenance are retained in private audit records;
+model-proposed DOI/authors/year/issuer/type/access are not promoted to verified
+reference columns. Exact document URL or independently verified DOI can link an
+existing source; ambiguous bibliography/version requires identity review.
+New sources remain unselected and `NEEDS_INSPECTION`, with ordinary admission
+and semantic-review policy required before recommendation. No Astra, OpenAlex,
+Crossref, PDF, or real-project discovery call was made in this gate. See
+`docs/quality/rc4-phase2b23-convergence.md`. Next gate is one separately
+authorized, controlled real-project gap-discovery acceptance; do not start it
+automatically.

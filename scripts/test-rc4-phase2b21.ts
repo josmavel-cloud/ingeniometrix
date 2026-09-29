@@ -155,6 +155,14 @@ assert.equal(coreObservation(snapshot, [validatedSnapshot]).state, "SUPPORTED");
 assert.equal(coreObservation(snapshot, [{ ...validatedSnapshot, stale: true }]).state, "UNVERIFIABLE_REVIEW");
 assert.equal(coreObservation(snapshot, [{ ...validatedSnapshot, inputTrace: { ...validatedSnapshot.inputTrace!, definitionHash: "old" } }]).state, "UNVERIFIABLE_REVIEW");
 assert.throws(() => evaluateSnapshotCoverage(automaticIntent, { ...snapshot, stale: true }), /SNAPSHOT_INTENT_MISMATCH/);
+const webCandidate = source("New primary source pending scientific review", { candidateId: "web-candidate",
+  provenanceRef: "web-convergence:fixture", assessment: undefined, assessmentValidation: "UNVERIFIED",
+  identity: "UNCERTAIN", officialAuthority: { status: "UNKNOWN" } });
+const beforeWeb = evaluateSnapshotCoverage(automaticIntent, snapshot);
+const afterWeb = evaluateSnapshotCoverage(automaticIntent, snapshot, [], [webCandidate]);
+assert.notEqual(beforeWeb.sourcePoolVersion, afterWeb.sourcePoolVersion,
+  "an added web candidate changes the authoritative source-pool version");
+assert(afterWeb.ignoredSources.every(s => s.candidateId !== webCandidate.candidateId));
 for (const file of ["evidence-gap-contract.ts", "evidence-gap-requirements.ts", "evidence-coverage.ts", "evidence-coverage-snapshot.ts"]) {
   const production = readFileSync(`server/retrieval/${file}`, "utf8");
   assert(!/masonry|seismic|arches|\bper[uú]\b|10\.\d{4,9}\//i.test(production), "no production fixture hardcoding");
