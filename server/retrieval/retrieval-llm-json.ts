@@ -1,4 +1,7 @@
+import { RETRIEVAL_LLM_JSON_1_PROMPT } from "@/server/mvp/prompts/retrieval-llm-json.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import type { LlmProvider } from "@/llm/provider";
+import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
 
 function describeError(error: unknown) {
   if (error instanceof Error) {
@@ -9,14 +12,7 @@ function describeError(error: unknown) {
 }
 
 function buildJsonOnlyPrompt(prompt: string) {
-  return `${prompt}
-
-Responde exclusivamente con un objeto JSON valido.
-- no uses markdown
-- no uses bloques de codigo
-- no agregues texto antes ni despues del JSON
-- si un campo no puede completarse con precision, devuelve null, un arreglo vacio o una formulacion prudente
-`.trim();
+  return renderVersionedPrompt(RETRIEVAL_LLM_JSON_1_PROMPT, { var_0: (prompt) }).trim();
 }
 
 function extractJsonObject(value: string) {
@@ -50,6 +46,8 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
   schemaName: string;
   schema: Record<string, unknown>;
   model?: string;
+  maxOutputTokens?: number;
+  trackingAttribution?: LlmUsageAttribution;
 }) {
   try {
     return await params.provider.generateStructuredObject<T>({
@@ -57,7 +55,9 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       schemaName: params.schemaName,
       schema: params.schema,
       model: params.model,
+      maxOutputTokens: params.maxOutputTokens,
       trackingLabel: `structured:${params.schemaName}`,
+      trackingAttribution: params.trackingAttribution,
     });
   } catch (structuredError) {
     const structuredReason = describeError(structuredError);
@@ -66,7 +66,9 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       const textResponse = await params.provider.generateText({
         prompt: buildJsonOnlyPrompt(params.prompt),
         model: params.model,
+        maxOutputTokens: params.maxOutputTokens,
         trackingLabel: `text_fallback:${params.schemaName}`,
+        trackingAttribution: { ...params.trackingAttribution, promptVersion: `${params.trackingAttribution?.promptVersion ?? params.schemaName}+${RETRIEVAL_LLM_JSON_1_PROMPT.version}` },
       });
 
       return JSON.parse(extractJsonObject(textResponse)) as T;

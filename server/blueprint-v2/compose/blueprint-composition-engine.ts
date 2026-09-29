@@ -182,7 +182,7 @@ export function buildLegacyBlueprintFromMaster(input: {
   projectTitle: string;
   projectTemplateKey: string;
   projectDegreeLevel: ResearchBlueprintCore["degree_level"];
-  projectUniversity: string;
+  projectUniversity: string | null;
   projectProgram: string;
   researchLine: string | null | undefined;
   drafts: MasterSectionDraft[];
@@ -221,7 +221,7 @@ export function buildLegacyBlueprintFromMaster(input: {
     project_title: input.projectTitle,
     template_key: input.projectTemplateKey,
     degree_level: input.projectDegreeLevel,
-    university: input.projectUniversity,
+    university: input.projectUniversity ?? "",
     program: input.projectProgram,
     research_line:
       input.researchLine?.trim() ||
@@ -289,11 +289,15 @@ export function buildLegacyBlueprintFromMaster(input: {
       availableData: null,
       preferredMethodology: methodology,
       advisorNotes: null,
+      researchScope: null,
+      constructs: null,
+      pendingDecisions: null,
       projectId: "",
       id: "",
       createdAt: new Date(),
       updatedAt: new Date(),
       searchQuery: null,
+      confirmedDefinitionJson: null,
     },
     referenceInsights,
   });

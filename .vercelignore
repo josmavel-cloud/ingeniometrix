@@ -12,3 +12,13 @@ dist
 *.log
 *.tsbuildinfo
 .codex-*
+.env*
+app/api/
+blueprint_launch/
+components/labs/master-blueprint/
+lib/labs/master-blueprint/
+server/
+prisma/
+scripts/
+llm/
+ai/

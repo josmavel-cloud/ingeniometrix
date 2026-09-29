@@ -356,6 +356,14 @@ async function main() {
     draft("specific_research_questions", "- ¿Cómo evaluar criterio uno?"),
     draft("specific_hypotheses", "- El criterio uno será relevante.\n- El criterio dos será relevante."),
   ]);
+  const validQualitativeMatrix = buildConsistencyMatrixArtifactFromSections([
+    draft("general_research_question", "¿Cómo comprenden los docentes la adopción de una estrategia formativa?"),
+    draft("general_objective", "Comprender la adopción de una estrategia formativa desde la experiencia docente."),
+    draft("methodology", "Estudio cualitativo con diseño de estudio de caso y análisis temático."),
+    draft("population_and_sample", "Participantes docentes seleccionados mediante criterios explícitos."),
+    draft("specific_objectives", "- Describir las experiencias docentes.\n- Interpretar las barreras percibidas."),
+    draft("specific_research_questions", "- ¿Cómo describen los docentes sus experiencias?\n- ¿Qué barreras perciben los docentes?"),
+  ]);
   const goodSemantic = buildSemanticConsistencyReport({
     handoff,
     reducedEvidencePack: pack,
@@ -397,6 +405,14 @@ async function main() {
     await runTest("matrix mismatched questions/objectives is blocked", () => {
       assert(matrix.status === "blocked", `expected blocked matrix, got ${matrix.status}`);
       assert(matrix.validation.blocked_reasons.some((item) => item.includes("preguntas especificas")), "missing question mismatch blocker");
+    }),
+    await runTest("valid qualitative design proceeds without statistical hypotheses", () => {
+      assert(validQualitativeMatrix.status !== "blocked", `unexpected blocked matrix: ${validQualitativeMatrix.validation.blocked_reasons.join(" | ")}`);
+      assert(validQualitativeMatrix.can_continue_step_11 === true, "qualitative matrix should proceed to human review");
+      assert(
+        !validQualitativeMatrix.validation.blocked_reasons.some((item) => /hipotesis/i.test(item)),
+        "qualitative design was blocked for missing statistical hypotheses",
+      );
     }),
     await runTest("Spanish public text QA flags English labels and missing accents", () => {
       assert(!spanishQa.passed, "Spanish QA should fail synthetic bad text");

@@ -440,7 +440,7 @@ ${JSON.stringify(
     {
       title: input.project.title,
       university: input.project.university,
-      program: input.project.program,
+      program: input.project.program ?? "",
       degreeLevel: input.project.degreeLevel,
       templateName: input.templateName,
     },
@@ -697,7 +697,7 @@ export async function deriveUniversityBlueprint(input: {
         projectTemplateKey: input.project.templateKey,
         projectUniversity: input.project.university,
         projectDegreeLevel: input.project.degreeLevel,
-        projectProgram: input.project.program,
+        projectProgram: input.project.program ?? "",
       })
     ).runtime;
   const templateEntries = flattenTemplateSectionEntries(

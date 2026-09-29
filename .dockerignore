@@ -1,0 +1,14 @@
+.git
+.next
+node_modules
+.env
+.env.*
+!.env.example
+artifacts
+artifacts-local
+backups
+coverage
+dist
+*.log
+*.tsbuildinfo
+.codex-*

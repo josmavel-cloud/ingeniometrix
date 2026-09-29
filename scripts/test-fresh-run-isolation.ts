@@ -1,24 +1,11 @@
-import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import {
-  evidenceEngineHandoffV1Schema,
-  type EvidenceEngineHandoffV1,
-} from "@/server/blueprint-engine/contracts";
 import {
   buildFreshRunIsolationReport,
   buildStaleContentScanReport,
 } from "@/server/blueprint-engine/quality/fresh-run-isolation";
 import type { AcademicDocument } from "@/server/blueprint-v2/lab/academic-document-model";
-
-const HANDOFF_PATH = path.join(
-  process.cwd(),
-  "artifacts-local",
-  "evidence-selected-source-runs",
-  "case-001-seismic-isolators-peruvian-buildings",
-  "2026-05-04T18-13-11-093Z",
-  "evidence-handoff-v1.json",
-);
+import { buildEvidenceHandoffTestFixture } from "@/scripts/fixtures/blueprint-engine/evidence-handoff-fixture";
 
 type TestResult = {
   name: string;
@@ -28,18 +15,6 @@ type TestResult = {
 
 function test(name: string, passed: boolean, details: string): TestResult {
   return { name, passed, details };
-}
-
-function loadHandoff(): EvidenceEngineHandoffV1 {
-  const parsed = evidenceEngineHandoffV1Schema.safeParse(
-    JSON.parse(readFileSync(HANDOFF_PATH, "utf8")),
-  );
-
-  if (!parsed.success) {
-    throw new Error(parsed.error.issues.map((issue) => issue.message).join("; "));
-  }
-
-  return parsed.data as EvidenceEngineHandoffV1;
 }
 
 function fakeDocument(input: {
@@ -131,7 +106,7 @@ function fakeDocument(input: {
 }
 
 function main() {
-  const handoff = loadHandoff();
+  const handoff = buildEvidenceHandoffTestFixture();
   const currentSourceId = handoff.source_registry[0]?.source_id ?? "";
   const currentEvidenceId = handoff.evidence_units[0]?.evidence_id ?? "";
   const currentAsset = handoff.asset_registry[0];

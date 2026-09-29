@@ -1,0 +1,29 @@
+name: RC4 production monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rc4-production-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Probe production web, API, worker, backup and storage
+        env:
+          PRODUCTION_WEB_URL: ${{ vars.PRODUCTION_WEB_URL }}
+          PRODUCTION_BACKEND_ORIGIN: ${{ vars.PRODUCTION_BACKEND_ORIGIN }}
+          PRODUCTION_MONITOR_TOKEN: ${{ secrets.PRODUCTION_MONITOR_TOKEN }}
+        run: node scripts/rc4-production-monitor.mjs

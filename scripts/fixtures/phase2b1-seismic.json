@@ -1,0 +1,551 @@
+{
+  "intent": {
+    "scope": "Simulación sísmica aplicada a especímenes de escala natural de albañilería.",
+    "topic": "Simulación sísmica de especímenes de escala natural de albañilería en el Perú para evaluar los criterios de la nueva norma de diseño sismorresistente del 2026.",
+    "context": "Perú y nueva norma de diseño sismorresistente del 2026.",
+    "purpose": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+    "taxonomy": "Ingeniería civil estructural / sismorresistencia.",
+    "projectId": "9843af3a-d1cc-421c-a02f-a309f751a0c8",
+    "readiness": "READY",
+    "sourceKind": "CONFIRMED_DEFINITION",
+    "coreProblem": "Determinar si los criterios de la nueva norma de diseño sismorresistente 2026 son adecuados para la respuesta sísmica de especímenes de albañilería a escala natural en el Perú.",
+    "coreConcepts": [
+      "simulación sísmica; albañilería; escala natural; diseño sismorresistente; norma 2026."
+    ],
+    "academicLevel": "MAESTRIA",
+    "schemaVersion": "research-search-intent.v2",
+    "definitionHash": "d169f9a0cfd7d567a6b82cca3e1cd769d7138cddbe42e286bc6ec4611b272cdc",
+    "intendedOutput": "Evaluación de criterios normativos para diseño sismorresistente.",
+    "fieldProvenance": {
+      "scope": {
+        "value": "Simulación sísmica aplicada a especímenes de escala natural de albañilería.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 5,
+        "interpretationConfidence": "HIGH"
+      },
+      "topic": {
+        "value": "Simulación sísmica de especímenes de escala natural de albañilería en el Perú para evaluar los criterios de la nueva norma de diseño sismorresistente del 2026.",
+        "origin": "USER_EXPLICIT",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 1
+      },
+      "object": {
+        "value": "Especímenes de albañilería de escala natural.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 3,
+        "interpretationConfidence": "HIGH"
+      },
+      "context": {
+        "value": "Perú y nueva norma de diseño sismorresistente del 2026.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 4,
+        "interpretationConfidence": "HIGH"
+      },
+      "problem": {
+        "value": "Determinar si los criterios de la nueva norma de diseño sismorresistente 2026 son adecuados para la respuesta sísmica de especímenes de albañilería a escala natural en el Perú.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 10,
+        "interpretationConfidence": "MEDIUM"
+      },
+      "purpose": {
+        "value": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 9,
+        "interpretationConfidence": "HIGH"
+      },
+      "concepts": {
+        "value": "simulación sísmica; albañilería; escala natural; diseño sismorresistente; norma 2026.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 6,
+        "interpretationConfidence": "HIGH"
+      },
+      "taxonomy": {
+        "value": "Ingeniería civil estructural / sismorresistencia.",
+        "origin": "AI_PROPOSED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 8,
+        "interpretationConfidence": "MEDIUM"
+      },
+      "originalIdea": {
+        "value": "Simulación sísmica de especímenes de escala natural de albañilería en el Perú para evaluar los criterios de la nueva norma de diseño sismorresistente del 2026.",
+        "origin": "USER_EXPLICIT",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 1
+      },
+      "academicLevel": {
+        "value": "MAESTRIA",
+        "origin": "USER_EXPLICIT",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 1
+      },
+      "intendedOutput": {
+        "value": "Evaluación de criterios normativos para diseño sismorresistente.",
+        "origin": "AI_INFERRED",
+        "knowledge": "KNOWN",
+        "acceptance": "ACCEPTED",
+        "sourceMessageIds": [
+          "persisted-staging-definition"
+        ],
+        "lastChangedRevision": 7,
+        "interpretationConfidence": "MEDIUM"
+      }
+    },
+    "unresolvedFields": [
+      {
+        "field": "methodPreference",
+        "knowledge": "UNKNOWN"
+      },
+      {
+        "field": "dataAccess",
+        "knowledge": "UNKNOWN"
+      },
+      {
+        "field": "constraints",
+        "knowledge": "UNKNOWN"
+      },
+      {
+        "field": "researchLine",
+        "knowledge": "UNKNOWN"
+      },
+      {
+        "field": "advisorNotes",
+        "knowledge": "UNKNOWN"
+      },
+      {
+        "field": "pendingDecisions",
+        "knowledge": "UNKNOWN"
+      }
+    ],
+    "userOriginalIdea": "Simulación sísmica de especímenes de escala natural de albañilería en el Perú para evaluar los criterios de la nueva norma de diseño sismorresistente del 2026.",
+    "objectOrPopulation": "Especímenes de albañilería de escala natural.",
+    "explicitConstraints": [],
+    "methodologicalSignals": [],
+    "unresolvedAmbiguities": [],
+    "confirmedDraftRevision": 10
+  },
+  "origin": "read-only staging snapshot 2026-09-27; no new search",
+  "candidates": [
+    {
+      "doi": "10.1007/s10518-022-01582-x",
+      "year": 2023,
+      "title": "Shake-table testing of a stone masonry building aggregate: overview of blind prediction study",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1007/s10518-019-00572-w",
+      "year": 2019,
+      "title": "Seismic assessment of a lab-tested two-storey unreinforced masonry Dutch terraced house",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/app9020243",
+      "year": 2019,
+      "title": "Stochastic Vulnerability Assessment of Masonry Structures: Concepts, Modeling and Restoration Aspects",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1007/s10518-020-00894-0",
+      "year": 2020,
+      "title": "Effects of size and position of openings on in-plane capacity of unreinforced masonry walls",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.conbuildmat.2020.118236",
+      "year": 2020,
+      "title": "Core testing method to assess nonlinear shear-sliding behaviour of brick-mortar interfaces: A comparative experimental study",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2022.114734",
+      "year": 2022,
+      "title": "Nonlinear numerical assessments for the in-plane response of historic masonry walls",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1007/s10518-020-00875-3",
+      "year": 2020,
+      "title": "Out-of-plane reinforcement of masonry walls using joint-embedded steel cables",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1155/2018/4756352",
+      "year": 2018,
+      "title": "Seismic Capacity Assessment of Confined Brick Masonry Building: An Experimental Approach",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/buildings14123711",
+      "year": 2024,
+      "title": "Multi-Hazard Assessment of Masonry Buildings: A State-of-the-Art Review",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1007/s10518-021-01115-y",
+      "year": 2021,
+      "title": "Characterization of local and global capacity criteria for collapse assessment of code-conforming RC buildings",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/app12147340",
+      "year": 2022,
+      "title": "Seismic Analysis of Slender Monumental Structures: Current Strategies and Challenges",
+      "abstract": "The preservation and seismic risk mitigation of built cultural heritage is considered today as a major priority in the international political agenda. Among the great variety of heritage structures spread worldwide, masonry towers belong to one of the most vulnerable categories against earthquake actions due to their morphological and material singularity. The proper understanding of the structural behavior of these artefacts at the micro, meso and macro scales, combined with a thorough knowledge of the best analysis practices deriving from the shared experience of the scientific community working in this field, is a fundamental prerequisite to appropriately address their seismic assessment. In this context, the present work offers an extensive discussion on the major challenges that slender monumental towers pose in terms of characterization of their actual behavior under seismic actions. A critical appraisal of the principal analysis methods applicable to the study of these structures is also presented along with a brief review of the existing modelling strategies for their numerical representation. Relevant examples are discussed in support of each argument. In spite of being a relatively young discipline, earthquake engineering has made remarkable progress in the last years and appropriate modi operandi have been consolidating to tackle the seismic assessment of unconventional systems, such as slender heritage structures. The work is conceived in a format of interest for both practitioners and researchers approaching the seismic assessment of this type of structures, and for those in need of an overall practical review of the topic.",
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1061/(asce)em.1943-7889.0001995",
+      "year": 2021,
+      "title": "Analytical Models to Determine In-Plane Damage Initiation and Force Capacity of Masonry Walls with Openings",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/buildings13010159",
+      "year": 2023,
+      "title": "Seismic Performance Assessment of Low-Rise Unreinforced and Confined Brick Masonry School Buildings Using the Applied Element Method",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.2174/1874836801610010293",
+      "year": 2016,
+      "title": "Seismic Design of Box-Type Unreinforced Masonry Buildings Through Direct Displacement-Based Approach",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/buildings13030597",
+      "year": 2023,
+      "title": "Seismic Retrofitting of Mid-Rise Unreinforced Masonry Residential Buildings after the 2010 Kraljevo, Serbia Earthquake: A Case Study",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/buildings15010134",
+      "year": 2025,
+      "title": "Preventive Conservation of Vernacular Adobe Architecture at Seismic Risk: The Case Study of a World Heritage Historical City",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "REJECTED_OFF_TOPIC"
+    },
+    {
+      "doi": "10.1061/(asce)nh.1527-6996.0000501",
+      "year": 2021,
+      "title": "Variability of Mechanical Properties of Cellular Lightweight Concrete Infill and Its Effect on Seismic Safety",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.28991/cej-2020-03091625",
+      "year": 2020,
+      "title": "Assessment of Seismic Capacity for Reinforced Concrete Frames with Perforated Unreinforced Brick Masonry Infill Wall",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1080/15583058.2021.1992532",
+      "year": 2021,
+      "title": "Compression and In-plane Seismic Behaviour of Ashlar Three-leaf Stone Masonry Walls",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1155/2014/216549",
+      "year": 2014,
+      "title": "Analytical Modeling of Masonry Infilled RC Frames and Verification with Experimental Data",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1007/s10518-025-02231-9",
+      "year": 2025,
+      "title": "Seismic collapse analysis of unreinforced masonry buildings through applied element micro-modelling and crack width-based damage measures",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1061/(asce)st.1943-541x.0000125",
+      "year": 2009,
+      "title": "Experimental Analysis of Reinforced Concrete Block Masonry Walls Subjected to In-Plane Cyclic Loading",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2021.112328",
+      "year": 2021,
+      "title": "Experimental and numerical approaches to investigate the out-of-plane response of unreinforced masonry walls subjected to free far-field blasts",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1617/s11527-020-01574-w",
+      "year": 2020,
+      "title": "Retrofitting unreinforced masonry by steel fiber reinforced mortar coating: uniaxial and diagonal compression tests",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/ma16051882",
+      "year": 2023,
+      "title": "A Brief Overview on Crack Patterns, Repair and Strengthening of Historical Masonry Structures",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2021.112529",
+      "year": 2021,
+      "title": "Quantification of damage evolution in masonry walls subjected to induced seismicity",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3389/fbuil.2020.591985",
+      "year": 2020,
+      "title": "Experimental Testing and Numerical Modeling of Robust Unreinforced and Reinforced Clay Masonry Infill Walls, With and Without Openings",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/buildings10060103",
+      "year": 2020,
+      "title": "Experimental and Numerical Study of Behaviour of Reinforced Masonry Walls with NSM CFRP Strips Subjected to Combined Loads",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.conbuildmat.2020.120147",
+      "year": 2020,
+      "title": "Masonry subjected to semi-cyclic compression: Inelastic response modelling",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engfailanal.2024.108571",
+      "year": 2024,
+      "title": "Systematic review of experimental testing of masonry walls’ failure: Comparative analysis and future directions",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1080/15583058.2015.1113333",
+      "year": 2016,
+      "title": "Experimental Study on Injected Anchors for the Seismic Retrofit of Historical Masonry Buildings",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/buildings9040091",
+      "year": 2019,
+      "title": "Multiscale Seismic Vulnerability Assessment and Retrofit of Existing Masonry Buildings",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1080/15583058.2022.2033885",
+      "year": 2022,
+      "title": "Numerical Modelling of Traditional Buildings Composed of Timber Frames and Masonry Walls under Seismic Loading",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/polym14183707",
+      "year": 2022,
+      "title": "Experimental Research and Numerical Analysis of CFRP Retrofitted Masonry Triplets under Shear Loading",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/su11184866",
+      "year": 2019,
+      "title": "Experimental Study on Seismic Behavior of Masonry Walls Strengthened by Reinforced Mortar Cross Strips",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1590/s1679-78252011000400005",
+      "year": 2011,
+      "title": "Lateral strength force of URM structures based on a constitutive model for interface element",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1002/eqe.3910",
+      "year": 2023,
+      "title": "Distinct element modeling of the in‐plane response of a steel‐framed retrofit solution for URM structures",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2022.115492",
+      "year": 2022,
+      "title": "Analysis and prediction of masonry wallette strength under combined compression-bending via stochastic computational modeling",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2023.116531",
+      "year": 2023,
+      "title": "Experimental investigation on the shear behaviour of the brickwork-backfill interface in masonry arch bridges",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2020.110365",
+      "year": 2020,
+      "title": "High-resolution monitoring of the initial development of cracks in experimental masonry shear walls and their reproduction in finite element models",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.24200/tjer.vol4iss1pp82-94",
+      "year": 2007,
+      "title": "Seismic Response of Pure-Friction Base Isolated Masonry Building with Restricted Base-Sliding",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1002/suco.201900064",
+      "year": 2019,
+      "title": "Deep neural network‐based mechanical behavior analysis for various masonry infill walls with hybrid fiber mortar",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.conbuildmat.2022.127969",
+      "year": 2022,
+      "title": "Experimental, numerical and analytical investigations of masonry corners: Influence of the horizontal pseudo-static load orientation",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.engstruct.2020.111192",
+      "year": 2020,
+      "title": "In-plane seismic behaviour of retrofitted masonry walls subjected to subsidence-induced damage",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1007/s10518-022-01345-8",
+      "year": 2022,
+      "title": "A methodological framework to relate the earthquake-induced frequency reduction to structural damage in masonry buildings",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.1016/j.prostr.2020.04.038",
+      "year": 2020,
+      "title": "A detailed micro-model for brick masonry structures based on a diffuse cohesive-frictional interface fracture approach",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    },
+    {
+      "doi": "10.3390/app6110345",
+      "year": 2016,
+      "title": "Experimental Study on the Force-Bearing Performance of Masonry Structures with a Marble-Graphite Slide Seismic Isolator at the Foundation",
+      "abstract": null,
+      "oldScore": 0,
+      "oldState": "NEEDS_INSPECTION"
+    }
+  ]
+}

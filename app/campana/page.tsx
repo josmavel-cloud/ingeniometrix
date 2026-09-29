@@ -3,11 +3,9 @@ import type { Metadata } from "next";
 import { SnapshotLanding } from "@/components/marketing/snapshot-landing";
 import { getCampaignCopy } from "@/lib/marketing/portal-copy";
 import { getPublicUrl } from "@/lib/public-site";
-import { getRequestLanguage } from "@/server/i18n/request-language";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const language = await getRequestLanguage();
-  const copy = getCampaignCopy(language).metadata;
+  const copy = getCampaignCopy("es").metadata;
 
   return {
     title: copy.title,

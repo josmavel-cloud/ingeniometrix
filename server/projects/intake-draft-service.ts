@@ -1,4 +1,6 @@
-import type { DegreeLevel, Intake, Project, University } from "@prisma/client";
+import { INTAKE_DRAFT_SERVICE_1_PROMPT } from "@/server/mvp/prompts/intake-draft-service.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
+import type { DegreeLevel, Intake, Project } from "@prisma/client";
 
 import intakeDraftBundleSchema from "@/ai/schemas/intake-draft-bundle.schema.json";
 import {
@@ -55,7 +57,8 @@ function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
   const area =
     input.project.topicAreaLabel?.trim() ||
     (language === "en" ? "the selected academic area" : "el area academica seleccionada");
-  const university = getUniversityDisplayNameByCode(input.project.university as University);
+  const university = getUniversityDisplayNameByCode(input.project.university);
+  const institutionalSuffix = university ? ` para ${university}` : "";
   const program = input.project.program;
   const labels = language === "en"
     ? ["Operational angle", "User/process angle", "Institutional angle"]
@@ -81,7 +84,7 @@ function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
           ? "Qualitative or mixed design, to be selected after source review and data availability checks."
           : "Applied, descriptive or correlational design, pending validation against available data and advisor guidance.",
       advisorNotes:
-        `Generated as an editable intake draft for ${university}. Assumptions are provisional and must not be treated as verified findings.`,
+        `Generated as an editable intake draft${institutionalSuffix}. Assumptions are provisional and must not be treated as verified findings.`,
     }));
   }
 
@@ -104,7 +107,7 @@ function buildFallbackDrafts(input: GenerateIntakeDraftsInput): IntakeDraft[] {
         ? "Diseno cualitativo o mixto, a elegir despues de revisar fuentes y disponibilidad real de datos."
         : "Diseno aplicado, descriptivo o correlacional, pendiente de validacion con datos disponibles y orientacion del asesor.",
     advisorNotes:
-      `Generado como borrador editable de intake para ${university}. Los supuestos son provisionales y no deben tratarse como hallazgos verificados.`,
+      `Generado como borrador editable${institutionalSuffix}. Los supuestos son provisionales y no deben tratarse como hallazgos verificados.`,
   }));
 }
 
@@ -149,38 +152,8 @@ export async function generateIntakeDrafts(input: GenerateIntakeDraftsInput) {
       schemaName: "intake_draft_bundle",
       schema: intakeDraftBundleSchema as Record<string, unknown>,
       trackingLabel: "project:intake-drafts",
-      prompt: `
-Act as an ethical academic research intake assistant for Ingeniometrix.
-
-${getLanguageInstruction(language)}
-
-Goal:
-Generate 3 complete, editable intake drafts from the selected project topic. The drafts should help the user clarify the project before searching sources, not write the thesis for them.
-
-Rules:
-- Never invent citations, data, measurements, findings, or field results.
-- If data, population, constraints, or access are not known, state that they are pending confirmation.
-- Keep each field useful and concise.
-- Do not automate thesis completion or present assumptions as facts.
-- Make the three drafts meaningfully different so the user can iterate.
-- Preserve the user's selected topic unless a minor clarity edit is necessary.
-
-Project context:
-- topic: ${topic}
-- seed text: ${input.project.topicSeedText ?? "Not provided"}
-- current problem context: ${currentIntake?.problemContext ?? "Not provided"}
-- current target population: ${currentIntake?.targetPopulation ?? "Not provided"}
-- area: ${input.project.topicAreaLabel ?? "Not provided"}
-- degree level: ${input.project.degreeLevel as DegreeLevel}
-- university: ${getUniversityDisplayNameByCode(input.project.university)}
-- program: ${input.project.program}
-- requested variant seed: ${input.variantSeed?.trim() || "Create a fresh intake alternative."}
-
-Prior drafts to avoid repeating too closely:
-${existingDrafts}
-
-Return only the structured JSON object.
-      `.trim(),
+      trackingAttribution: { promptVersion: INTAKE_DRAFT_SERVICE_1_PROMPT.version },
+      prompt: renderVersionedPrompt(INTAKE_DRAFT_SERVICE_1_PROMPT, { var_0: (getLanguageInstruction(language)), var_1: (topic), var_2: (input.project.topicSeedText ?? "Not provided"), var_3: (currentIntake?.problemContext ?? "Not provided"), var_4: (currentIntake?.targetPopulation ?? "Not provided"), var_5: (input.project.topicAreaLabel ?? "Not provided"), var_6: (input.project.degreeLevel as DegreeLevel), var_7: (getUniversityDisplayNameByCode(input.project.university)), var_8: (input.project.program), var_9: (input.variantSeed?.trim() || "Create a fresh intake alternative."), var_10: (existingDrafts) }).trim(),
     });
 
     const drafts = bundle.drafts

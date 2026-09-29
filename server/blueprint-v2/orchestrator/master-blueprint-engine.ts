@@ -253,7 +253,7 @@ export async function runMasterBlueprintEngine(input: {
     projectTemplateKey: input.project.templateKey,
     projectDegreeLevel: input.project.degreeLevel,
     projectUniversity: input.project.university,
-    projectProgram: input.project.program,
+    projectProgram: input.project.program ?? "",
     researchLine: input.project.intake.researchLine,
     drafts: draftsWithMatrix,
     evidenceLedger,

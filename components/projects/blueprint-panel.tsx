@@ -1,8 +1,11 @@
 "use client";
+import { AccountPanel } from "@/components/commercial/account-panel";
 
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
+import { ScientificDesignApproval } from "./scientific-design-approval";
+import { flushProjectDraft } from "@/lib/draft-save-queue";
 
 import { getLocaleForLanguage, type SupportedLanguage } from "@/lib/language";
 import {
@@ -20,6 +23,9 @@ type BlueprintVersionListItem = {
   createdAt: string;
   blueprintJson: Record<string, unknown>;
   coherenceReportJson: Record<string, unknown>;
+  originatingDraftRevision: number | null;
+  publicationStatus: string;
+  userLabel: string | null;
 };
 
 type BlueprintUiError = {
@@ -35,6 +41,8 @@ type BlueprintPanelProps = {
   selectedReferenceCount: number;
   versions: BlueprintVersionListItem[];
   language: SupportedLanguage;
+  activeVersionId: string | null;
+  draftRevision: number;
 };
 
 type CoherenceCheck = {
@@ -138,6 +146,8 @@ export function BlueprintPanel({
   selectedReferenceCount,
   versions,
   language,
+  activeVersionId,
+  draftRevision,
 }: BlueprintPanelProps) {
   const router = useRouter();
   const copy = getProjectUiCopy(language).blueprint;
@@ -147,9 +157,8 @@ export function BlueprintPanel({
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const resumeInFlightRef = useRef(false);
 
-  const latestVersion = versions[0] ?? null;
+  const latestVersion = versions.find((version) => version.id === activeVersionId) ?? versions[0] ?? null;
   const latestBlueprintDocxUrl = latestVersion
     ? `/api/projects/${projectId}/blueprints/${latestVersion.id}/docx`
     : null;
@@ -160,6 +169,11 @@ export function BlueprintPanel({
         research_questions?: string[];
         assumptions?: string[];
         engine_warnings?: string[];
+        publication?: {
+          body_pages?: number | null;
+          length_status?: "WITHIN_TARGET" | "ABOVE_TARGET" | "ABOVE_SOFT_MAX" | "TEMPLATE_LIMIT_EXCEEDED" | "RENDER_SANITY_FAILURE" | "UNMEASURED";
+          publication_allowed?: boolean;
+        };
         references_used?: Array<{ reference_id: string; title: string }>;
         key_constructs_or_variables?: string[];
         antecedent_synthesis?: {
@@ -235,13 +249,11 @@ export function BlueprintPanel({
     [blueprint?.research_questions, keyConstructs],
   );
 
-  const canRetryInterruptedGeneration =
-    projectStatus === "BLUEPRINT_GENERATING" && versions.length === 0;
   const canGenerate =
+    progress?.jobStatus !== "FAILED" && (
     projectStatus === "SOURCES_SELECTED" ||
     projectStatus === "BLUEPRINT_READY" ||
-    projectStatus === "EXPORT_READY" ||
-    canRetryInterruptedGeneration;
+    projectStatus === "EXPORT_READY");
   const statusMeta = getProjectStatusMetaForLanguage(projectStatus, language);
   const preparationChecklist = [
     {
@@ -290,49 +302,49 @@ export function BlueprintPanel({
 
     let isCancelled = false;
     const pollProgress = async () => {
-      const response = await fetch(`/api/projects/${projectId}/blueprints/progress`, {
-        cache: "no-store",
-      });
-      const payload = (await response.json()) as { progress?: BlueprintProgress };
-
-      if (isCancelled || !response.ok || !payload.progress) {
-        return;
-      }
-
-      setProgress(payload.progress);
-
-      if (payload.progress.jobId) {
-        setActiveJobId(payload.progress.jobId);
-      }
-
-      if (
-        payload.progress.shouldNudge &&
-        payload.progress.jobId &&
-        !resumeInFlightRef.current
-      ) {
-        resumeInFlightRef.current = true;
-        fetch(`/api/projects/${projectId}/blueprints/resume`, {
-          method: "POST",
+      try {
+        const response = await fetch(`/api/projects/${projectId}/blueprints/progress`, {
           cache: "no-store",
-        }).finally(() => {
-          resumeInFlightRef.current = false;
         });
-      }
+        const payload = (await response.json().catch(() => ({}))) as {
+          progress?: BlueprintProgress;
+        };
 
-      if (
-        payload.progress.jobStatus === "COMPLETED" ||
-        payload.progress.projectStatus === "BLUEPRINT_READY"
-      ) {
-        setActiveJobId(null);
-        setMessage(copy.generated);
-        router.refresh();
-      }
+        if (isCancelled) {
+          return;
+        }
 
-      if (payload.progress.jobStatus === "FAILED") {
-        setActiveJobId(null);
-        setError({
-          message: payload.progress.errorMessage ?? copy.generateError,
-        });
+        if (!response.ok || !payload.progress) {
+          setError({ message: copy.generateError });
+          return;
+        }
+
+        setError(null);
+        setProgress(payload.progress);
+
+        if (payload.progress.jobId) {
+          setActiveJobId(payload.progress.jobId);
+        }
+
+        if (
+          payload.progress.jobStatus === "COMPLETED" ||
+          payload.progress.projectStatus === "BLUEPRINT_READY"
+        ) {
+          setActiveJobId(null);
+          setMessage(copy.generated);
+          router.refresh();
+        }
+
+        if (payload.progress.jobStatus === "FAILED") {
+          setActiveJobId(null);
+          setError({
+            message: payload.progress.errorMessage ?? copy.generateError,
+          });
+        }
+      } catch {
+        if (!isCancelled) {
+          setError({ message: copy.generateError });
+        }
       }
     };
 
@@ -364,59 +376,71 @@ export function BlueprintPanel({
   function generateBlueprint() {
     setError(null);
     setMessage(null);
-    setProgress({
-      projectStatus,
-      jobId: null,
-      jobStatus: "QUEUED",
-      stageKey: "queued",
-      label: copy.queued,
-      progress: 6,
-      updatedAt: null,
-      errorMessage: null,
-      shouldNudge: false,
-    });
-
     startTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/blueprints`, {
-        method: "POST",
-      });
-
-      const payload = (await readJsonPayload(response)) as {
-        error?: string;
-        code?: string;
-        nextAction?: string;
-        job?: BlueprintJobResponse;
-      };
-
-      if (!response.ok) {
-        setError({
-          code: payload.code,
-          message: payload.error ?? copy.generateError,
-          nextAction: payload.nextAction,
+      try {
+        const draftRevision = await flushProjectDraft(projectId);
+        const response = await fetch(`/api/projects/${projectId}/blueprints`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftRevision }),
         });
+
+        const payload = (await readJsonPayload(response)) as {
+          error?: string;
+          code?: string;
+          nextAction?: string;
+          job?: BlueprintJobResponse;
+        };
+
+        if (!response.ok) {
+          setError({
+            code: payload.code,
+            message: payload.error ?? copy.generateError,
+            nextAction: payload.nextAction,
+          });
+          return;
+        }
+
+        if (payload.job) {
+          setActiveJobId(payload.job.id);
+          setProgress({
+            projectStatus: "BLUEPRINT_GENERATING",
+            jobId: payload.job.id,
+            jobStatus: payload.job.status,
+            stageKey: payload.job.currentStage,
+            label: copy.queued,
+            progress: payload.job.progress,
+            updatedAt: payload.job.updatedAt,
+            errorMessage: null,
+            shouldNudge: false,
+          });
+          setMessage(copy.queued);
+        }
+      } catch (error) {
+        setError({ message: error instanceof Error ? error.message : copy.generateError });
+      }
+    });
+  }
+
+  function selectVersion(versionId: string) {
+    setError(null);
+    startTransition(async () => {
+      const response = await fetch(`/api/projects/${projectId}/blueprints/${versionId}`, {
+        method: "PATCH",
+      });
+      const payload = (await readJsonPayload(response)) as { error?: string };
+      if (!response.ok) {
+        setError({ message: payload.error ?? "No se pudo seleccionar esta versión." });
         return;
       }
-
-      if (payload.job) {
-        setActiveJobId(payload.job.id);
-        setProgress({
-          projectStatus: "BLUEPRINT_GENERATING",
-          jobId: payload.job.id,
-          jobStatus: payload.job.status,
-          stageKey: payload.job.currentStage,
-          label: copy.queued,
-          progress: payload.job.progress,
-          updatedAt: payload.job.updatedAt,
-          errorMessage: null,
-          shouldNudge: false,
-        });
-        setMessage(copy.queued);
-      }
+      router.refresh();
     });
   }
 
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
+      <AccountPanel compact />
+      {(progress?.jobStatus === "WAITING_USER_DECISION" || progress?.jobStatus === "FAILED") && progress.jobId && <ScientificDesignApproval projectId={projectId} jobId={progress.jobId} onApproved={() => { setProgress({ ...progress, jobStatus: "WAITING_NEXT_STAGE", label: "Continuando con tu decisión" }); router.refresh(); }} />}
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
@@ -440,9 +464,7 @@ export function BlueprintPanel({
           <Sparkles className="mr-2 size-4" />
           {isPending || hasActiveGeneration
             ? copy.generating
-            : canRetryInterruptedGeneration
-              ? copy.retry
-              : copy.generate}
+            : copy.generate}
         </button>
       </div>
 
@@ -465,10 +487,8 @@ export function BlueprintPanel({
             : "border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.72)] text-[var(--color-ink)]"
         }`}
       >
-        {canGenerate
-          ? canRetryInterruptedGeneration
-            ? copy.interrupted(selectedReferenceCount)
-            : copy.readyToGenerate(selectedReferenceCount)
+        {hasActiveGeneration ? copy.generating : progress?.jobStatus === "FAILED" ? copy.generateError : canGenerate
+          ? copy.readyToGenerate(selectedReferenceCount)
           : copy.missingSources}
       </div>
 
@@ -510,7 +530,7 @@ export function BlueprintPanel({
         {error ? (
           <div className="rounded-[24px] border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">
             <p className="font-semibold">
-              {error.code ? `${error.code}: ` : ""}{error.message}
+              {error.message}
             </p>
             {error.nextAction ? (
               <p className="mt-2 leading-6">{error.nextAction}</p>
@@ -563,7 +583,34 @@ export function BlueprintPanel({
             <p className="mt-2 text-sm leading-6 text-slate-500">
               {copy.generatedAt} {new Date(latestVersion.createdAt).toLocaleString(locale)}
             </p>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Borrador congelado: revisión {latestVersion.originatingDraftRevision ?? "histórica"}. Borrador actual: revisión {draftRevision}.
+            </p>
           </div>
+
+          {versions.length > 1 ? (
+            <section className="rounded-[24px] border border-slate-200 bg-white p-5">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Historial de planes</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {versions.map((version) => {
+                  const active = version.id === latestVersion.id;
+                  return (
+                    <button
+                      className={`rounded-2xl border p-3 text-left text-sm ${active ? "border-[var(--color-plum)] bg-[rgba(219,193,255,0.18)]" : "border-slate-200 bg-slate-50"}`}
+                      disabled={active || isPending}
+                      key={version.id}
+                      onClick={() => selectVersion(version.id)}
+                      type="button"
+                    >
+                      <span className="font-semibold">{version.userLabel?.trim() || `Plan ${version.versionNumber}`}</span>
+                      <span className="mt-1 block text-xs text-slate-500">Revisión {version.originatingDraftRevision ?? "histórica"} · {new Date(version.createdAt).toLocaleDateString(locale)}</span>
+                      <span className="mt-1 block text-xs font-semibold text-[var(--color-plum)]">{active ? "Versión actual" : "Ver esta versión"}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
 
           {(blueprint?.general_objective || (blueprint?.specific_objectives ?? []).length > 0) ? (
             <div className="rounded-[24px] border border-slate-200 bg-white p-5">
@@ -619,6 +666,12 @@ export function BlueprintPanel({
             </ul>
           </div>
 
+          {blueprint?.publication?.length_status === "ABOVE_SOFT_MAX" ? (
+            <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5 text-sm leading-7 text-amber-900">
+              El plan supera la extensión objetivo. Puedes ajustarlo posteriormente según los requisitos específicos de tu universidad.
+            </div>
+          ) : null}
+
           {(blueprint?.engine_warnings ?? []).length > 0 ? (
             <div className="rounded-[24px] border border-amber-200 bg-amber-50/80 p-5">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">
@@ -652,9 +705,6 @@ export function BlueprintPanel({
                           {item.authors} {item.year ? `| ${item.year}` : ""}
                         </p>
                       </div>
-                      <span className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                        {item.reference_id}
-                      </span>
                     </div>
                     <p className="mt-3 text-sm leading-6 text-slate-700">{item.summary}</p>
                     <p className="mt-3 text-sm leading-6 text-slate-700">
@@ -694,9 +744,7 @@ export function BlueprintPanel({
                 </p>
                 <ul className="mt-3 grid gap-3 text-sm leading-7 text-slate-700">
                   {(blueprint?.references_used ?? []).map((reference) => (
-                    <li key={reference.reference_id}>
-                      <strong>{reference.reference_id}</strong>: {reference.title}
-                    </li>
+                    <li key={reference.reference_id}>{reference.title}</li>
                   ))}
                 </ul>
               </div>

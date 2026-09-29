@@ -1,4 +1,4 @@
-import { after } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 
 function getWorkerSecret() {
   const secret =
@@ -23,38 +23,7 @@ export function verifyBlueprintWorkerRequest(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   const token = header.replace(/^Bearer\s+/i, "").trim();
 
-  return token.length > 0 && token === getWorkerSecret();
-}
-
-export async function dispatchBlueprintJobRun(input: {
-  origin: string;
-  jobId: string;
-}) {
-  const secret = getWorkerSecret();
-  const url = new URL(
-    `/api/internal/blueprint-jobs/${input.jobId}/run-stage`,
-    input.origin,
-  );
-
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${secret}`,
-    },
-    cache: "no-store",
-  });
-}
-
-export function scheduleBlueprintJobRun(input: {
-  origin: string;
-  jobId: string;
-}) {
-  after(async () => {
-    await dispatchBlueprintJobRun(input).catch((error) => {
-      console.error("[blueprint-job] failed to schedule next stage", {
-        jobId: input.jobId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
-  });
+  const expected = Buffer.from(getWorkerSecret());
+  const received = Buffer.from(token);
+  return received.length === expected.length && timingSafeEqual(received, expected);
 }

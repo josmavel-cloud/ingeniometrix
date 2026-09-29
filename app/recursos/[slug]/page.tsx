@@ -83,8 +83,8 @@ export default async function ResourceArticlePage({ params }: ResourceArticlePag
             <Link className="brand-button-secondary hidden px-4 py-2 text-sm font-semibold sm:inline-flex" href="/recursos">
               Recursos
             </Link>
-            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/campana">
-              Snapshot
+            <Link className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4" href="/workspace">
+              Entrar
             </Link>
           </div>
         </div>
@@ -132,11 +132,10 @@ export default async function ResourceArticlePage({ params }: ResourceArticlePag
               ¿Quieres aterrizar tu tema?
             </h2>
             <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
-              Solicita un snapshot para convertir tu idea inicial en una primera
-              base visual y revisable.
+              Convierte tu idea inicial en una base clara, sustentada y revisable.
             </p>
-            <Link className="mt-5 brand-button-primary px-5 py-3 text-sm font-semibold" href="/campana">
-              Ver snapshot
+            <Link className="mt-5 brand-button-primary px-5 py-3 text-sm font-semibold" href="/workspace">
+              Entrar a Ingeniometrix
             </Link>
           </div>
         </aside>

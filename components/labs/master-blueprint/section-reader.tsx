@@ -471,8 +471,8 @@ export function MasterBlueprintSectionReader(props: SectionReaderProps) {
           <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
             No se encontro un snapshot valido del paso 9.
           </p>
-          <Link className="brand-button-secondary mt-6 inline-flex px-4 py-3 text-sm font-semibold" href="/lab/master-blueprint">
-            Volver al lab principal
+          <Link className="brand-button-secondary mt-6 inline-flex px-4 py-3 text-sm font-semibold" href="/projects">
+            Volver a proyectos
           </Link>
         </div>
       </main>
@@ -506,9 +506,9 @@ export function MasterBlueprintSectionReader(props: SectionReaderProps) {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link className="brand-button-secondary inline-flex items-center gap-2 px-4 py-3 text-sm font-semibold" href="/lab/master-blueprint">
+            <Link className="brand-button-secondary inline-flex items-center gap-2 px-4 py-3 text-sm font-semibold" href="/projects">
               <ArrowLeft className="size-4" />
-              Volver al lab
+              Volver a proyectos
             </Link>
           </div>
         </div>

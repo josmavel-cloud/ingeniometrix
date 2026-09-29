@@ -1,11 +1,12 @@
 "use client";
 
-import type { Intake, Project } from "@prisma/client";
+import type { ProjectView } from "@/lib/hybrid-contracts";
 import { FormEvent, KeyboardEvent, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import type { SupportedLanguage } from "@/lib/language";
 import type { IntakePreset } from "@/lib/intake-presets";
+import { usePersistedIntake } from "./use-persisted-intake";
 import { getProjectUiCopy } from "@/lib/project-ui-copy";
 import {
   findProjectPresetByTitle,
@@ -13,9 +14,7 @@ import {
 } from "@/lib/project-presets";
 
 type IntakeFormProps = {
-  project: Project & {
-    intake: Intake | null;
-  };
+  project: Pick<ProjectView, "id" | "title" | "catalogTopicId" | "intake">;
   language: SupportedLanguage;
 };
 
@@ -28,6 +27,9 @@ type IntakeState = {
   availableData: string;
   preferredMethodology: string;
   advisorNotes: string;
+  researchScope: string;
+  constructs: string;
+  pendingDecisions: string;
 };
 
 type GeneratedIntakeDraft = IntakeState & {
@@ -49,17 +51,20 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     availableData: project.intake?.availableData ?? "",
     preferredMethodology: project.intake?.preferredMethodology ?? "",
     advisorNotes: project.intake?.advisorNotes ?? "",
+    researchScope: project.intake?.researchScope ?? "",
+    constructs: project.intake?.constructs ?? "",
+    pendingDecisions: project.intake?.pendingDecisions ?? "",
   });
   const [activePresetId, setActivePresetId] = useState("");
   const [generatedDrafts, setGeneratedDrafts] = useState<GeneratedIntakeDraft[]>([]);
   const [activeGeneratedDraftIndex, setActiveGeneratedDraftIndex] = useState(0);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
-  const [hasRequestedInitialDraft, setHasRequestedInitialDraft] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isGeneratingDrafts, startDraftTransition] = useTransition();
+  const persisted = usePersistedIntake(project.id, form, setForm);
 
   const relatedProjectPreset = useMemo(
     () =>
@@ -98,13 +103,6 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     form.academicConstraints,
     form.advisorNotes,
   ].some((value) => value.trim().length > 0);
-  const needsGeneratedIntake = [
-    form.problemContext,
-    form.targetPopulation,
-    form.availableData,
-    form.preferredMethodology,
-    form.academicConstraints,
-  ].some((value) => value.trim().length === 0);
 
   function applyPreset(preset: IntakePreset) {
     setActivePresetId(preset.id);
@@ -117,6 +115,9 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
       availableData: preset.availableData,
       preferredMethodology: preset.preferredMethodology,
       advisorNotes: preset.advisorNotes,
+      researchScope: "",
+      constructs: "",
+      pendingDecisions: "",
     });
   }
 
@@ -138,6 +139,9 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
       availableData: draft.availableData,
       preferredMethodology: draft.preferredMethodology,
       advisorNotes: draft.advisorNotes,
+      researchScope: draft.researchScope ?? "",
+      constructs: draft.constructs ?? "",
+      pendingDecisions: draft.pendingDecisions ?? "",
     });
     setDraftMessage(copy.draftApplied(draft.label));
     setDraftError(null);
@@ -153,24 +157,14 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
       availableData: draft.availableData,
       preferredMethodology: draft.preferredMethodology,
       advisorNotes: draft.advisorNotes,
+      researchScope: draft.researchScope ?? "",
+      constructs: draft.constructs ?? "",
+      pendingDecisions: draft.pendingDecisions ?? "",
     };
   }
 
   async function saveIntakePayload(nextForm: IntakeState) {
-    const response = await fetch(`/api/projects/${project.id}/intake`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(toIntakeState(nextForm)),
-    });
-    const payload = (await response.json()) as { error?: string };
-
-    if (!response.ok) {
-      throw new Error(payload.error ?? copy.saveError);
-    }
-
-    return payload;
+    return persisted.confirm(toIntakeState(nextForm));
   }
 
   async function requestGeneratedDrafts(options?: {
@@ -182,6 +176,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
 
     startDraftTransition(async () => {
       try {
+        await persisted.confirm(form);
         const response = await fetch(`/api/projects/${project.id}/intake-drafts`, {
           method: "POST",
           headers: {
@@ -232,21 +227,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
     applyPreset(firstPreset);
   }, [intakePresets, project.intake]);
 
-  useEffect(() => {
-    if (hasRequestedInitialDraft || isGeneratingDrafts || !needsGeneratedIntake) {
-      return;
-    }
-
-    if (!form.topic.trim()) {
-      return;
-    }
-
-    setHasRequestedInitialDraft(true);
-    void requestGeneratedDrafts({
-      variantSeed: "Complete every missing intake field for the selected topic.",
-      autoSaveFirstDraft: true,
-    });
-  }, [form.topic, hasRequestedInitialDraft, isGeneratingDrafts, needsGeneratedIntake]);
+  // Opening a saved project only restores it. Suggestions require an explicit click.
 
   function cyclePreset() {
     if (generatedDrafts.length > 0) {
@@ -319,6 +300,10 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
 
   return (
     <form className="grid gap-8" onSubmit={handleSubmit}>
+      <div aria-live="polite" className="text-sm text-[var(--color-muted)]">{persisted.message}
+        {persisted.error && <><p role="alert" className="mt-2 text-rose-700">{persisted.error}</p>{persisted.canRetry && <button type="button" className="mr-4 mt-2 underline" onClick={persisted.retrySaving}>Reintentar guardar</button>}<button type="button" className="mt-2 underline" onClick={() => { if (window.confirm("Cargar lo guardado reemplazará el texto de esta pestaña. Copia antes los cambios que quieras conservar.")) persisted.reloadSaved(); }}>Cargar revisión guardada</button></>}
+      </div>
+      <fieldset disabled={!persisted.ready} className="contents">
       <div className="rounded-[28px] p-5 brand-card-lilac sm:grid sm:grid-cols-[1fr_auto] sm:items-start sm:gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(23,19,31,0.52)]">
@@ -491,8 +476,8 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
         </div>
       </section>
 
-      <details className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-white/72 p-5">
-        <summary className="cursor-pointer list-none">
+      <section className="rounded-[28px] border border-[rgba(74,58,97,0.08)] bg-white/72 p-5">
+        <div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[rgba(100,94,115,0.62)]">
@@ -502,14 +487,11 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
                 {copy.expandedTitle}
               </p>
             </div>
-            <span className="brand-button-secondary px-4 py-2 text-sm font-semibold">
-              {copy.openAdvanced}
-            </span>
           </div>
           <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
             {copy.expandedBody}
           </p>
-        </summary>
+        </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-2">
           <label className="grid gap-2">
@@ -523,6 +505,21 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
               placeholder={copy.researchLinePlaceholder}
               value={form.researchLine}
             />
+          </label>
+
+          <label className="grid gap-2 lg:col-span-2">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Alcance de la investigacion</span>
+            <textarea className={textareaClassName} onChange={(event) => updateField("researchScope", event.target.value)} placeholder="Delimitacion tematica, temporal, geografica o del sistema." rows={3} value={form.researchScope} />
+          </label>
+
+          <label className="grid gap-2 lg:col-span-2">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Variables, categorias o constructos</span>
+            <textarea className={textareaClassName} onChange={(event) => updateField("constructs", event.target.value)} placeholder="Incluye solo los elementos que correspondan a tu enfoque metodologico." rows={3} value={form.constructs} />
+          </label>
+
+          <label className="grid gap-2 lg:col-span-2">
+            <span className="text-sm font-semibold text-[var(--color-muted)]">Decisiones pendientes</span>
+            <textarea className={textareaClassName} onChange={(event) => updateField("pendingDecisions", event.target.value)} placeholder="Aspectos que aun deben confirmarse con datos, asesor o acceso de campo." rows={3} value={form.pendingDecisions} />
           </label>
 
           <label className="grid gap-2">
@@ -580,7 +577,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
             />
           </label>
         </div>
-      </details>
+      </section>
 
       {error ? <p className="text-sm text-rose-600">{error}</p> : null}
       {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
@@ -601,6 +598,7 @@ export function IntakeForm({ project, language }: IntakeFormProps) {
           {copy.saveHint}
         </p>
       </div>
+      </fieldset>
     </form>
   );
 }

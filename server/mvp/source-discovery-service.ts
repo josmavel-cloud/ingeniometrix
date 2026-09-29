@@ -1,0 +1,163 @@
+import { randomUUID } from "node:crypto";
+
+import { ProjectStatus } from "@prisma/client";
+
+import { prisma } from "@/lib/prisma";
+import {
+  MAX_SELECTED_REFERENCES,
+  MIN_SELECTED_REFERENCES,
+} from "@/lib/research-workflow";
+import {
+  searchProjectReferencesV2,
+  type SearchProjectReferencesV2Result,
+  type SourceDiscoveryBatchKind,
+} from "@/server/retrieval/reference-search-v2";
+import { loadSearchInput } from "@/server/retrieval/search-intent-service";
+import {
+  buildMvpApiUsageReport,
+  captureMvpApiUsageSnapshot,
+} from "@/server/mvp/api-usage-service";
+import { withLlmUsageContext } from "@/server/llm-usage-registry";
+
+export type MvpSourceDiscoveryResult = {
+  project_id: string;
+  status: "candidates_ready" | "blocked";
+  batch_kind: SourceDiscoveryBatchKind | null;
+  search: SearchProjectReferencesV2Result | null;
+  candidate_source_count: number;
+  suggested_selection_ids: string[];
+  blockers: string[];
+  warnings: string[];
+  next_action_es: string;
+  api_usage: {
+    run_id: string | null;
+    report: Awaited<ReturnType<typeof buildMvpApiUsageReport>> | null;
+  };
+};
+
+export function suggestedSelectionIds(result: SearchProjectReferencesV2Result) {
+  return result.searchSnapshot.references
+    .filter((reference) => reference.admission?.state === "ADMITTED" && reference.suggestedSelectedOrder !== null)
+    .sort(
+      (left, right) =>
+        (left.suggestedSelectedOrder ?? 999) - (right.suggestedSelectedOrder ?? 999),
+    )
+    .slice(0, MAX_SELECTED_REFERENCES)
+    .map((reference) => reference.referenceId);
+}
+
+export async function runMvpSourceDiscovery(
+  userId: string,
+  projectId: string,
+  options?: { desiredTotal?: number; batchKind?: SourceDiscoveryBatchKind },
+): Promise<MvpSourceDiscoveryResult> {
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      userId,
+    },
+    include: {
+      intake: true,
+    },
+  });
+
+  if (!project) {
+    throw new Error("Proyecto no encontrado.");
+  }
+
+  if (!project.intake) {
+    return {
+      project_id: projectId,
+      status: "blocked",
+      batch_kind: null,
+      search: null,
+      candidate_source_count: 0,
+      suggested_selection_ids: [],
+      blockers: ["El proyecto no tiene intake guardado."],
+      warnings: [],
+      next_action_es: "Completa el intake antes de buscar fuentes.",
+      api_usage: { run_id: null, report: null },
+    };
+  }
+
+  const batchKind = options?.batchKind ?? "initial";
+  const searchInput = await loadSearchInput(userId, projectId);
+  const runId = `mvp-source-discovery-${batchKind}-${randomUUID()}`;
+  const usageBefore = await captureMvpApiUsageSnapshot();
+
+  try {
+    const search = await withLlmUsageContext(
+      {
+        projectId,
+        userId,
+        runId,
+        stage: "source_discovery",
+        source: "runMvpSourceDiscovery",
+      },
+      () =>
+        searchProjectReferencesV2(userId, projectId, searchInput, {
+          desiredTotal: options?.desiredTotal ?? (batchKind === "more" ? MAX_SELECTED_REFERENCES : 5),
+          batchKind,
+        }),
+    );
+    const apiUsageReport = await buildMvpApiUsageReport({
+      before: usageBefore,
+      label: "mvp_source_discovery",
+      filter: { projectId, runId },
+    });
+    const candidateSourceCount = await prisma.projectReference.count({
+      where: { projectId },
+    });
+    const suggestedIds = suggestedSelectionIds(search);
+    const enoughCandidates = search.searchSnapshot.references.length >= MIN_SELECTED_REFERENCES;
+
+    return {
+      project_id: projectId,
+      status: enoughCandidates ? "candidates_ready" : "blocked",
+      batch_kind: batchKind,
+      search,
+      candidate_source_count: candidateSourceCount,
+      suggested_selection_ids: suggestedIds,
+      blockers: enoughCandidates
+        ? []
+        : [
+            `Discovery admitió ${search.searchSnapshot.references.length} fuente(s) pertinente(s); se requieren al menos ${MIN_SELECTED_REFERENCES} para selección MVP.`,
+          ],
+      warnings: search.totalResults === 0 ? ["No se persistieron candidatos desde los proveedores."] : [],
+      next_action_es: enoughCandidates
+        ? "Revisa y selecciona fuentes. Deep Research aún no debe ejecutarse; primero va inspección/source health."
+        : "Ajusta el intake/query o agrega fuentes manuales antes de inspección. No ejecutes Deep Research todavía.",
+      api_usage: { run_id: runId, report: apiUsageReport },
+    };
+  } catch (error) {
+    await prisma.project.update({
+      where: { id: projectId },
+      data: { status: ProjectStatus.INTAKE_READY },
+    });
+
+    return {
+      project_id: projectId,
+      status: "blocked",
+      batch_kind: batchKind,
+      search: null,
+      candidate_source_count: 0,
+      suggested_selection_ids: [],
+      blockers: [
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar discovery OpenAlex/Crossref.",
+      ],
+      warnings: ["Discovery real falló; este bloqueo no debe activar Deep Research todavía."],
+      next_action_es:
+        "Reintenta discovery normal o corrige el intake. Deep Research se reserva para gaps post-inspección.",
+      api_usage: {
+        run_id: runId,
+        report: await buildMvpApiUsageReport({
+          before: usageBefore,
+          label: "mvp_source_discovery_failed",
+          filter: { projectId, runId },
+        }),
+      },
+    };
+  }
+}

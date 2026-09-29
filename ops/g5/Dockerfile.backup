@@ -1,0 +1,3 @@
+FROM postgres:16-alpine
+RUN apk add --no-cache restic openssh-client rclone
+# Secrets are injected at execution; /scratch is tmpfs in Compose.

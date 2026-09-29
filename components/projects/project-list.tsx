@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { University } from "@prisma/client";
-
-import { getUniversityDisplayNameByCode } from "@/lib/peru-universities";
 import { getProjectStatusToneClasses } from "@/lib/project-status";
 import { getProjectStatusMetaForLanguage } from "@/lib/project-ui-copy";
 import type { SupportedLanguage } from "@/lib/language";
@@ -23,8 +20,7 @@ type LatestProjectJob = {
 export type ProjectListItem = {
   id: string;
   title: string;
-  university: University;
-  program: string;
+  program: string | null;
   status: string;
   updatedAt: string;
   latestJob: LatestProjectJob | null;
@@ -74,18 +70,6 @@ function isActiveJob(status: string | null | undefined) {
   return status === "QUEUED" || status === "RUNNING" || status === "WAITING_NEXT_STAGE";
 }
 
-function formatStage(stage: string | null) {
-  if (!stage) {
-    return null;
-  }
-
-  return stage
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
 export function ProjectList({
   initialProjects,
   language,
@@ -96,7 +80,7 @@ export function ProjectList({
   const router = useRouter();
   const t = copy[language];
   const [projects, setProjects] = useState(initialProjects);
-  const resumeInFlight = useRef(new Set<string>());
+  useEffect(() => setProjects(initialProjects), [initialProjects]);
   const hasActiveProject = useMemo(
     () => projects.some((project) => isActiveJob(project.latestJob?.status)),
     [projects],
@@ -141,20 +125,6 @@ export function ProjectList({
         }),
       );
 
-      for (const update of payload.projects) {
-        if (!update.job?.shouldNudge || resumeInFlight.current.has(update.id)) {
-          continue;
-        }
-
-        resumeInFlight.current.add(update.id);
-        fetch(`/api/projects/${update.id}/blueprints/resume`, {
-          method: "POST",
-          cache: "no-store",
-        }).finally(() => {
-          resumeInFlight.current.delete(update.id);
-        });
-      }
-
       if (payload.projects.some((project) => project.status === "BLUEPRINT_READY")) {
         router.refresh();
       }
@@ -188,7 +158,7 @@ export function ProjectList({
                 {project.title}
               </p>
               <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-                {getUniversityDisplayNameByCode(project.university)} | {project.program}
+                {project.program}
               </p>
               <p className="mt-3 text-sm leading-7 text-[var(--color-muted)]">
                 {statusMeta.summary}
@@ -211,7 +181,7 @@ export function ProjectList({
                     />
                   </div>
                   <p className="mt-2 text-xs leading-5 text-[var(--color-muted)]">
-                    {t.stage}: {formatStage(activeJob.currentStage) ?? t.active}
+                    Preparando tu plan. Puedes salir y volver más tarde.
                   </p>
                 </div>
               ) : jobFailed ? (

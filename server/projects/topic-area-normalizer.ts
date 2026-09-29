@@ -1,3 +1,5 @@
+import { TOPIC_AREA_NORMALIZER_1_PROMPT } from "@/server/mvp/prompts/topic-area-normalizer.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import topicAreaNormalizationSchema from "@/ai/schemas/topic-area-normalization.schema.json";
 import { getConfiguredLlmProvider } from "@/llm";
 import { PROJECT_CAREERS } from "@/lib/project-presets";
@@ -18,27 +20,9 @@ export async function normalizeTopicAreaSemantically(rawLabel: string) {
 
   return provider.generateStructuredObject<TopicAreaNormalizationResult>({
     model: process.env.LLM_FAST_MODEL?.trim() || "gpt-5.4-mini",
-    prompt: `
-Actua como un clasificador semantico rapido para areas o carreras de investigacion en Peru.
-
-Objetivo:
-- corregir o normalizar el texto ingresado por el usuario
-- asignarlo a una carrera del catalogo si existe cercania semantica suficiente
-- si no existe una carrera claramente equivalente, conserva una etiqueta limpia y deja el canonico en null
-
-Reglas:
-- no inventes ids fuera del catalogo
-- no fuerces una carrera si la relacion no es razonable
-- corrige errores obvios de redaccion, tildes o formulacion
-- responde solo con el esquema solicitado
-
-Texto del usuario:
-- ${rawLabel}
-
-Catalogo disponible:
-${catalogEntries}
-    `.trim(),
+    prompt: renderVersionedPrompt(TOPIC_AREA_NORMALIZER_1_PROMPT, { var_0: (rawLabel), var_1: (catalogEntries) }).trim(),
     schemaName: "topic_area_normalization",
+    trackingAttribution: { promptVersion: TOPIC_AREA_NORMALIZER_1_PROMPT.version },
     schema: topicAreaNormalizationSchema as Record<string, unknown>,
   });
 }

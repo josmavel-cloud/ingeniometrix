@@ -1,0 +1,235 @@
+{
+  "oldGroups": {
+    "central": 8,
+    "refiner": 6,
+    "exploratory": 1
+  },
+  "oldQueries": {
+    "necessaryOnly": [
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"albañilería\" OR \"masonry\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"escala natural\" OR \"full-scale\")"
+    ],
+    "complementaryBoosted": [
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\") AND (\"diseño sismorresistente\" OR \"seismic-resistant design\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\") AND (\"nueva norma de diseño sismorresistente del 2026\" OR \"new seismic-resistant design code for 2026\")",
+      "(\"Simulación sísmica de especímenes de escala natural de albañilería\" OR \"Seismic simulation of full-scale masonry specimens\") AND (\"simulación sísmica\" OR \"seismic simulation\") AND (\"criterios de la nueva norma de diseño sismorresistente 2026\" OR \"criteria of the new seismic-resistant design code 2026\")"
+    ],
+    "optionalBackups": []
+  },
+  "rawOutput": {
+    "terms": [
+      {
+        "sourceField": "originalIdea",
+        "anchor": "Simulación sísmica de especímenes de escala natural de albañilería",
+        "text": "Simulación sísmica de especímenes de escala natural de albañilería",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "originalIdea",
+        "anchor": "Simulación sísmica de especímenes de escala natural de albañilería",
+        "text": "Seismic simulation of full-scale masonry specimens",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "topic",
+        "anchor": "Simulación sísmica de especímenes de escala natural de albañilería",
+        "text": "Simulación sísmica de especímenes de escala natural de albañilería",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "topic",
+        "anchor": "Simulación sísmica de especímenes de escala natural de albañilería",
+        "text": "Seismic simulation of full-scale masonry specimens",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "simulación sísmica",
+        "text": "simulación sísmica",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "simulación sísmica",
+        "text": "seismic simulation",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "albañilería",
+        "text": "albañilería",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "albañilería",
+        "text": "masonry",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "escala natural",
+        "text": "escala natural",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "escala natural",
+        "text": "full-scale",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "diseño sismorresistente",
+        "text": "diseño sismorresistente",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "diseño sismorresistente",
+        "text": "seismic-resistant design",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "originalIdea",
+        "anchor": "nueva norma de diseño sismorresistente del 2026",
+        "text": "nueva norma de diseño sismorresistente del 2026",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "originalIdea",
+        "anchor": "nueva norma de diseño sismorresistente del 2026",
+        "text": "new seismic-resistant design code for 2026",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "problem",
+        "anchor": "criterios de la nueva norma de diseño sismorresistente 2026",
+        "text": "criterios de la nueva norma de diseño sismorresistente 2026",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "problem",
+        "anchor": "criterios de la nueva norma de diseño sismorresistente 2026",
+        "text": "criteria of the new seismic-resistant design code 2026",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "problem",
+        "anchor": "respuesta sísmica",
+        "text": "respuesta sísmica",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "problem",
+        "anchor": "respuesta sísmica",
+        "text": "seismic response",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "object",
+        "anchor": "Especímenes de albañilería de escala natural",
+        "text": "Especímenes de albañilería de escala natural",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "object",
+        "anchor": "Especímenes de albañilería de escala natural",
+        "text": "full-scale masonry specimens",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "context",
+        "anchor": "Perú",
+        "text": "Perú",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "context",
+        "anchor": "Perú",
+        "text": "Peru",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "purpose",
+        "anchor": "Evaluar los criterios",
+        "text": "Evaluar los criterios",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "purpose",
+        "anchor": "Evaluar los criterios",
+        "text": "to evaluate the criteria",
+        "type": "TRANSLATION",
+        "confidence": "MEDIUM"
+      },
+      {
+        "sourceField": "intendedOutput",
+        "anchor": "Evaluación de criterios normativos para diseño sismorresistente",
+        "text": "Evaluación de criterios normativos para diseño sismorresistente",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "intendedOutput",
+        "anchor": "Evaluación de criterios normativos para diseño sismorresistente",
+        "text": "evaluation of normative criteria for seismic-resistant design",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "taxonomy",
+        "anchor": "Ingeniería civil estructural / sismorresistencia",
+        "text": "Ingeniería civil estructural / sismorresistencia",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "taxonomy",
+        "anchor": "Ingeniería civil estructural / sismorresistencia",
+        "text": "structural civil engineering / seismic resistance",
+        "type": "TRANSLATION",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "academicLevel",
+        "anchor": "MAESTRIA",
+        "text": "MAESTRIA",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH"
+      },
+      {
+        "sourceField": "academicLevel",
+        "anchor": "MAESTRIA",
+        "text": "master’s level",
+        "type": "TRANSLATION",
+        "confidence": "MEDIUM"
+      }
+    ],
+    "ambiguities": []
+  }
+}

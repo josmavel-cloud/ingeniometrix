@@ -2,26 +2,28 @@ import Link from "next/link";
 
 import { ProjectList, type ProjectListItem } from "@/components/projects/project-list";
 import { ProjectShell } from "@/components/projects/project-shell";
-import { requireCurrentUser } from "@/server/auth/session";
-import { getRequestLanguage } from "@/server/i18n/request-language";
-import { listProjectsForUser } from "@/server/projects/project-service";
+import { requireCurrentUser, pageData } from "@/lib/backend-http";
+import { AccountPanel } from "@/components/commercial/account-panel";
+
+export const dynamic = "force-dynamic";
 
 const copy = {
   es: {
     title: "Tus proyectos",
     description:
-      "El MVP se mueve en un solo recorrido: define contexto, entra con una base sugerida, afina el intake y valida fuentes antes del blueprint.",
+      "Retoma tu investigacion o empieza una nueva: idea, definicion, evidencia, plan y descarga.",
     kicker: "Inicio del workspace",
     heading: "Sigue cada proyecto como un recorrido guiado.",
     activeUser: "Usuario activo",
     newProject: "Nuevo proyecto",
     emptyTitle: "Aun no tienes proyectos.",
     emptyBody:
-      "El nuevo arranque del MVP empieza por contexto y sugerencias. Creas una base inicial en segundos y despues entras al workspace para afinar el intake y avanzar hacia fuentes y blueprint.",
+      "Empieza con una idea. Ingeniometrix te ayudara a definirla, contrastarla con evidencia y convertirla en un plan revisable.",
     createFirst: "Crear primer proyecto",
-    step1: ["Paso 1", "Define contexto", "Elige universidad, nivel, area e interes para entrar con mejor punto de partida."],
-    step2: ["Paso 2", "Elige una base sugerida", "Ingeniometrix te propone temas iniciales del catalogo segun ese contexto."],
-    step3: ["Paso 3", "Refina y valida", "Ajusta intake, selecciona fuentes trazables y genera un blueprint para revision academica."],
+    step1: ["Paso 1", "Idea", "Parte de una idea propia o genera propuestas compatibles con tu nivel, área y contexto."],
+    step2: ["Paso 2", "Define tu investigación", "Delimita problema, unidad de análisis, alcance y metodología sin perder tu borrador."],
+    step3: ["Paso 3", "Evidencia", "Busca y selecciona fuentes trazables para sostener el plan."],
+    step4: ["Paso 4", "Plan de tesis", "Genera una versión inmutable y descarga sus documentos cuando estén listos."],
     nextStep: "Siguiente paso",
   },
   en: {
@@ -36,49 +38,20 @@ const copy = {
     emptyBody:
       "The MVP now starts with context and suggestions. Create an initial base in seconds, then enter the workspace to refine the intake and move toward sources and blueprint.",
     createFirst: "Create first project",
-    step1: ["Step 1", "Define context", "Choose university, degree, area, and interest to start from a better base."],
+    step1: ["Step 1", "Idea", "Start from your own idea or proposals compatible with your level, field, and context."],
     step2: ["Step 2", "Choose a suggested base", "Ingeniometrix proposes initial catalog topics from that context."],
     step3: ["Step 3", "Refine and validate", "Adjust the intake, select traceable sources, and generate a blueprint for academic review."],
+    step4: ["Step 4", "Thesis plan", "Generate an immutable version and download its documents when ready."],
     nextStep: "Next step",
   },
 };
 
 export default async function ProjectsPage() {
   const user = await requireCurrentUser();
-  const language = await getRequestLanguage();
+  const language = "es" as const;
   const t = copy[language];
-  const projects = await listProjectsForUser(user.id);
-  const projectListItems: ProjectListItem[] = projects.map((project) => {
-    const latestJob = project.blueprintJobs[0] ?? null;
-
-    return {
-      id: project.id,
-      title: project.title,
-      university: project.university,
-      program: project.program,
-      status: project.status,
-      updatedAt: project.updatedAt.toISOString(),
-      latestJob: latestJob
-        ? {
-            id: latestJob.id,
-            status: latestJob.status,
-            currentStage: latestJob.currentStage,
-            progress: latestJob.progress,
-            errorMessage: latestJob.errorMessage,
-            updatedAt: latestJob.updatedAt.toISOString(),
-            shouldNudge: false,
-          }
-        : null,
-      artifactCount: project.generatedArtifacts.length,
-      hasDocx: project.generatedArtifacts.some(
-        (artifact) => artifact.kind === "BLUEPRINT_DOCX",
-      ),
-      hasPdf: project.generatedArtifacts.some(
-        (artifact) =>
-          artifact.kind === "BLUEPRINT_PDF" || artifact.kind === "SOURCE_PDF",
-      ),
-    };
-  });
+  const projects = await pageData("projects");
+  const projectListItems: ProjectListItem[] = projects;
 
   return (
     <ProjectShell
@@ -86,6 +59,7 @@ export default async function ProjectsPage() {
       description={t.description}
     >
       <section className="surface-panel rounded-[32px] p-6 sm:p-8">
+        <AccountPanel compact />
         <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="brand-kicker">{t.kicker}</p>
@@ -125,7 +99,7 @@ export default async function ProjectsPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-4">
               <article className="rounded-[28px] p-5 brand-card-lilac">
                 <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">
                   {t.step1[0]}
@@ -160,6 +134,12 @@ export default async function ProjectsPage() {
                 <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">
                   {t.step3[2]}
                 </p>
+              </article>
+
+              <article className="rounded-[28px] p-5 brand-card-blush">
+                <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[rgba(23,19,31,0.52)]">{t.step4[0]}</p>
+                <p className="mt-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">{t.step4[1]}</p>
+                <p className="mt-2 text-sm leading-6 text-[rgba(23,19,31,0.72)]">{t.step4[2]}</p>
               </article>
             </div>
           </div>

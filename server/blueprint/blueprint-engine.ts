@@ -219,7 +219,7 @@ export async function loadBlueprintTemplateContext(project: Project) {
     projectTemplateKey: project.templateKey,
     projectUniversity: project.university,
     projectDegreeLevel: project.degreeLevel,
-    projectProgram: project.program,
+    projectProgram: project.program ?? "",
   });
 
   const availableSemanticKeys = collectTemplateSemanticKeys(runtime.templateCandidate.sections);
@@ -230,8 +230,8 @@ export async function loadBlueprintTemplateContext(project: Project) {
     selected_by_user: true,
     source: "template_runtime",
     template_family: runtime.templateCandidate.template_family ?? null,
-    university: runtime.templateCandidate.institution.university_name ?? project.university,
-    program: runtime.templateCandidate.institution.program_name ?? project.program,
+    university: runtime.templateCandidate.institution.university_name ?? project.university ?? "",
+    program: runtime.templateCandidate.institution.program_name ?? project.program ?? "",
     degree_level: runtime.templateCandidate.institution.degree_level ?? project.degreeLevel,
     required_section_keys: availableSemanticKeys,
     available_semantic_keys: availableSemanticKeys,

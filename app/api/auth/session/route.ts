@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/prisma";
+import {
+  assertLoginAllowed,
+  clearLoginFailures,
+  recordLoginFailure,
+} from "@/server/auth/login-throttle";
 import { verifyPassword } from "@/server/auth/password";
 import { createSession, validateEmail } from "@/server/auth/session";
+import { rateLimit, requestAddress, secretHash, securityAudit } from "@/server/auth/security-events";
+import { limitedJson } from "@/server/commercial/mercado-pago";
 
 function sanitizeRuntimeMessage(value: string) {
   return value
@@ -12,18 +19,18 @@ function sanitizeRuntimeMessage(value: string) {
 }
 
 function toAuthRuntimeErrorPayload(stage: string, error: unknown) {
+  if (process.env.NODE_ENV === "production") {
+    return { error: "No se pudo iniciar la sesion." };
+  }
+
   return {
     error: "No se pudo iniciar la sesion.",
     diagnostic: {
       stage,
       name: error instanceof Error ? error.name : "UnknownError",
-      message:
-        error instanceof Error ? sanitizeRuntimeMessage(error.message) : null,
+      message: error instanceof Error ? sanitizeRuntimeMessage(error.message) : null,
       code:
-        error &&
-        typeof error === "object" &&
-        "code" in error &&
-        typeof error.code === "string"
+        error && typeof error === "object" && "code" in error && typeof error.code === "string"
           ? error.code
           : null,
     },
@@ -35,7 +42,8 @@ export async function POST(request: Request) {
 
   try {
     stage = "READ_BODY";
-    const body = (await request.json()) as {
+    await rateLimit("password-login", requestAddress(request), 30);
+    const body = (await limitedJson(request, 4096)) as {
       email?: string;
       password?: string;
     };
@@ -50,21 +58,36 @@ export async function POST(request: Request) {
       );
     }
 
+    const throttle = await assertLoginAllowed(request, email);
+    if (!throttle.allowed) {
+      return NextResponse.json(
+        { error: "Demasiados intentos. Intenta nuevamente mas tarde." },
+        { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds) } },
+      );
+    }
+
     stage = "USER_LOOKUP";
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
     stage = "VERIFY_PASSWORD";
-    if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    const passwordValid = await verifyPassword(password, user?.passwordHash);
+    if (!user || !passwordValid) {
+      await securityAudit("LOGIN_FAILURE", null, { method: "password", subjectHash: secretHash(email) });
+      const blockedUntil = await recordLoginFailure(throttle.keyHash);
       return NextResponse.json(
         { error: "Credenciales invalidas." },
-        { status: 401 },
+        {
+          status: blockedUntil ? 429 : 401,
+          headers: blockedUntil ? { "Retry-After": String(15 * 60) } : undefined,
+        },
       );
     }
 
     stage = "CREATE_SESSION";
-    await createSession({ userId: user.id });
+    await clearLoginFailures(throttle.keyHash);
+    await createSession({ userId: user.id, userAgent: request.headers.get("user-agent") });
 
     return NextResponse.json({
       user: {
@@ -74,7 +97,10 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error(`Unable to start Ingeniometrix session at ${stage}.`, error);
+    if (error instanceof Error && error.message === "RATE_LIMITED") return NextResponse.json({ error: "Demasiados intentos. Intenta nuevamente más tarde." }, { status: 429 });
+    console.error(`Unable to start Ingeniometrix session at ${stage}.`, {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
 
     return NextResponse.json(
       toAuthRuntimeErrorPayload(stage, error),

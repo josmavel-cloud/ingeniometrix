@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { BrandBadge } from "@/components/brand/brand-badge";
-import { LanguageToggle } from "@/components/i18n/language-toggle";
 import { AiChatboxPreview } from "@/components/marketing/ai-chatbox-preview";
 import {
   ResearchFlowDiagram,
@@ -10,7 +9,6 @@ import {
   ThesisPlanMockup,
 } from "@/components/marketing/research-visuals";
 import { getCampaignCopy } from "@/lib/marketing/portal-copy";
-import { getRequestLanguage } from "@/server/i18n/request-language";
 
 import {
   ArrowRight,
@@ -25,8 +23,8 @@ import {
 
 const stepIcons = [FileText, Sparkles, ClipboardCheck, Route];
 
-export async function SnapshotLanding() {
-  const language = await getRequestLanguage();
+export function SnapshotLanding() {
+  const language = "es" as const;
   const copy = getCampaignCopy(language);
 
   return (
@@ -50,7 +48,6 @@ export async function SnapshotLanding() {
           </nav>
 
           <div className="flex min-w-0 items-center gap-2">
-            <LanguageToggle initialLanguage={language} />
             <span className="hidden sm:inline-flex">
               <Link className="brand-button-secondary px-4 py-2 text-sm font-semibold" href="/">
                 {copy.nav.portal}

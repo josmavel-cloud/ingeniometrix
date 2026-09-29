@@ -1,4 +1,4 @@
-import type { DegreeLevel } from "@prisma/client";
+import type { DegreeLevel } from "@/lib/hybrid-contracts";
 
 import { getDegreeLevelLabelForLanguage } from "@/lib/degree-levels";
 import type { SupportedLanguage } from "@/lib/language";
@@ -6,7 +6,7 @@ import { getProjectUiCopy } from "@/lib/project-ui-copy";
 import { getTemplateDisplayLabel } from "@/lib/system-master-template";
 
 type ProjectContextRibbonProps = {
-  universityLabel: string;
+  universityLabel?: string | null;
   degreeLevel: DegreeLevel;
   program: string;
   templateKey: string;
@@ -28,10 +28,7 @@ export function ProjectContextRibbon({
 }: ProjectContextRibbonProps) {
   const copy = getProjectUiCopy(language).contextRibbon;
   const items = [
-    {
-      label: copy.university,
-      value: universityLabel,
-    },
+    ...(universityLabel ? [{ label: copy.university, value: universityLabel }] : []),
     {
       label: copy.degree,
       value: getDegreeLevelLabelForLanguage(degreeLevel, language),
@@ -59,20 +56,23 @@ export function ProjectContextRibbon({
   ];
 
   return (
-    <section className="surface-panel rounded-[30px] p-4 sm:p-5">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="brand-kicker">{copy.kicker}</p>
-          <h2 className="mt-2 font-[var(--font-heading)] text-2xl font-semibold text-[var(--color-ink)]">
-            {copy.title}
-          </h2>
-          <p className="mt-2 text-sm leading-7 text-[var(--color-muted)]">
-            {copy.body}
-          </p>
+    <details className="surface-panel rounded-[28px] p-4 sm:p-5">
+      <summary className="cursor-pointer list-none">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="brand-kicker">{copy.kicker}</p>
+            <p className="mt-2 truncate text-sm font-semibold text-[var(--color-ink)] sm:text-base">
+              {selectedTopicLabel}
+            </p>
+            <p className="mt-1 text-sm text-[var(--color-muted)]">
+              {[universityLabel, program].filter(Boolean).join(" | ")}
+            </p>
+          </div>
+          <span className="brand-pill shrink-0">Ver contexto</span>
         </div>
-      </div>
+      </summary>
 
-      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+      <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         {items.map((item) => (
           <article
             className="rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-white/76 p-4"
@@ -87,6 +87,6 @@ export function ProjectContextRibbon({
           </article>
         ))}
       </div>
-    </section>
+    </details>
   );
 }

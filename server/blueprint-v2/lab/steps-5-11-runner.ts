@@ -128,7 +128,7 @@ export async function runMasterBlueprintSteps5To11Lab(input: {
     projectTemplateKey: input.fixtures.project.templateKey,
     projectDegreeLevel: input.fixtures.project.degreeLevel,
     projectUniversity: input.fixtures.project.university,
-    projectProgram: input.fixtures.project.program,
+    projectProgram: input.fixtures.project.program ?? "",
     researchLine: input.fixtures.project.intake.researchLine,
     drafts: draftsWithMatrix,
     evidenceLedger: input.fixtures.evidenceLedger,

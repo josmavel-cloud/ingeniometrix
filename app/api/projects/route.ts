@@ -6,6 +6,8 @@ import {
   listProjectsForUser,
 } from "@/server/projects/project-service";
 import { parseCreateProjectInput } from "@/server/projects/project-validation";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
+import { createConversationalProject } from "@/server/projects/conversational-definition-service";
 
 export async function GET() {
   const user = await requireCurrentUser();
@@ -17,8 +19,10 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const user = await requireCurrentUser();
-    const input = parseCreateProjectInput(await request.json());
-    const project = await createProjectForUser(user.id, input);
+    const raw = await request.json();
+    if (raw.intakeMode === "conversation") return NextResponse.json({ project: await createConversationalProject(user.id, raw) }, { status: 201 });
+    const input = parseCreateProjectInput(raw);
+    const project = await withPaidRequest(request, user.id, undefined, input, () => createProjectForUser(user.id, input));
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {

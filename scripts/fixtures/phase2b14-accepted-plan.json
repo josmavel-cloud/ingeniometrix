@@ -1,0 +1,552 @@
+{
+  "case": "accepted-2b13-plan",
+  "enrichment": {
+    "schemaVersion": "search-enrichment.v1",
+    "searchIntentHash": "d429d5848bc11736ad558184fba9411487b1f5dbbf5d10b842de4e40f9f345b3",
+    "policyVersion": "semantic-retrieval.v3",
+    "planMode": "SEMANTIC",
+    "status": "READY",
+    "terms": [
+      {
+        "sourceField": "problem",
+        "anchor": "respuesta sísmica",
+        "text": "respuesta sísmica",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "PHENOMENON",
+        "language": "es",
+        "sourceFields": [
+          "problem"
+        ],
+        "role": "PROBLEM",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "purpose",
+        "anchor": "simulación sísmica",
+        "text": "simulación sísmica",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "RESEARCH_ACTION",
+        "language": "es",
+        "sourceFields": [
+          "purpose"
+        ],
+        "role": "PURPOSE",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "object",
+        "anchor": "especímenes de albañilería",
+        "text": "especímenes de albañilería",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "OBJECT_OR_SYSTEM",
+        "language": "es",
+        "sourceFields": [
+          "object"
+        ],
+        "role": "OBJECT",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "object",
+        "anchor": "escala natural",
+        "text": "escala natural",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "QUALIFIER",
+        "language": "es",
+        "sourceFields": [
+          "object"
+        ],
+        "role": "OBJECT",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "albañilería",
+        "text": "albañilería",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "CORE_CONCEPT",
+        "language": "es",
+        "sourceFields": [
+          "concepts"
+        ],
+        "role": "CONCEPT",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "concepts",
+        "anchor": "diseño sismorresistente",
+        "text": "diseño sismorresistente",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "CORE_CONCEPT",
+        "language": "es",
+        "sourceFields": [
+          "concepts"
+        ],
+        "role": "CONCEPT",
+        "tier": 1,
+        "authority": "REFINER",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "problem",
+        "anchor": "criterios de la nueva norma",
+        "text": "criterios de la nueva norma",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "CORE_CONCEPT",
+        "language": "es",
+        "sourceFields": [
+          "problem"
+        ],
+        "role": "PROBLEM",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "context",
+        "anchor": "nueva norma de diseño sismorresistente del 2026",
+        "text": "nueva norma de diseño sismorresistente del 2026",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "TIME_OR_STANDARD",
+        "language": "es",
+        "sourceFields": [
+          "context"
+        ],
+        "role": "CONTEXT",
+        "tier": 2,
+        "authority": "REFINER",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "context",
+        "anchor": "Perú",
+        "text": "Perú",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "GEOGRAPHY",
+        "language": "es",
+        "sourceFields": [
+          "context"
+        ],
+        "role": "CONTEXT",
+        "tier": 2,
+        "authority": "REFINER",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "context",
+        "anchor": "Peru",
+        "text": "Peru",
+        "type": "TRANSLATION",
+        "confidence": "HIGH",
+        "scientificRole": "GEOGRAPHY",
+        "language": "en",
+        "sourceFields": [
+          "context"
+        ],
+        "role": "CONTEXT",
+        "tier": 2,
+        "authority": "REFINER",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "taxonomy",
+        "anchor": "Ingeniería civil estructural",
+        "text": "Ingeniería civil estructural",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "CONTEXT",
+        "language": "es",
+        "sourceFields": [
+          "taxonomy"
+        ],
+        "role": "CONTEXT",
+        "tier": 2,
+        "authority": "REFINER",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      },
+      {
+        "sourceField": "taxonomy",
+        "anchor": "sismorresistencia",
+        "text": "sismorresistencia",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "CORE_CONCEPT",
+        "language": "es",
+        "sourceFields": [
+          "taxonomy"
+        ],
+        "role": "CONTEXT",
+        "tier": 2,
+        "authority": "REFINER",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      }
+    ],
+    "scientificConceptPlan": {
+      "schemaVersion": "scientific-concepts.v1",
+      "searchIntentHash": "d429d5848bc11736ad558184fba9411487b1f5dbbf5d10b842de4e40f9f345b3",
+      "concepts": [
+        {
+          "id": "concept:CONTEXT:diseno%20sismorresistente",
+          "value": "diseño sismorresistente",
+          "role": "CONTEXT",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "REFINER",
+          "sourceFields": [
+            "concepts"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "diseño sismorresistente",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "diseño sismorresistente",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:CONTEXT:ingenieria%20civil%20estructural",
+          "value": "Ingeniería civil estructural",
+          "role": "CONTEXT",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "REFINER",
+          "sourceFields": [
+            "taxonomy"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "Ingeniería civil estructural",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "Ingeniería civil estructural",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:GEOGRAPHY:peru",
+          "value": "Perú",
+          "role": "GEOGRAPHY",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "REFINER",
+          "sourceFields": [
+            "context"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "Perú",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "Perú",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "Peru",
+              "language": "en",
+              "expansionType": "VALIDATED_TRANSLATION",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH",
+              "translationOf": "concept:GEOGRAPHY:peru"
+            }
+          ]
+        },
+        {
+          "id": "concept:OBJECT_OR_SYSTEM:albanileria",
+          "value": "albañilería",
+          "role": "OBJECT_OR_SYSTEM",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "CENTRAL",
+          "sourceFields": [
+            "concepts"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "albañilería",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "albañilería",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:OBJECT_OR_SYSTEM:especimenes%20de%20albanileria",
+          "value": "especímenes de albañilería",
+          "role": "OBJECT_OR_SYSTEM",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "CENTRAL",
+          "sourceFields": [
+            "object"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "especímenes de albañilería",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "especímenes de albañilería",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:PHENOMENON:respuesta%20sismica",
+          "value": "respuesta sísmica",
+          "role": "PHENOMENON",
+          "roleBasis": "VALIDATED_ROLE_PROPOSAL",
+          "authority": "CENTRAL",
+          "sourceFields": [
+            "problem"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "respuesta sísmica",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "respuesta sísmica",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:QUALIFIER:escala%20natural",
+          "value": "escala natural",
+          "role": "QUALIFIER",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "REFINER",
+          "sourceFields": [
+            "object"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "escala natural",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "escala natural",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:RESEARCH_ACTION:simulacion%20sismica",
+          "value": "simulación sísmica",
+          "role": "RESEARCH_ACTION",
+          "roleBasis": "VALIDATED_ROLE_PROPOSAL",
+          "authority": "CENTRAL",
+          "sourceFields": [
+            "purpose"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "simulación sísmica",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "simulación sísmica",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        },
+        {
+          "id": "concept:TIME_OR_STANDARD:criterios%20de%20la%20nueva%20norma",
+          "value": "criterios de la nueva norma",
+          "role": "TIME_OR_STANDARD",
+          "roleBasis": "CONFIRMED_SPAN_GUARD",
+          "authority": "REFINER",
+          "sourceFields": [
+            "problem"
+          ],
+          "origin": "AI_DERIVED_FOR_SEARCH",
+          "known": true,
+          "traceable": true,
+          "terms": [
+            {
+              "value": "criterios de la nueva norma",
+              "language": "original",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "CONFIRMED_EXTRACT",
+              "confidence": "HIGH"
+            },
+            {
+              "value": "criterios de la nueva norma",
+              "language": "es",
+              "expansionType": "EXACT_ORIGINAL",
+              "origin": "AI_DERIVED_FOR_SEARCH",
+              "confidence": "HIGH"
+            }
+          ]
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "ROLE_PROMOTION_BLOCKED",
+          "sourceField": "concepts",
+          "anchor": "albañilería"
+        },
+        {
+          "code": "ROLE_PROMOTION_BLOCKED",
+          "sourceField": "concepts",
+          "anchor": "diseño sismorresistente"
+        },
+        {
+          "code": "ROLE_PROMOTION_BLOCKED",
+          "sourceField": "problem",
+          "anchor": "criterios de la nueva norma"
+        },
+        {
+          "code": "NON_ATOMIC_CONCEPT_ANCHOR",
+          "sourceField": "context",
+          "anchor": "nueva norma de diseño sismorresistente del 2026"
+        },
+        {
+          "code": "ROLE_WITHOUT_IDENTITY_SUPPORT",
+          "sourceField": "taxonomy",
+          "anchor": "sismorresistencia"
+        }
+      ],
+      "objectRequired": true
+    },
+    "ambiguities": [
+      {
+        "field": "problem",
+        "reason": "The phrase 'simulación sísmica' can denote a research action or a modeling technique; here it is grounded as a research action because no specific technique or apparatus is stated.",
+        "blocksSearch": false
+      },
+      {
+        "field": "context",
+        "reason": "'nueva norma de diseño sismorresistente del 2026' is treated as a time/standard anchor, but the exact formal title and issuing body are not specified.",
+        "blocksSearch": false
+      },
+      {
+        "field": "problem",
+        "reason": "'adecuados' implies evaluation of norm adequacy, but the underlying assessment criteria are not specified and should not be expanded into a method term.",
+        "blocksSearch": false
+      }
+    ],
+    "researchActionInterpretation": [
+      {
+        "sourceField": "purpose",
+        "anchor": "simulación sísmica",
+        "text": "simulación sísmica",
+        "type": "EXACT_TERM",
+        "confidence": "HIGH",
+        "scientificRole": "RESEARCH_ACTION",
+        "language": "es",
+        "sourceFields": [
+          "purpose"
+        ],
+        "role": "PURPOSE",
+        "tier": 1,
+        "authority": "CENTRAL",
+        "provenance": "AI_DERIVED_FOR_SEARCH"
+      }
+    ],
+    "likelyEvidenceRoles": [
+      "DIRECT",
+      "THEORETICAL",
+      "CONTEXTUAL"
+    ],
+    "confidence": "UNASSESSED",
+    "reasonCodes": [
+      "UNSUPPORTED_OR_UNSAFE_TERM"
+    ],
+    "explicitExclusions": []
+  }
+}

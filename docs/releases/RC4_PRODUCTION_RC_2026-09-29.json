@@ -1,0 +1,60 @@
+{
+  "manifestVersion": "rc4-production-pilot-rc.v1",
+  "createdAt": "2026-09-29T13:44:44Z",
+  "deploymentStatus": "NOT_DEPLOYED_TO_PRODUCTION",
+  "releaseSourceCommit": "2c8b0917de9fa56baa151fdb0edd82d423fba6e1",
+  "rollbackSourceCommit": "f283f63fc16a200e078a93c343713eb264214e77",
+  "frontend": {
+    "releaseImageBuildId": "cKe6j8eHG5O4K7rZ9Kgmy",
+    "isolatedVercelBuildId": "q2TS6a7lNZ0TY7rpimeuH"
+  },
+  "backend": {
+    "imageTag": "imx-rc4-production-rc:2c8b091",
+    "imageId": "sha256:546799e4016247687b8033d3fb803deb93462324faf7202f1d3357baecd366bc"
+  },
+  "worker": {
+    "imageTag": "imx-rc4-production-rc:2c8b091",
+    "imageId": "sha256:546799e4016247687b8033d3fb803deb93462324faf7202f1d3357baecd366bc"
+  },
+  "migration": {
+    "imageTag": "imx-rc4-production-migration:2c8b091",
+    "imageId": "sha256:cc8b180e908944b43462fa6d275219e2516d8baa6e89cb2479862cfc7b629d90",
+    "migrationCount": 15,
+    "latestMigration": "20260929051000_rc4_phase2_evidence_set_immutable",
+    "productionExecution": false
+  },
+  "featureFlags": {
+    "astraWebDiscovery": false,
+    "deepResearch": false,
+    "realPayments": false,
+    "privilegedAdminUi": false,
+    "authlessWorkspace": false,
+    "conversationalIntake": true
+  },
+  "contracts": {
+    "researchSearchIntent": "reference-search-v2 / prompt 2.3.0",
+    "candidateSemanticReview": "candidate-semantic-review / prompt 2.0.0",
+    "evidenceGap": "EvidenceGap.v1 / evidence-gap-policy.v1",
+    "webDiscovery": "web-discovery-result.v1 / astra-web-discovery-policy.v1",
+    "astraWebCost": "astra-web-cost-policy.v1",
+    "evidenceSet": "evidence-set.v1",
+    "generationInput": "generation-input.v3",
+    "scientificDesignSelector": "ingeniometrix-scientific-design-selector-v3",
+    "scientificDesignCritic": "ingeniometrix-scientific-design-critic-v3"
+  },
+  "recoveryPoint": {
+    "environment": "staging",
+    "snapshotId": "e7ad123d",
+    "createdAt": "2026-09-29T13:19:30Z",
+    "repository": "rclone:imx-drive-crypt:staging/2026/09/29/dfcc70f0-c868-4821-92ac-e17aad32968c",
+    "integrity": "restic check --read-data and isolated PostgreSQL restore passed",
+    "productionBackup": false
+  },
+  "cutoverPrerequisites": [
+    "Provision protected production-only credentials and verify rotation where exposed",
+    "Confirm production Google OIDC redirect URI and HTTPS origins",
+    "Reconcile production database baseline, if any, before applying migrations",
+    "Create and verify a separate production recovery point before production data migration",
+    "Activate and verify external production monitoring and alert delivery"
+  ]
+}
