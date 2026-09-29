@@ -7,6 +7,8 @@ services:
     healthcheck:
       test: [CMD-SHELL, "pg_isready -U postgres -d imx_rc4_production"]
   migrate:
+    image: imx-rc4-production-migration:2c8b091
+    build: !reset null
     environment:
       DATABASE_URL: postgresql://imx_migrate:${MIGRATION_PASSWORD:?required}@db:5432/imx_rc4_production
       DATABASE_URL_UNPOOLED: postgresql://imx_migrate:${MIGRATION_PASSWORD:?required}@db:5432/imx_rc4_production
@@ -14,6 +16,8 @@ services:
     environment:
       PGDATABASE: imx_rc4_production
   app:
+    image: imx-rc4-production-rc:2c8b091
+    build: !reset null
     environment: &production_runtime
       DATABASE_URL: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
       DATABASE_URL_UNPOOLED: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
@@ -30,6 +34,7 @@ services:
       MP_APPLICATION_ID: ""
       MP_WEBHOOK_SECRET: ""
   worker:
+    image: imx-rc4-production-rc:2c8b091
     environment:
       <<: *production_runtime
       DATABASE_URL: postgresql://imx_worker:${WORKER_DB_PASSWORD:?required}@db:5432/imx_rc4_production
@@ -39,3 +44,4 @@ services:
       PGDATABASE: imx_rc4_production
   proxy:
     ports: !override ["127.0.0.1:${RC4_PRODUCTION_PROXY_PORT:?required}:8080"]
+    volumes: !override ["./ops/g5/Caddyfile.production:/etc/caddy/Caddyfile:ro"]
