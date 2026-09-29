@@ -39,7 +39,12 @@ export type ValidatedWebCandidate = {
 export type WebDiscoveryResult = {
   schemaVersion: typeof WEB_DISCOVERY_SCHEMA_VERSION; state: WebDiscoveryState;
   operationId: string; responseId: string | null; model: string;
-  searchActionCount: number; toolCallCount: number;
+  searchActionCount: number;
+  /** Legacy raw-output count, also the conservative estimated billable count. */
+  toolCallCount: number;
+  /** Added after the diagnostic smoke; absent in previously persisted results. */
+  toolCallsForAcceptance?: number;
+  estimatedBillableToolCalls?: number;
   observations: WebSourceObservation[]; candidates: ValidatedWebCandidate[];
   rejectedProposals: Array<{ localCandidateRef: string; reason: string }>;
   usage: { inputTokens: number; outputTokens: number; reasoningTokens: number; cachedInputTokens: number } | null;

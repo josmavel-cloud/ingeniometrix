@@ -34,12 +34,60 @@ export function normalizePublicWebUrl(value: string): string | null {
 }
 
 type WebCall = Extract<OpenAI.Responses.Response["output"][number], { type: "web_search_call" }>;
-export function extractWebObservations(response: Pick<OpenAI.Responses.Response, "id" | "output" | "created_at">, operationId: string) {
+const notCompletedStatuses = new Set(["searching", "in_progress", "failed"]);
+
+export function summarizeWebToolCalls(response: Pick<OpenAI.Responses.Response, "output">) {
   const calls = response.output.filter((item): item is WebCall => item.type === "web_search_call");
-  const observations: WebSourceObservation[] = [];
-  let searchActionCount = 0;
+  // A repeated ID describes one attempted call. Its last final-output item is
+  // authoritative; an earlier completed item cannot ground a later unknown state.
+  const finalById = new Map<string, WebCall>();
+  let unidentifiedCall = false;
   for (const call of calls) {
-    if (call.status !== "completed" || call.action.type !== "search") continue;
+    if (typeof call.id !== "string" || !call.id) { unidentifiedCall = true; continue; }
+    finalById.set(call.id, call);
+  }
+  const finalCalls = [...finalById.values()];
+  const completedCalls = finalCalls.filter(call => call.status === "completed");
+  return {
+    rawWebSearchOutputItems: calls.length,
+    uniqueWebSearchCallAttempts: finalById.size,
+    completedUniqueWebSearchCalls: completedCalls.length,
+    unknownStatusCallIds: finalCalls.filter(call => call.status !== "completed" &&
+      !notCompletedStatuses.has(call.status)).map(call => call.id),
+    unidentifiedCall,
+    completedCalls,
+    finalCalls,
+    rawCalls: calls,
+  };
+}
+
+export function validateWebToolLimit(summary: ReturnType<typeof summarizeWebToolCalls>, configuredMax: number,
+  responseMax: unknown): { accepted: boolean; reason: "WITHIN_LIMIT" | "INVALID_CALL_ID" | "RESPONSE_LIMIT_MISMATCH" | "COMPLETED_CALL_LIMIT_EXCEEDED" } {
+  if (summary.unidentifiedCall) return { accepted: false, reason: "INVALID_CALL_ID" };
+  if (responseMax !== undefined && responseMax !== null && responseMax !== configuredMax) {
+    return { accepted: false, reason: "RESPONSE_LIMIT_MISMATCH" };
+  }
+  if (summary.completedUniqueWebSearchCalls > configuredMax ||
+      typeof responseMax === "number" && summary.completedUniqueWebSearchCalls > responseMax) {
+    return { accepted: false, reason: "COMPLETED_CALL_LIMIT_EXCEEDED" };
+  }
+  return { accepted: true, reason: "WITHIN_LIMIT" };
+}
+
+export function extractWebObservations(response: Pick<OpenAI.Responses.Response, "id" | "output" | "created_at">, operationId: string) {
+  const summary = summarizeWebToolCalls(response);
+  const observations: WebSourceObservation[] = [];
+  const ineligibleSourceUrls = new Set<string>();
+  let searchActionCount = 0;
+  for (const call of summary.rawCalls) {
+    if (call.status === "completed" || call.action.type !== "search") continue;
+    for (const source of call.action.sources ?? []) {
+      const normalized = normalizePublicWebUrl(source.url);
+      if (normalized) ineligibleSourceUrls.add(normalized);
+    }
+  }
+  for (const call of summary.completedCalls) {
+    if (call.action.type !== "search") continue;
     searchActionCount++;
     for (const [sourceIndex, raw] of (call.action.sources ?? []).entries()) {
       const normalizedUrl = normalizePublicWebUrl(raw.url);
@@ -51,11 +99,12 @@ export function extractWebObservations(response: Pick<OpenAI.Responses.Response,
         observedAt: new Date(response.created_at * 1000).toISOString(), sourceIndex });
     }
   }
-  return { toolCallCount: calls.length, searchActionCount, observations };
+  return { ...summary, toolCallCount: summary.rawWebSearchOutputItems, searchActionCount, observations,
+    ineligibleSourceUrls: [...ineligibleSourceUrls] };
 }
 
 export function validateWebDiscoveryProposals(outputText: string, observations: WebSourceObservation[], allowedGapIds: string[], maxCandidates: number,
-  operationId: string) {
+  operationId: string, ineligibleSourceUrls: string[] = []) {
   let parsed: z.infer<typeof outputSchema>;
   try { parsed = outputSchema.parse(JSON.parse(outputText)); }
   catch { return { validEnvelope: false as const, candidates: [] as ValidatedWebCandidate[], rejectedProposals: [] as Array<{localCandidateRef:string;reason:string}> }; }
@@ -71,6 +120,7 @@ export function validateWebDiscoveryProposals(outputText: string, observations: 
     const normalized = normalizePublicWebUrl(proposal.observedUrl);
     if (!normalized || proposal.accessProposal.reportedPdfUrl && !normalizePublicWebUrl(proposal.accessProposal.reportedPdfUrl) ||
         proposal.accessProposal.alternateUrls.some(url => !normalizePublicWebUrl(url))) { reject("UNSAFE_URL"); continue; }
+    if (ineligibleSourceUrls.includes(normalized)) { reject("NON_COMPLETED_TOOL_PROVENANCE"); continue; }
     const matches = observations.filter(o => o.operationId === operationId && o.normalizedUrl === normalized);
     if (!matches.length) { reject("MODEL_ONLY_URL_NOT_OBSERVED"); continue; }
     if (matches.length !== 1) { reject("AMBIGUOUS_SOURCE_OBSERVATION"); continue; }

@@ -93,7 +93,7 @@ async function main() {
         requiredDimension: "Public technical record", desiredEvidenceRole: "DIRECT",
         preferredSourceTypes: ["SCHOLARLY"], unresolvedPremises: [], webDiscoveryEligible: true }],
       seenSourceIdentities: [], policy: { maxToolCalls: 1, maxCandidates: 1, maxOutputTokens: 800 }, provider });
-    assert.equal(result.state, "INVALID_TOOL_PROVENANCE", "acceptance remains unchanged");
+    assert.equal(result.state, "INVALID_TOOL_PROVENANCE", "two completed calls still exceed the limit");
     assert.equal(mockedCalls, 1);
     const operation = await prisma.paidOperation.findUniqueOrThrow({ where: { id: result.operationId },
       include: { calls: true } });
@@ -102,11 +102,34 @@ async function main() {
     assert.equal(trace.response?.uniqueWebSearchCallIds, 2);
     assert.equal(trace.response?.completedWebSearchCalls, 2);
     assert.equal(trace.response?.responseMaxToolCalls, 1);
+    assert.equal(trace.toolLimit?.reason, "COMPLETED_CALL_LIMIT_EXCEEDED");
     assert.equal(trace.settlement?.toolCallCountUsedForSettlement, 2);
     assert.equal(operation.calls[0].status, "COMPLETED");
     assert.equal(operation.calls[0].estimatedMicros, Math.ceil(webDiscoveryActualCost({ inputTokens: 1000,
       cachedInputTokens: 0, outputTokens: 160 }, 2)! * 1_000_000));
     assert.equal(operation.calls[0].estimatedMicros, Math.ceil(trace.settlement!.totalSettledCostUsd! * 1_000_000));
+    const incompleteProvider = createOpenAiWebDiscoveryProvider({ apiKey: "offline-fixture",
+      createResponse: async () => response([item("ws_search"), item("ws_page", "searching", "open_page")], 1) });
+    const completed = await runWebDiscoveryOperation({ userId: user.id, smoke: true,
+      gapSetHash: hash("gap-with-unprocessed-page"), seenSetHash: hash("seen"),
+      researchIntentProjection: { searchIntentHash: intent,
+        scientificSignals: [{ field: "purpose", value: "Find a public technical record" }] },
+      evidenceGaps: [{ gapId: "gap_fixture", searchIntentHash: intent, kind: "DISCOVERY", importance: "MATERIAL",
+        requiredDimension: "Public technical record", desiredEvidenceRole: "DIRECT",
+        preferredSourceTypes: ["SCHOLARLY"], unresolvedPremises: [], webDiscoveryEligible: true }],
+      seenSourceIdentities: [], policy: { maxToolCalls: 1, maxCandidates: 1, maxOutputTokens: 800 },
+      provider: incompleteProvider });
+    assert.equal(completed.state, "COMPLETED", "structured output is reached after an unprocessed second item");
+    assert.deepEqual([completed.toolCallCount, completed.toolCallsForAcceptance,
+      completed.estimatedBillableToolCalls], [2, 1, 2]);
+    const completedOperation = await prisma.paidOperation.findUniqueOrThrow({ where: { id: completed.operationId },
+      include: { calls: true } });
+    const completedTrace = (completedOperation.resultJson as { diagnostics: typeof completed.diagnostics }).diagnostics!;
+    assert.equal(completedTrace.toolLimit?.reason, "WITHIN_LIMIT");
+    assert.equal(completedTrace.response?.completedUniqueWebSearchCalls, 1);
+    assert.equal(completedTrace.settlement?.toolCallCountUsedForSettlement, 2);
+    assert.equal(completedOperation.calls[0].estimatedMicros, operation.calls[0].estimatedMicros,
+      "acceptance does not lower the conservative billing estimate");
     assert.equal((await prisma.reference.count()), before.sources);
     assert.equal((await prisma.projectReference.count()), before.projectLinks);
   } finally { await prisma.user.delete({ where: { id: user.id } }); }
@@ -127,6 +150,6 @@ async function main() {
   assert.equal(safeTrace.response.webSearchCalls[0].query, null);
   assert.equal(safeTrace.response.observations[0].normalizedUrl, null);
   assert.equal(networkAttempts, 0);
-  console.log("PASS 2B2.2a: final-item counters, request/response/settlement traces, redaction, unchanged policy and no provider calls");
+  console.log("PASS 2B2.2a: final-item counters, request/response/settlement traces, redaction, completed-call limit and no provider calls");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => prisma.$disconnect());

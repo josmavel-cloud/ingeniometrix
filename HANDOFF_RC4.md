@@ -1,5 +1,22 @@
 # RC4 handoff
 
+## Latest checkpoint - 2B2.2c completed web-tool semantics (2026-09-29)
+
+The instrumented smoke trace conclusively showed two final web-search output
+items but only one completed unique call: a completed search plus a `searching`
+open-page attempt. The adapter now gates on completed unique IDs, enforces an
+echoed-limit consistency check, and accepts candidate provenance only from
+completed search observations. Non-completed attempts remain auditable. The
+conservative cost estimate still counts raw items; no reservation, settlement,
+historical ledger or provider configuration changed. Read-only replay of the
+persisted trace passes 2/2/1 tool-limit validation, but cannot reconstruct the
+missing Structured Output. Offline tests/builds and Vercel isolation pass. No
+provider call was made. See [2B2.2c report](docs/quality/rc4-phase2b22c-completed-tool-policy.md).
+
+Staging project web discovery stays disabled. A new compatibility acceptance
+requires separate authorization; do not start 2B2.3 or run a real-project gap
+search. Preserve the five unrelated G5 changes.
+
 ## Latest checkpoint - 2B2.2a web-tool diagnostics (2026-09-28)
 
 The Astra web adapter now persists sanitized request, final response-item,

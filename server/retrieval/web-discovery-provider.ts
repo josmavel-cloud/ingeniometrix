@@ -5,7 +5,8 @@ import { WEB_DISCOVERY_PROMPT } from "@/server/mvp/prompts/web-discovery.v1";
 import { ASTRA_WEB_COST_POLICY, webDiscoveryActualCost, webDiscoveryCostBound } from "./astra-web-cost-policy";
 import { WEB_DISCOVERY_PURPOSE, WEB_DISCOVERY_SCHEMA_VERSION,
   type WebDiscoveryInput, type WebDiscoveryProvider, type WebDiscoveryResult } from "./web-discovery-contract";
-import { WEB_DISCOVERY_JSON_SCHEMA, extractWebObservations, validateWebDiscoveryProposals } from "./web-discovery-validation";
+import { WEB_DISCOVERY_JSON_SCHEMA, extractWebObservations, validateWebDiscoveryProposals,
+  validateWebToolLimit } from "./web-discovery-validation";
 import { WEB_DISCOVERY_DIAGNOSTIC_VERSION, persistWebDiscoveryDiagnostic, webDiscoveryRequestDiagnostic,
   webDiscoveryResponseDiagnostic, webDiscoverySettlementDiagnostic, type WebDiscoveryDiagnostic } from "./web-discovery-diagnostics";
 
@@ -76,12 +77,15 @@ export function createOpenAiWebDiscoveryProvider(config: {
         typeof status === "number" ? "PROVIDER_UNAVAILABLE" : "FAILED_RETRYABLE";
       return { schemaVersion: WEB_DISCOVERY_SCHEMA_VERSION, state, operationId: input.operationContext.operationId,
         responseId: null, model: ASTRA_WEB_COST_POLICY.model, searchActionCount: 0, toolCallCount: 0,
+        toolCallsForAcceptance: 0, estimatedBillableToolCalls: 0,
         observations: [], candidates: [], rejectedProposals: [], usage: null, estimatedCostUsd: null,
         costPolicyVersion: ASTRA_WEB_COST_POLICY.version, diagnostics };
     }
     const usage = response.usage;
     const web = extractWebObservations(response, input.operationContext.operationId);
     diagnostics.response = webDiscoveryResponseDiagnostic(response, web.observations, input.operationContext.smoke);
+    diagnostics.toolLimit = validateWebToolLimit(web, input.policy.maxToolCalls,
+      (response as Response & { max_tool_calls?: unknown }).max_tool_calls);
     // Retain the final output-item trace before any acceptance or candidate filter.
     let diagnosticWriteError: unknown = null;
     try { await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics); }
@@ -89,30 +93,35 @@ export function createOpenAiWebDiscoveryProvider(config: {
     const used = usage ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens,
       reasoningTokens: usage.output_tokens_details?.reasoning_tokens ?? 0,
       cachedInputTokens: usage.input_tokens_details?.cached_tokens ?? 0 } : null;
-    const actualCost = used ? webDiscoveryActualCost(used, web.toolCallCount) : null;
+    // Billing remains conservatively estimated from raw output items; the
+    // acceptance limit below counts only distinct completed tool calls.
+    const estimatedBillableToolCalls = web.rawWebSearchOutputItems;
+    const actualCost = used ? webDiscoveryActualCost(used, estimatedBillableToolCalls) : null;
     if (actualCost === null) await ticket.fail();
-    else await ticket.complete(actualCost, { ...used, webSearchToolCalls: web.toolCallCount,
+    else await ticket.complete(actualCost, { ...used, webSearchToolCalls: estimatedBillableToolCalls,
       pricingVersion: ASTRA_WEB_COST_POLICY.version }, response.model);
-    diagnostics.settlement = webDiscoverySettlementDiagnostic({ toolCallCount: web.toolCallCount,
+    diagnostics.settlement = webDiscoverySettlementDiagnostic({ toolCallCount: estimatedBillableToolCalls,
       usage: used, totalSettledCostUsd: actualCost });
     if (diagnosticWriteError) throw diagnosticWriteError;
     await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics);
     const base: Omit<WebDiscoveryResult, "state" | "candidates" | "rejectedProposals"> = {
       schemaVersion: WEB_DISCOVERY_SCHEMA_VERSION, operationId: input.operationContext.operationId,
       responseId: response.id, model: response.model, searchActionCount: web.searchActionCount,
-      toolCallCount: web.toolCallCount, observations: web.observations, usage: used,
+      toolCallCount: estimatedBillableToolCalls, toolCallsForAcceptance: web.completedUniqueWebSearchCalls,
+      estimatedBillableToolCalls, observations: web.observations, usage: used,
       estimatedCostUsd: actualCost, costPolicyVersion: ASTRA_WEB_COST_POLICY.version, diagnostics };
     const result = (state: WebDiscoveryResult["state"], candidates: WebDiscoveryResult["candidates"] = [],
       rejectedProposals: WebDiscoveryResult["rejectedProposals"] = []): WebDiscoveryResult =>
       ({ ...base, state, candidates, rejectedProposals });
     if (!used) return result("TIMEOUT_UNKNOWN_USAGE");
     if (actualCost! > bound.maximumUsd) return result("COST_BOUND_UNAVAILABLE");
-    if (web.toolCallCount > input.policy.maxToolCalls) return result("INVALID_TOOL_PROVENANCE");
+    if (!diagnostics.toolLimit.accepted) return result("INVALID_TOOL_PROVENANCE");
     if (response.status !== "completed") return result(response.status === "incomplete" ? "INVALID_STRUCTURED_OUTPUT" : "PROVIDER_UNAVAILABLE");
     if (!web.searchActionCount) return result("INVALID_TOOL_PROVENANCE");
     if (!web.observations.length) return result("NO_OBSERVED_SOURCES");
     const parsed = validateWebDiscoveryProposals(response.output_text ?? "", web.observations,
-      input.evidenceGaps.map(g => g.gapId), input.policy.maxCandidates, input.operationContext.operationId);
+      input.evidenceGaps.map(g => g.gapId), input.policy.maxCandidates, input.operationContext.operationId,
+      web.ineligibleSourceUrls);
     if (!parsed.validEnvelope) return result("INVALID_STRUCTURED_OUTPUT");
     return result(parsed.rejectedProposals.length ? "PARTIAL" : "COMPLETED", parsed.candidates, parsed.rejectedProposals);
   } };

@@ -2,8 +2,9 @@ import type OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { ASTRA_WEB_COST_POLICY } from "./astra-web-cost-policy";
 import { WEB_DISCOVERY_POLICY_VERSION, WEB_DISCOVERY_SCHEMA_VERSION, type WebSourceObservation } from "./web-discovery-contract";
+import { summarizeWebToolCalls, type validateWebToolLimit } from "./web-discovery-validation";
 
-export const WEB_DISCOVERY_DIAGNOSTIC_VERSION = "web-discovery-diagnostic.v1";
+export const WEB_DISCOVERY_DIAGNOSTIC_VERSION = "web-discovery-diagnostic.v2";
 type ResponseParams = OpenAI.Responses.ResponseCreateParamsNonStreaming & { max_tool_calls: number };
 type Response = OpenAI.Responses.Response;
 
@@ -44,6 +45,7 @@ export function webDiscoveryRequestDiagnostic(params: ResponseParams) {
 }
 
 export function webDiscoveryResponseDiagnostic(response: Response, observations: WebSourceObservation[], smoke: boolean) {
+  const summary = summarizeWebToolCalls(response);
   const calls = response.output.flatMap((item, outputIndex) => {
     if (item.type !== "web_search_call") return [];
     const action = item.action;
@@ -61,8 +63,12 @@ export function webDiscoveryResponseDiagnostic(response: Response, observations:
     incompleteDetails: reason ? { reason: safeCode(reason) } : null,
     webSearchCalls: calls,
     finalWebSearchOutputItems: calls.length,
-    uniqueWebSearchCallIds: new Set(calls.map(call => call.id).filter(Boolean)).size,
-    completedWebSearchCalls: calls.filter(call => call.status === "completed").length,
+    uniqueWebSearchCallIds: summary.uniqueWebSearchCallAttempts,
+    completedWebSearchCalls: summary.completedUniqueWebSearchCalls,
+    rawWebSearchOutputItems: summary.rawWebSearchOutputItems,
+    uniqueWebSearchCallAttempts: summary.uniqueWebSearchCallAttempts,
+    completedUniqueWebSearchCalls: summary.completedUniqueWebSearchCalls,
+    unknownStatusCallIds: summary.unknownStatusCallIds.map(safeId),
     searchActions: calls.filter(call => call.actionType === "search").length,
     openPageActions: calls.filter(call => call.actionType === "open_page").length,
     findInPageActions: calls.filter(call => call.actionType === "find_in_page").length,
@@ -92,6 +98,7 @@ export type WebDiscoveryDiagnostic = {
   version: typeof WEB_DISCOVERY_DIAGNOSTIC_VERSION;
   request: ReturnType<typeof webDiscoveryRequestDiagnostic>;
   response?: ReturnType<typeof webDiscoveryResponseDiagnostic>;
+  toolLimit?: ReturnType<typeof validateWebToolLimit>;
   settlement?: ReturnType<typeof webDiscoverySettlementDiagnostic>;
 };
 
