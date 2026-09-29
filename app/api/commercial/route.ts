@@ -13,8 +13,8 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "Inicia sesión." }, { status: 401 });
   const purchases = await prisma.purchase.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true } });
   let offer = null, checkoutAvailable = false;
-  try { const current = await currentOffer(); offer = { id: current.row.id, ...current.policy }; commercialLaunchGuard(); checkoutAvailable = true; } catch { /* absent configuration is explicit */ }
-  return NextResponse.json({ balance: await customerBalance(user.id), offer: offer && { id: offer.id, displayName: offer.displayName, priceMinor: offer.priceMinor, currency: offer.currency, planSlots: offer.planSlots, termsVersion: offer.termsVersion, privacyVersion: offer.privacyVersion }, checkoutAvailable, mode: "sandbox", trainingConsent: user.trainingConsent,
+  try { commercialLaunchGuard(); const current = await currentOffer(); offer = { id: current.row.id, ...current.policy }; checkoutAvailable = true; } catch { /* disabled checkout is explicit */ }
+  return NextResponse.json({ balance: await customerBalance(user.id), offer: offer && { id: offer.id, displayName: offer.displayName, priceMinor: offer.priceMinor, currency: offer.currency, planSlots: offer.planSlots, termsVersion: offer.termsVersion, privacyVersion: offer.privacyVersion }, checkoutAvailable, mode: checkoutAvailable ? "sandbox" : "unavailable", trainingConsent: user.trainingConsent,
     purchases: await Promise.all(purchases.map((p) => purchaseForUser(user.id, p.id))) }, { headers: { "Cache-Control": "no-store" } });
 }
 export async function POST(request: Request) {

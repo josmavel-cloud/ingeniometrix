@@ -27,7 +27,7 @@ export function AccountPanel({ compact = false }: { compact?: boolean }) {
   if (!account) return <p aria-live="polite">{error || "Consultando planes disponibles…"}</p>;
   return <section className="my-4 grid gap-4 rounded-2xl border p-5">
     <p>Planes disponibles: {account.balance.available} de {account.balance.total}{account.balance.reserved ? ` · ${account.balance.reserved} en preparación` : ""}</p>
-    {compact ? <Link href="/account">{account.balance.available ? "Ver mi paquete" : "Obtener un paquete de planes"}</Link> : <>
+    {compact ? <Link href="/account">Ver mi paquete</Link> : <>
       {account.offer && <><h2>{account.offer.displayName}</h2><p>{new Intl.NumberFormat("es-PE", { style: "currency", currency: account.offer.currency }).format(account.offer.priceMinor / 100)} · {account.offer.planSlots} publicaciones de planes · sin renovación automática</p>
         <p>Oferta de prueba. Precio comercial pendiente de aprobación. No se realizan cobros reales.</p>
         <label><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> Acepto las <Link href="/terms">condiciones de prueba</Link> y reconozco el <Link href="/privacy">aviso de privacidad</Link>.</label>

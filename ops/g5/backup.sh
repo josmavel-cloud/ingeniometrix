@@ -9,6 +9,9 @@ case "$RESTIC_REPOSITORY" in
     # possessing a public link. Credentials stay outside the repository/app.
     [ "${IMX_BACKUP_REMOTE_REVIEWED:-0}" = 1 ] || { echo 'REMOTE_ACCESS_REVIEW_REQUIRED' >&2; exit 1; }
     [ -f "${RCLONE_CONFIG:-/missing}" ] || { echo 'RCLONE_CONFIGURATION_REQUIRED' >&2; exit 1; }
+    case "$RESTIC_REPOSITORY" in
+      rclone:imx-drive:*) echo 'UNREVIEWED_BASE_DRIVE_REPOSITORY' >&2; exit 1 ;;
+    esac
     ;;
   sftp:*|s3:*|b2:*|azure:*|gs:*|rest:https:*) ;;
   *) [ "${IMX_BACKUP_ALLOW_LOCAL_TEST:-0}" = 1 ] || { echo 'OFF_MACHINE_BACKUP_REQUIRED' >&2; exit 1; } ;;
@@ -23,8 +26,7 @@ case "${1:-backup}" in
     pg_dump --format=custom --no-owner --no-acl --file=/scratch/database.dump
     find /artifacts -type f ! -name '*.part' ! -name '*.tmp' -exec sha256sum '{}' \; > /scratch/artifacts.sha256
     restic backup --tag imx-g5 --exclude '*.part' --exclude '*.tmp' /scratch/database.dump /scratch/artifacts.sha256 /artifacts /config
-    restic check
-    restic forget --tag imx-g5 --group-by host,tags --keep-daily 7 --keep-weekly 4 --keep-monthly 6
+    restic check --read-data
     ;;
   *) echo 'UNKNOWN_BACKUP_OPERATION' >&2; exit 1 ;;
 esac

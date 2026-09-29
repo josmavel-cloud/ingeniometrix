@@ -5,7 +5,15 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
+import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
+import { ledger, definition, design, matrix } from "./test-b3-scientific-contracts";
+import { enqueueBlueprintJobForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { readGenerationInput } from "@/server/projects/generation-input-snapshot";
+import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
+import { generateFinalInfographic } from "@/server/mvp/final-infographic";
+import { renderDocx } from "@/server/mvp/step6-blueprint-docx-service";
 import type { ConversationalView } from "@/lib/conversational-intake";
 import { normalizeTitle } from "@/lib/text";
 import { createConversationalProject, changeDefinition, confirmDefinition, readDefinition } from
@@ -44,6 +52,7 @@ async function main() {
   }
 
   const user = await prisma.user.create({ data: { email: `phase2-full-${randomUUID()}@example.test` } });
+  await grantTestPackage(user.id);
   const references: string[] = [];
   const temporary = await mkdtemp(path.join(os.tmpdir(), "imx-phase2-fixture-"));
   const previousStorageRoot = process.env.IMX_PRIVATE_STORAGE_ROOT;
@@ -81,6 +90,50 @@ async function main() {
     const set = await confirmEvidenceSet(user.id, project.id);
     assert.equal(set.version, 1);
     assert.equal(set.readiness, "READY_WITH_LIMITATIONS");
+    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" });
+    const queued = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    const frozen = await readGenerationInput(job.id,
+      (queued.stageDataJson as { inputSnapshotId: string }).inputSnapshotId);
+    assert.equal(frozen?.evidenceSet?.id, set.id);
+    assert.equal((frozen?.evidenceSet?.snapshotJson as { sources: unknown[] }).sources.length, 3);
+    const testLedger = structuredClone(ledger);
+    testLedger.project_id = project.id;
+    testLedger.source_registry[0].reference_id = references[0];
+    testLedger.references[0].reference_id = references[0];
+    const narrative = { paragraphs: [{ text: "Propuesta de prueba, no investigacion ejecutada.",
+      citations: [{ source_id: "S1", evidence_id: "E3" }] }], assumptions: [], limitations: [] };
+    const provider = { generateStructuredObject: async (request: { schemaName: string }) => {
+      const phase = request.schemaName.replace("b3_", "");
+      if (phase === "problem_definition") return { ...narrative, problem: definition.problem };
+      if (phase === "research_questions") return { questions: definition.questions };
+      if (phase === "objectives_and_optional_hypotheses") return { objectives: definition.objectives,
+        hypotheses_or_propositions: [] };
+      if (phase === "research_design") return design;
+      if (phase === "consistency_matrix") return matrix;
+      if (phase === "cross_section_review") return { critical_issues: [], warnings: [],
+        checked_dimensions: ["Continuidad de prueba"] };
+      if (phase === "final_title") return { title: "Plan de prueba", short_title: "Prueba",
+        rationale: "Fixture", keywords: [], warnings: [] };
+      return narrative;
+    } } as any;
+    const scientific = await generateScientificPlan({ provider, projectId: project.id,
+      runId: `offline-${randomUUID()}`, intake: frozen!.project.intake, ledger: testLedger,
+      artifactDir: temporary });
+    const hero = await generateFinalInfographic({ problem: definition.problem }, path.join(temporary, "hero.png"));
+    const docxPath = path.join(temporary, "frozen-evidence-plan.docx");
+    await renderDocx({ project: frozen!.project as any, package: {
+      title_plan: scientific.titlePlan, hero_image: hero,
+      academic_style_contract: { logo_asset_path: null, page: { margin_top_cm: 2.5,
+        margin_bottom_cm: 2.5, margin_left_cm: 3, margin_right_cm: 2.5 } },
+      section_drafts: scientific.drafts, cross_reference_plan: [],
+    } as any, outputPath: docxPath });
+    const docx = await JSZip.loadAsync(await readFile(docxPath));
+    const documentXml = await docx.file("word/document.xml")!.async("string");
+    assert(documentXml.includes("w:tbl"), "consistency matrix remains editable in DOCX");
+    assert(documentXml.includes("Plan de prueba"), "frozen composition title survives DOCX rendering");
+    assert(scientific.drafts.some(draft => draft.blocks.some(block =>
+      block.kind === "paragraph" && block.text.includes("Propuesta de prueba"))),
+    "mocked scientific narrative remains in the composed package");
     await assert.rejects(() => prisma.projectEvidenceSet.update({ where: { id: set.id },
       data: { readiness: "READY" } }), /immutable/i, "database refuses in-place evidence mutation");
     assert.equal((await confirmEvidenceSet(user.id, project.id)).id, set.id, "confirm is idempotent");
@@ -166,6 +219,7 @@ async function main() {
     "new uploaded source is not auto-selected or recommended");
     console.log("PASS integrated Phase 2 offline: persistent selection, idempotent preparation, evidence levels, immutable versioning, frozen intent, no providers");
   } finally {
+    await removeTestCommercialData([user.id]);
     await prisma.user.delete({ where: { id: user.id } });
     await prisma.reference.deleteMany({ where: { id: { in: references } } });
     await prisma.$disconnect();

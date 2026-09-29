@@ -11,7 +11,8 @@ Snapshot includes custom-format DB dump, artifact volume, artifact SHA-256 manif
 non-secret ops configuration. Plaintext dump is in tmpfs, container removed after use.
 Quiesce app + worker before snapshot for DB/files consistency; requests temporarily
 unavailable. Resume services in a trap. B4 job checkpoints persist; do not reset attempts.
-Retention: 7 daily, 4 weekly, 6 monthly snapshots; prune only in deliberate maintenance.
+Intended retention: 7 daily, 4 weekly, 3 monthly snapshots. Automatic pruning is
+disabled; deletions require a separately reviewed maintenance operation.
 Store secrets separately encrypted; they are not in the committed config directory.
 Restic encrypts the repository; dump/fixture passwords are never logged.
 
@@ -81,11 +82,10 @@ secret with an independent custodian; neither belongs in Git, Drive, or chat.
 
 After authorized local credential setup and ACL verification, use a unique,
 versioned repository path through `imx-drive-crypt`, for example
-`rclone:imx-drive-crypt:staging/YYYY/MM/DD/<backup-id>`. The Drive overlay has a
-static `RESTIC_REPOSITORY` value for its historical base-remote setup; every crypt
-operation must explicitly override it with `docker compose run -e RESTIC_REPOSITORY`
-and verify the resulting value is under `rclone:imx-drive-crypt:` before init,
-backup, check, or restore. Never use the base-remote default for a crypt acceptance.
+`rclone:imx-drive-crypt:staging/YYYY/MM/DD/<backup-id>`. The Drive overlay now
+requires an explicit `G5_BACKUP_REPOSITORY`; set it to the reviewed crypt path
+and verify it before init, backup, check, or restore. The historical base remote
+is rejected by `backup.sh`.
 
 Sources: [restic rclone backend](https://restic.readthedocs.io/en/stable/030_preparing_a_new_repo.html#other-services-via-rclone),
 [Drive scopes/root configuration](https://rclone.org/drive/).
@@ -133,12 +133,24 @@ only under a separately authorized cleanup; do not confuse it with the accepted
 crypt snapshot above. No plaintext database or artifact data was uploaded.
 
 Provisional pilot retention: daily 7, weekly 4, monthly 3. This is the intended
-schedule, not an enabled pruning schedule; no pruning was run. Before automation,
-reconcile `backup.sh` and the scheduled wrapper to use the exact Restic policy
-`forget --keep-daily 7 --keep-weekly 4 --keep-monthly 3` against the reviewed
-crypt repository, then review and test the plan output. Do not enable or run pruning
-as part of this acceptance; the script's current monthly value is 6 and must not be
-used unchanged.
+schedule, not an enabled pruning schedule. RC4 production hardening removed
+automatic `forget` from `backup.sh`; routine backups do not delete snapshots.
+Review a separate dry-run policy against the exact crypt repository before ever
+enabling retention. Do not run pruning as part of release preparation.
+
+### Fresh RC4 staging recovery point (2026-09-29)
+
+The new reviewed crypt repository is
+`rclone:imx-drive-crypt:staging/2026/09/29/dfcc70f0-c868-4821-92ac-e17aad32968c`.
+Snapshot `e7ad123d` was created at `2026-09-29T13:19:30Z` after quiescing
+only the staging app and worker. Restic processed 91.244 MiB logical in 20
+files; `check --read-data` passed. A fresh remote restore into tmpfs verified
+all eight private artifact hashes and restored the dump into a temporary
+PostgreSQL 16 container with no network. The restored database had five users,
+11 projects, 45 project references, zero EvidenceSets and 15 finished migrations;
+there were no unfinished migrations. Temporary decrypted data and the database
+container were removed. The staging app and worker resumed healthy. This is a
+staging recovery point, not a backup of a yet-undeployed production database.
 
 The external staging monitor treats the most recent successful backup marker older
 than 26 hours, or a missing/invalid marker, as stale/unknown. It does not prune or

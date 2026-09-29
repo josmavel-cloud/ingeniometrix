@@ -3,7 +3,7 @@
 services:
   backup:
     environment:
-      RESTIC_REPOSITORY: rclone:imx-drive:restic-g5
+      RESTIC_REPOSITORY: ${G5_BACKUP_REPOSITORY:?reviewed crypt repository required}
       RCLONE_CONFIG: /credentials/rclone/rclone.conf
       RCLONE_DRIVE_ROOT_FOLDER_ID: ${G5_DRIVE_FOLDER_ID:?reviewed folder required}
       IMX_BACKUP_REMOTE_REVIEWED: ${IMX_BACKUP_REMOTE_REVIEWED:-0}

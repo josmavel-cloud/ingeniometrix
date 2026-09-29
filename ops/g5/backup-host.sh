@@ -2,7 +2,14 @@
 set -eu
 cd /srv/ingeniometrix
 # This service installation path is explicit and separate from all RC3/G4 stacks.
-compose() { docker compose --env-file /etc/ingeniometrix/g5.env -f docker-compose.g5.yml "$@"; }
+set -a
+. /etc/ingeniometrix/g5.env
+set +a
+case "${G5_BACKUP_REPOSITORY:-}" in
+  rclone:imx-drive-crypt:*) ;;
+  *) echo 'REVIEWED_CRYPT_REPOSITORY_REQUIRED' >&2; exit 1 ;;
+esac
+compose() { docker compose --env-file /etc/ingeniometrix/g5.env -f docker-compose.g5.yml -f docker-compose.g5-drive.yml "$@"; }
 # Keep quiescence bounded; interrupted jobs retain B4 checkpoints/attempt history.
 trap 'compose up -d app worker' EXIT
 compose stop -t 120 app worker

@@ -1,0 +1,41 @@
+# Production-pilot override. Never combine with the staging env file.
+name: imx-rc4-production
+services:
+  db:
+    environment:
+      POSTGRES_DB: imx_rc4_production
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d imx_rc4_production"]
+  migrate:
+    environment:
+      DATABASE_URL: postgresql://imx_migrate:${MIGRATION_PASSWORD:?required}@db:5432/imx_rc4_production
+      DATABASE_URL_UNPOOLED: postgresql://imx_migrate:${MIGRATION_PASSWORD:?required}@db:5432/imx_rc4_production
+  db-grants:
+    environment:
+      PGDATABASE: imx_rc4_production
+  app:
+    environment: &production_runtime
+      DATABASE_URL: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
+      DATABASE_URL_UNPOOLED: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
+      IMX_AUTHLESS_WORKSPACE: "0"
+      IMX_ENABLE_ASTRA_WEB_DISCOVERY: "0"
+      IMX_ENABLE_ASTRA_WEB_CONVERGENCE: "0"
+      IMX_ENABLE_DEEP_RESEARCH: "0"
+      IMX_PAYMENT_MODE: disabled
+      IMX_PAYMENT_ACCOUNT_CONTEXT: disabled
+      REAL_PAYMENTS_ENABLED: "false"
+      PRODUCTION_PRICE_ENABLED: "false"
+      MP_TEST_ACCESS_TOKEN: ""
+      MP_TEST_MERCHANT_ID: ""
+      MP_APPLICATION_ID: ""
+      MP_WEBHOOK_SECRET: ""
+  worker:
+    environment:
+      <<: *production_runtime
+      DATABASE_URL: postgresql://imx_worker:${WORKER_DB_PASSWORD:?required}@db:5432/imx_rc4_production
+      DATABASE_URL_UNPOOLED: postgresql://imx_worker:${WORKER_DB_PASSWORD:?required}@db:5432/imx_rc4_production
+  backup:
+    environment:
+      PGDATABASE: imx_rc4_production
+  proxy:
+    ports: !override ["127.0.0.1:${RC4_PRODUCTION_PROXY_PORT:?required}:8080"]
