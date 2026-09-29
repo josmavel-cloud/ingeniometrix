@@ -29,7 +29,7 @@
       }
     }
   }
-  @productionHost host api.ingeniometrix.com
+  @productionHost host api.ingeniometrix.com ingeniometrix-production.tailbcdf27.ts.net
   route {
     handle @productionHost {
       @health path /api/health/live /api/health/ready /api/health/operational
@@ -38,7 +38,9 @@
       handle @health {
         reverse_proxy app:3000
       }
-      respond @private 404
+      handle @private {
+        respond 404
+      }
       handle @upload {
         request_body {
           max_size 31457280
@@ -49,6 +51,9 @@
         request_body {
           max_size 1MB
         }
+        reverse_proxy app:3000
+      }
+      handle / {
         reverse_proxy app:3000
       }
       respond 404
