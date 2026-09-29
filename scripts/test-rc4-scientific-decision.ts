@@ -13,6 +13,8 @@ import { definition, design, ledger, matrix } from "./test-b3-scientific-contrac
 import { responseCostBound } from "@/llm/providers/openai-cost-bound";
 import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { SCIENTIFIC_DESIGN_CRITIC_PROMPT } from "@/server/mvp/prompts/scientific-design-critic.v3";
+import { prepareSelectedSources } from "@/server/projects/source-preparation-service";
+import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const alternative: DesignAlternative = { id: "option-1", label: "Propuesta cualitativa sintética", scope_fulfilled: "Preserva intención de prueba", definition, research_design: design, components: [{ name: "Análisis temático", kind: "method", role: "Interpretación", inputs: ["Corpus propuesto"], outputs: ["Categorías propuestas"], dependencies: [], support: [{ source_id: "S1", evidence_id: "E3" }] }], scope_changes: [], applicability_conditions: ["Acceso por confirmar"], baselines_or_comparisons: [], transfer_limits: ["Caso único"], feasibility: "Propuesta sintética", discarded_alternative_reasons: [], qualitative_component: "Análisis temático", quantitative_component: null, integration_strategy: null, pending_user_decisions: [] };
@@ -135,8 +137,11 @@ async function main() {
   await grantTestPackage(user.id);
   try {
     const project = await prisma.project.create({ data: { userId: user.id, title: "Fixture", program: "Fixture", university: "OTHER", degreeLevel: "MAESTRIA", templateKey: "GENERIC_POSGRADO_PE", intake: { create: { topic: "Comprender un fenómeno", problemContext: definition.problem, targetPopulation: "Corpus sintético", preferredMethodology: "Cualitativa", availableData: "No confirmados", academicConstraints: "Solo pruebas" } } }, include: { intake: true } });
-    const reference = await prisma.reference.create({ data: { title: "Fixture", normalizedTitle: "rc4 fixture", authorsJson: ["Autor sintético"] } });
+    const reference = await prisma.reference.create({ data: { title: "Fixture", normalizedTitle: "rc4 fixture", authorsJson: ["Autor sintético"],
+      abstract: "Fixture evidence for qualitative interpretation with source-level limitations." } });
     await prisma.projectReference.create({ data: { projectId: project.id, referenceId: reference.id, selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
+    await prepareSelectedSources(user.id, project.id);
+    await confirmEvidenceSet(user.id, project.id);
     const testLedger = structuredClone(ledger); testLedger.project_id = project.id; testLedger.source_registry[0].reference_id = reference.id; testLedger.references[0].reference_id = reference.id;
     const dir = await mkdtemp(path.join(os.tmpdir(), "imx-rc4-design-"));
     let selectorCalls = 0, criticCalls = 0, scienceCalls = 0, step5Calls = 0;

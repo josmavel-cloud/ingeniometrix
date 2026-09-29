@@ -25,6 +25,7 @@ import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/ste
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
 import { recommendDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
 import { appendGenerationInput, currentGenerationInput, frozenProject, readGenerationInput, researchProjectFingerprint, withGenerationInput } from "@/server/projects/generation-input-snapshot";
+import { definitionSchema } from "@/lib/conversational-intake";
 
 const ACTIVE_STATUSES = [
   BlueprintJobStatus.QUEUED,
@@ -300,7 +301,17 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
   const job = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
     const draft = await tx.projectDraft.findUnique({ where: { projectId } });
-    if (draft && draft.confirmedRevision !== draft.revision) throw new Error("DRAFT_CONFIRMATION_REQUIRED: confirma el borrador guardado antes de generar.");
+    const rawDefinition = (draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
+    if (rawDefinition) {
+      const intake = await tx.intake.findUnique({ where: { projectId } });
+      const confirmed = intake?.confirmedDefinitionJson as { revision?: number; definitionHash?: string } | null;
+      if (!confirmed || draft?.confirmedRevision !== confirmed.revision ||
+        fingerprint(definitionSchema.parse(rawDefinition)) !== confirmed.definitionHash) {
+        throw new Error("DRAFT_CONFIRMATION_REQUIRED: confirma la definición científica antes de generar.");
+      }
+    } else if (draft && draft.confirmedRevision !== draft.revision) {
+      throw new Error("DRAFT_CONFIRMATION_REQUIRED: confirma el borrador guardado antes de generar.");
+    }
     if (options?.confirmedDraftRevision !== undefined && options.confirmedDraftRevision !== (draft?.revision ?? 0)) throw new Error("DRAFT_REVISION_CONFLICT: la definición cambió en otra sesión; revísala antes de generar.");
     const concurrent = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } }, orderBy: { createdAt: "desc" } });
     if (concurrent) return concurrent;

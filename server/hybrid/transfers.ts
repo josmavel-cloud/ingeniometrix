@@ -29,7 +29,10 @@ export async function authorizeTransfer(sessionToken: string, input: { purpose: 
     } else {
       if (!Number.isInteger(input.byteSize) || !input.byteSize || input.byteSize < 5 || input.byteSize > MAX_UPLOAD_BYTES || !input.fileName || !/^[^/\\\x00-\x1f]{1,180}\.pdf$/i.test(input.fileName)) throw new Error("INVALID_UPLOAD");
       if (input.draftRevision !== project.draft?.revision) throw new Error("DRAFT_CONFLICT");
-      const count = await tx.uploadedPdf.count({ where: { projectId: project.id, OR: [ { status: { in: ["QUARANTINED", "UPLOADING"] } }, { status: "AWAITING_UPLOAD", createdAt: { gt: new Date(now.getTime() - 600_000) } } ] } });
+      const count = await tx.uploadedPdf.count({ where: { projectId: project.id, OR: [
+        { status: { in: ["PREPARED", "QUARANTINED", "UPLOADING"] } },
+        { status: "AWAITING_UPLOAD", createdAt: { gt: new Date(now.getTime() - 600_000) } },
+      ] } });
       if (count >= 2) throw new Error("PDF_LIMIT");
       maxBytes = input.byteSize;
       const doc = await tx.uploadedPdf.create({ data: { projectId: project.id, userId: session.userId, draftRevision: input.draftRevision!,

@@ -7,6 +7,8 @@ import { confirmProjectDraft, readProjectDraft, saveProjectDraft } from "@/serve
 import { currentGenerationInput, frozenProject, readGenerationInput, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 import { enqueueBlueprintJobForUser, runNextBlueprintJobStage } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { saveIntakeForProject } from "@/server/projects/project-service";
+import { prepareSelectedSources } from "@/server/projects/source-preparation-service";
+import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
 
 async function main() {
   if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("RC4 isolated DB required");
@@ -45,19 +47,23 @@ async function main() {
     const confirmed = await confirmProjectDraft(user.id, project.id, saved.revision);
     const replay = await confirmProjectDraft(user.id, project.id, saved.revision);
     assert.equal(replay.project.intake!.updatedAt.toISOString(), confirmed.project.intake!.updatedAt.toISOString());
-    const ref = await prisma.reference.create({ data: { title: "Original reference", normalizedTitle: "original fixture reference", authorsJson: [] } }); referenceId = ref.id;
+    const ref = await prisma.reference.create({ data: { title: "Original reference", normalizedTitle: "original fixture reference", authorsJson: [],
+      abstract: "Original reference supplies an inspectable abstract for the frozen evidence fixture." } }); referenceId = ref.id;
     const selected = await prisma.projectReference.create({ data: { projectId: project.id, referenceId: ref.id, selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
     const incomplete = await saveProjectDraft(user.id, project.id, saved.revision, { ...saved.intake, advisorNotes: "Nuevo criterio" });
     await assert.rejects(() => saveIntakeForProject(user.id, project.id, initial), /borrador cambió/);
     await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" }), /DRAFT_CONFIRMATION_REQUIRED/);
     await confirmProjectDraft(user.id, project.id, incomplete.revision);
     await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: saved.revision }), /DRAFT_REVISION_CONFLICT/);
+    await prepareSelectedSources(user.id, project.id);
+    await confirmEvidenceSet(user.id, project.id);
     const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" });
     const persisted = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     const id = (persisted.stageDataJson as { inputSnapshotId: string }).inputSnapshotId;
     const input = (await readGenerationInput(job.id, id))!;
     assert.equal(input.project.intake.advisorNotes, "Nuevo criterio");
-    assert.equal(input.inspection, null);
+    assert.ok(input.inspection, "RC4 freezes the explicitly confirmed source inspection");
+    assert.ok(input.evidenceSet?.id, "ScientificDesign receives the frozen EvidenceSet identity");
     const oldModel = process.env.IMX_STEP5_EXTRACTION_MODEL;
     process.env.IMX_STEP5_EXTRACTION_MODEL = "unapproved-test-model";
     try { await assert.rejects(() => readGenerationInput(job.id, id), /GENERATION_CONFIGURATION_CHANGED/); }

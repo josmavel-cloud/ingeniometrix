@@ -18,10 +18,13 @@ export async function GET(_request: Request, context: Context) {
     await requireOwnedProject(user.id, projectId);
     if (process.env.IMX_HYBRID_TRANSFERS === "1") {
       const [documents, draft] = await Promise.all([
-        prisma.uploadedPdf.findMany({ where: { projectId, userId: user.id }, select: { id: true, fileName: true, status: true, byteSize: true, createdAt: true }, orderBy: { createdAt: "desc" } }),
+        prisma.uploadedPdf.findMany({ where: { projectId, userId: user.id, status: { not: "REMOVED" } },
+          select: { id: true, fileName: true, status: true, byteSize: true, sha256: true,
+            identityStatus: true, extractionStatus: true, referenceId: true, createdAt: true },
+          orderBy: { createdAt: "desc" } }),
         prisma.projectDraft.findUnique({ where: { projectId }, select: { revision: true } }),
       ]);
-      return NextResponse.json({ capability: { ...userPdfUploadCapability, enabled: true, maxBytesPerFile: 30 * 1024 * 1024, persistenceStatus: "QUARANTINE_ONLY" }, documents, draftRevision: draft?.revision }, { headers: { "Cache-Control": "private, no-store" } });
+      return NextResponse.json({ capability: { ...userPdfUploadCapability, enabled: true, maxBytesPerFile: 30 * 1024 * 1024, persistenceStatus: "SOURCE_INTEGRATED" }, documents, draftRevision: draft?.revision }, { headers: { "Cache-Control": "private, no-store" } });
     }
     return NextResponse.json({ capability: userPdfUploadCapability, documents: [] }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

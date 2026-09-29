@@ -252,6 +252,7 @@ model User {
   trainingConsent    Boolean                 @default(false)
   transferGrants     TransferGrant[]
   uploadedPdfs       UploadedPdf[]
+  evidenceSets       ProjectEvidenceSet[]
   intakeTurns        IntakeTurn[]
 }
 
@@ -349,12 +350,18 @@ model UploadedPdf {
   sha256          String?
   trainingConsent Boolean  @default(false)
   status          String   @default("AWAITING_UPLOAD")
+  referenceId     String?
+  identityStatus  String   @default("UNREVIEWED")
+  extractionStatus String  @default("NOT_RUN")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   project         Project @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  reference       Reference? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
   transferGrants  TransferGrant[]
   @@index([projectId, status])
+  @@index([projectId, referenceId])
+  @@index([projectId, sha256])
 }
 
 model AuthThrottle {
@@ -533,6 +540,7 @@ model Project {
   user                      User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
   transferGrants            TransferGrant[]
   uploadedPdfs              UploadedPdf[]
+  evidenceSets              ProjectEvidenceSet[]
   intake                    Intake?
   draft                     ProjectDraft?
   intakeTurns               IntakeTurn[]
@@ -643,12 +651,36 @@ model Reference {
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
   projectLinks     ProjectReference[]
+  uploadedPdfs     UploadedPdf[]
   classification   ReferenceClassification?
   indexMemberships ReferenceIndexMembership[]
   keywords         ReferenceKeyword[]
 
   @@index([doi])
   @@index([normalizedTitle, year])
+}
+
+// Append-only snapshot of an explicit human evidence confirmation. Later
+// selection or preparation changes create a new version, never rewrite this.
+model ProjectEvidenceSet {
+  id               String   @id @default(uuid())
+  projectId        String
+  createdBy        String
+  version          Int
+  searchIntentHash String
+  definitionHash   String?
+  sourcePoolVersion String
+  selectionHash    String
+  contentHash      String
+  readiness        String
+  snapshotJson     Json
+  createdAt        DateTime @default(now())
+  project          Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator          User     @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, version])
+  @@unique([projectId, contentHash])
+  @@index([projectId, createdAt])
 }
 
 model ProjectReference {

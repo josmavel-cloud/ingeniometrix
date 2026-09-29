@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
 
@@ -20,6 +20,11 @@ type ReferenceListItem = {
   id: string;
   selected: boolean;
   selectedOrder: number | null;
+  primaryRole?: "DIRECT" | "METHODOLOGICAL" | "THEORETICAL" | "CONTEXTUAL" | "NONE";
+  relevanceReason?: string;
+  evidenceLevel?: string;
+  preparationStatus?: string;
+  userUploaded?: boolean;
   relevanceScore: number | null;
   scoreBreakdown: {
     label: "ALTO" | "MEDIO" | "BAJO" | "MINIMO";
@@ -131,6 +136,20 @@ function renderScoreLabel(label: string | null | undefined, language: SupportedL
   return "LOW";
 }
 
+const roleLabels: Record<NonNullable<ReferenceListItem["primaryRole"]>, string> = {
+  DIRECT: "Directamente relacionada", METHODOLOGICAL: "Antecedente metodológico",
+  THEORETICAL: "Marco conceptual/teórico", CONTEXTUAL: "Contexto relevante",
+  NONE: "Rol por revisar",
+};
+function availabilityLabel(item: ReferenceListItem) {
+  if (item.preparationStatus === "PREPARED_FULL_TEXT") return "Documento preparado";
+  if (item.preparationStatus === "IDENTITY_REVIEW_REQUIRED") return "Identidad por revisar";
+  if (item.preparationStatus === "FAILED_ACCESS") return "Documento no disponible";
+  if (item.evidenceLevel === "ABSTRACT_AVAILABLE") return "Resumen disponible";
+  if (item.reference.pdfUrl) return "Enlace a texto/PDF por verificar";
+  return "Metadatos disponibles";
+}
+
 function mergeReferenceLists(
   current: ReferenceListItem[],
   incoming: ReferenceListItem[],
@@ -168,6 +187,13 @@ export function ReferenceSearchPanel({
   const router = useRouter();
   const copy = getProjectUiCopy(language).sourceSearch;
   const [references, setReferences] = useState(initialReferences);
+  useEffect(() => {
+    setReferences(current => {
+      const seen = new Set(current.map(item => item.reference.id));
+      const additions = initialReferences.filter(item => !seen.has(item.reference.id));
+      return additions.length ? [...current, ...additions] : current;
+    });
+  }, [initialReferences]);
   const [searchSnapshot, setSearchSnapshot] = useState<ReferenceSearchSnapshot | null>(
     initialSearchSnapshot,
   );
@@ -380,6 +406,7 @@ export function ReferenceSearchPanel({
         }
 
         setMessage(copy.saved);
+        window.dispatchEvent(new Event("imx-selection-saved"));
         router.refresh();
       } catch {
         setError(copy.saveError);
@@ -641,6 +668,9 @@ export function ReferenceSearchPanel({
                 <h3 className="font-[var(--font-heading)] text-lg font-semibold text-slate-950">
                   {item.reference.translatedTitle ?? item.reference.title}
                 </h3>
+                <p className="mt-2 text-sm text-slate-600">{roleLabels[item.primaryRole ?? "NONE"]} · {availabilityLabel(item)}</p>
+                {item.relevanceReason ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.relevanceReason}</p> : null}
+                {item.userUploaded ? <p className="mt-2 text-xs text-amber-800">PDF aportado por ti: su identidad y pertinencia requieren revisión.</p> : null}
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
                     {[item.reference.venue, item.reference.year].filter(Boolean).join(" | ") || copy.noDate}
@@ -670,14 +700,14 @@ export function ReferenceSearchPanel({
                   </p>
                 ) : null}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  {item.reference.pdfUrl && item.reference.pdfAccessible ? (
+                  {item.reference.pdfUrl ? (
                     <a
                       className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:border-rose-300 hover:text-rose-800"
                       href={item.reference.pdfUrl}
                       rel="noreferrer"
                       target="_blank"
                     >
-                      {copy.pdfLabel}
+                      Enlace a texto/PDF por verificar
                       <FileText className="ml-2 size-4" />
                     </a>
                   ) : null}

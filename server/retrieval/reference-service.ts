@@ -533,7 +533,7 @@ export async function listProjectReferences(
   projectId: string,
   options?: { languageOverride?: string | null },
 ) {
-  const [project, user, references, searchSnapshot] = await Promise.all([
+  const [project, user, references, searchSnapshot, preparations, uploaded] = await Promise.all([
     prisma.project.findFirst({
       where: {
         id: projectId,
@@ -553,23 +553,24 @@ export async function listProjectReferences(
       },
     }),
     getLatestProjectReferenceSearchSnapshot(projectId),
+    prisma.projectSourceMaterialization.findMany({ where: { projectId, materializationType: "SOURCE_PREPARATION_V1" },
+      orderBy: { createdAt: "desc" }, select: { referenceId: true, status: true, metricsJson: true } }),
+    prisma.uploadedPdf.findMany({ where: { projectId, userId, status: "PREPARED", referenceId: { not: null } },
+      select: { referenceId: true, identityStatus: true } }),
   ]);
 
   if (!project) {
     throw new Error("Proyecto no encontrado.");
   }
 
-  const persistedSelectedReferenceIds = references
-    .filter((item) => item.selected)
-    .sort((left, right) => (left.selectedOrder ?? 999) - (right.selectedOrder ?? 999))
-    .map((item) => item.referenceId);
-  const applySuggestedSelection =
-    Boolean(searchSnapshot) &&
-    JSON.stringify(persistedSelectedReferenceIds) ===
-      JSON.stringify(searchSnapshot?.baseSelectedReferenceIds ?? []);
   const scoreBreakdownByReferenceId = new Map(
     (searchSnapshot?.references ?? []).map((item) => [item.referenceId, item] as const),
   );
+  const preparationByReferenceId = new Map<string, (typeof preparations)[number]>();
+  for (const preparation of preparations) if (!preparationByReferenceId.has(preparation.referenceId)) {
+    preparationByReferenceId.set(preparation.referenceId, preparation);
+  }
+  const uploadReferenceIds = new Set(uploaded.map(row => row.referenceId));
   const referencesById = new Map(references.map((item) => [item.referenceId, item] as const));
   const orderedReferences =
     searchSnapshot && searchSnapshot.references.length > 0
@@ -579,10 +580,10 @@ export async function listProjectReferences(
       : references;
   // Historical snapshots stay immutable. Re-evaluate only their current
   // presentation, and always retain explicit human selections.
-  const visibleReferences = [...references.filter((item) => item.selected), ...orderedReferences]
+  const visibleReferences = [...references.filter((item) => item.selected || uploadReferenceIds.has(item.referenceId)), ...orderedReferences]
     .filter((item, index, all) => all.findIndex((other) => other.referenceId === item.referenceId) === index)
     .filter((item) => {
-      if (item.selected) return true;
+      if (item.selected || uploadReferenceIds.has(item.referenceId)) return true;
       const entry = scoreBreakdownByReferenceId.get(item.referenceId);
       return decideReferenceAdmission({
         title: item.reference.title,
@@ -621,24 +622,32 @@ export async function listProjectReferences(
       score: snapshotEntry?.relevanceScore ?? item.relevanceScore,
       breakdown: snapshotEntry?.scoreBreakdown ?? null,
     });
-    const suggestedSelectedOrder = applySuggestedSelection && admission.state === "ADMITTED"
-      ? snapshotEntry?.suggestedSelectedOrder ?? null
-      : null;
-    const effectiveSelected = item.selected || suggestedSelectedOrder !== null;
-    const effectiveSelectedOrder = item.selected ? item.selectedOrder : suggestedSelectedOrder;
     const pdfUrl = snapshotEntry?.pdfUrl ?? accessSignals.pdfUrl;
     const pdfAccessible = snapshotEntry?.pdfAccessible ?? false;
+    const assessment = snapshotEntry?.scoreBreakdown?.candidateAssessment;
+    const preparation = preparationByReferenceId.get(item.referenceId);
+    const preparationMetrics = preparation?.metricsJson as { evidenceLevel?: string } | null;
 
     return {
       ...item,
-      selected: effectiveSelected,
-      selectedOrder: effectiveSelectedOrder,
+      // Recommendations are suggestions, never human selection. The persisted
+      // ProjectReference row is the sole authority for the checkbox state.
+      selected: item.selected,
+      selectedOrder: item.selectedOrder,
       relevanceScore: snapshotEntry?.relevanceScore ?? item.relevanceScore,
       scoreBreakdown: snapshotEntry?.scoreBreakdown ?? null,
       admission,
+      primaryRole: assessment?.role ?? "NONE",
+      relevanceReason: assessment?.origin === "MODEL_REVIEW" && assessment.evidence?.length
+        ? `Fundamento en ${assessment.evidence[0].field === "title" ? "el título" : "el resumen"}: ${assessment.evidence[0].quote.slice(0, 180)}`
+        : admission.state === "ADMITTED"
+          ? "Coincide con dimensiones del tema en los metadatos disponibles; verifica su aporte antes de usarla."
+          : "La pertinencia necesita revisión con la información disponible.",
       recommendationState: item.selected ? "SELECTED" : admission.state === "ADMITTED" ? "RECOMMENDED" : admission.state,
-      sourceState: effectiveSelected ? "SELECTED" : "CANDIDATE",
-      evidenceLevel: "UNKNOWN",
+      sourceState: item.selected ? "SELECTED" : "CANDIDATE",
+      evidenceLevel: preparationMetrics?.evidenceLevel ?? (item.reference.abstract ? "ABSTRACT_AVAILABLE" : "METADATA_ONLY"),
+      preparationStatus: preparation?.status ?? "NOT_PREPARED",
+      userUploaded: uploadReferenceIds.has(item.referenceId),
       provenance: { provider: item.sourceProvider, searchSnapshotSavedAt: searchSnapshot?.savedAt ?? null },
       reference: {
         ...item.reference,
@@ -677,6 +686,12 @@ export async function updateSelectedProjectReferences(
     if (requestedIds.length > MAX_SELECTED_REFERENCES) throw new Error(`Puedes seleccionar hasta ${MAX_SELECTED_REFERENCES} fuentes.`);
     const ownedRows = await tx.projectReference.findMany({ where: { projectId, OR: [{ referenceId: { in: requestedIds } }, { id: { in: requestedIds } }] }, select: { id: true, referenceId: true } });
     if (ownedRows.length !== requestedIds.length) throw new Error("Una o mas fuentes ya no pertenecen a este proyecto. Recarga la lista antes de guardar.");
+    const canonicalSelectedReferenceIds = requestedIds.map((requestedId) => ownedRows.find((item) => item.id === requestedId || item.referenceId === requestedId)!.referenceId);
+    const current = await tx.projectReference.findMany({ where: { projectId, selected: true },
+      select: { referenceId: true }, orderBy: [{ selectedOrder: "asc" }, { id: "asc" }] });
+    if (JSON.stringify(current.map(row => row.referenceId)) === JSON.stringify(canonicalSelectedReferenceIds)) {
+      return current.length;
+    }
     await tx.projectReference.updateMany({
       where: { projectId },
       data: {
@@ -714,7 +729,6 @@ export async function updateSelectedProjectReferences(
             : ProjectStatus.SOURCES_REVIEW,
       },
     });
-    const canonicalSelectedReferenceIds = requestedIds.map((requestedId) => ownedRows.find((item) => item.id === requestedId || item.referenceId === requestedId)!.referenceId);
     await syncSourceSelectionToDraft(tx, projectId, canonicalSelectedReferenceIds);
 
     return selectedCount;

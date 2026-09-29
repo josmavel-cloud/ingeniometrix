@@ -16,6 +16,7 @@ export class PrivateFileArtifactStore implements ArtifactStore {
     if (!/^[a-f0-9-]{36}$/.test(key)) throw new Error("INVALID_STORAGE_KEY");
     return path.join(this.root, `${key}.pdf`);
   }
+  pathForPdf(key: string) { return this.file(key); }
   async exists(key: string) { try { return (await stat(this.file(key))).isFile(); } catch { return false; } }
   async putPdf(key: string, stream: ReadableStream<Uint8Array>, expectedBytes: number) {
     await mkdir(this.root, { recursive: true, mode: 0o700 });

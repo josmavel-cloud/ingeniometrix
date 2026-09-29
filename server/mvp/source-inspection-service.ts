@@ -1,12 +1,14 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
 import { ActorType, Provider } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { PrivateFileArtifactStore } from "@/server/storage/artifact-store";
+import { fingerprint } from "@/server/mvp/job-execution-context";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import {
   buildMvpApiUsageReport,
@@ -16,8 +18,8 @@ import { asStepRunJson, createMvpStepRun, updateMvpStepRun } from "@/server/mvp/
 import {
   buildBrowserLikeFetchHeaders,
   extractAccessSignals,
-  verifyPdfAccess,
 } from "@/server/retrieval/reference-access";
+import { fetchPublicDocument } from "@/server/retrieval/safe-document-fetch";
 import { fetchCrossrefWorkByDoi } from "@/server/retrieval/crossref-client";
 import { inspectEvidenceLevel, type EvidenceLevel } from "./evidence-continuity";
 
@@ -51,6 +53,11 @@ export type MvpSourceHealth =
 export type MvpSourceTopicFit = "direct" | "methodological" | "contextual" | "weak" | "unknown";
 
 export type MvpSourceInspectionItem = {
+  source_fingerprint?: string;
+  full_text_path?: string | null;
+  uploaded_pdf_id?: string | null;
+  pdf_sha256?: string | null;
+  full_text_sha256?: string | null;
   evidence_level?: EvidenceLevel;
   abstract_available?: boolean;
   doi_syntax_valid?: boolean | null;
@@ -382,15 +389,12 @@ async function sourceCandidateUrls(item: ProjectReferenceWithReference, directPd
 }
 
 async function fetchWithTimeout(url: string, referer: string | null) {
-    return fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      headers: buildBrowserLikeFetchHeaders({
+    return fetchPublicDocument(url,
+      buildBrowserLikeFetchHeaders({
         accept: "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         referer: referer ?? url,
       }),
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+      MAX_PDF_BYTES, FETCH_TIMEOUT_MS);
 }
 
 async function resolveAndFetchPdf(input: {
@@ -409,11 +413,11 @@ async function resolveAndFetchPdf(input: {
 
     try {
       const response = await fetchWithTimeout(candidate.url, input.item.reference.landingPageUrl);
-      const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
-      const finalUrl = response.url || candidate.url;
+      const contentType = response.contentType;
+      const finalUrl = response.finalUrl;
 
       if (response.ok && (contentType.includes("pdf") || finalUrl.toLowerCase().includes(".pdf"))) {
-        const buffer = Buffer.from(await response.arrayBuffer());
+        const buffer = response.body;
         if (buffer.byteLength > MAX_PDF_BYTES) {
           lastError = `${candidate.strategy}: PDF demasiado grande (${buffer.byteLength} bytes).`;
           continue;
@@ -422,7 +426,7 @@ async function resolveAndFetchPdf(input: {
           lastError = `${candidate.strategy}: respuesta no parece PDF (${contentType || "sin content-type"}).`;
           continue;
         }
-        await writeFile(input.targetPath, buffer);
+        await writeFile(input.targetPath, buffer, { mode: 0o600 });
         return {
           ok: true as const,
           resolvedPdfUrl: finalUrl,
@@ -432,7 +436,7 @@ async function resolveAndFetchPdf(input: {
       }
 
       if (response.ok && contentType.includes("html")) {
-        const html = await response.text();
+        const html = response.body.toString("utf8");
         for (const discovered of parseHtmlForPdfLinks(html, finalUrl)) {
           if (!visited.has(discovered)) {
             queue.push({ url: discovered, strategy: `${candidate.strategy}:html_pdf_discovery` });
@@ -453,19 +457,31 @@ async function resolveAndFetchPdf(input: {
 
 async function extractPdfText(pdfPath: string, txtPath: string) {
   try {
-    await execFileAsync("pdftotext", ["-layout", "-f", "1", "-l", "8", pdfPath, txtPath], { timeout: 30_000 });
+    await execFileAsync("pdftotext", [pdfPath, txtPath], { timeout: 60_000 });
     return await readFile(txtPath, "utf8");
   } catch {
-    try {
-      await execFileAsync("pdftotext", [pdfPath, txtPath], { timeout: 30_000 });
-      return await readFile(txtPath, "utf8");
-    } catch {
-      return "";
-    }
+    return "";
   }
 }
 
-async function inspectOne(input: { item: ProjectReferenceWithReference; artifactDir: string }): Promise<MvpSourceInspectionItem> {
+type PreparedUpload = { id: string; storageKey: string; sha256: string | null };
+export function sourceInspectionFingerprint(item: ProjectReferenceWithReference, upload: PreparedUpload | null) {
+  return fingerprint({ referenceId: item.referenceId, title: item.reference.title, abstract: item.reference.abstract,
+    doi: item.reference.doi, landingPageUrl: item.reference.landingPageUrl,
+    rawOpenAlexJson: item.reference.rawOpenAlexJson, rawCrossrefJson: item.reference.rawCrossrefJson,
+    uploadId: upload?.id ?? null, uploadHash: upload?.sha256 ?? null });
+}
+
+async function reusableInspectionItem(item: MvpSourceInspectionItem | undefined, expectedFingerprint: string) {
+  if (!item || item.source_fingerprint !== expectedFingerprint) return false;
+  if (item.fetch_status === "failed") return false; // An explicit retry may recover a transient access failure.
+  for (const file of [item.downloaded_pdf_path, item.full_text_path, item.sample_text_path]) {
+    if (file && !await stat(file).then(s => s.isFile()).catch(() => false)) return false;
+  }
+  return true;
+}
+
+async function inspectOne(input: { item: ProjectReferenceWithReference; artifactDir: string; upload: PreparedUpload | null }): Promise<MvpSourceInspectionItem> {
   const { item } = input;
   const access = extractAccessSignals({
     rawOpenAlexJson: item.reference.rawOpenAlexJson,
@@ -476,7 +492,7 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   const pdfAccessible = false; // GET below is authoritative; a HEAD signal is not retrieved evidence.
   const sourceKey = `${String(item.selectedOrder ?? "x").padStart(2, "0")}-${safeKey(item.reference.title)}`;
   const pdfPath = path.join(input.artifactDir, `${sourceKey}.pdf`);
-  const textPath = path.join(input.artifactDir, `${sourceKey}.sample.txt`);
+  const textPath = path.join(input.artifactDir, `${sourceKey}.fulltext.txt`);
   const warnings: string[] = [];
   const blockers: string[] = [];
   let fetchStatus: MvpSourceInspectionItem["fetch_status"] = "skipped";
@@ -485,8 +501,25 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   let sampleTextPath: string | null = null;
   let resolvedPdfUrl: string | null = null;
   let pdfAccessStrategy: string | null = null;
+  let uploadFailure = false;
 
-  if (pdfPath) {
+  if (input.upload) {
+    const storage = new PrivateFileArtifactStore();
+    const uploadedPath = storage.pathForPdf(input.upload.storageKey);
+    const bytes = await readFile(uploadedPath).catch(() => null);
+    if (!bytes || !input.upload.sha256 || createHash("sha256").update(bytes).digest("hex") !== input.upload.sha256) {
+      uploadFailure = true;
+      fetchStatus = "failed";
+      blockers.push("El PDF aportado no supera la verificación de integridad; no se usa como texto.");
+    } else {
+      await copyFile(uploadedPath, pdfPath);
+      downloadedPdfPath = pdfPath;
+      resolvedPdfUrl = null;
+      pdfAccessStrategy = "user_uploaded_private";
+      fetchStatus = "downloaded";
+      text = await extractPdfText(pdfPath, textPath);
+    }
+  } else if (pdfPath) {
     const fetched = await resolveAndFetchPdf({ item, directPdfUrl: pdfUrl, targetPath: pdfPath });
     if (fetched.ok) {
       downloadedPdfPath = pdfPath;
@@ -494,20 +527,23 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
       pdfAccessStrategy = fetched.strategy;
       fetchStatus = "downloaded";
       text = await extractPdfText(pdfPath, textPath);
-      if (text.trim()) {
-        text = text.replace(/\s+\n/g, "\n").replace(/[ \t]+/g, " ").trim();
-        await writeFile(textPath, `${text.slice(0, MAX_SAMPLE_CHARS)}\n`, "utf8");
-        sampleTextPath = textPath;
-      } else {
-        warnings.push("PDF descargado, pero pdftotext no extrajo texto util en la muestra.");
-      }
     } else {
-      fetchStatus = "failed";
-      warnings.push(`No se pudo resolver/descargar PDF publico: ${fetched.error}`);
+      fetchStatus = item.reference.doi || item.reference.landingPageUrl || pdfUrl ? "failed" : "metadata_only";
+      warnings.push(fetchStatus === "failed" ? `No se pudo resolver/descargar PDF publico: ${fetched.error}` :
+        "No hay ubicaciones de texto público conocidas; se conserva metadata/resumen sin inventar disponibilidad.");
     }
   } else {
     fetchStatus = "metadata_only";
     warnings.push("No se detectó PDF público; la fuente queda en metadata/abstract hasta revisión manual o repositorio alterno.");
+  }
+
+  if (text.trim()) {
+    text = text.replace(/\s+\n/g, "\n").replace(/[ \t]+/g, " ").trim();
+    await writeFile(textPath, text, { mode: 0o600 });
+    sampleTextPath = path.join(input.artifactDir, `${sourceKey}.sample.txt`);
+    await writeFile(sampleTextPath, `${text.slice(0, MAX_SAMPLE_CHARS)}\n`, { encoding: "utf8", mode: 0o600 });
+  } else if (downloadedPdfPath) {
+    warnings.push("PDF preparado, pero pdftotext no extrajo texto util.");
   }
 
   const fallbackText = [item.reference.title, item.reference.abstract, item.reference.venue].filter(Boolean).join("\n");
@@ -523,7 +559,7 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   if (!text && item.reference.abstract?.trim()) {
     health = "metadata_only";
   }
-  if (identity.identity_status === "mismatch") {
+  if (identity.identity_status === "mismatch" || uploadFailure) {
     blockers.push("El texto extraído no coincide suficientemente con título/DOI; requiere revisión manual.");
   }
 
@@ -538,6 +574,11 @@ async function inspectOne(input: { item: ProjectReferenceWithReference; artifact
   });
 
   return {
+    source_fingerprint: sourceInspectionFingerprint(item, input.upload),
+    full_text_path: text ? textPath : null,
+    uploaded_pdf_id: input.upload?.id ?? null,
+    pdf_sha256: downloadedPdfPath ? createHash("sha256").update(await readFile(downloadedPdfPath)).digest("hex") : null,
+    full_text_sha256: text ? createHash("sha256").update(text).digest("hex") : null,
     evidence_level: inspectEvidenceLevel({ title: item.reference.title, abstract: item.reference.abstract, accessiblePdf: Boolean(downloadedPdfPath), text, identity: identity.identity_status }),
     abstract_available: Boolean(item.reference.abstract?.trim()),
     doi_syntax_valid: item.reference.doi ? /^10\.\d{4,9}\/\S+$/i.test(item.reference.doi) : null,
@@ -628,11 +669,26 @@ function decide(items: MvpSourceInspectionItem[]) {
 }
 
 export async function runMvpSourceInspection(input: { userId: string; projectId: string; runId?: string }) {
+  const selectedNow = await loadSelectedReferences(input.userId, input.projectId);
+  if (!selectedNow.length) throw new Error("No hay fuentes seleccionadas para inspeccionar.");
+  const uploadsNow = await prisma.uploadedPdf.findMany({ where: { projectId: input.projectId, userId: input.userId,
+    status: "PREPARED", identityStatus: "MATCHED", referenceId: { in: selectedNow.map(row => row.referenceId) } },
+    select: { id: true, referenceId: true, storageKey: true, sha256: true }, orderBy: { createdAt: "desc" } });
+  const uploadNowByReference = new Map(uploadsNow.map(upload => [upload.referenceId, upload]));
+  const latest = await prisma.mvpStepRun.findFirst({ where: { projectId: input.projectId,
+    stepKey: MVP_SOURCE_INSPECTION_KEY, status: { in: ["COMPLETED", "PARTIALLY_COMPLETED"] } },
+    orderBy: { startedAt: "desc" }, select: { outputSnapshotJson: true } });
+  const cached = latest?.outputSnapshotJson as MvpSourceInspectionResult | null;
+  if (cached?.items?.length === selectedNow.length && await Promise.all(selectedNow.map(async item =>
+    reusableInspectionItem(cached.items.find(old => old.source_id === item.referenceId),
+      sourceInspectionFingerprint(item, uploadNowByReference.get(item.referenceId) ?? null)))).then(results => results.every(Boolean))) {
+    return cached;
+  }
   const runId = input.runId ?? `mvp-source-inspection-${randomUUID()}`;
   const artifactDir = path.join(process.cwd(), "artifacts-local", "mvp-source-inspection", input.projectId, runId);
   const artifactManifestPath = path.join(artifactDir, "source-inspection-report.json");
   const startedAt = new Date();
-  await mkdir(artifactDir, { recursive: true });
+  await mkdir(artifactDir, { recursive: true, mode: 0o700 });
   const usageBefore = await captureMvpApiUsageSnapshot();
   const stepRun = await createMvpStepRun({
     projectId: input.projectId,
@@ -667,15 +723,23 @@ export async function runMvpSourceInspection(input: { userId: string; projectId:
   });
 
   try {
-    const selected = await loadSelectedReferences(input.userId, input.projectId);
+    const selected = selectedNow;
 
     if (selected.length === 0) {
       throw new Error("No hay fuentes seleccionadas para inspeccionar.");
     }
 
+    const prior = await prisma.mvpStepRun.findFirst({ where: { projectId: input.projectId,
+      stepKey: MVP_SOURCE_INSPECTION_KEY, status: { in: ["COMPLETED", "PARTIALLY_COMPLETED"] },
+      id: { not: stepRun.id } }, orderBy: { startedAt: "desc" }, select: { outputSnapshotJson: true } });
+    const priorItems = ((prior?.outputSnapshotJson as { items?: MvpSourceInspectionItem[] } | null)?.items ?? []);
+    const priorByReference = new Map(priorItems.map(item => [item.source_id, item]));
     const items: MvpSourceInspectionItem[] = [];
     for (const item of selected) {
-      items.push(await inspectOne({ item, artifactDir }));
+      const upload = uploadNowByReference.get(item.referenceId) ?? null;
+      const priorItem = priorByReference.get(item.referenceId);
+      items.push(await reusableInspectionItem(priorItem, sourceInspectionFingerprint(item, upload))
+        ? priorItem! : await inspectOne({ item, artifactDir, upload }));
     }
     const decision = decide(items);
     const reportWithoutUsage = {
@@ -702,7 +766,7 @@ export async function runMvpSourceInspection(input: { userId: string; projectId:
       items,
     };
 
-    await writeFile(artifactManifestPath, `${JSON.stringify(reportWithoutUsage, null, 2)}\n`, "utf8");
+    await writeFile(artifactManifestPath, `${JSON.stringify(reportWithoutUsage, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     const summary = renderMvpSourceInspectionSummary(reportWithoutUsage);
     await writeFile(path.join(artifactDir, "source-inspection-summary.md"), summary, "utf8");
     const apiUsageReport = await buildMvpApiUsageReport({

@@ -8,6 +8,7 @@ import { ProjectShell } from "@/components/projects/project-shell";
 import { ProjectSummarySidebar } from "@/components/projects/project-summary-sidebar";
 import { ReferenceSearchPanel } from "@/components/projects/reference-search-panel";
 import { PrivatePdfUpload } from "@/components/projects/private-pdf-upload";
+import { EvidenceFlowPanel } from "@/components/projects/evidence-flow-panel";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
 import { getLocaleForLanguage } from "@/lib/language";
 import { requireCurrentUser, pageData } from "@/lib/backend-http";
@@ -81,6 +82,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 status={project.status}
               />
               <PrivatePdfUpload projectId={id} />
+              <EvidenceFlowPanel projectId={id} selectedCount={selectedReferenceCount} />
               </>}
             </>
           ) : null}

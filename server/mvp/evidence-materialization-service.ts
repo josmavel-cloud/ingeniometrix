@@ -733,10 +733,20 @@ async function materializePdfSources(input: {
     const warnings: string[] = [];
     try {
       const pdfBuffer = await readFile(originalPdfPath);
+      if (currentGenerationInput() && (!inspection?.pdf_sha256 ||
+        sha256Buffer(pdfBuffer) !== inspection.pdf_sha256)) throw new Error("FROZEN_SOURCE_PDF_HASH_MISMATCH");
       await copyFile(originalPdfPath, sourcePdfPath);
       // Reading order keeps multi-column prose contiguous. Layout mode interleaves
       // columns, making genuine quotations impossible to verify (RC4 reference S5).
-      await execFileAsync("pdftotext", [sourcePdfPath, fulltextPath], { timeout: 60_000 });
+      if (currentGenerationInput()) {
+        if (!inspection?.full_text_path) throw new Error("SOURCE_PREPARATION_FULL_TEXT_REQUIRED");
+        if (!inspection.full_text_sha256 || sha256Buffer(await readFile(inspection.full_text_path)) !== inspection.full_text_sha256) {
+          throw new Error("FROZEN_SOURCE_TEXT_HASH_MISMATCH");
+        }
+        await copyFile(inspection.full_text_path, fulltextPath);
+      } else {
+        await execFileAsync("pdftotext", [sourcePdfPath, fulltextPath], { timeout: 60_000 });
+      }
       const rawText = await readFile(fulltextPath, "utf8");
       const pages = rawText
         .split(/\f/g)
@@ -2825,7 +2835,11 @@ export async function runMvpEvidenceMaterialization(input: {
   const errors: string[] = [];
   const project = await loadProjectForStep5(input);
   const templateContext = await resolveTemplateContext(project.templateKey, warnings);
-  const inspected = await runMvpSourceInspection({ ...input, runId: `${artifacts.runId}-inspection` });
+  const frozenInspection = currentGenerationInput()?.inspection?.outputSnapshotJson as MvpSourceInspectionResult | undefined;
+  // RC4 consumes the inspection frozen with EvidenceSet. The plan job cannot
+  // search, download, or re-inspect mutable Sources behind the user's back.
+  if (currentGenerationInput() && !frozenInspection) throw new Error("FROZEN_EVIDENCE_INSPECTION_REQUIRED");
+  const inspected = frozenInspection ?? await runMvpSourceInspection({ ...input, runId: `${artifacts.runId}-inspection` });
   const sourceInspection = {
     stepRunId: inspected.step_run_id!,
     itemsByReferenceId: new Map(inspected.items.map((item) => [item.source_id, item])),

@@ -65,6 +65,8 @@ async function main() {
     const two = await authorizeTransfer(token, { ...upload, byteSize: pdfFixture().length });
     await receivePdf(two.token, stream(pdfFixture()));
     await rejects(() => authorizeTransfer(token, upload));
+    await prisma.uploadedPdf.update({ where: { id: received.id }, data: { status: "PREPARED" } });
+    await rejects(() => authorizeTransfer(token, upload));
     await rejects(() => new PrivateFileArtifactStore(dir).putPdf(randomUUID(), stream(Buffer.from("not a PDF")), 9));
     await rejects(() => new PrivateFileArtifactStore(dir).putPdf(randomUUID(), stream(pdfFixture()), 5));
     eq(transferCors(new Request("https://api.example.test", { headers: { origin: process.env.APP_ORIGIN } }))?.["Access-Control-Allow-Origin"], process.env.APP_ORIGIN);
