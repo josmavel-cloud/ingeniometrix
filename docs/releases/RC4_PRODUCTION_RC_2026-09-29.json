@@ -71,12 +71,12 @@
   "backups": {
     "repositoryClass": "rclone:imx-drive-crypt:production/",
     "preMigration": {
-      "snapshotId": "6087b0a9",
+      "snapshotId": "6087b0a96259f22c2903089cf0b6f92549f02031b8996f5371c524e25c690848",
       "createdAt": "2026-09-29T19:20:36.261264523Z",
       "integrity": "restic check --read-data passed"
     },
     "postMigration": {
-      "snapshotId": "227a3ad7",
+      "snapshotId": "227a3ad734826934c1bf70adc423dbf3fe5635b00faddd33f8a5b5f5da6ea8df",
       "createdAt": "2026-09-29T19:21:59.02767508Z",
       "integrity": "restic check --read-data passed; isolated restore yielded readable pg_dump and valid artifact manifest"
     }
