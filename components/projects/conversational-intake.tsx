@@ -5,6 +5,7 @@ import { DEFINITION_FIELDS, FIELD_LABELS, ambiguityBlocksSearch, canDeferAmbigui
 import type { IntakeTurnResult } from "@/lib/intake-turn-contract";
 import { DefinitionSaveQueue } from "@/lib/definition-save-queue";
 import { registerDraftFlush } from "@/lib/draft-save-queue";
+import { Lightbulb, Target, MapPin, BookOpenCheck } from "lucide-react";
 
 type Turn = { requestId: string; kind: string; status: string; inputJson: { message?: string; idea?: string; initial?: boolean }; resultJson: IntakeTurnResult | null };
 type Edit = { field: DefinitionField; value: string; knowledge: "KNOWN" | "UNKNOWN" | "NOT_APPLICABLE" };
@@ -154,7 +155,7 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
   </article>;
   return <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(255px,320px)] lg:items-start">
     <section className="surface-panel flex h-[min(48vh,30rem)] min-h-[23rem] min-w-0 flex-col rounded-[32px] p-4 sm:h-[min(60vh,44rem)] sm:min-h-[27rem] sm:p-6" aria-labelledby="conversation-title">
-      <h2 id="conversation-title" className="font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]">Define tu investigación</h2>
+      <h2 id="conversation-title" className="flex items-center gap-2 font-[var(--font-heading)] text-xl font-semibold text-[var(--color-ink)]"><Lightbulb className="size-5 text-[var(--color-plum)]" aria-hidden="true" />Define tu investigación</h2>
       <p className="mt-1 text-sm text-[var(--color-muted)]">Partimos de tu idea. Revisa solo lo que necesite una decisión tuya.</p>
       <div ref={thread} className="mt-4 min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" role="log" aria-label="Conversación académica" aria-live="polite">
         {turns.filter(t => t.kind !== "ACTION").map(t => <article key={t.requestId} className="space-y-2 text-sm leading-6 whitespace-pre-wrap">
@@ -188,11 +189,11 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
         {conflict ? <div className="mt-2 rounded-xl border p-3 text-sm"><p>Tu texto local se conserva. Carga la revisión actual y compara antes de guardar.</p><button className={button} onClick={() => { void load(true).then(() => { conflictRef.current = false; setConflict(false); setError(""); setDirty(false); setNotice("Revisión actual cargada; tu texto sigue en el editor. Pulsa Guardar para reaplicarlo conscientemente."); }).catch(e => setError(e.message)); }}>Cargar revisión para comparar</button></div> : error && dirty ? <button className={button} onClick={() => void flush().catch(() => undefined)}>Reintentar guardado</button> : null}
       </div>
     </section>
-    <aside className="surface-panel min-w-0 rounded-[32px] p-4 sm:p-5 lg:sticky lg:top-24" aria-label="Definición estructurada">
-      <h2 className="font-[var(--font-heading)] text-lg font-semibold">Tu investigación</h2>
-      <p className="mt-1 text-xs text-[var(--color-muted)]">{state.confirmedRevision === state.revision ? "Definición confirmada" : "Borrador por confirmar"}</p>
-      <dl className="mt-4 space-y-3">{shownFields.map(k => <div key={k} className="border-b border-[var(--color-line)] pb-3">
-        <dt className="text-xs font-semibold text-[var(--color-muted)]">{k === "topic" ? "Tema / intención" : FIELD_LABELS[k]}</dt>
+    <aside className="surface-panel min-w-0 rounded-[32px] border border-[var(--color-lilac)] bg-[linear-gradient(180deg,rgba(219,193,255,0.2),rgba(255,255,255,0.94)_35%)] p-4 sm:p-5 lg:sticky lg:top-24" aria-label="Definición estructurada">
+      <h2 className="flex items-center gap-2 font-[var(--font-heading)] text-lg font-semibold"><BookOpenCheck className="size-5 text-[var(--color-plum)]" aria-hidden="true" />Tu investigación</h2>
+      <p className="mt-1 text-xs text-[var(--color-muted)]">{state.confirmedRevision === state.revision ? "Lista para buscar fuentes" : "Cambios pendientes de confirmar"}</p>
+      <dl className="mt-4 space-y-3">{shownFields.map(k => <div key={k} className="rounded-2xl border border-[var(--color-line)] bg-white/90 p-3">
+        <dt className="flex items-center gap-2 text-xs font-semibold text-[var(--color-plum)]">{k === "topic" ? <Lightbulb className="size-4" aria-hidden="true" /> : k === "purpose" || k === "problem" ? <Target className="size-4" aria-hidden="true" /> : k === "context" ? <MapPin className="size-4" aria-hidden="true" /> : null}{k === "topic" ? "Tema / intención" : FIELD_LABELS[k]}</dt>
         <dd className="mt-1 text-sm leading-5 whitespace-pre-wrap">{publicValue(k, d.fields[k].value) || (d.fields[k].knowledge === "NOT_APPLICABLE" ? "No aplica" : "Por precisar")}</dd>
         <dd><button type="button" className="mt-1 text-xs text-[var(--color-plum)] underline" onClick={() => void chooseField(k)}>Editar</button></dd>
       </div>)}</dl>

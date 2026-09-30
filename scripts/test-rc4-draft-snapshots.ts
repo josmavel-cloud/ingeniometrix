@@ -52,12 +52,12 @@ async function main() {
     const selected = await prisma.projectReference.create({ data: { projectId: project.id, referenceId: ref.id, selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
     const incomplete = await saveProjectDraft(user.id, project.id, saved.revision, { ...saved.intake, advisorNotes: "Nuevo criterio" });
     await assert.rejects(() => saveIntakeForProject(user.id, project.id, initial), /borrador cambió/);
-    await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" }), /DRAFT_CONFIRMATION_REQUIRED/);
+    await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: incomplete.revision }), /DRAFT_CONFIRMATION_REQUIRED/);
     await confirmProjectDraft(user.id, project.id, incomplete.revision);
     await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: saved.revision }), /DRAFT_REVISION_CONFLICT/);
     await prepareSelectedSources(user.id, project.id);
     await confirmEvidenceSet(user.id, project.id);
-    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" });
+    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: incomplete.revision });
     const persisted = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     const id = (persisted.stageDataJson as { inputSnapshotId: string }).inputSnapshotId;
     const input = (await readGenerationInput(job.id, id))!;

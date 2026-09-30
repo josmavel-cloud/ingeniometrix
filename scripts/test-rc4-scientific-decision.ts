@@ -175,12 +175,12 @@ async function main() {
         throw new Error("PDF_SYNTHETIC_PRESENTATION_FAILURE");
       },
     };
-    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" });
+    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: 0 });
     await runNextBlueprintJobStage(job.id, executor);
     const waiting = await runNextBlueprintJobStage(job.id, executor);
     assert.equal(waiting.job?.status, "WAITING_USER_DECISION");
     assert.equal(scienceCalls, 0);
-    assert.equal((await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" })).id, job.id);
+    assert.equal((await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: 0 })).id, job.id);
     for (let i = 0; i < 10; i++) await runNextBlueprintJobStage(job.id, executor);
     assert.equal(selectorCalls, 1); assert.equal(criticCalls, 1); assert.equal(step5Calls, 1);
     await assert.rejects(() => decisionForUser(other.id, project.id, job.id));

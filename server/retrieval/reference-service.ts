@@ -23,7 +23,7 @@ import {
 } from "./crossref-client";
 import { extractAccessSignals } from "./reference-access";
 import {
-  getCachedTranslation,
+  readReferenceDisplayTranslations,
   resolveReferenceSourceLanguage,
 } from "./reference-translation-service";
 import { getLatestProjectReferenceSearchSnapshot } from "./reference-search-v2";
@@ -601,6 +601,7 @@ export async function listProjectReferences(
   });
   // Listing is read-only: translation/language model work belongs to an
   // explicit acquisition step, never a recommendation GET or page refresh.
+  const displayTranslations = await readReferenceDisplayTranslations(visibleReferences.map(item => item.reference), languageContext.activeLanguage);
   return visibleReferences.map((item) => {
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: item.reference.rawOpenAlexJson,
@@ -614,7 +615,7 @@ export async function listProjectReferences(
         abstract: item.reference.abstract,
         rawOpenAlexJson: item.reference.rawOpenAlexJson,
       });
-    const cachedTranslation = getCachedTranslation(item.reference.rawOpenAlexJson, languageContext.activeLanguage);
+    const cachedTranslation = displayTranslations.get(item.reference.id) ?? null;
     const snapshotEntry = scoreBreakdownByReferenceId.get(item.reference.id);
     const admission = decideReferenceAdmission({
       title: item.reference.title,
@@ -682,6 +683,7 @@ export async function updateSelectedProjectReferences(
   }
 
   const selectedCount = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} AND "userId" = ${userId} FOR UPDATE`;
     const requestedIds = [...new Set(selectedReferenceIds)];
     if (requestedIds.length > MAX_SELECTED_REFERENCES) throw new Error(`Puedes seleccionar hasta ${MAX_SELECTED_REFERENCES} fuentes.`);
     const ownedRows = await tx.projectReference.findMany({ where: { projectId, OR: [{ referenceId: { in: requestedIds } }, { id: { in: requestedIds } }] }, select: { id: true, referenceId: true } });

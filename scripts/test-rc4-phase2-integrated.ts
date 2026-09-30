@@ -90,7 +90,8 @@ async function main() {
     const set = await confirmEvidenceSet(user.id, project.id);
     assert.equal(set.version, 1);
     assert.equal(set.readiness, "READY_WITH_LIMITATIONS");
-    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4" });
+    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4",
+      confirmedDraftRevision: (await prisma.projectDraft.findUniqueOrThrow({ where: { projectId: project.id } })).revision });
     const queued = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     const frozen = await readGenerationInput(job.id,
       (queued.stageDataJson as { inputSnapshotId: string }).inputSnapshotId);
@@ -193,7 +194,8 @@ async function main() {
     assert.notEqual(evidenceSourcePoolVersion(pdfSet.searchIntentHash, changedPool, poolUploads), pdfSet.sourcePoolVersion,
       "bibliographic edits make a frozen source pool stale without modifying its snapshot");
     assert.equal((await removeUploadedPdf(user.id, project.id, upload.id)).status, "REMOVED");
-    assert.equal(await new PrivateFileArtifactStore().exists(upload.storageKey), false);
+    assert.equal(await new PrivateFileArtifactStore().exists(upload.storageKey), true,
+      "removing a PDF from the current selection retains bytes required by a historical EvidenceSet");
     await assert.rejects(() => confirmEvidenceSet(user.id, project.id), /EVIDENCE_SET_BLOCKED/,
       "removing an uploaded representation invalidates current preparation without rewriting the old set");
 

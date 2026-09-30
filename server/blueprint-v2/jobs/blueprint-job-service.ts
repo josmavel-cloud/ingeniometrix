@@ -26,6 +26,10 @@ import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equa
 import { recommendDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
 import { appendGenerationInput, currentGenerationInput, frozenProject, readGenerationInput, researchProjectFingerprint, withGenerationInput } from "@/server/projects/generation-input-snapshot";
 import { definitionSchema } from "@/lib/conversational-intake";
+import { assertExpectedGenerationContext, generationContextForUser, type GenerationContext } from "@/server/projects/generation-context-service";
+import { prepareSelectedSources } from "@/server/projects/source-preparation-service";
+import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
+import { ensureReferenceTranslationsForLanguage } from "@/server/retrieval/reference-translation-service";
 
 const ACTIVE_STATUSES = [
   BlueprintJobStatus.QUEUED,
@@ -59,6 +63,8 @@ type StoredStep6 = Pick<
 
 type JobData = {
   runId: string;
+  expectedContext?: GenerationContext;
+  operationId?: string;
   inputFingerprint?: string;
   inputSnapshotId?: string;
   recoveryMode?: "PRESENTATION_ONLY";
@@ -153,6 +159,7 @@ function executionMetadata(job: BlueprintJob, stage: string, outcome: string, fa
 function stageLabel(stage: string | null, language: string) {
   const english = normalizeLanguageCode(language) === "en";
   const labels: Record<string, [string, string]> = {
+    preparing_sources: ["Preparando tus fuentes y organizando la evidencia", "Preparing sources"],
     materializing_evidence: ["Inspeccionando y materializando evidencia", "Inspecting and materializing evidence"],
     generating_plan: ["Generando el plan cientifico", "Generating the scientific plan"],
     scientific_design: ["Evaluando alternativas de investigación", "Evaluating research alternatives"],
@@ -162,6 +169,16 @@ function stageLabel(stage: string | null, language: string) {
     failed: ["La generacion requiere revision", "Generation requires review"],
   };
   return stage ? labels[stage]?.[english ? 1 : 0] ?? stage : null;
+}
+
+function safeJobFailure(error: unknown, category: string) {
+  const code = error instanceof Error ? error.message.split(":", 1)[0] : "";
+  if (code === "SOURCE_SELECTION_CONFLICT" || code === "SOURCE_SELECTION_CHANGED_DURING_PREPARATION" || code === "EVIDENCE_PREPARATION_CHANGED")
+    return "Las fuentes cambiaron mientras se preparaba el plan. Revisa tu selección antes de continuar.";
+  if (code === "DEFINITION_REVISION_CONFLICT")
+    return "La definición cambió. Revisa y confirma la versión actual antes de continuar.";
+  if (code === "EVIDENCE_SET_BLOCKED") return "La evidencia seleccionada no permite continuar. Revisa las limitaciones de tus fuentes.";
+  return publicFailureMessage(category as Parameters<typeof publicFailureMessage>[0]);
 }
 
 async function loadOwnedProject(userId: string, projectId: string) {
@@ -285,21 +302,28 @@ async function persistCanonicalArtifacts(job: BlueprintJob, step6: StoredStep6) 
   }
 }
 
-export async function enqueueBlueprintJobForUser(userId: string, projectId: string, options?: { languageOverride?: string | null; scientificProfile?: "rc4"; confirmedDraftRevision?: number }) {
+export async function enqueueBlueprintJobForUser(userId: string, projectId: string, options?: { languageOverride?: string | null; scientificProfile?: "rc4"; confirmedDraftRevision?: number; expectedContext?: GenerationContext; operationId?: string }) {
   const project = await loadOwnedProject(userId, projectId);
-  const existing = await prisma.blueprintJob.findFirst({
-    where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } },
-    orderBy: { createdAt: "desc" },
-  });
-  if (existing) return toJobSummary(existing);
+  if (options?.scientificProfile === "rc4" && options.confirmedDraftRevision === undefined &&
+      (!options.expectedContext || !options.operationId)) throw new Error("GENERATION_CONTRACT_INCOMPLETE");
   const inputFingerprint = options?.scientificProfile === "rc4" ? researchProjectFingerprint(project) : projectFingerprint(project);
-  const previous = await prisma.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
-  if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint)) throw new Error("El intento anterior requiere revision; crear otro job no puede restablecer sus limites.");
-
   const jobId = randomUUID();
   const language = normalizeLanguageCode(options?.languageOverride) ?? normalizeLanguageCode(project.language) ?? "es";
   const job = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
+    const actualContext = options?.expectedContext ? await generationContextForUser(userId, projectId, tx) : null;
+    if (options?.expectedContext && actualContext) assertExpectedGenerationContext(options.expectedContext, actualContext);
+    if (options?.expectedContext && actualContext && options.expectedContext.evidenceSetId !== actualContext.evidenceSetId)
+      throw new Error("EVIDENCE_SET_CHANGED");
+    if (options?.operationId) {
+      const priorJobs = await tx.blueprintJob.findMany({ where: { userId, projectId }, orderBy: { createdAt: "desc" }, take: 30 });
+      const replay = priorJobs.find(row => readJobData(row).operationId === options.operationId);
+      if (replay) {
+        if (!options.expectedContext || !readJobData(replay).expectedContext) throw new Error("GENERATION_CONTRACT_INCOMPLETE");
+        assertExpectedGenerationContext(readJobData(replay).expectedContext!, options.expectedContext);
+        return replay;
+      }
+    }
     const draft = await tx.projectDraft.findUnique({ where: { projectId } });
     const rawDefinition = (draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
     if (rawDefinition) {
@@ -312,9 +336,16 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
     } else if (draft && draft.confirmedRevision !== draft.revision) {
       throw new Error("DRAFT_CONFIRMATION_REQUIRED: confirma el borrador guardado antes de generar.");
     }
-    if (options?.confirmedDraftRevision !== undefined && options.confirmedDraftRevision !== (draft?.revision ?? 0)) throw new Error("DRAFT_REVISION_CONFLICT: la definición cambió en otra sesión; revísala antes de generar.");
+    if (options?.confirmedDraftRevision !== undefined && options.confirmedDraftRevision !== (draft?.revision ?? 0)) throw new Error("DRAFT_REVISION_CONFLICT");
     const concurrent = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: { in: INCOMPLETE_STATUSES } }, orderBy: { createdAt: "desc" } });
-    if (concurrent) return concurrent;
+    if (concurrent) {
+      if (options?.expectedContext && readJobData(concurrent).expectedContext)
+        assertExpectedGenerationContext(options.expectedContext, readJobData(concurrent).expectedContext!);
+      return concurrent;
+    }
+    const previous = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
+    if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint))
+      throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     const created = await tx.blueprintJob.create({
       data: {
@@ -322,16 +353,17 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         userId,
         projectId,
         status: BlueprintJobStatus.QUEUED,
-        currentStage: "materializing_evidence",
+        currentStage: options?.expectedContext ? "preparing_sources" : "materializing_evidence",
         progress: 5,
         language,
         runnerKind: "database-worker",
         maxAttempts: DEFAULT_MAX_ATTEMPTS,
-        stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint } satisfies JobData),
-        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", commercialPolicy: "commercial-v1", scientificProfile: options?.scientificProfile ?? "rc3" }),
+        stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint,
+          expectedContext: options?.expectedContext, operationId: options?.operationId } satisfies JobData),
+        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", commercialPolicy: "commercial-v1", scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
       },
     });
-    if (options?.scientificProfile === "rc4") {
+    if (options?.scientificProfile === "rc4" && !options.expectedContext) {
       const frozen = await appendGenerationInput(tx, { jobId, projectId, userId, revision: 1 });
       await tx.blueprintJob.update({ where: { id: jobId }, data: { stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint: researchProjectFingerprint(frozen.project), inputSnapshotId: frozen.snapshot.id }) } });
     }
@@ -392,7 +424,40 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
   try {
     const frozenInput = await readGenerationInput(jobId, data.inputSnapshotId);
     return await withGenerationInput(frozenInput, async () => {
-    if (data.inputFingerprint !== projectFingerprint(await loadOwnedProject(job.userId, job.projectId))) throw new Error("INPUT_CHANGED: intake o seleccion incompatible con el job autorizado.");
+    if (stage !== "preparing_sources" && data.inputFingerprint !== projectFingerprint(await loadOwnedProject(job.userId, job.projectId))) throw new Error("INPUT_CHANGED: intake o seleccion incompatible con el job autorizado.");
+    if (stage === "preparing_sources") {
+      if (!data.expectedContext || !data.operationId) throw new Error("GENERATION_CONTRACT_INCOMPLETE");
+      assertExpectedGenerationContext(data.expectedContext, await generationContextForUser(job.userId, job.projectId));
+      await withJobHeartbeat(jobId, () => prepareSelectedSources(job.userId, job.projectId));
+      assertExpectedGenerationContext(data.expectedContext, await generationContextForUser(job.userId, job.projectId));
+      // Display translations are derived. A provider failure must never block evidence.
+      const selectedForDisplay = await prisma.projectReference.findMany({ where: { projectId: job.projectId, selected: true },
+        select: { reference: { select: { id: true, title: true, abstract: true, rawOpenAlexJson: true } } } });
+      await withJobHeartbeat(jobId, () => ensureReferenceTranslationsForLanguage({
+        references: selectedForDisplay.map(row => row.reference), targetLanguage: "es",
+      }).then(() => undefined)).catch(() => undefined);
+      const evidence = await confirmEvidenceSet(job.userId, job.projectId, data.operationId);
+      const after = await generationContextForUser(job.userId, job.projectId);
+      assertExpectedGenerationContext(data.expectedContext, after);
+      if (after.evidenceSetId !== evidence.id) throw new Error("EVIDENCE_SET_CHANGED");
+      const snapshot = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${job.projectId} FOR UPDATE`;
+        assertExpectedGenerationContext(data.expectedContext!, await generationContextForUser(job.userId, job.projectId, tx));
+        const prior = await tx.generationInputSnapshot.findUnique({ where: { jobId_revision: { jobId, revision: 1 } } });
+        return prior ?? (await appendGenerationInput(tx, { jobId, projectId: job.projectId, userId: job.userId, revision: 1 })).snapshot;
+      });
+      data.inputSnapshotId = snapshot.id;
+      const frozen = await readGenerationInput(jobId, snapshot.id);
+      if (!frozen) throw new Error("GENERATION_SNAPSHOT_MISSING");
+      data.inputFingerprint = researchProjectFingerprint(frozen.project);
+      await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 10,
+        output: { evidenceSetId: evidence.id, readiness: evidence.readiness } });
+      const updated = await prisma.blueprintJob.update({ where: { id: jobId, startedAt: job.startedAt },
+        data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "materializing_evidence", progress: 10,
+          nextAttemptAt: null, lockedAt: null, lastHeartbeatAt: new Date(), stageDataJson: toJson(data),
+          errorMessage: null, errorJson: Prisma.DbNull, metadataJson: executionMetadata(job, stage, "COMPLETED") } });
+      return { job: toJobSummary(updated), shouldContinue: true, state: "continued" as const };
+    }
     if (stage === "materializing_evidence") {
       const owned = await loadOwnedProject(job.userId, job.projectId);
       const sourceFingerprint = fingerprint({ intake: owned.intake, selected: owned.projectReferences.map((ref) => ref.id).sort() });
@@ -467,7 +532,9 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
     const attempts = job.attempts + 1;
     const failure = classifyFailure(error);
     const retryable = failure.autoRetry && attempts < job.maxAttempts;
-    const message = error instanceof Error ? error.message : String(error);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    const message = stage === "preparing_sources" ? (/^[A-Z][A-Z0-9_]*(?::|$)/.test(rawMessage)
+      ? rawMessage.split(":", 1)[0] : "SOURCE_PREPARATION_FAILED") : rawMessage;
     const retryDelayMs = Math.min(5 * 60 * 1000, 30_000 * 2 ** Math.max(0, attempts - 1));
     await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.FAILED, progress: job.progress, error: { message, attempt: attempts } });
     if (!retryable) {
@@ -484,7 +551,7 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
         lockedAt: null,
         lastHeartbeatAt: new Date(),
         completedAt: retryable ? null : new Date(),
-        errorMessage: publicFailureMessage(failure.category),
+        errorMessage: safeJobFailure(error, failure.category),
         errorJson: toJson({ message, attempt: attempts, retryable, category: failure.category }),
         metadataJson: executionMetadata(job, stage, "FAILED", { message, category: failure.category, retryable }),
         stageDataJson: toJson(data),

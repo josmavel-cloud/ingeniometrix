@@ -13,6 +13,7 @@ export type ProjectView = {
   activeBlueprintVersionId: string | null; intake: IntakeView | null;
   conversationalIntake?: boolean;
   definitionConfirmed?: boolean;
+  confirmedDefinitionHash?: string | null;
   draft: { revision: number; staleScopesJson: unknown } | null;
   knowledgeFields: Array<{ customLabel: string | null; concept: { labelEs: string | null } | null }>;
 };

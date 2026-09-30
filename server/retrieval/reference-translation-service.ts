@@ -6,6 +6,7 @@ import referenceLanguageDetectionBatchSchemaJson from "@/ai/schemas/reference-la
 import referenceTranslationBatchSchemaJson from "@/ai/schemas/reference-translation-batch.schema.json";
 import { APP_DEFAULT_LANGUAGE, normalizeLanguageCode } from "@/lib/language";
 import { prisma } from "@/lib/prisma";
+import { fingerprint } from "@/server/mvp/job-execution-context";
 import { getConfiguredLlmProvider } from "@/llm";
 
 import { generateStructuredObjectWithTextFallback } from "./retrieval-llm-json";
@@ -52,6 +53,24 @@ type TranslationTarget = {
   abstract: string | null;
   sourceLanguage: string;
 };
+
+export const DISPLAY_TRANSLATION_POLICY = "reference-display.es.v1";
+export function referenceDisplayContentHash(reference: Pick<ReferenceRecordLike, "title" | "abstract">) {
+  return fingerprint([reference.title, reference.abstract]);
+}
+
+export async function readReferenceDisplayTranslations(references: ReferenceRecordLike[], targetLanguage: string) {
+  const rows = await prisma.referenceDisplayTranslation.findMany({ where: {
+    referenceId: { in: references.map(item => item.id) }, targetLanguage,
+    policyVersion: DISPLAY_TRANSLATION_POLICY,
+  } });
+  const byKey = new Map(rows.map(row => [`${row.referenceId}:${row.contentHash}`, row]));
+  return new Map(references.flatMap(reference => {
+    const row = byKey.get(`${reference.id}:${referenceDisplayContentHash(reference)}`);
+    return row ? [[reference.id, { sourceLanguage: row.sourceLanguage,
+      translatedTitle: row.displayTitle, translatedAbstract: reference.abstract ? row.displayAbstract : null }]] as const : [];
+  }));
+}
 
 const LANGUAGE_STOPWORDS = {
   es: [
@@ -337,78 +356,17 @@ export async function ensureReferenceTranslationsForLanguage(input: {
 }) {
   const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? APP_DEFAULT_LANGUAGE;
   const sourceLanguages = new Map<string, string | null>();
-  const output = new Map<string, CachedReferenceTranslation>();
+  const output = await readReferenceDisplayTranslations(input.references, targetLanguage);
   const pending: TranslationTarget[] = [];
-  const pendingLanguageDetection: Array<{
-    referenceId: string;
-    title: string;
-    abstract: string | null;
-  }> = [];
 
   for (const reference of input.references) {
-    const sourceLanguage = resolveReferenceSourceLanguage(reference);
+    const sourceLanguage = output.get(reference.id)?.sourceLanguage ?? resolveReferenceSourceLanguage(reference);
     sourceLanguages.set(reference.id, sourceLanguage);
-
-    if (!sourceLanguage && (reference.title.trim().length > 0 || reference.abstract?.trim())) {
-      pendingLanguageDetection.push({
-        referenceId: reference.id,
-        title: reference.title,
-        abstract: reference.abstract,
-      });
-    }
-  }
-
-  if (pendingLanguageDetection.length > 0) {
-    try {
-      const provider = getConfiguredLlmProvider();
-      const detectionBatch =
-        await generateStructuredObjectWithTextFallback<LanguageDetectionBatchResponse>({
-          provider,
-          prompt: buildLanguageDetectionPrompt({
-            items: pendingLanguageDetection,
-          }),
-          schemaName: "reference_language_detection_batch",
-          schema: referenceLanguageDetectionBatchSchemaJson as Record<string, unknown>,
-          trackingAttribution: { stage: "source_translation", promptVersion: REFERENCE_TRANSLATION_SERVICE_1_PROMPT.version },
-        });
-      const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
-
-      await Promise.all(
-        detectionBatch.detections.map(async (item) => {
-          const reference = referencesById.get(item.reference_id);
-
-          if (!reference) {
-            return;
-          }
-
-          const detectedLanguage = normalizeDetectedLanguageValue(item.detected_language);
-          sourceLanguages.set(reference.id, detectedLanguage);
-
-          await prisma.reference.update({
-            where: { id: reference.id },
-            data: {
-              rawOpenAlexJson: buildRawOpenAlexJsonWithLanguageDetection({
-                rawOpenAlexJson: reference.rawOpenAlexJson,
-                detectedLanguage,
-                confidence: item.confidence?.trim().toLowerCase() ?? null,
-                rationale: item.rationale ?? null,
-              }),
-            },
-          });
-        }),
-      );
-    } catch {
-      // Keep heuristic or null resolution when AI language detection is unavailable.
-    }
   }
 
   for (const reference of input.references) {
     const sourceLanguage = sourceLanguages.get(reference.id) ?? null;
-    const resolved = resolveReferenceTranslationForLanguage({
-      reference,
-      targetLanguage,
-    });
-    const cachedTranslation = resolved.cachedTranslation;
+    const cachedTranslation = output.get(reference.id);
 
     if (!sourceLanguage || sourceLanguage === targetLanguage) {
       continue;
@@ -468,21 +426,20 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       const translation = {
         sourceLanguage: normalizeLanguageCode(item.source_language),
         translatedTitle: item.translated_title?.trim() || null,
-        translatedAbstract: item.translated_abstract?.trim() || null,
+        translatedAbstract: reference.abstract ? item.translated_abstract?.trim() || null : null,
       } satisfies CachedReferenceTranslation;
 
       output.set(reference.id, translation);
 
-      await prisma.reference.update({
-        where: { id: reference.id },
-        data: {
-          rawOpenAlexJson: buildUpdatedRawOpenAlexJson({
-            rawOpenAlexJson: reference.rawOpenAlexJson,
-            targetLanguage,
-            translation,
-          }),
-        },
-      });
+      await prisma.referenceDisplayTranslation.upsert({ where: { referenceId_contentHash_targetLanguage_policyVersion: {
+        referenceId: reference.id, contentHash: referenceDisplayContentHash(reference), targetLanguage,
+        policyVersion: DISPLAY_TRANSLATION_POLICY } },
+        create: { referenceId: reference.id, contentHash: referenceDisplayContentHash(reference), targetLanguage,
+          policyVersion: DISPLAY_TRANSLATION_POLICY, sourceLanguage: translation.sourceLanguage,
+          displayTitle: translation.translatedTitle, displayAbstract: translation.translatedAbstract,
+          provider: "configured-llm", model: process.env.LLM_DEFAULT_MODEL ?? null,
+          promptVersion: REFERENCE_TRANSLATION_SERVICE_2_PROMPT.version, provenance: "LLM_BATCH" },
+        update: {} });
     }),
   );
 

@@ -82,6 +82,10 @@ export async function removeUploadedPdf(userId: string, projectId: string, docum
     // silently deselected; its prepared evidence becomes stale instead.
     return tx.uploadedPdf.update({ where: { id: row.id }, data: { status: "REMOVED", extractionStatus: "REMOVED" } });
   });
+  const historicalEvidence = await prisma.projectEvidenceSet.findMany({ where: { projectId }, select: { snapshotJson: true } });
+  const historicalInputs = await prisma.generationInputSnapshot.findMany({ where: { job: { projectId } }, select: { payloadJson: true } });
+  if ([...historicalEvidence.map(row => row.snapshotJson), ...historicalInputs.map(row => row.payloadJson)]
+    .some(snapshot => JSON.stringify(snapshot).includes(document.id))) return { id: document.id, status: "REMOVED" };
   const storage = new PrivateFileArtifactStore();
   await unlink(storage.pathForPdf(document.storageKey)).catch(() => undefined);
   await unlink(path.join(storage.root, "extracted", projectId, `${document.id}.txt`)).catch(() => undefined);

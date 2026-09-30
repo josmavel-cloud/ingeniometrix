@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -10,7 +11,6 @@ import {
 } from "lucide-react";
 
 import { BrandBadge } from "@/components/brand/brand-badge";
-import { ThesisPlanMockup } from "@/components/marketing/research-visuals";
 
 const steps = [
   {
@@ -121,7 +121,16 @@ export function HomeHero() {
                 <span className="rounded-full border border-white/12 bg-white/8 px-3 py-2">DOCX editable</span>
               </div>
             </div>
-            <ThesisPlanMockup />
+            <div className="relative min-h-[22rem] overflow-hidden rounded-[32px] border border-white/15 bg-[var(--color-plum-strong)] shadow-[0_24px_70px_rgba(0,0,0,0.22)] sm:min-h-[30rem] lg:min-h-[36rem]">
+              <Image src="/marketing/hero-premium-ai-library-v3.png"
+                alt="Biblioteca de investigación con conexiones luminosas entre documentos y conocimientos"
+                fill priority sizes="(min-width: 1024px) 34rem, (min-width: 640px) 80vw, 100vw"
+                className="object-cover object-center" />
+              <div aria-hidden="true" className="absolute inset-0 bg-[linear-gradient(180deg,transparent_52%,rgba(23,12,42,0.74)_100%)]" />
+              <p className="absolute bottom-5 left-5 right-5 rounded-2xl border border-white/20 bg-white/10 p-4 text-sm font-semibold text-white backdrop-blur-sm sm:bottom-6 sm:left-6 sm:right-6">
+                De la idea a la evidencia, con tus decisiones a la vista.
+              </p>
+            </div>
           </div>
         </section>
 

@@ -5,7 +5,7 @@ import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
 import { ScientificDesignApproval } from "./scientific-design-approval";
-import { flushProjectDraft } from "@/lib/draft-save-queue";
+import { startProjectPlan } from "@/lib/generation-client";
 
 import { getLocaleForLanguage, type SupportedLanguage } from "@/lib/language";
 import {
@@ -36,13 +36,14 @@ type BlueprintUiError = {
 
 type BlueprintPanelProps = {
   projectId: string;
+  ownerId: string;
+  confirmedDefinitionHash?: string | null;
   projectStatus: string;
   hasIntakeMinimum: boolean;
   selectedReferenceCount: number;
   versions: BlueprintVersionListItem[];
   language: SupportedLanguage;
   activeVersionId: string | null;
-  draftRevision: number;
 };
 
 type CoherenceCheck = {
@@ -141,13 +142,14 @@ function renderStatusPill(status: CoherenceCheck["status"]) {
 
 export function BlueprintPanel({
   projectId,
+  ownerId,
+  confirmedDefinitionHash,
   projectStatus,
   hasIntakeMinimum,
   selectedReferenceCount,
   versions,
   language,
   activeVersionId,
-  draftRevision,
 }: BlueprintPanelProps) {
   const router = useRouter();
   const copy = getProjectUiCopy(language).blueprint;
@@ -378,39 +380,17 @@ export function BlueprintPanel({
     setMessage(null);
     startTransition(async () => {
       try {
-        const draftRevision = await flushProjectDraft(projectId);
-        const response = await fetch(`/api/projects/${projectId}/blueprints`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ draftRevision }),
-        });
-
-        const payload = (await readJsonPayload(response)) as {
-          error?: string;
-          code?: string;
-          nextAction?: string;
-          job?: BlueprintJobResponse;
-        };
-
-        if (!response.ok) {
-          setError({
-            code: payload.code,
-            message: payload.error ?? copy.generateError,
-            nextAction: payload.nextAction,
-          });
-          return;
-        }
-
-        if (payload.job) {
-          setActiveJobId(payload.job.id);
+        const job = await startProjectPlan(projectId, ownerId, confirmedDefinitionHash);
+        if (job) {
+          setActiveJobId(job.id);
           setProgress({
             projectStatus: "BLUEPRINT_GENERATING",
-            jobId: payload.job.id,
-            jobStatus: payload.job.status,
-            stageKey: payload.job.currentStage,
+            jobId: job.id,
+            jobStatus: job.status,
+            stageKey: job.currentStage,
             label: copy.queued,
-            progress: payload.job.progress,
-            updatedAt: payload.job.updatedAt,
+            progress: job.progress,
+            updatedAt: job.updatedAt,
             errorMessage: null,
             shouldNudge: false,
           });
@@ -546,15 +526,10 @@ export function BlueprintPanel({
             <p className="text-sm font-semibold text-[var(--color-ink)]">
               {progress.label ?? copy.progressDefault}
             </p>
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-muted)]">
-              {progress.progress ?? 0}%
-            </span>
           </div>
-          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[rgba(74,58,97,0.08)]">
-            <div
-              className="h-full rounded-full bg-[linear-gradient(90deg,#0f766e_0%,#4f46e5_100%)] transition-all duration-500"
-              style={{ width: `${progress.progress ?? 0}%` }}
-            />
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-[rgba(74,58,97,0.08)]" role="progressbar"
+            aria-label="Preparación del plan" aria-valuetext={progress.label ?? copy.progressDefault}>
+            <div className="h-full w-1/3 animate-pulse rounded-full bg-[var(--color-plum)]" />
           </div>
           <p className="mt-3 text-sm leading-6 text-[var(--color-muted)]">
             {copy.progressBody}
@@ -584,7 +559,7 @@ export function BlueprintPanel({
               {copy.generatedAt} {new Date(latestVersion.createdAt).toLocaleString(locale)}
             </p>
             <p className="mt-1 text-sm leading-6 text-slate-500">
-              Borrador congelado: revisión {latestVersion.originatingDraftRevision ?? "histórica"}. Borrador actual: revisión {draftRevision}.
+              Este plan conserva la definición y las fuentes utilizadas cuando se creó.
             </p>
           </div>
 
@@ -603,7 +578,7 @@ export function BlueprintPanel({
                       type="button"
                     >
                       <span className="font-semibold">{version.userLabel?.trim() || `Plan ${version.versionNumber}`}</span>
-                      <span className="mt-1 block text-xs text-slate-500">Revisión {version.originatingDraftRevision ?? "histórica"} · {new Date(version.createdAt).toLocaleDateString(locale)}</span>
+                      <span className="mt-1 block text-xs text-slate-500">{new Date(version.createdAt).toLocaleDateString(locale)}</span>
                       <span className="mt-1 block text-xs font-semibold text-[var(--color-plum)]">{active ? "Versión actual" : "Ver esta versión"}</span>
                     </button>
                   );

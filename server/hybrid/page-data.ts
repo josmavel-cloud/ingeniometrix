@@ -53,6 +53,7 @@ export async function ownedPageData(userId: string, kind: string, id?: string) {
         activeBlueprintVersionId: p.activeBlueprintVersionId, intake: p.intake,
         conversationalIntake: Boolean((p.draft?.contentJson as Record<string, unknown> | null)?.researchDefinition),
         definitionConfirmed: definitionConfirmed(p),
+        confirmedDefinitionHash: (p.intake?.confirmedDefinitionJson as { definitionHash?: string } | null)?.definitionHash ?? null,
         draft: p.draft ? { revision: p.draft.revision, staleScopesJson: p.draft.staleScopesJson } : null,
         knowledgeFields: p.knowledgeFields.map((f) => ({ customLabel: f.customLabel, concept: f.concept ? { labelEs: f.concept.labelEs } : null })) },
       references, initialReferenceSearchSnapshot,
