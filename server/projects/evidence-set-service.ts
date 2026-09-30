@@ -1,3 +1,6 @@
+import { sourceProgression, type RelevanceTier } from "@/lib/source-sufficiency-policy";
+import { sourceRelevanceTier } from "@/server/retrieval/source-relevance-tier";
+import { SOURCE_ASSESSMENT_EVENT, currentSourceAssessment, type VerifiedSourceAssessment } from "@/server/retrieval/verified-source-review";
 import { Prisma } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -25,7 +28,8 @@ export function evidenceSourcePoolVersion(searchIntentHash: string, rows: Array<
 }
 
 export function evaluateEvidenceSetReadiness(input: {
-  sources: Array<{ evidenceLevel: string; identityStatus: string; preparationStatus: string }>;
+  sources: Array<{ evidenceLevel: string; identityStatus: string; preparationStatus: string; relevanceTier?: RelevanceTier; referenceId?: string }>;
+  fallbackExhausted?: boolean;
   unresolvedMaterialGaps: number; pendingUploads: number;
 }): { readiness: EvidenceSetReadiness; limitations: string[] } {
   const limitations: string[] = [];
@@ -33,6 +37,12 @@ export function evaluateEvidenceSetReadiness(input: {
   if (input.sources.some(source => source.preparationStatus === "NOT_PREPARED" ||
       source.preparationStatus === "STALE" || source.identityStatus === "mismatch")) {
     return { readiness: "BLOCKED", limitations: ["SOURCE_PREPARATION_OR_IDENTITY_UNRESOLVED"] };
+  }
+  if (input.sources.some(source => source.relevanceTier !== undefined)) {
+    const progression = sourceProgression(input.sources.map((source, i) => ({ id: source.referenceId ?? String(i),
+      selected: true, tier: source.relevanceTier ?? "EXCLUDED", usable: ["FULL_TEXT_MATERIALIZED", "ABSTRACT_AVAILABLE"].includes(source.evidenceLevel) && source.identityStatus !== "mismatch" })), input.fallbackExhausted === true);
+    if (progression.readiness === "BLOCKED") return { readiness: "BLOCKED", limitations: ["MINIMUM_USABLE_SOURCE_COVERAGE_NOT_MET"] };
+    if (progression.readiness === "READY_WITH_LIMITATIONS") limitations.push("USER_SELECTED_EXPLORATORY_LITERATURE");
   }
   const usable = input.sources.filter(source => ["FULL_TEXT_MATERIALIZED", "ABSTRACT_AVAILABLE"].includes(source.evidenceLevel));
   if (!usable.length) return { readiness: "BLOCKED", limitations: ["NO_CONTENT_EVIDENCE_FOR_SUBSTANTIVE_CLAIMS"] };
@@ -82,6 +92,8 @@ export async function confirmEvidenceSet(userId: string, projectId: string, oper
        confirmed?.definitionHash !== search.intent.definitionHash ||
        !confirmedScientificDefinitionMatches((project.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition, confirmed)))
       throw new Error("EVIDENCE_INTENT_STALE");
+    const assessmentRows = await tx.auditLog.findMany({ where: { projectId, eventType: SOURCE_ASSESSMENT_EVENT }, orderBy: { createdAt: "desc" }, select: { payloadJson: true } });
+    const fallback = await tx.auditLog.findFirst({ where: { projectId, eventType: "SOURCE_SUFFICIENCY_COMPLETED", payloadJson: { path: ["searchIntentHash"], equals: searchIntentHash } }, orderBy: { createdAt: "desc" }, select: { payloadJson: true } });
     const selected = project.projectReferences;
     const selectedIds = selected.map(row => row.referenceId);
     const inspectionRun = await tx.mvpStepRun.findFirst({ where: { projectId, stepKey: MVP_SOURCE_INSPECTION_KEY,
@@ -117,7 +129,9 @@ export async function confirmEvidenceSet(userId: string, projectId: string, oper
           preparationStatus = "STALE";
         }
       }
-      const assessment = searchEntries.get(row.referenceId)?.scoreBreakdown?.candidateAssessment;
+      const verified = assessmentRows.map(item => item.payloadJson as unknown as VerifiedSourceAssessment)
+        .find(item => item.referenceId === row.referenceId && currentSourceAssessment(item, row.reference, searchIntentHash));
+      const assessment = verified?.assessment ?? searchEntries.get(row.referenceId)?.scoreBreakdown?.candidateAssessment;
       const discoveryOrigins = [
         ...(row.reference.rawOpenAlexJson ? ["OPENALEX_DISCOVERED"] : []),
         ...(row.reference.rawCrossrefJson ? ["CROSSREF_ENRICHED"] : []),
@@ -129,6 +143,7 @@ export async function confirmEvidenceSet(userId: string, projectId: string, oper
         identity: { title: row.reference.title, doi: row.reference.doi, year: row.reference.year,
           authors: row.reference.authorsJson, venue: row.reference.venue },
         discoveryProvider: row.sourceProvider, discoveryOrigins, relevanceScore: row.relevanceScore,
+        relevanceTier: sourceRelevanceTier(assessment, Boolean(verified || row.reference.doi || row.reference.openAlexId)),
         relevance: assessment?.relevance ?? "INSUFFICIENT_METADATA",
         role: assessment?.role ?? "NONE", assessmentOrigin: assessment?.origin ?? "UNASSESSED",
         preparationStatus, identityStatus: item?.identity_status ?? "unknown",
@@ -149,7 +164,7 @@ export async function confirmEvidenceSet(userId: string, projectId: string, oper
     const gaps = coverage?.gaps.filter(gap => gap.importance === "MATERIAL")
       .map(gap => ({ gapId: gap.gapId, kind: gap.kind, type: gap.type, status: gap.status,
         reason: gap.insufficiencyReason })) ?? [];
-    const { readiness, limitations } = evaluateEvidenceSetReadiness({ sources,
+    const { readiness, limitations } = evaluateEvidenceSetReadiness({ sources, fallbackExhausted: (fallback?.payloadJson as { fallbackExhausted?: boolean } | null)?.fallbackExhausted,
       unresolvedMaterialGaps: gaps.length, pendingUploads: uploads.filter(doc => doc.identityStatus !== "MATCHED").length });
     if (readiness === "BLOCKED") throw new Error(`EVIDENCE_SET_BLOCKED:${limitations.join(",")}`);
     const allRows = await tx.projectReference.findMany({ where: { projectId },

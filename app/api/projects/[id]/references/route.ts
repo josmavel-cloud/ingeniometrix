@@ -1,3 +1,4 @@
+import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
@@ -24,7 +25,7 @@ export async function GET(_request: Request, context: RouteContext) {
       getLatestProjectReferenceSearchSnapshot(id),
     ]);
 
-    return NextResponse.json({ references, searchSnapshot });
+    return NextResponse.json({ references, searchSnapshot, sufficiency: await sourceSufficiencyStatus(user.id, id) });
   } catch (error) {
     const message =
       error instanceof Error

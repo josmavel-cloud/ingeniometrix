@@ -54,6 +54,8 @@ COPY --from=build /app/public ./public
 COPY --from=build /app/dist/release-worker.cjs ./dist/release-worker.cjs
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/scripts/mvp/python ./scripts/mvp/python
+COPY --from=build /app/scripts/seed-taxonomy-catalogs.mjs ./scripts/seed-taxonomy-catalogs.mjs
+COPY --from=build /app/lib/assets ./lib/assets
 RUN mkdir -p /app/artifacts-local/private-storage /app/artifacts-local/operations \
   && chown -R node:node /app/artifacts-local
 USER node

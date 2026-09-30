@@ -1,0 +1,51 @@
+{
+  "policy": "source-sufficiency.v1",
+  "schemaMigration": null,
+  "selection": {
+    "minimumUsableForProgression": 3,
+    "maximumSelected": 10,
+    "persistenceRange": [
+      0,
+      10
+    ],
+    "minimumCoreAfterFallback": 2
+  },
+  "discovery": {
+    "maximumAutomaticOpenAlexQueries": 6,
+    "maximumCrossrefDiscoveryQueries": 1,
+    "maximumAstraOperationsPerIntent": 1,
+    "maximumAstraCandidates": 6,
+    "maximumWebToolCalls": 2,
+    "noPaidRetries": true,
+    "noQuotaPadding": true
+  },
+  "taxonomy": {
+    "code": "FORD-2015",
+    "version": "2015-table-2.2-es-latam-v1",
+    "concepts": 50,
+    "roots": 6
+  },
+  "ideaContract": "ResearchIdeaOptions.v1",
+  "pdf": {
+    "maxActive": 2,
+    "maxBytes": 31457280,
+    "historical400RootCause": "NOT_PROVEN; small and 430 KB chunked synthetic staging uploads passed; precise safe diagnostics added",
+    "optionalCheckboxChanged": false
+  },
+  "rollback": {
+    "backendWorkerImage": "imx-rc4-intake-runtime:76cc1d9",
+    "backendWorkerDigest": "sha256:5b9ebf51be3d56947a58a2f0bafecb9d28df6f75ae0ede3e6a4c20cc3861c5b3",
+    "frontendDeployment": "dpl_JDBt7yUHNZvEC84Mm5PA4Bp1p4wC",
+    "procedure": [
+      "Pause traffic and drain active jobs if rollback is needed",
+      "Restore previous backend/worker image and Astra flags OFF",
+      "Promote previous Vercel deployment",
+      "Leave additive taxonomy seed in place; no destructive rollback required",
+      "Restore canonical encrypted backup only if separately justified by data recovery"
+    ]
+  },
+  "acceptance": {
+    "authenticatedProduction": "OWNER_MANUAL",
+    "releaseStatus": "PENDING_DEPLOYMENT"
+  }
+}

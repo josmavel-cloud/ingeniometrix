@@ -1,7 +1,10 @@
+"use client";
+import { useEffect, useState } from "react";
 import { getDegreeLevelLabelForLanguage } from "@/lib/degree-levels";
 import type { DegreeLevel } from "@/lib/hybrid-contracts";
 
 type ProjectSummarySidebarProps = {
+  projectId: string;
   title: string;
   degreeLevel: DegreeLevel;
   area: string | null;
@@ -19,6 +22,16 @@ function valueOrPending(value: string | null) {
 }
 
 export function ProjectSummarySidebar(props: ProjectSummarySidebarProps) {
+  const [sourceState, setSourceState] = useState<{ pdfCount: number; readiness: string } | null>(null);
+  const [selected, setSelected] = useState(props.selectedSources);
+  useEffect(() => setSelected(props.selectedSources), [props.selectedSources]);
+  useEffect(() => {
+    const update = (event: Event) => { const detail = (event as CustomEvent).detail; if (detail?.projectId === props.projectId) setSelected(detail.count); };
+    const status = (event: Event) => { const detail = (event as CustomEvent).detail; if (detail?.projectId === props.projectId) setSourceState(detail); };
+    window.addEventListener("imx-source-status", status);
+    window.addEventListener("imx-selection-changed", update);
+    return () => { window.removeEventListener("imx-selection-changed", update); window.removeEventListener("imx-source-status", status); };
+  }, [props.projectId]);
   return (
     <details className="surface-panel rounded-[28px] p-5 xl:sticky xl:top-28" open>
       <summary className="cursor-pointer font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">Tu investigación hasta ahora</summary>
@@ -33,9 +46,10 @@ export function ProjectSummarySidebar(props: ProjectSummarySidebarProps) {
         <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-muted)]">Enfoque o diseño</p><p className="mt-1 leading-6">{valueOrPending(props.methodology)}</p></div>
         <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--color-muted)]">Decisiones pendientes</p><p className="mt-1 leading-6">{valueOrPending(props.pendingDecisions)}</p></div>
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-[rgba(74,58,97,0.08)] p-3"><p className="text-2xl font-semibold text-[var(--color-plum)]">{props.selectedSources}</p><p className="text-xs text-[var(--color-muted)]">fuentes seleccionadas</p></div>
+          <div className="rounded-2xl border border-[rgba(74,58,97,0.08)] p-3"><p className="text-2xl font-semibold text-[var(--color-plum)]">{selected}</p><p className="text-xs text-[var(--color-muted)]">fuentes seleccionadas</p></div>
           <div className="rounded-2xl border border-[rgba(74,58,97,0.08)] p-3"><p className="text-2xl font-semibold text-[var(--color-plum)]">{props.latestVersion ?? "—"}</p><p className="text-xs text-[var(--color-muted)]">última versión</p></div>
         </div>
+        {sourceState && <p className="text-xs" aria-live="polite">{sourceState.pdfCount} PDF con identidad validada · Evidencia {sourceState.readiness === "READY" ? "lista" : sourceState.readiness === "READY_WITH_LIMITATIONS" ? "lista con limitaciones" : "por completar"}</p>}
         <div><div className="flex justify-between text-xs text-[var(--color-muted)]"><span>Progreso</span><span>{props.progress}%</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgba(74,58,97,0.08)]"><div className="h-full rounded-full bg-[var(--color-plum)]" style={{ width: `${props.progress}%` }} /></div></div>
       </div>
     </details>

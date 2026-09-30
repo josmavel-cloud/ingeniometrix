@@ -22,14 +22,18 @@ export function EvidenceFlowPanel({ projectId, ownerId, selectedCount, confirmed
   const submission = useRef(false);
   const [items, setItems] = useState<Prepared[]>([]);
   const [evidenceSet, setEvidenceSet] = useState<Evidence | null>(null);
+  const [sufficiency, setSufficiency] = useState<{ readiness: string; selectedUsable: number; selectedCore: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   async function refresh() {
-    const [prep, evidence] = await Promise.all([
+    const [prep, evidence, sources] = await Promise.all([
       fetch(`/api/projects/${projectId}/sources/prepare`, { cache: "no-store" }),
       fetch(`/api/projects/${projectId}/evidence-set`, { cache: "no-store" }),
+      fetch(`/api/projects/${projectId}/references`, { cache: "no-store" }),
     ]);
+    if (sources.ok) { const result = await sources.json(); setSufficiency(result.sufficiency ?? null);
+      window.dispatchEvent(new CustomEvent("imx-source-status", { detail: { projectId, ...result.sufficiency } })); }
     if (prep.ok) setItems((await prep.json()).items ?? []);
     if (evidence.ok) setEvidenceSet((await evidence.json()).evidenceSet ?? null);
   }
@@ -55,9 +59,11 @@ export function EvidenceFlowPanel({ projectId, ownerId, selectedCount, confirmed
       <div><h2 className="font-[var(--font-heading)] text-xl font-semibold">Tus fuentes para el plan</h2>
         <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">Al continuar, guardaremos las fuentes elegidas y prepararemos la evidencia necesaria. La generación puede consumir créditos de tu cuenta.</p></div></div>
     <button className="brand-button-primary mt-5 inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold disabled:opacity-50"
-      disabled={busy} onClick={() => void continueToPlan()} type="button">
+      disabled={busy || !sufficiency || sufficiency.readiness === "BLOCKED"} onClick={() => void continueToPlan()} type="button">
       {busy ? "Guardando tu selección…" : "Continuar al plan"}<ArrowRight className="size-4" aria-hidden="true" />
     </button>
+    <p className="mt-3 text-sm" aria-live="polite">{sufficiency ? `${sufficiency.selectedUsable} fuentes utilizables seleccionadas; ${sufficiency.selectedCore} centrales.` : "Comprobando tus fuentes…"}
+      {sufficiency?.readiness === "BLOCKED" ? " Necesitas al menos tres fuentes utilizables, incluidas dos centrales cuando la búsqueda haya agotado sus alternativas." : sufficiency?.readiness === "READY_WITH_LIMITATIONS" ? " Puedes continuar con las limitaciones de las fuentes relacionadas elegidas." : ""}</p>
     <ul className="mt-4 grid gap-2 text-sm">{items.map(item => <li className="rounded-xl border border-slate-200 p-3" key={item.referenceId}>
       {statusLabel[item.status] ?? "Requiere revisión"}</li>)}</ul>
     {evidenceSet ? <p className="mt-4 text-sm text-slate-700">Estado de la evidencia: {evidenceSet.isCurrent

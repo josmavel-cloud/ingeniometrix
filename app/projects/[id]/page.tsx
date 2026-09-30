@@ -50,6 +50,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
       <WorkflowStageNav items={stages} language={language} compact={project.conversationalIntake && currentStep === "define"} />
       <div className={project.conversationalIntake && currentStep === "define" ? "grid gap-6" : "grid gap-6 xl:grid-cols-[minmax(240px,0.34fr)_minmax(0,1fr)]"}>
         {!(project.conversationalIntake && currentStep === "define") && <ProjectSummarySidebar
+          projectId={id}
           area={areaLabel}
           context={project.intake?.researchScope ?? project.country}
           degreeLevel={project.degreeLevel}

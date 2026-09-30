@@ -7,6 +7,8 @@ import { Provider } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { normalizeTitle } from "@/lib/text";
 import { normalizeScholarlyDoi } from "@/server/retrieval/provider-query-policy";
+import { fetchCrossrefWorkByDoi, resolveCrossrefTitle } from "@/server/retrieval/crossref-client";
+import { reviewVerifiedSource } from "@/server/retrieval/verified-source-review";
 import { PrivateFileArtifactStore } from "@/server/storage/artifact-store";
 
 const execFileAsync = promisify(execFile);
@@ -51,13 +53,40 @@ export async function prepareUploadedPdf(userId: string, projectId: string, docu
   const exact = links.filter(link => link.reference.doi && dois.has(normalizeScholarlyDoi(link.reference.doi)) &&
     strongTitleMatch(link.reference.title, text));
   const matched = exact.length === 1 ? exact[0] : null;
-  return prisma.$transaction(async tx => {
+  // Resolve only a single DOI in the document header, never citations in its
+  // bibliography. The independent provider title must also match the first page.
+  const headerDois = [...new Set((text.slice(0, 1500).match(ownDoi) ?? []).map(normalizeScholarlyDoi).filter((doi): doi is string => Boolean(doi)))];
+  let verifiedMetadata: Awaited<ReturnType<typeof fetchCrossrefWorkByDoi>> = null;
+  if (!matched && exact.length === 0 && headerDois.length === 1) {
+    const metadata = await fetchCrossrefWorkByDoi(headerDois[0]).catch(() => null);
+    const title = resolveCrossrefTitle(metadata);
+    if (metadata && normalizeScholarlyDoi(metadata.DOI ?? "") === headerDois[0] && title && strongTitleMatch(title, text)) verifiedMetadata = metadata;
+  }
+  const prepared = await prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} AND "userId" = ${userId} FOR UPDATE`;
     const current = await tx.uploadedPdf.findFirst({ where: { id: documentId, projectId, userId } });
     if (!current) throw new Error("DOCUMENT_NOT_FOUND");
     if (current.status === "PREPARED") return current;
     if (current.status !== "QUARANTINED" || current.sha256 !== document.sha256) throw new Error("DOCUMENT_CHANGED");
     let referenceId = matched?.referenceId ?? null;
+    if (!referenceId && verifiedMetadata) {
+      const doi = normalizeScholarlyDoi(verifiedMetadata.DOI)!;
+      const title = resolveCrossrefTitle(verifiedMetadata)!;
+      // Serialize canonical identity creation across concurrent uploads/projects.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`reference-doi:${doi}`}))`;
+      const existing = await tx.reference.findFirst({ where: { doi } });
+      if (!existing || normalizeTitle(existing.title) === normalizeTitle(title)) {
+        const reference = existing ?? await tx.reference.create({ data: { doi, crossrefId: doi, title,
+          normalizedTitle: normalizeTitle(title), authorsJson: verifiedMetadata.author?.map(a => [a.given, a.family].filter(Boolean).join(" ")) ?? [],
+          abstract: verifiedMetadata.abstract?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null,
+          year: verifiedMetadata.issued?.["date-parts"]?.[0]?.[0] ?? null, venue: verifiedMetadata.publisher,
+          workType: verifiedMetadata.type, rawCrossrefJson: JSON.parse(JSON.stringify(verifiedMetadata)) } });
+        referenceId = reference.id;
+        await tx.projectReference.upsert({ where: { projectId_referenceId: { projectId, referenceId } },
+          create: { projectId, referenceId, sourceProvider: Provider.CROSSREF, selected: false }, update: {} });
+      }
+    }
+    const identityResolved = Boolean(referenceId);
     if (!referenceId) {
       const title = candidateTitle(document.fileName, text);
       const reference = await tx.reference.create({ data: { title, normalizedTitle: normalizeTitle(title),
@@ -66,10 +95,17 @@ export async function prepareUploadedPdf(userId: string, projectId: string, docu
       await tx.projectReference.create({ data: { projectId, referenceId,
         sourceProvider: Provider.SYSTEM, selected: false } });
     }
+    await tx.auditLog.create({ data: { userId, projectId, actorType: "SYSTEM", eventType: "PDF_SOURCE_PREPARED",
+      payloadJson: { documentId: document.id, referenceId, sha256: document.sha256, textCharCount: text.length,
+        identityResolved, operation: "PRIVATE_PDF_IDENTIFICATION" } } });
     return tx.uploadedPdf.update({ where: { id: document.id }, data: {
-      referenceId, status: "PREPARED", identityStatus: matched ? "MATCHED" : "NEEDS_INSPECTION",
+      referenceId, status: "PREPARED", identityStatus: identityResolved ? "MATCHED" : "NEEDS_INSPECTION",
       extractionStatus: text.trim() ? "TEXT_EXTRACTED" : "NO_EXTRACTABLE_TEXT" } });
   });
+  if (prepared.identityStatus === "MATCHED" && prepared.referenceId) {
+    await reviewVerifiedSource(userId, projectId, prepared.referenceId, `user-pdf:${prepared.id}:${prepared.sha256}`).catch(() => undefined);
+  }
+  return prepared;
 }
 
 export async function removeUploadedPdf(userId: string, projectId: string, documentId: string) {

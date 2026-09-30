@@ -1,3 +1,4 @@
+import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -306,6 +307,9 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
   const project = await loadOwnedProject(userId, projectId);
   if (options?.scientificProfile === "rc4" && options.confirmedDraftRevision === undefined &&
       (!options.expectedContext || !options.operationId)) throw new Error("GENERATION_CONTRACT_INCOMPLETE");
+  if (options?.expectedContext && (await sourceSufficiencyStatus(userId, projectId)).readiness === "BLOCKED") {
+    throw new Error("EVIDENCE_SET_BLOCKED:MINIMUM_USABLE_SOURCE_COVERAGE_NOT_MET");
+  }
   const inputFingerprint = options?.scientificProfile === "rc4" ? researchProjectFingerprint(project) : projectFingerprint(project);
   const jobId = randomUUID();
   const language = normalizeLanguageCode(options?.languageOverride) ?? normalizeLanguageCode(project.language) ?? "es";

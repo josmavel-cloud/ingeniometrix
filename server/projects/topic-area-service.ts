@@ -114,7 +114,7 @@ export async function listTopicAreaSuggestions(query?: string) {
     .map((concept) => {
       const label = displayLabel(concept);
       const search = concept.normalizedSearchText || normalizeAcademicFieldText([concept.conceptCode, label, concept.prefLabel, ...aliases(concept)].join(" "));
-      let score = normalizedQuery ? 0 : concept.parent ? 5 : 1;
+      let score = normalizedQuery ? 0 : concept.parent ? 5 : 10;
       if (normalizedQuery) {
         if (concept.conceptCode.toLowerCase() === normalizedQuery) score = 100;
         else if (normalizeAcademicFieldText(label) === normalizedQuery) score = 95;
@@ -124,6 +124,15 @@ export async function listTopicAreaSuggestions(query?: string) {
       }
       return {
         label,
+        breadcrumb: (() => {
+          const parts = [label]; let parentCode = concept.parent?.conceptCode;
+          const seen = new Set<string>();
+          while (parentCode && !seen.has(parentCode)) {
+            seen.add(parentCode); const parent = concepts.find(item => item.conceptCode === parentCode);
+            if (!parent) break; parts.unshift(displayLabel(parent)); parentCode = parent.parent?.conceptCode;
+          }
+          return parts.join(" › ");
+        })(),
         canonicalAreaId: concept.conceptCode,
         canonicalAreaLabel: label,
         code: concept.conceptCode,

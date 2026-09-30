@@ -148,7 +148,9 @@
     "mvp:pipeline:current": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=current",
     "mvp:pipeline:batch5": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=batch5",
     "mvp:pipeline:final2": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=final2",
-    "mvp:pipeline:cleanup-validation": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=cleanup-validation"
+    "mvp:pipeline:cleanup-validation": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=cleanup-validation",
+    "test:source-sufficiency-release": "tsx scripts/test-source-sufficiency-release.ts",
+    "test:source-sufficiency-db": "tsx scripts/test-source-sufficiency-db.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

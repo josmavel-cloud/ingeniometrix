@@ -1,3 +1,4 @@
+import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-context";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { rm } from "node:fs/promises";
@@ -37,9 +38,16 @@ async function main() {
     refs.push(reference.id);
     await prisma.projectReference.create({ data: { projectId: project.id, referenceId: reference.id,
       selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
+    for (let i = 2; i <= 3; i++) {
+      const extra = await prisma.reference.create({ data: { title: `Estudio complementario de aprendizaje ${i}`,
+        normalizedTitle: `estudio complementario de aprendizaje ${i}`, authorsJson: ["Fixture"], abstract: "Un resumen real del fixture de aprendizaje." } });
+      refs.push(extra.id);
+      await prisma.projectReference.create({ data: { projectId: project.id, referenceId: extra.id, selected: true, selectedOrder: i, sourceProvider: "SYSTEM" } });
+    }
+    await fixtureSourceAssessments(user.id, project.id, refs);
     await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${project.id} FOR UPDATE`;
-      await syncSourceSelectionToDraft(tx, project.id, [reference.id]);
+      await syncSourceSelectionToDraft(tx, project.id, refs);
     });
     const context = await generationContextForUser(user.id, project.id);
     assert.equal(context.confirmedRevision, 14);

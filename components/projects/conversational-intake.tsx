@@ -120,7 +120,7 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
     finally { setModelBusy(false); }
   };
   useEffect(() => {
-    if (!state || !available || initialStarted.current || turns.some(t => t.kind === "MESSAGE") || state.revision !== 1 || state.confirmedRevision !== null || edit || dirty || conflict) return;
+    if (!state || !available || initialStarted.current || turns.some(t => t.kind === "MESSAGE") || state.definition.proposals.some(p => p.status === "PENDING") || state.revision !== 1 || state.confirmedRevision !== null || edit || dirty || conflict) return;
     initialStarted.current = true;
     void submit(state.definition.fields.originalIdea.value, true);
     // A loaded project is analyzed once. Existing turns and the persisted request

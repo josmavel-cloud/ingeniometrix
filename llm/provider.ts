@@ -4,6 +4,8 @@ export type StructuredObjectInput = {
   prompt: string;
   schemaName: string;
   schema: Record<string, unknown>;
+  /** Opt out of automatic retries for bounded paid acceptance/discovery. */
+  maxRetries?: 0;
   model?: string;
   maxOutputTokens?: number;
   reasoningEffort?: "low" | "medium" | "high";
