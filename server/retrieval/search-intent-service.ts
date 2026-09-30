@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { definitionSchema, searchIntent } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches, definitionSchema, searchIntent } from "@/lib/conversational-intake";
 import { legacySearchIntent, plannerIntake, type ResearchSearchIntent } from "@/lib/retrieval-search-input";
 import type { IntakeInput } from "@/server/projects/project-validation";
 import { fingerprint } from "@/server/mvp/job-execution-context";
@@ -25,9 +25,9 @@ export async function loadSearchInput(userId: string, projectId: string): Promis
     // Evidence selection changes the draft revision, but not the confirmed
     // scientific definition. Its hash, not the enclosing draft revision, is
     // the authority for search validity.
-    if (!confirmed || project.draft?.confirmedRevision !== confirmed.revision) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
+    if (!confirmed || !confirmedScientificDefinitionMatches(rawDefinition, confirmed)) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
     const current = definitionSchema.parse(rawDefinition);
-    if (fingerprint(current) !== confirmed.definitionHash) throw new Error(project.draft!.revision > confirmed.revision
+    if (!confirmedScientificDefinitionMatches(current, confirmed)) throw new Error(project.draft!.revision > confirmed.revision
       ? "DEFINITION_CONFIRMATION_REQUIRED" : "DEFINITION_HASH_MISMATCH");
     const intent = searchIntent(projectId, confirmed.revision, confirmed.definitionHash, definitionSchema.parse(confirmed.definition));
     if (intent.readiness !== "READY") throw new Error("SEARCH_INTENT_NOT_READY");
@@ -54,8 +54,8 @@ export async function freezeSearchInput(userId: string, input: SearchInput): Pro
     const current = await tx.project.findFirst({ where: { id: intent.projectId, userId }, include: { draft: true, intake: true } });
     if (!current?.intake || current.intake.id !== input.intakeId) throw new Error("SEARCH_INPUT_STALE");
     if (intent.sourceKind === "CONFIRMED_DEFINITION") {
-      if (current.draft?.confirmedRevision !== intent.confirmedDraftRevision ||
-        fingerprint(definitionSchema.parse((current.draft.contentJson as Record<string, unknown>).researchDefinition)) !== intent.definitionHash ||
+      if (!confirmedScientificDefinitionMatches((current.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition,
+        current.intake.confirmedDefinitionJson as { definition?: unknown; definitionHash?: string } | null) ||
         (current.intake.confirmedDefinitionJson as { definitionHash?: string } | null)?.definitionHash !== intent.definitionHash) throw new Error("SEARCH_INPUT_STALE");
     } else if ((current.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition) throw new Error("SEARCH_INPUT_STALE");
     await tx.auditLog.create({ data: { eventType: "SEARCH_INPUT_FROZEN", actorType: "SYSTEM", userId,

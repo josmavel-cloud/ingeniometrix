@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { definitionSchema } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches, definitionSchema } from "@/lib/conversational-intake";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { evidenceSourcePoolVersion } from "@/server/projects/evidence-set-service";
 import { searchIntent } from "@/lib/conversational-intake";
@@ -26,8 +26,7 @@ export async function generationContextForUser(userId: string, projectId: string
   const confirmed = project.intake.confirmedDefinitionJson as { revision?: number; definitionHash?: string; definition?: unknown } | null;
   const raw = (project.draft.contentJson as Record<string, unknown>).researchDefinition;
   if (raw) {
-    if (!confirmed?.revision || !confirmed.definitionHash || project.draft.confirmedRevision !== confirmed.revision ||
-      fingerprint(definitionSchema.parse(raw)) !== confirmed.definitionHash) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
+    if (!confirmed?.revision || !confirmedScientificDefinitionMatches(raw, confirmed)) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
   } else if (project.draft.confirmedRevision !== project.draft.revision) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
   const selected = project.projectReferences.map(row => [row.referenceId, row.selectedOrder]);
   if (!selected.length) throw new Error("SOURCE_SELECTION_REQUIRED");

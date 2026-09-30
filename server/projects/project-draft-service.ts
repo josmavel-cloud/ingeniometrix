@@ -5,7 +5,7 @@ import { fingerprint } from "@/server/mvp/job-execution-context";
 import { resolveProjectStatusFromIntake } from "./project-validation";
 
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
-export class DraftConflict extends Error { constructor() { super("El borrador cambió en otra pestaña. Conserva tus cambios y carga la revisión guardada antes de continuar."); } }
+export class DraftConflict extends Error { constructor() { super("El borrador cambió mientras trabajabas. Conserva tus cambios y compara la revisión guardada antes de continuar."); } }
 function etag(revision: number, contentHash: string) { return `W/\"draft-${revision}-${contentHash.slice(0, 16)}\"`; }
 function staleScopes(raw: unknown) { return Array.isArray(raw) ? raw.filter((item): item is string => typeof item === "string") : []; }
 function invalidations(previous: DraftIntake, next: DraftIntake) {

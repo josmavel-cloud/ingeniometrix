@@ -35,8 +35,45 @@ export function userValue(value: string, revision: number, messageId: string, kn
 export function usable(field: FieldValue) {
   return field.knowledge === "KNOWN" && field.acceptance === "ACCEPTED" && field.origin !== "SYSTEM_DEFAULT" && Boolean(field.value.trim());
 }
+// Global confirmation approves the visible coherent proposal as one decision.
+// Pending proposals remain provisional until this function is used by the
+// confirmation transaction; UNKNOWN values never become asserted facts.
+export function globalConfirmationPreview(raw: ResearchDefinition): ResearchDefinition {
+  const next = structuredClone(raw);
+  for (const proposal of next.proposals) {
+    if (proposal.status !== "PENDING" || proposal.proposed.knowledge !== "KNOWN" || !proposal.proposed.value.trim()) continue;
+    if (next.fields[proposal.field].lastChangedRevision > proposal.baseRevision) continue;
+    next.fields[proposal.field] = { ...proposal.proposed, acceptance: "ACCEPTED", confirmation: undefined };
+    proposal.status = "ACCEPTED";
+    for (const ambiguity of next.ambiguities) {
+      const turnId = ambiguity.id.split(":a")[0];
+      const createdRevision = ambiguity.createdRevision ?? next.proposals.find(old => old.id.startsWith(`${turnId}:`))?.baseRevision;
+      const predates = ambiguity.createdRevision !== undefined ? proposal.baseRevision >= ambiguity.createdRevision :
+        createdRevision !== undefined && proposal.baseRevision > createdRevision;
+      if (ambiguity.field === proposal.field && predates) ambiguity.resolved = true;
+    }
+  }
+  return definitionSchema.parse(next);
+}
 export const READINESS_POLICY_VERSION = "initial-evidence.v2";
 export const SEARCH_MATERIAL_FIELDS = new Set<DefinitionField>(["topic", "problem", "object", "concepts", "purpose", "context", "intendedOutput", "scope"]);
+// All accepted definition fields may affect downstream design. Proposals and
+// display metadata do not: they remain outside the confirmed scientific input.
+const SCIENTIFIC_AUTHORITY_FIELDS: DefinitionField[] = [...DEFINITION_FIELDS];
+export function sameScientificDefinition(left: ResearchDefinition, right: ResearchDefinition) {
+  return SCIENTIFIC_AUTHORITY_FIELDS.every(field => {
+    const a = left.fields[field], b = right.fields[field];
+    const value = (item: FieldValue) => item.acceptance === "ACCEPTED" && item.knowledge === "KNOWN"
+      ? item.value.trim().replace(/\s+/gu, " ") : "";
+    return value(a) === value(b) && (value(a) ? a.knowledge === b.knowledge : true);
+  }) && left.ambiguities.filter(ambiguityBlocksSearch).map(a => a.field).sort().join("|") ===
+    right.ambiguities.filter(ambiguityBlocksSearch).map(a => a.field).sort().join("|");
+}
+export function confirmedScientificDefinitionMatches(raw: unknown, saved: { definition?: unknown; definitionHash?: string } | null | undefined) {
+  if (!saved?.definitionHash || !saved.definition) return false;
+  const current = definitionSchema.safeParse(raw), confirmed = definitionSchema.safeParse(saved.definition);
+  return Boolean(current.success && confirmed.success && sameScientificDefinition(current.data, confirmed.data));
+}
 export function ambiguityBlocksSearch(a: ResearchDefinition["ambiguities"][number]) {
   return !a.resolved && a.blocksSearch && SEARCH_MATERIAL_FIELDS.has(a.field);
 }
@@ -45,8 +82,8 @@ export function canDeferAmbiguity(a: ResearchDefinition["ambiguities"][number]) 
 }
 export function definitionReadiness(d: ResearchDefinition) {
   const missing: string[] = [];
-  if (!usable(d.fields.topic)) missing.push("Aclara y acepta el tema que quieres investigar.");
-  if (!usable(d.fields.object) && !usable(d.fields.concepts)) missing.push("Identifica el objeto, corpus, sistema o los conceptos centrales; no necesitas una muestra numérica.");
+  if (!usable(d.fields.topic)) missing.push("Para buscar fuentes, confirma primero la dirección general de tu investigación.");
+  if (!usable(d.fields.object) && !usable(d.fields.concepts)) missing.push("Necesitamos saber qué objeto o conceptos quieres estudiar; puedes pedir una propuesta al asistente.");
   const blocked = d.ambiguities.filter(ambiguityBlocksSearch);
   missing.push(...blocked.map(a => a.question));
   return { policyVersion: READINESS_POLICY_VERSION, projectCreation: usable(d.fields.originalIdea) && usable(d.fields.academicLevel), evidenceSearch: { status: missing.length ? "NEEDS_CLARIFICATION" as const : "READY" as const, reasons: missing },

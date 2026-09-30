@@ -1,23 +1,22 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
-import { getProjectContentLanguageForUser } from "@/server/projects/project-language-service";
 import { searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
 import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import { loadSearchInput } from "@/server/retrieval/search-intent-service";
+import { SearchPlanningError } from "@/lib/search-planning-outcome";
+import { readDefinition } from "@/server/projects/conversational-definition-service";
+import { definitionReadiness } from "@/lib/conversational-intake";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
 export async function POST(_request: Request, context: RouteContext) {
-  let language: "es" | "en" = "es";
-
+  const user = await requireCurrentUser();
+  const { id } = await context.params;
   try {
-    const user = await requireCurrentUser();
-    const { id } = await context.params;
     const searchInput = await loadSearchInput(user.id, id);
-    language = await getProjectContentLanguageForUser(user.id, id);
     const body = (await _request.json().catch(() => ({}))) as {
       desiredTotal?: number;
       batchKind?: "initial" | "more";
@@ -31,13 +30,20 @@ export async function POST(_request: Request, context: RouteContext) {
 
     return NextResponse.json({ result });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : language === "en"
-          ? "Could not run the search."
-          : "No se pudo ejecutar la busqueda.";
-
-    return NextResponse.json({ error: message }, { status: 400 });
+    const code = error instanceof SearchPlanningError ? error.code : error instanceof Error ? error.message : "INTERNAL_SEARCH_PLANNING_ERROR";
+    const clarification = code === "REAL_USER_CLARIFICATION_REQUIRED" || code === "SEARCH_INTENT_NOT_READY" || code === "DEFINITION_CONFIRMATION_REQUIRED";
+    if (clarification) {
+      let question = "Para buscar antecedentes útiles necesito que revises y confirmes la dirección de tu investigación.";
+      try {
+        const state = await readDefinition(user.id, id);
+        const reason = state && definitionReadiness(state.definition).evidenceSearch.reasons[0];
+        if (reason) question = reason;
+      } catch { /* Keep the generic, non-sensitive question. */ }
+      return NextResponse.json({ code: "REAL_USER_CLARIFICATION_REQUIRED", error: question }, { status: 409 });
+    }
+    const unavailable = code === "PROVIDER_UNAVAILABLE" || code === "OPENALEX_UNAVAILABLE";
+    return NextResponse.json({ code: unavailable ? "PROVIDER_UNAVAILABLE" : "SEARCH_PLANNING_FAILED",
+      error: unavailable ? "El servicio de búsqueda no está disponible ahora. Conservamos tu definición; vuelve a intentarlo más tarde." :
+        "No pudimos preparar la búsqueda. Conservamos tu definición y tus fuentes; vuelve a intentarlo." }, { status: unavailable ? 503 : 500 });
   }
 }

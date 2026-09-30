@@ -61,7 +61,7 @@ async function main() {
       // Model response outlives its HTTP client. Manual confirmation remains
       // possible, but its revision must not be invalidated by the late result.
       await confirmDefinition(user.id, p.id, v.revision, v.definitionHash);
-      return { schemaVersion: "intake-turn.v1", baseRevision: v.revision, assistantText: "Propuesta tardía", proposedChanges: [], ambiguities: [], nextQuestion: null };
+      return { schemaVersion: "intake-turn.v1", baseRevision: v.revision, assistantText: "Propuesta tardía", proposedChanges: [], ambiguities: [], nextQuestion: null, starterIdea: null };
     });
     assert.equal(late.status, "STALE");
     assert.equal((await readDefinition(user.id, p.id))!.revision, v.revision);

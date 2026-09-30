@@ -8,7 +8,7 @@ import { fingerprint } from "@/server/mvp/job-execution-context";
 import { withPaidOperation } from "@/server/mvp/pre-job-budget";
 import { checkRevision, definitionView, jsonValue, lockedDefinition, nextTurnSequence, readDefinition, writeDefinition } from "./conversational-definition-service";
 import { intakeModelPolicy } from "./intake-model-policy";
-import { INTAKE_PROMPT } from "./prompts/conversational-intake.v2";
+import { INTAKE_PROMPT } from "./prompts/conversational-intake.v3";
 
 type IntakeFailureStage = "PREPARATION" | "MODEL_REQUEST" | "STRUCTURED_PARSE" | "OUTPUT_VALIDATION" | "DRAFT_PERSISTENCE";
 function intakeFailureCategory(error: unknown) {
@@ -61,13 +61,15 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
       .filter(t => Boolean((t.resultJson as { nextQuestion?: unknown } | null)?.nextQuestion)).length;
     const knownIds = new Set(history.map(t => t.requestId));
     // Do not ship a growing transcript: current authority plus bounded recent inputs.
-    const prompt = `${INTAKE_PROMPT.instructions}\nINPUT_JSON\n${JSON.stringify({ baseRevision: input.baseRevision, definition: claim.view.definition, messages: history.reverse() })}`;
+    const sparseInitialIdea = Boolean(input.initial && input.message.trim().split(/\s+/u).length <= 3);
+    const prompt = `${INTAKE_PROMPT.instructions}\nINPUT_JSON\n${JSON.stringify({ baseRevision: input.baseRevision,
+      starterIdeaRequested: sparseInitialIdea, definition: claim.view.definition, messages: history.reverse() })}`;
     if (Buffer.byteLength(prompt) > 100000) throw new Error("INTAKE_CONTEXT_LIMIT");
     const result = await withPaidOperation({ userId, projectId, draftId: claim.view.id, requestId: `intake:${input.requestId}`, purpose: INTAKE_PROMPT.id,
       revision: String(input.baseRevision), inputs: { input, promptVersion: INTAKE_PROMPT.version, policy } }, async () => {
       failureStage = "MODEL_REQUEST";
       const rawResult = testModel ? await testModel(prompt) : await getConfiguredLlmProvider().generateStructuredObject({ ...policy,
-        prompt, schemaName: "intake_turn_v1", schema: z.toJSONSchema(intakeTurnResultSchema), trackingLabel: "conversational-intake.v2",
+        prompt, schemaName: "intake_turn_v1", schema: z.toJSONSchema(intakeTurnResultSchema), trackingLabel: "conversational-intake.v3",
         trackingAttribution: { stage: "intake", source: INTAKE_PROMPT.id, promptVersion: INTAKE_PROMPT.version, promptHash: fingerprint(INTAKE_PROMPT.instructions) } });
       failureStage = "STRUCTURED_PARSE";
       const parsed = intakeTurnResultSchema.parse(rawResult);

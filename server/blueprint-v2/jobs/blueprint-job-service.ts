@@ -25,7 +25,7 @@ import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/ste
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
 import { recommendDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
 import { appendGenerationInput, currentGenerationInput, frozenProject, readGenerationInput, researchProjectFingerprint, withGenerationInput } from "@/server/projects/generation-input-snapshot";
-import { definitionSchema } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 import { assertExpectedGenerationContext, generationContextForUser, type GenerationContext } from "@/server/projects/generation-context-service";
 import { prepareSelectedSources } from "@/server/projects/source-preparation-service";
 import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
@@ -329,8 +329,7 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
     if (rawDefinition) {
       const intake = await tx.intake.findUnique({ where: { projectId } });
       const confirmed = intake?.confirmedDefinitionJson as { revision?: number; definitionHash?: string } | null;
-      if (!confirmed || draft?.confirmedRevision !== confirmed.revision ||
-        fingerprint(definitionSchema.parse(rawDefinition)) !== confirmed.definitionHash) {
+      if (!confirmedScientificDefinitionMatches(rawDefinition, confirmed)) {
         throw new Error("DRAFT_CONFIRMATION_REQUIRED: confirma la definición científica antes de generar.");
       }
     } else if (draft && draft.confirmedRevision !== draft.revision) {

@@ -1,5 +1,5 @@
 import { Prisma, Provider } from "@prisma/client";
-import { definitionSchema } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 import { prisma } from "@/lib/prisma";
 import { normalizeTitle } from "@/lib/text";
 import { fingerprint } from "@/server/mvp/job-execution-context";
@@ -83,7 +83,7 @@ export async function convergePaidWebDiscoveryOperation(input: {
     const raw = (project?.draft?.contentJson as Record<string, unknown> | null)?.researchDefinition;
     if (!raw || !confirmed || confirmed.revision !== search.intent.confirmedDraftRevision ||
         confirmed.definitionHash !== search.intent.definitionHash ||
-        fingerprint(definitionSchema.parse(raw)) !== search.intent.definitionHash) throw new Error("WEB_CONVERGENCE_INTENT_STALE");
+        !confirmedScientificDefinitionMatches(raw, confirmed)) throw new Error("WEB_CONVERGENCE_INTENT_STALE");
     const links = await tx.projectReference.findMany({ where: { projectId: input.projectId }, include: { reference: true } });
     const priorWeb = await tx.auditLog.findMany({ where: { projectId: input.projectId, eventType: EVENT },
       select: { id: true, payloadJson: true } });

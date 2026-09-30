@@ -12,7 +12,8 @@ export function materialAmbiguities(result: IntakeTurnResult) {
 // Unaccepted proposals count as provisional understanding, never as confirmed facts.
 export function materialQuestion(result: IntakeTurnResult, definition: ResearchDefinition, previousQuestions: number) {
   const question = result.nextQuestion;
-  if (!question || previousQuestions >= 3) return null;
+  const broadArea = definition.fields.originalIdea.value.trim().split(/\s+/u).length <= 3;
+  if (!question || previousQuestions >= (broadArea ? 1 : 2)) return null;
   if (!materialFields.has(question.field)) return null;
   const blocking = materialAmbiguities(result).some(a => a.blocksSearch && a.field === question.field);
   if (!blocking && !coreFields.has(question.field)) return null;

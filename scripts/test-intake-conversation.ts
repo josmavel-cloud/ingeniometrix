@@ -19,7 +19,7 @@ async function main() {
       const input = { message: index === 0 ? idea : "Me interesa comprender el fenómeno, aún no conozco el método", requestId: randomUUID(), baseRevision: state.revision, etag: state.etag, ...(index === 0 ? { initial: true as const } : {}) };
       const mock = async () => { calls++; return { schemaVersion: "intake-turn.v1", baseRevision: input.baseRevision, assistantText: "Podemos precisar el objeto sin elegir aún un método.",
         proposedChanges: [{ field: "purpose", value: "Comprender el fenómeno", origin: "AI_INFERRED", knowledge: "KNOWN", sourceMessageIds: [input.requestId], interpretationConfidence: "MEDIUM" }, ...(index === 0 ? [{ field: "object", value: "Sistema de visualización geoespacial", origin: "AI_INFERRED" as const, knowledge: "KNOWN" as const, sourceMessageIds: [input.requestId], interpretationConfidence: "MEDIUM" as const }] : [])],
-        ambiguities: [], nextQuestion: { field: "object", question: "¿Qué objeto o corpus te interesa?", options: [] } }; };
+        ambiguities: [], nextQuestion: { field: "object", question: "¿Qué objeto o corpus te interesa?", options: [] }, starterIdea: null }; };
       const result = await submitIntakeTurn(user.id, p.id, input, mock);
       assert.equal(result.status, "COMPLETE");
       if (index === 0) {

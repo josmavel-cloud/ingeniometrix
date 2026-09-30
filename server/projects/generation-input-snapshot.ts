@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { definitionSchema } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { evidenceSourcePoolVersion } from "@/server/projects/evidence-set-service";
 import { jobCostPolicy, pageBudgetPolicy } from "@/server/mvp/execution-policy";
@@ -44,8 +44,7 @@ export async function appendGenerationInput(tx: Prisma.TransactionClient, input:
   const researchDefinition = (project.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
   if (researchDefinition) {
     const confirmed = project.intake?.confirmedDefinitionJson as { revision?: number; definitionHash?: string } | null;
-    if (!confirmed || project.draft?.confirmedRevision !== confirmed.revision ||
-      fingerprint(definitionSchema.parse(researchDefinition)) !== confirmed.definitionHash) throw new Error("DRAFT_CONFIRMATION_REQUIRED");
+    if (!confirmedScientificDefinitionMatches(researchDefinition, confirmed)) throw new Error("DRAFT_CONFIRMATION_REQUIRED");
   } else if (project.draft && project.draft.confirmedRevision !== project.draft.revision) throw new Error("DRAFT_CONFIRMATION_REQUIRED");
   const evidenceSet = await tx.projectEvidenceSet.findFirst({ where: { projectId: project.id }, orderBy: { version: "desc" } });
   if (!evidenceSet || evidenceSet.readiness === "BLOCKED" || fingerprint(evidenceSet.snapshotJson) !== evidenceSet.contentHash) {
