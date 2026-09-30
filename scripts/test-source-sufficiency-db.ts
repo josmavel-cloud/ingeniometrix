@@ -1,3 +1,6 @@
+import { recoverExploratoryCache } from "@/server/retrieval/recover-exploratory-cache";
+import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
+import { candidateMetadataHash } from "@/server/retrieval/candidate-review-policy";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
@@ -47,6 +50,25 @@ async function main() {
       assert.equal(status.selected, n); assert.equal(status.selectedUsable, n);
       assert.equal(status.readiness, n < 3 ? "BLOCKED" : "READY_WITH_LIMITATIONS");
     }
+    const snapshot = (await getLatestProjectReferenceSearchSnapshot(p.id))!;
+    const cached = { title: "Related education theory from a prior search", doi: `10.1234/${randomUUID()}`, openAlexId: null,
+      abstract: "A theoretical contribution adjacent to the confirmed research intent.", authors: ["Synthetic Author"], year: 2025, venue: "Synthetic journal", workType: "article", landingPageUrl: null };
+    const oldAssessment = { candidateId: `doi:${cached.doi}`, policyVersion: "candidate-semantic-review.v2" as const,
+      searchIntentHash: snapshot.inputTrace!.searchIntentHash, metadataHash: candidateMetadataHash({ ...cached, candidateId: `doi:${cached.doi}` }),
+      relevance: "PARTIALLY_RELEVANT" as const, role: "THEORETICAL" as const, origin: "DETERMINISTIC" as const, confidence: "HIGH" as const,
+      rationale: "Related theory", evidence: [{ field: "title" as const, quote: cached.title }], matchedIntentDimensions: ["concepts"], mismatches: [] };
+    const breakdown = { candidateAssessment: oldAssessment, label: "BAJO" as const, necessaryMatches: [], complementaryMatches: [], optionalMatches: [], recencyBand: "recent", recencyBonus: 0, matchedQuery: "synthetic", matchedQueryStage: "necessary_only" as const };
+    const priorSnapshot = { ...snapshot, queryPlanHash: "synthetic-cached-plan", candidateAdmissions: [{ candidateKey: oldAssessment.candidateId,
+      title: cached.title, doi: cached.doi, year: cached.year, relevanceScore: 0, scoreBreakdown: breakdown,
+      admission: { policyVersion: "reference-admission-v1" as const, state: "NEEDS_INSPECTION" as const, reasons: ["PARTIALLY_RELEVANT"] } }] };
+    await prisma.auditLog.create({ data: { userId: user.id, projectId: p.id, actorType: "SYSTEM", eventType: "SOURCE_PROVIDER_QUERY_COMPLETED",
+      payloadJson: { queryPlanHash: "synthetic-cached-plan", results: [cached] } } });
+    const recovered = await recoverExploratoryCache(user.id, p.id, priorSnapshot);
+    const recoveredId = recovered.references.find(r => r.scoreBreakdown.candidateAssessment?.metadataHash === oldAssessment.metadataHash)?.referenceId;
+    assert(recoveredId, "previously hidden partial source recovers without a provider call"); refs.push(recoveredId);
+    assert.equal((await prisma.projectReference.findUniqueOrThrow({ where: { projectId_referenceId: { projectId: p.id, referenceId: recoveredId } } })).selected, false);
+    const again = await recoverExploratoryCache(user.id, p.id, recovered);
+    assert.equal(again.references.length, recovered.references.length, "recovery does not duplicate works");
     await assert.rejects(updateSelectedProjectReferences(other.id, p.id, refs), /no encontrado/);
     assert.equal(await prisma.projectKnowledgeField.count({ where: { projectId: p.id, isPrimary: true } }), 1);
     console.log("PASS DB: FORD 50/6 hierarchy, accents, 3 idea options ownership/provenance/global confirmation, selection 0–3 idempotent, 2 CORE + EXPLORATORY limits; provider calls=0");

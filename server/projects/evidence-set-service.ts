@@ -161,7 +161,7 @@ export async function confirmEvidenceSet(userId: string, projectId: string, oper
     const uploads = project.uploadedPdfs.map(doc => ({ id: doc.id, referenceId: doc.referenceId,
       status: doc.status, identityStatus: doc.identityStatus, extractionStatus: doc.extractionStatus,
       sha256: doc.sha256, byteSize: doc.byteSize, selected: Boolean(doc.referenceId && selectedIds.includes(doc.referenceId)) }));
-    const gaps = coverage?.gaps.filter(gap => gap.importance === "MATERIAL")
+    const gaps = coverage?.gaps.filter(gap => gap.importance === "MATERIAL" && gap.type !== "MINIMUM_SOURCE_COVERAGE")
       .map(gap => ({ gapId: gap.gapId, kind: gap.kind, type: gap.type, status: gap.status,
         reason: gap.insufficiencyReason })) ?? [];
     const { readiness, limitations } = evaluateEvidenceSetReadiness({ sources, fallbackExhausted: (fallback?.payloadJson as { fallbackExhausted?: boolean } | null)?.fallbackExhausted,

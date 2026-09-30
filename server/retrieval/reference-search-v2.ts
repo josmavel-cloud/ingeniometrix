@@ -1,3 +1,4 @@
+import { recoverExploratoryCache } from "./recover-exploratory-cache";
 import { REFERENCE_SEARCH_V2_1_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v1";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import { Prisma, ProjectStatus, Provider } from "@prisma/client";
@@ -1424,9 +1425,10 @@ export async function searchProjectReferencesV2(
   if (batchKind === "initial" && !acceptance && !planningProvider && priorSnapshot &&
       reusableMetadata(priorSnapshot, intentHash, input.intent.sourceKind === "CONFIRMED_DEFINITION") &&
       Date.now() - Date.parse(priorSnapshot.savedAt) < PROVIDER_CACHE_TTL_MS) {
+    const recovered = await recoverExploratoryCache(userId, projectId, priorSnapshot);
     return { batchKind, searchQuery: priorSnapshot.searchQuery, attemptedQueries: [],
       totalResults: priorSnapshot.references.length, createdCount: 0, updatedCount: 0,
-      providerBreakdown: { openAlex: 0, crossref: 0 }, searchSnapshot: priorSnapshot };
+      providerBreakdown: { openAlex: 0, crossref: 0 }, searchSnapshot: recovered };
   }
   const inputTrace = await freezeSearchInput(userId, input);
 
@@ -1593,7 +1595,8 @@ export async function searchProjectReferencesV2(
       const query: ProviderQuery = { familyId: family.id, familyType: family.family, provider: "CROSSREF", renderedQuery,
         filters: [], page: 1 };
       const queryHash = providerQueryHash(queryPlanHash, query);
-      if (!priorExecutions.some(item => options?.automaticConvergence ? item.provider === "CROSSREF" : item.queryHash === queryHash && item.errorCategory === null)) {
+      if (!priorExecutions.some(item => item.provider === "CROSSREF")) {
+        try {
         const oldHits = cacheHits;
         const crossrefResults = await cachedProviderResults(query, () => searchCrossrefWorks(renderedQuery));
         let newCandidateCount = 0;
@@ -1624,10 +1627,15 @@ export async function searchProjectReferencesV2(
         attemptSummaries.push({ query: renderedQuery, resultCount: crossrefResults.length });
         executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: crossrefResults.length,
           newCandidateCount, cacheHit: cacheHits > oldHits, errorCategory: null });
+        } catch (error) {
+          if (!options?.automaticConvergence) throw error;
+          executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: 0,
+            newCandidateCount: 0, cacheHit: false, errorCategory: "CROSSREF_UNAVAILABLE" });
+        }
       }
     }
   }
-  if (openAlexUnavailable && !executedQueries.some(item => item.errorCategory === null)) throw new Error("OPENALEX_PROVIDER_TEMPORARILY_UNAVAILABLE");
+  if (!options?.automaticConvergence && openAlexUnavailable && !executedQueries.some(item => item.errorCategory === null)) throw new Error("OPENALEX_PROVIDER_TEMPORARILY_UNAVAILABLE");
 
   const candidatePool = Array.from(aggregatedResults.values());
   const rankedCandidates: RankedCandidate[] = [];
