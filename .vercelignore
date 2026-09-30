@@ -17,8 +17,12 @@ app/api/
 blueprint_launch/
 components/labs/master-blueprint/
 lib/labs/master-blueprint/
-server/
-prisma/
+server/*
+!server/projects/
+server/projects/*
+!server/projects/project-validation.ts
+prisma/*
+!prisma/schema.prisma
 scripts/
 llm/
 ai/
