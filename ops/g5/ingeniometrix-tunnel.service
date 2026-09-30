@@ -1,0 +1,15 @@
+[Unit]
+Description=Ingeniometrix staging named tunnel (not Quick Tunnel)
+After=network-online.target docker.service
+Wants=network-online.target
+[Service]
+User=cloudflared
+ExecStart=/usr/local/bin/cloudflared --no-autoupdate --config /etc/cloudflared/ingeniometrix-staging.yml tunnel run
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target

@@ -76,7 +76,7 @@ Use the local-network server as a pull-only worker, not as a development environ
 4. After the first clean commit exists, push the branch and capture the commit SHA to run remotely.
 5. On the Ubuntu server, clone or pull the repo into a dedicated working directory owned by a non-root user.
 6. Install only the minimum runtime needed for the chosen job:
-   - Node 20+
+   - Node 24 LTS
    - npm
    - Docker Compose only if the job needs Postgres
 7. Start a named tmux session for the run.

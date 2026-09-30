@@ -1,0 +1,128 @@
+{
+  "manifestVersion": "rc4-production-pilot.v2",
+  "createdAt": "2026-09-29T13:44:44Z",
+  "deploymentStatus": "PRODUCTION_DEPLOYED_WITH_NONCRITICAL_BACKLOG",
+  "releaseSourceCommit": "d8b02d088a78452cd0a84dafb9c12410b015da86",
+  "frontend": {
+    "deploymentId": "dpl_Bho6TbBmXFuLFVh47CgpyY4PbKbP",
+    "deploymentUrl": "https://ingeniometrix-9ixc21k5l-josmavel-clouds-projects.vercel.app",
+    "productionUrl": "https://ingeniometrix.com",
+    "sourceCommit": "d8b02d088a78452cd0a84dafb9c12410b015da86",
+    "packageWorkingTreeDirty": false,
+    "boundaryTraceCount": 24,
+    "backendOnlyProductionVariablesRemoved": [
+      "DATABASE_URL",
+      "DATABASE_URL_UNPOOLED",
+      "CROSSREF_MAILTO",
+      "OPENAI_API_KEY",
+      "OPENALEX_API_KEY",
+      "LLM_DEFAULT_MODEL",
+      "LLM_FAST_MODEL",
+      "LLM_PROVIDER"
+    ]
+  },
+  "backend": {
+    "imageTag": "imx-rc4-production-rc:2c8b091",
+    "imageId": "sha256:546799e4016247687b8033d3fb803deb93462324faf7202f1d3357baecd366bc",
+    "healthy": true,
+    "funnelOrigin": "https://ingeniometrix-production.tailbcdf27.ts.net"
+  },
+  "worker": {
+    "imageTag": "imx-rc4-production-rc:2c8b091",
+    "imageId": "sha256:546799e4016247687b8033d3fb803deb93462324faf7202f1d3357baecd366bc",
+    "healthy": true
+  },
+  "migration": {
+    "imageTag": "imx-rc4-production-migration:2c8b091",
+    "imageId": "sha256:cc8b180e908944b43462fa6d275219e2516d8baa6e89cb2479862cfc7b629d90",
+    "migrationCount": 15,
+    "finishedCount": 15,
+    "unfinishedCount": 0,
+    "latestMigration": "20260929051000_rc4_phase2_evidence_set_immutable",
+    "productionExecution": true,
+    "evidenceSetUpdateTrigger": "ENABLED"
+  },
+  "featureFlags": {
+    "astraWebDiscovery": false,
+    "deepResearch": false,
+    "realPayments": false,
+    "privilegedAdminUi": false,
+    "authlessWorkspace": false,
+    "conversationalIntake": true
+  },
+  "contracts": {
+    "researchSearchIntent": "reference-search-v2 / prompt 2.3.0",
+    "candidateSemanticReview": "candidate-semantic-review / prompt 2.0.0",
+    "evidenceGap": "EvidenceGap.v1 / evidence-gap-policy.v1",
+    "webDiscovery": "web-discovery-result.v1 / astra-web-discovery-policy.v1",
+    "astraWebCost": "astra-web-cost-policy.v1",
+    "evidenceSet": "evidence-set.v1",
+    "generationInput": "generation-input.v3",
+    "scientificDesignSelector": "ingeniometrix-scientific-design-selector-v3",
+    "scientificDesignCritic": "ingeniometrix-scientific-design-critic-v3"
+  },
+  "releasedAt": "2026-09-29T19:40:57Z",
+  "releaseTag": "rc4-production-2026-09-29",
+  "mainBefore": "a0cbd41f0af9411048accce7ed83a6b4e2be63ed",
+  "mainAfter": "a0cbd41f0af9411048accce7ed83a6b4e2be63ed",
+  "mainPromotion": "NOT_PERFORMED_DIVERGED",
+  "productionDomain": "https://ingeniometrix.com",
+  "productionBackendEndpoint": "https://ingeniometrix-production.tailbcdf27.ts.net",
+  "backups": {
+    "repositoryClass": "rclone:imx-drive-crypt:production/",
+    "preMigration": {
+      "snapshotId": "6087b0a96259f22c2903089cf0b6f92549f02031b8996f5371c524e25c690848",
+      "createdAt": "2026-09-29T19:20:36.261264523Z",
+      "integrity": "restic check --read-data passed"
+    },
+    "postMigration": {
+      "snapshotId": "227a3ad734826934c1bf70adc423dbf3fe5635b00faddd33f8a5b5f5da6ea8df",
+      "createdAt": "2026-09-29T19:21:59.02767508Z",
+      "integrity": "restic check --read-data passed; isolated restore yielded readable pg_dump and valid artifact manifest"
+    }
+  },
+  "monitoring": {
+    "hostTimer": "ingeniometrix-rc4-production-monitor.timer",
+    "hostTimerActive": true,
+    "lastCheck": {
+      "web": 200,
+      "readiness": 200,
+      "operational": 200,
+      "workerHeartbeat": "healthy",
+      "backupAge": "healthy",
+      "storage": "healthy"
+    },
+    "githubVariablesAndSecretConfigured": true,
+    "githubScheduledWorkflowActive": false,
+    "reason": "Workflow is absent from divergent main; dispatch from feature returned 404."
+  },
+  "smoke": {
+    "publicBackendTls": "VALID",
+    "publicBackendReadiness": 200,
+    "stagingReadiness": 200,
+    "googleRedirectUri": "https://ingeniometrix.com/api/auth/google/callback",
+    "manualOwnerGoogleLoginRequired": true,
+    "openAiCredential": "GET /v1/models HTTP 200; no inference",
+    "openAlexCredential": "one work lookup HTTP 200",
+    "syntheticProjectPhase1Selection": "PASS; fixture removed",
+    "evidenceSetSnapshotUpdateGuard": "PASS; technical fixture removed",
+    "scientificDesignHandoffFixture": "PASS on isolated validation DB; paid calls 0",
+    "docxOpenXmlEditableTableAndDownload": "PASS; one-use authorization and cross-user denial",
+    "privateStorage": "PASS; raw URL denied and fixture removed",
+    "logSecretScan": "PASS on app, worker, Caddy and Vercel runtime logs"
+  },
+  "rollbackPlan": [
+    "Stop or disable production ingress if confidentiality or correctness is affected.",
+    "Retain production DB and artifact volumes; do not run compose down -v.",
+    "For schema-compatible runtime issues, redeploy the verified RC image and the recorded Vercel deployment.",
+    "For migration or data recovery, restore the exact production-only encrypted snapshot to an isolated PostgreSQL 16 target, verify dump, artifact hashes and migration ledger, then cut over under owner review.",
+    "Do not restore the staging snapshot or the legacy restic-g5 repository."
+  ],
+  "criticalBlockers": [],
+  "noncriticalBacklog": [
+    "Reconcile divergent main with the tagged RC4 source before a future Git-integrated production deployment.",
+    "Activate the production GitHub scheduled monitor on the reconciled default branch and verify off-host alert delivery.",
+    "Owner completes interactive Google login, logout and relogin.",
+    "Review the backup OAuth credential full-Drive scope for a narrower identity; encrypted production snapshots and independent recovery custody are already verified."
+  ]
+}

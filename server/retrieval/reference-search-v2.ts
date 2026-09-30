@@ -1,3 +1,5 @@
+import { REFERENCE_SEARCH_V2_1_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import { Prisma, ProjectStatus, Provider } from "@prisma/client";
 
 import {
@@ -5,49 +7,81 @@ import {
   MIN_SELECTED_REFERENCES,
   REFERENCE_BATCH_SIZE,
 } from "@/lib/research-workflow";
-import { normalizeLanguageCode, resolveLanguageContext } from "@/lib/language";
+import { resolveLanguageContext } from "@/lib/language";
 import { buildSearchQuery, extractSearchTerms, normalizeTitle } from "@/lib/text";
 import { prisma } from "@/lib/prisma";
 import { getConfiguredLlmProvider } from "@/llm";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import type { IntakeInput } from "@/server/projects/project-validation";
+import { definitionSchema } from "@/lib/conversational-intake";
+import { fingerprint } from "@/server/mvp/job-execution-context";
+import { freezeSearchInput, searchInputIsStale, type SearchInput, type SearchInputTrace } from "./search-intent-service";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
+import { enrichmentGroups, semanticPlannerInput, semanticQueryPack, fallbackSearchEnrichment, type SearchEnrichment, type SemanticKeywordGroup } from "@/lib/retrieval-semantic-plan";
+import { planSemanticSearch, searchEnrichmentModel } from "./semantic-search-planner";
+import { REFERENCE_SEARCH_V2_2_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v2";
+import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-relevance";
+import { QUERY_COMPOSITION_VERSION, validateScientificQueryPlan, type ScientificQuery } from "@/lib/retrieval-query-composition";
+import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
+import { reviewCandidateBatch } from "./candidate-semantic-review";
+import { recoverCentralTranslations, recoveryModel } from "./search-concept-translation";
+import { SEARCH_CONCEPT_TRANSLATION_PROMPT } from "@/server/mvp/prompts/search-concept-translation.v1";
+import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
+import { candidateMetadataHash, CANDIDATE_REVIEW_VERSION, MAX_RECOMMENDATIONS, type CandidateAssessment, type ReviewCandidate } from "./candidate-review-policy";
 
 import {
   type CrossrefMessage,
-  fetchCrossrefWorkByDoi,
   resolveCrossrefTitle,
   searchCrossrefWorks,
 } from "./crossref-client";
-import { extractAccessSignals, verifyPdfAccess } from "./reference-access";
-import { evaluateReferenceQuality } from "./reference-quality";
-import { searchOpenAlexWorks } from "./openalex-client";
+import { extractAccessSignals } from "./reference-access";
+import { OPENALEX_QUALITY_FILTERS, OpenAlexRequestError, searchOpenAlexWorks } from "./openalex-client";
+import { settleFailedSearch } from "./search-failure-state";
+import { admittedOnly, decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
+import { PROVIDER_CACHE_TTL_MS, PROVIDER_QUERY_POLICY_VERSION, providerQueryHash, renderCrossrefFamily,
+  sameScientificWork, selectProviderQueries, normalizeScholarlyDoi, scholarlyVersionClass, type ExecutedProviderQuery, type ProviderQuery } from "./provider-query-policy";
 
 export type ReferenceKeywordGroup = {
   label: string;
   variants: string[];
-};
+} & Partial<Omit<SemanticKeywordGroup, "label" | "variants">>;
 
 export type ReferenceSearchV2Metadata = {
+  enrichment?: SearchEnrichment;
+  planning?: { model: string; promptVersion: string; policyVersion: string; cacheKey: string;
+    replayedFromCompositionVersion?: string; replayedFromPlanOperationId?: string };
   planSource: "llm" | "fallback";
   normalizedTopic: string;
   intentSummary: string;
-  providerWarnings?: string[];
   keywordGroups: {
     necessary: ReferenceKeywordGroup[];
     complementary: ReferenceKeywordGroup[];
     optional: ReferenceKeywordGroup[];
   };
   queryPack: {
+    conceptPlan?: ScientificConceptPlan;
+    coverageMode?: string;
+    compositionVersion?: string;
+    plannedQueries?: ScientificQuery[];
+    validation?: { valid: boolean; reasons: string[] };
     necessaryOnly: string[];
     complementaryBoosted: string[];
     optionalBackups: string[];
   };
   focusTerms: string[];
+  localObjectTerms?: string[];
   scoringRules: string[];
+  openAlexQueryPack?: {
+    strictBoolean: string[];
+    precisionBoolean: string[];
+    fallbackPlain: string[];
+    localLanguage?: string[];
+  };
 };
 
 export type ReferenceScoreBreakdown = {
+  candidateAssessment?: CandidateAssessment;
+  semanticRelevance?: SemanticRelevance;
   label: "ALTO" | "MEDIO" | "BAJO" | "MINIMO";
   necessaryMatches: string[];
   complementaryMatches: string[];
@@ -56,10 +90,18 @@ export type ReferenceScoreBreakdown = {
   recencyBonus: number;
   matchedQuery: string;
   matchedQueryStage: "necessary_only" | "complementary_boosted" | "optional_backup";
+  coverageRatio?: number;
+  citationBonus?: number;
+  qualityBonus?: number;
+  penalties?: string[];
 };
 
 export type ProjectReferenceSearchSnapshot = {
+  semanticReview?: Awaited<ReturnType<typeof reviewCandidateBatch>>["trace"];
   referenceSearchVersion: "v2";
+  inputTrace?: SearchInputTrace;
+  stale?: boolean;
+  batchKind?: SourceDiscoveryBatchKind;
   savedAt: string;
   searchQuery: string;
   attemptedQueries: string[];
@@ -68,19 +110,41 @@ export type ProjectReferenceSearchSnapshot = {
     openAlex: number;
     crossref: number;
   };
+  queryPlanHash?: string;
+  executedQueries?: ExecutedProviderQuery[];
+  cacheHits?: number;
+  cacheMisses?: number;
+  discoveryObservations?: Array<{ candidateKey: string; provider: "OPENALEX" | "CROSSREF"; queryHash: string }>;
+  resultState?: "NO_RELEVANT_INITIAL_RESULTS" | "MORE_FOUND_NEW_RESULTS" | "NO_NEW_RELEVANT_RESULTS" | "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN";
   baseSelectedReferenceIds: string[];
   metadata: ReferenceSearchV2Metadata;
+  admissionPolicyVersion?: typeof REFERENCE_ADMISSION_POLICY_VERSION;
+  candidateAdmissions?: Array<{
+    candidateKey: string;
+    title: string;
+    doi: string | null;
+    year: number | null;
+    relevanceScore: number;
+    scoreBreakdown: ReferenceScoreBreakdown;
+    admission: ReferenceAdmission;
+    inspectionMetadata?: { abstract: string | null; authors: string[]; venue: string | null; access: ReturnType<typeof extractAccessSignals> };
+  }>;
   references: Array<{
     referenceId: string;
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
+    admission?: ReferenceAdmission;
     suggestedSelectedOrder: number | null;
     pdfUrl?: string | null;
     pdfAccessible?: boolean;
+    accessStatus?: "REPORTED_PDF" | "UNKNOWN";
   }>;
 };
 
+export type SourceDiscoveryBatchKind = "initial" | "more";
+
 export type SearchProjectReferencesV2Result = {
+  batchKind: SourceDiscoveryBatchKind;
   searchQuery: string;
   attemptedQueries: string[];
   totalResults: number;
@@ -118,6 +182,10 @@ type SearchCandidate = {
   sourceProvider: Provider;
   matchedQuery: string;
   matchedQueryStage: "necessary_only" | "complementary_boosted" | "optional_backup";
+  coverageRatio?: number;
+  citationBonus?: number;
+  qualityBonus?: number;
+  penalties?: string[];
   openAlexId: string | null;
   doi: string | null;
   title: string | null;
@@ -148,6 +216,7 @@ type RankedCandidate = {
   crossrefMetadata: CrossrefMessage | null;
   score: number;
   scoreBreakdown: ReferenceScoreBreakdown;
+  admission: ReferenceAdmission;
   pdfUrl: string | null;
   pdfAccessible: boolean;
 };
@@ -306,6 +375,227 @@ function buildQueryPack(keywordGroups: ReferenceSearchV2Metadata["keywordGroups"
   };
 }
 
+
+function quoteOpenAlexTerm(value: string) {
+  const trimmed = value.trim().replace(/"/g, "");
+
+  if (!trimmed) {
+    return null;
+  }
+
+  return /\s/.test(trimmed) ? `"${trimmed}"` : trimmed;
+}
+
+function buildRelaxedSearchVariants(value: string) {
+  const trimmed = value.trim();
+  const genericWords = new Set([
+    "a",
+    "an",
+    "and",
+    "de",
+    "del",
+    "for",
+    "in",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+    "analysis",
+    "assessment",
+    "evaluation",
+    "method",
+    "methods",
+    "model",
+    "models",
+    "order",
+    "study",
+    "studies",
+  ]);
+  const contentWords = normalizeTitle(trimmed)
+    .split(" ")
+    .filter((word) => word.length >= 3 && !genericWords.has(word));
+  const relaxed = [trimmed];
+
+  if (contentWords.length >= 2) {
+    relaxed.push(contentWords.slice(-2).join(" "));
+  }
+
+  if (contentWords.length === 3) {
+    relaxed.push(`${contentWords[0]} ${contentWords[contentWords.length - 1]}`);
+  }
+
+  return uniqueNormalized(relaxed).slice(0, 3);
+}
+
+function buildOpenAlexClauseVariants(group: ReferenceKeywordGroup) {
+  return uniqueNormalized(group.variants.flatMap(buildRelaxedSearchVariants)).slice(0, 5);
+}
+
+function buildOrClause(values: string[]) {
+  const quoted = uniqueNormalized(values)
+    .slice(0, 5)
+    .map(quoteOpenAlexTerm)
+    .filter((value): value is string => Boolean(value));
+
+  if (quoted.length === 0) {
+    return null;
+  }
+
+  return quoted.length === 1 ? quoted[0] : `(${quoted.join(" OR ")})`;
+}
+
+function buildBooleanQuery(values: Array<string | null | undefined>) {
+  return values
+    .map((value) => value?.trim())
+    .filter((value): value is string => Boolean(value))
+    .join(" AND ");
+}
+
+function rankTermsByFieldCoverage(fields: Array<string | null | undefined>) {
+  const counts = new Map<string, number>();
+
+  for (const field of fields) {
+    for (const term of extractSearchTerms(field ?? "", { maxTerms: 30, minLength: 4 })) {
+      counts.set(term, (counts.get(term) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([term]) => term);
+}
+
+function buildLocalObjectTerms(intake: IntakeInput) {
+  const topicTerms = extractSearchTerms(intake.topic, { maxTerms: 16, minLength: 4 });
+  const targetTerms = extractSearchTerms(intake.targetPopulation ?? "", {
+    maxTerms: 18,
+    minLength: 4,
+  });
+  const researchLineTerms = extractSearchTerms(intake.researchLine ?? "", {
+    maxTerms: 18,
+    minLength: 4,
+  });
+  const dataTerms = extractSearchTerms(intake.availableData ?? "", { maxTerms: 18, minLength: 4 });
+
+  return uniqueNormalized([
+    ...targetTerms,
+    ...topicTerms.slice(2),
+    ...researchLineTerms,
+    ...dataTerms,
+  ])
+    .filter((term) => !topicTerms.slice(0, 2).includes(term))
+    .slice(0, 16);
+}
+
+function buildLocalLanguageQueries(intake: IntakeInput) {
+  const topicTerms = extractSearchTerms(intake.topic, { maxTerms: 12, minLength: 4 });
+  const researchLineTerms = extractSearchTerms(intake.researchLine ?? "", {
+    maxTerms: 14,
+    minLength: 4,
+  });
+  const targetTerms = extractSearchTerms(intake.targetPopulation ?? "", {
+    maxTerms: 14,
+    minLength: 4,
+  });
+  const dataTerms = extractSearchTerms(intake.availableData ?? "", {
+    maxTerms: 30,
+    minLength: 4,
+  });
+  const problemTerms = extractSearchTerms(intake.problemContext ?? "", {
+    maxTerms: 30,
+    minLength: 4,
+  });
+  const methodTerms = extractSearchTerms(intake.preferredMethodology ?? "", {
+    maxTerms: 10,
+    minLength: 4,
+  });
+  const corePhrase = buildSearchQuery(topicTerms.slice(0, 2));
+  const topicCore = buildSearchQuery(topicTerms.slice(0, 4));
+  const crossFieldTerms = rankTermsByFieldCoverage([
+    intake.topic,
+    intake.researchLine,
+    intake.targetPopulation,
+    intake.availableData,
+    intake.problemContext,
+    intake.preferredMethodology,
+  ]).filter((term) => !topicTerms.slice(0, 2).includes(term));
+  const objectTerms = uniqueNormalized([...targetTerms, ...researchLineTerms, ...dataTerms]).filter(
+    (term) => !topicTerms.slice(0, 2).includes(term),
+  );
+  const methodContextTerms = uniqueNormalized([...methodTerms, ...problemTerms, ...dataTerms]).filter(
+    (term) => !topicTerms.slice(0, 2).includes(term),
+  );
+
+  return uniqueNormalized([
+    buildSearchQuery([corePhrase, crossFieldTerms[0], crossFieldTerms[1]]),
+    buildSearchQuery([corePhrase, objectTerms[0], objectTerms[1]]),
+    buildSearchQuery([corePhrase, objectTerms[0], methodContextTerms[0]]),
+    buildSearchQuery([corePhrase, crossFieldTerms[2], crossFieldTerms[4]]),
+    buildSearchQuery([corePhrase, objectTerms[0], crossFieldTerms[4]]),
+    buildSearchQuery([objectTerms[0], crossFieldTerms[4], corePhrase]),
+    buildSearchQuery([crossFieldTerms[2], crossFieldTerms[4], corePhrase]),
+    buildSearchQuery([corePhrase, crossFieldTerms[2], methodContextTerms[2]]),
+    buildSearchQuery([topicCore, crossFieldTerms[0], crossFieldTerms[1]]),
+    buildSearchQuery([topicTerms[0], topicTerms[1], objectTerms[0], dataTerms[0]]),
+  ])
+    .filter((query) => query.split(" ").length >= 3)
+    .slice(0, 10);
+}
+
+function buildOpenAlexQueryPack(
+  keywordGroups: ReferenceSearchV2Metadata["keywordGroups"],
+  intake?: IntakeInput,
+) {
+  const necessaryClauses = keywordGroups.necessary
+    .slice(0, 5)
+    .map((group) => buildOrClause(buildOpenAlexClauseVariants(group)))
+    .filter((value): value is string => Boolean(value));
+  const complementaryClauses = keywordGroups.complementary
+    .slice(0, 5)
+    .map((group) => buildOrClause(buildOpenAlexClauseVariants(group)))
+    .filter((value): value is string => Boolean(value));
+  const optionalClauses = keywordGroups.optional
+    .slice(0, 3)
+    .map((group) => buildOrClause(buildOpenAlexClauseVariants(group)))
+    .filter((value): value is string => Boolean(value));
+
+  const primaryCore = necessaryClauses.slice(0, 2);
+  const broadCore = necessaryClauses.slice(0, 3);
+
+  // Keep this generic: combine the strongest core concepts, then test method/context refiners.
+  // Do not force every necessary facet into every query; narrow facets can make OpenAlex rank
+  // semantically adjacent but unsuitable works above better general foundations.
+  const strictBoolean = uniqueNormalized([
+    buildBooleanQuery(broadCore),
+    buildBooleanQuery([...primaryCore, complementaryClauses[0]]),
+    buildBooleanQuery([...primaryCore, complementaryClauses[1]]),
+    buildBooleanQuery([...primaryCore, complementaryClauses[2]]),
+  ]).slice(0, 5);
+
+  const precisionBoolean = uniqueNormalized([
+    buildBooleanQuery([...primaryCore, complementaryClauses[0], complementaryClauses[1]]),
+    buildBooleanQuery([...primaryCore, complementaryClauses[1], complementaryClauses[2]]),
+    buildBooleanQuery([necessaryClauses[0], necessaryClauses[2], complementaryClauses[1]]),
+    buildBooleanQuery([necessaryClauses[0], necessaryClauses[1], optionalClauses[0]]),
+    buildBooleanQuery([necessaryClauses[0], complementaryClauses[0], optionalClauses[1]]),
+  ]).slice(0, 5);
+
+  const fallbackPlain = buildQueryPack(keywordGroups);
+
+  return {
+    strictBoolean,
+    precisionBoolean,
+    fallbackPlain: uniqueNormalized([
+      ...fallbackPlain.necessaryOnly,
+      ...fallbackPlain.complementaryBoosted,
+      ...fallbackPlain.optionalBackups,
+    ]).slice(0, 4),
+    localLanguage: intake ? buildLocalLanguageQueries(intake) : [],
+  };
+}
+
 function buildFallbackKeywordGroups(intake: IntakeInput): ReferenceSearchV2Metadata["keywordGroups"] {
   const topicTerms = extractSearchTerms(intake.topic, { maxTerms: 14, minLength: 4 });
   const problemTerms = extractSearchTerms(intake.problemContext ?? "", {
@@ -407,57 +697,10 @@ function buildFallbackKeywordGroups(intake: IntakeInput): ReferenceSearchV2Metad
   };
 }
 
-function isEnglishLanguage(language: string | null | undefined) {
-  return normalizeLanguageCode(language) === "en";
-}
-
-function buildScoringRules(language: string | null | undefined) {
-  return isEnglishLanguage(language)
-    ? [
-        "HIGH: matches necessary and complementary groups.",
-        "MEDIUM: matches necessary groups only.",
-        "MINIMUM: matches optional groups only.",
-        "Within HIGH, recency adds weight: last 3 years +6, last 6 years +3, last 9 years +1.",
-      ]
-    : [
-        "ALTO: coincide con grupos necesarios y complementarios.",
-        "MEDIO: coincide solo con grupos necesarios.",
-        "MINIMO: coincide solo con grupos opcionales.",
-        "Dentro del grupo ALTO, la recencia pesa mas: ultimos 3 anos +6, ultimos 6 anos +3, ultimos 9 anos +1.",
-      ];
-}
-
-function getSearchErrorMessage(language: string | null | undefined, key: "missing" | "none") {
-  if (isEnglishLanguage(language)) {
-    return key === "missing"
-      ? "There is not enough information to search for sources."
-      : "No sources could be recovered from OpenAlex or Crossref in this attempt.";
-  }
-
-  return key === "missing"
-    ? "No hay suficiente informacion para buscar fuentes."
-    : "No se pudieron recuperar fuentes desde OpenAlex ni Crossref en este intento.";
-}
-
-function formatProviderWarning(
-  provider: "OpenAlex" | "Crossref",
-  query: string,
-  error: unknown,
-  language: string | null | undefined,
-) {
-  const message = isEnglishLanguage(language)
-    ? "provider did not respond correctly"
-    : getErrorMessage(error);
-
-  return `${provider} (${query}): ${message}`;
-}
-
-function buildFallbackMetadata(
-  intake: IntakeInput,
-  language: string | null | undefined,
-): ReferenceSearchV2Metadata {
+function buildFallbackMetadata(intake: IntakeInput): ReferenceSearchV2Metadata {
   const keywordGroups = buildFallbackKeywordGroups(intake);
   const queryPack = buildQueryPack(keywordGroups);
+  const openAlexQueryPack = buildOpenAlexQueryPack(keywordGroups, intake);
   const normalizedTopic =
     buildSearchQuery(keywordGroups.necessary.map((group) => group.variants[0]).slice(0, 4)) ||
     intake.topic;
@@ -468,6 +711,7 @@ function buildFallbackMetadata(
     ...keywordGroups.necessary.flatMap((group) => group.variants),
     ...keywordGroups.complementary.flatMap((group) => group.variants),
   ]).slice(0, 12);
+  const localObjectTerms = buildLocalObjectTerms(intake);
 
   return {
     planSource: "fallback",
@@ -475,66 +719,23 @@ function buildFallbackMetadata(
     intentSummary,
     keywordGroups,
     queryPack,
+    openAlexQueryPack,
     focusTerms,
-    scoringRules: buildScoringRules(language),
+    localObjectTerms,
+    scoringRules: [
+      "OpenAlex: usar busquedas booleanas con frases/OR/AND, filtros de calidad y sort por relevance_score+citas.",
+      "ALTO: coincide con grupos necesarios y complementarios, con cobertura suficiente del nucleo del intake.",
+      "MEDIO: coincide con al menos un grupo necesario pero menor precision complementaria.",
+      "MINIMO: coincide solo con grupos opcionales o señales perifericas.",
+      "Penalizar fuerte si no hay coincidencias necesarias o si titulo/resumen no contienen señales claras del intake.",
+      "Las citas, DOI, venue, resumen, idioma, tipo documental, recencia y acceso PDF son señales secundarias; nunca reemplazan la alineacion semantica.",
+      "No filtrar por language:en por defecto; conservar fuentes multilingues y evaluar cobertura conceptual en variantes ingles/espanol/regionales."
+    ],
   };
 }
 
-function buildPrompt(intake: IntakeInput, language: string | null | undefined) {
-  const selectedLanguage = isEnglishLanguage(language) ? "English" : "Spanish";
-
-  return `
-You are a senior academic literature retrieval specialist for master's thesis planning.
-Your task is to read a structured intake and produce an English-first retrieval plan for OpenAlex.
-
-Context:
-- the user is preparing an academic research project
-- OpenAlex retrieval usually works better with concise English academic terminology
-- the output must remain tightly aligned to the intake
-- do not invent facts, methods, populations, devices, or results
-- user interface language selected for human-facing labels: ${selectedLanguage}
-
-Goal:
-- identify the highest-value keyword groups from the intake
-- classify them into necessary, complementary, and optional groups
-- each group must contain variant expressions, but do not use OR operators inside queries
-- produce queries that choose one variant per group
-- prioritize technically useful, recent sources
-
-Keyword group rules:
-- necessary: the core concepts that should dominate the first search pass
-- complementary: useful refiners that increase precision and quality
-- optional: non-essential terms that can be discarded if they add noise
-- labels, normalized_topic, and intent_summary must be in the selected user interface language
-- variants must be concise English academic search terms
-
-Query pack rules:
-- necessary_only: queries using only the necessary groups
-- complementary_boosted: queries that add one complementary group to the necessary core
-- optional_backups: a few backup queries that remain safe and focused
-- each query must be concise and should not use OR, parentheses, or boolean syntax
-
-Return JSON with this exact structure:
-- normalized_topic
-- intent_summary
-- keyword_groups.necessary
-- keyword_groups.complementary
-- keyword_groups.optional
-- query_pack.necessary_only
-- query_pack.complementary_boosted
-- query_pack.optional_backups
-- focus_terms
-
-Intake:
-- topic: ${intake.topic}
-- problem_context: ${intake.problemContext}
-- target_population: ${intake.targetPopulation}
-- preferred_methodology: ${intake.preferredMethodology}
-- research_line: ${intake.researchLine}
-- available_data: ${intake.availableData}
-- academic_constraints: ${intake.academicConstraints}
-- advisor_notes: ${intake.advisorNotes}
-`.trim();
+function buildPrompt(intake: IntakeInput) {
+  return renderVersionedPrompt(REFERENCE_SEARCH_V2_1_PROMPT, { var_0: (intake.topic), var_1: (intake.problemContext), var_2: (intake.targetPopulation), var_3: (intake.preferredMethodology), var_4: (intake.researchLine), var_5: (intake.availableData), var_6: (intake.academicConstraints), var_7: (intake.advisorNotes) }).trim();
 }
 
 function sanitizeKeywordGroups(
@@ -549,20 +750,19 @@ function sanitizeKeywordGroups(
   };
 }
 
-async function buildReferenceSearchMetadata(
-  intake: IntakeInput,
-  language: string | null | undefined,
-): Promise<ReferenceSearchV2Metadata> {
-  const fallbackMetadata = buildFallbackMetadata(intake, language);
+async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<ReferenceSearchV2Metadata> {
+  const fallbackMetadata = buildFallbackMetadata(intake);
 
   try {
     const provider = getConfiguredLlmProvider();
     const generatedPlan = await generateStructuredObjectWithTextFallback<ReferenceSearchPlanSchema>(
       {
         provider,
-        prompt: buildPrompt(intake, language),
+        prompt: buildPrompt(intake),
         schemaName: "reference_search_v2_plan",
         schema: referenceSearchPlanSchema,
+        model: process.env.SOURCE_DISCOVERY_PLAN_MODEL?.trim() || "gpt-5.4-nano",
+        trackingAttribution: { stage: "source_discovery", promptVersion: REFERENCE_SEARCH_V2_1_PROMPT.version },
       },
     );
 
@@ -575,26 +775,28 @@ async function buildReferenceSearchMetadata(
       optionalBackups: uniqueNormalized(generatedPlan.query_pack.optional_backups).slice(0, 3),
     };
 
+    const effectiveKeywordGroups = {
+      necessary:
+        keywordGroups.necessary.length > 0
+          ? keywordGroups.necessary
+          : fallbackMetadata.keywordGroups.necessary,
+      complementary:
+        keywordGroups.complementary.length > 0
+          ? keywordGroups.complementary
+          : fallbackMetadata.keywordGroups.complementary,
+      optional:
+        keywordGroups.optional.length > 0
+          ? keywordGroups.optional
+          : fallbackMetadata.keywordGroups.optional,
+    };
+
     return {
       planSource: "llm",
       normalizedTopic:
         generatedPlan.normalized_topic?.trim() || fallbackMetadata.normalizedTopic,
       intentSummary:
         generatedPlan.intent_summary?.trim() || fallbackMetadata.intentSummary,
-      keywordGroups: {
-        necessary:
-          keywordGroups.necessary.length > 0
-            ? keywordGroups.necessary
-            : fallbackMetadata.keywordGroups.necessary,
-        complementary:
-          keywordGroups.complementary.length > 0
-            ? keywordGroups.complementary
-            : fallbackMetadata.keywordGroups.complementary,
-        optional:
-          keywordGroups.optional.length > 0
-            ? keywordGroups.optional
-            : fallbackMetadata.keywordGroups.optional,
-      },
+      keywordGroups: effectiveKeywordGroups,
       queryPack: {
         necessaryOnly:
           queryPack.necessaryOnly.length > 0
@@ -609,10 +811,12 @@ async function buildReferenceSearchMetadata(
             ? queryPack.optionalBackups
             : fallbackMetadata.queryPack.optionalBackups,
       },
+      openAlexQueryPack: buildOpenAlexQueryPack(effectiveKeywordGroups, intake),
       focusTerms: uniqueNormalized([
         ...generatedPlan.focus_terms,
         ...fallbackMetadata.focusTerms,
       ]).slice(0, 12),
+      localObjectTerms: fallbackMetadata.localObjectTerms,
       scoringRules: fallbackMetadata.scoringRules,
     };
   } catch {
@@ -620,56 +824,90 @@ async function buildReferenceSearchMetadata(
   }
 }
 
-function normalizeIntakeForSearch(intake: {
-  topic: string;
-  problemContext: string | null;
-  researchLine: string | null;
-  academicConstraints: string | null;
-  targetPopulation: string | null;
-  availableData: string | null;
-  preferredMethodology: string | null;
-  advisorNotes: string | null;
-}): IntakeInput {
+export async function buildSearchMetadata(input: SearchInput, provider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">): Promise<ReferenceSearchV2Metadata> {
+  if (input.intent.sourceKind === "LEGACY_COMPATIBILITY") return buildReferenceSearchMetadata(input.plannerInput);
+  const structured = semanticPlannerInput(input.intent, fingerprint(input.intent));
+  let llm = provider;
+  let enrichment: SearchEnrichment;
+  try { llm ??= getConfiguredLlmProvider(); enrichment = await planSemanticSearch(structured, llm); }
+  catch { enrichment = fallbackSearchEnrichment(structured); }
+  if (enrichment.translationTrace?.length) enrichment.translationTrace = enrichment.translationTrace.map(t => ({ ...t, plannerOperationId: currentPaidOperation()?.id ?? null }));
+  if (llm && enrichment.planMode === "SEMANTIC" && enrichment.status === "READY") enrichment = await recoverCentralTranslations(structured, enrichment, llm);
+  const keywordGroups = enrichmentGroups(enrichment);
+  const queryPack = semanticQueryPack(keywordGroups);
+  if (enrichment.status !== "READY" || !queryPack.validation.valid || validateScientificQueryPlan(queryPack).length) throw new Error("SEARCH_NEEDS_CLARIFICATION");
   return {
-    topic: intake.topic,
-    problemContext: intake.problemContext ?? undefined,
-    researchLine: intake.researchLine ?? undefined,
-    academicConstraints: intake.academicConstraints ?? undefined,
-    targetPopulation: intake.targetPopulation ?? undefined,
-    availableData: intake.availableData ?? undefined,
-    preferredMethodology: intake.preferredMethodology ?? undefined,
-    advisorNotes: intake.advisorNotes ?? undefined,
+    enrichment, planSource: enrichment.planMode === "SEMANTIC" ? "llm" : "fallback",
+    planning: { model: searchEnrichmentModel(), promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version, policyVersion: structured.policyVersion,
+      cacheKey: fingerprint({ searchIntentHash: structured.searchIntentHash, promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version,
+        model: searchEnrichmentModel(), policyVersion: structured.policyVersion,
+        translationPromptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version, translationModel: recoveryModel() }) },
+    normalizedTopic: input.intent.topic ?? "", intentSummary: input.intent.coreProblem ?? input.intent.topic ?? "",
+    keywordGroups, queryPack,
+    focusTerms: enrichment.terms.filter(t => t.authority === "CENTRAL").map(t => t.text), localObjectTerms: [],
+    scoringRules: ["SEMANTIC_ROLES_NOT_GROUP_POSITION", "RELEVANCE_BEFORE_QUALITY_ACCESS", "REFINERS_NEVER_UNIVERSAL", "NO_QUOTA_PADDING"],
+    openAlexQueryPack: { strictBoolean: queryPack.necessaryOnly, precisionBoolean: queryPack.complementaryBoosted,
+      fallbackPlain: queryPack.necessaryOnly, localLanguage: [] },
   };
 }
 
-function getRecencyBand(year: number | null, language: string | null | undefined) {
+// Operator-only acceptance reuses the paid semantic graph. The historical paid
+// result remains immutable; only query composition is replayed under this code.
+export function recomposeAcceptedSearchMetadata(source: ReferenceSearchV2Metadata, planOperationId: string): ReferenceSearchV2Metadata {
+  if (source.enrichment?.planMode !== "SEMANTIC" || source.enrichment.status !== "READY" ||
+      !source.enrichment.scientificConceptPlan || !source.planning) throw new Error("ACCEPTANCE_PLAN_INVALID");
+  const queryPack = semanticQueryPack(enrichmentGroups(source.enrichment));
+  if (!queryPack.validation.valid || validateScientificQueryPlan(queryPack).length) throw new Error("ACCEPTANCE_RECOMPOSITION_INVALID");
+  return { ...source,
+    planning: { ...source.planning, replayedFromCompositionVersion: source.queryPack.compositionVersion ?? "UNVERSIONED",
+      replayedFromPlanOperationId: planOperationId },
+    queryPack,
+    openAlexQueryPack: { strictBoolean: queryPack.necessaryOnly, precisionBoolean: queryPack.complementaryBoosted,
+      fallbackPlain: queryPack.necessaryOnly, localLanguage: [] },
+  };
+}
+
+function reusableMetadata(snapshot: ProjectReferenceSearchSnapshot | null | undefined, intentHash: string,
+  confirmed: boolean): ReferenceSearchV2Metadata | null {
+  if (snapshot?.inputTrace?.searchIntentHash !== intentHash || !snapshot.metadata) return null;
+  const metadata = snapshot.metadata;
+  if (!confirmed) return metadata.planSource === "fallback" ? metadata : null;
+  if (metadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version ||
+      metadata.queryPack.compositionVersion !== QUERY_COMPOSITION_VERSION ||
+      !metadata.queryPack.validation?.valid || validateScientificQueryPlan(metadata.queryPack).length) return null;
+  return metadata;
+}
+
+function getRecencyBand(year: number | null) {
   const currentYear = new Date().getFullYear();
 
-  if (year && year > currentYear + 1) {
-    return {
-      label: isEnglishLanguage(language) ? "Future or invalid year" : "Ano futuro o invalido",
-      bonus: 0,
-    };
-  }
-
   if (year && year >= currentYear - 3) {
-    return { label: `${currentYear - 3}-${currentYear}`, bonus: 6 };
+    return { label: "2023-2026", bonus: 6 };
   }
 
   if (year && year >= currentYear - 6) {
-    return { label: `${currentYear - 6}-${currentYear - 4}`, bonus: 3 };
+    return { label: "2020-2022", bonus: 3 };
   }
 
   if (year && year >= currentYear - 9) {
-    return { label: `${currentYear - 9}-${currentYear - 7}`, bonus: 1 };
+    return { label: "2017-2019", bonus: 1 };
   }
 
-  return {
-    label: isEnglishLanguage(language)
-      ? `${currentYear - 10} or earlier`
-      : `${currentYear - 10} o anterior`,
-    bonus: 0,
-  };
+  return { label: "2016 o anterior", bonus: 0 };
+}
+
+function textMatchesVariant(text: string, variant: string) {
+  const normalizedVariant = normalizeTitle(variant);
+
+  if (!normalizedVariant) {
+    return false;
+  }
+
+  if (normalizedVariant.includes(" ")) {
+    return text.includes(normalizedVariant);
+  }
+
+  return text.split(" ").includes(normalizedVariant);
 }
 
 function findMatchedLabels(
@@ -677,13 +915,58 @@ function findMatchedLabels(
   groups: Array<{ label: string; variants: string[] }>,
 ) {
   return groups
-    .filter((group) =>
-      group.variants.some((variant) => text.includes(normalizeTitle(variant))),
-    )
+    .filter((group) => group.variants.some((variant) => textMatchesVariant(text, variant)))
     .map((group) => group.label);
 }
 
-function buildRelevanceScore(input: {
+function computeGroupCoverage(input: {
+  text: string;
+  groups: ReferenceSearchV2Metadata["keywordGroups"];
+}) {
+  const requiredGroups = input.groups.necessary;
+  const matchedRequired = requiredGroups.filter((group) =>
+    group.variants.some((variant) => textMatchesVariant(input.text, variant)),
+  ).length;
+
+  return requiredGroups.length > 0 ? matchedRequired / requiredGroups.length : 0;
+}
+
+function hasAnyGroupMatch(text: string, groups: ReferenceSearchV2Metadata["keywordGroups"]) {
+  return [...groups.necessary, ...groups.complementary, ...groups.optional].some((group) =>
+    group.variants.some((variant) => textMatchesVariant(text, variant)),
+  );
+}
+
+function detectVenueQualityPenalty(venue: string | null) {
+  const normalizedVenue = normalizeTitle(venue);
+  if (!normalizedVenue) {
+    return { penalty: 0, reasons: [] as string[] };
+  }
+
+  const suspiciousPatterns = [
+    "universal research reports",
+    "world journal of advanced research and reviews",
+    "journal of artificial intelligence general science",
+    "international journal of all research",
+    "researchgate",
+  ];
+  const genericMarketingTerms = ["advanced research", "general science", "universal research"];
+  const reasons = [
+    ...suspiciousPatterns
+      .filter((pattern) => normalizedVenue.includes(pattern))
+      .map((pattern) => `venue potencialmente debil: ${pattern}`),
+    ...genericMarketingTerms
+      .filter((pattern) => normalizedVenue.includes(pattern))
+      .map((pattern) => `venue generica/promocional: ${pattern}`),
+  ];
+
+  return {
+    penalty: Math.min(24, reasons.length * 12),
+    reasons: [...new Set(reasons)],
+  };
+}
+
+export function buildRelevanceScore(input: {
   title: string;
   abstract: string | null;
   matchedQuery: string;
@@ -692,49 +975,185 @@ function buildRelevanceScore(input: {
   citationCount: number;
   year: number | null;
   hasPdfUrl: boolean;
+  hasDoi: boolean;
+  workType: string | null;
+  venue: string | null;
   language: string | null | undefined;
+  activeLanguage: string | null | undefined;
+  localObjectTerms?: string[];
+  explicitExclusions?: string[];
 }) {
-  const normalizedText = normalizeTitle([input.title, input.abstract].filter(Boolean).join(" "));
+  if (input.keywordGroups.necessary.some(g => g.role)) {
+    const semanticRelevance = assessSemanticRelevance({ title: input.title, abstract: input.abstract,
+      explicitExclusions: input.explicitExclusions,
+      groups: input.keywordGroups as Parameters<typeof assessSemanticRelevance>[0]["groups"] });
+    const matched = (groups: ReferenceKeywordGroup[]) => groups.filter(g => semanticRelevance.matchedGroups.includes(g.label)).map(g => g.label);
+    // Score orders already classified candidates; it is NOT an admission threshold.
+    // No local-language, group-position, recency, popularity or PDF penalties.
+    return { score: semanticRelevance.classification === "HIGH_RELEVANCE" ? 100 + semanticRelevance.supportingEvidence.filter(e => e.location === "TITLE").length : 0,
+      breakdown: { label: semanticRelevance.classification === "HIGH_RELEVANCE" ? "ALTO" as const : "BAJO" as const,
+        necessaryMatches: matched(input.keywordGroups.necessary), complementaryMatches: matched(input.keywordGroups.complementary), optionalMatches: [],
+        recencyBand: getRecencyBand(input.year).label, recencyBonus: 0, matchedQuery: input.matchedQuery, matchedQueryStage: input.matchedQueryStage,
+        semanticRelevance } };
+  }
+  const normalizedTitle = normalizeTitle(input.title);
+  const normalizedAbstract = normalizeTitle(input.abstract);
+  const normalizedVenue = normalizeTitle(input.venue);
+  const normalizedText = normalizeTitle([input.title, input.abstract, input.venue].filter(Boolean).join(" "));
   const necessaryMatches = findMatchedLabels(normalizedText, input.keywordGroups.necessary);
+  const secondNecessaryGroup = input.keywordGroups.necessary[1];
+  const secondNecessaryMatched = secondNecessaryGroup
+    ? secondNecessaryGroup.variants.some((variant) => textMatchesVariant(normalizedText, variant))
+    : true;
   const complementaryMatches = findMatchedLabels(
     normalizedText,
     input.keywordGroups.complementary,
   );
   const optionalMatches = findMatchedLabels(normalizedText, input.keywordGroups.optional);
-  const recency = getRecencyBand(input.year, input.language);
-  const citationBonus = Math.min(input.citationCount / 80, 3);
-  const abstractBonus = input.abstract?.trim() ? 2.5 : 0;
+  const localObjectMatches = (input.localObjectTerms ?? []).filter((term) =>
+    textMatchesVariant(normalizedText, term),
+  );
+  const recency = getRecencyBand(input.year);
+  const coverageRatio = computeGroupCoverage({ text: normalizedText, groups: input.keywordGroups });
+  const necessaryTitleMatches = findMatchedLabels(normalizedTitle, input.keywordGroups.necessary);
+  const firstNecessaryInTitle = input.keywordGroups.necessary[0]
+    ? input.keywordGroups.necessary[0].variants.some((variant) =>
+        textMatchesVariant(normalizedTitle, variant),
+      )
+    : false;
+  const necessaryAbstractMatches = findMatchedLabels(normalizedAbstract, input.keywordGroups.necessary);
+  const titleHasCoreMatch = hasAnyGroupMatch(normalizedTitle, input.keywordGroups);
+  const abstractHasCoreMatch = hasAnyGroupMatch(normalizedAbstract, input.keywordGroups);
+  const venueHasCoreMatch = hasAnyGroupMatch(normalizedVenue, input.keywordGroups);
+
+  const citationBonus = Math.min(Math.log10(input.citationCount + 1) * 3, 6);
+  const abstractBonus = input.abstract?.trim() ? 2.5 : -4;
   const accessBonus = input.hasPdfUrl ? 1.5 : 0;
+  const doiBonus = input.hasDoi ? 2 : -3;
+  const venueBonus = input.venue?.trim() ? 1.5 : -2;
+  const typeBonus = ["article", "review", "book-chapter"].includes(input.workType ?? "") ? 1.5 : 0;
+  const titleBonus = necessaryTitleMatches.length > 0 ? 24 : titleHasCoreMatch ? 4 : 0;
+  const abstractAlignmentBonus = necessaryAbstractMatches.length > 0 ? 6 : abstractHasCoreMatch ? 2 : 0;
+  const venueAlignmentBonus = venueHasCoreMatch ? 0.5 : 0;
+  const candidateLanguage = input.language?.split("-")[0]?.toLowerCase() ?? null;
+  const activeLanguage = input.activeLanguage?.split("-")[0]?.toLowerCase() ?? null;
+  const languageAlignmentBonus =
+    candidateLanguage && activeLanguage && candidateLanguage === activeLanguage && necessaryMatches.length > 0
+      ? 4
+      : 0;
+  const localObjectBonus = Math.min(localObjectMatches.length * 3, 8);
+  const venueQuality = detectVenueQualityPenalty(input.venue);
+
+  const penalties: string[] = [];
+  let alignmentPenalty = venueQuality.penalty;
+
+  penalties.push(...venueQuality.reasons);
+
+  if (necessaryMatches.length === 0) {
+    penalties.push("sin coincidencias necesarias");
+    alignmentPenalty += 28;
+  }
+
+  if (candidateLanguage && activeLanguage && candidateLanguage === activeLanguage && !firstNecessaryInTitle) {
+    penalties.push("fuente local sin nucleo necesario en titulo");
+    alignmentPenalty += 20;
+  }
+
+  if ((input.localObjectTerms?.length ?? 0) >= 2 && localObjectMatches.length === 0) {
+    penalties.push("sin señales del objeto/poblacion local del intake");
+    alignmentPenalty += 50;
+  }
+
+  if ((input.localObjectTerms?.length ?? 0) >= 2) {
+    const localObjectTitleMatches = (input.localObjectTerms ?? []).filter((term) =>
+      textMatchesVariant(normalizedTitle, term),
+    );
+
+    if (localObjectTitleMatches.length === 0) {
+      penalties.push("titulo sin objeto/poblacion del intake");
+      alignmentPenalty += 20;
+    }
+  }
+
+  if (coverageRatio < 0.5) {
+    penalties.push("cobertura parcial del nucleo del intake");
+    alignmentPenalty += 18;
+  }
+
+  if (coverageRatio < 0.34) {
+    penalties.push("baja cobertura del nucleo del intake");
+    alignmentPenalty += 18;
+  }
+
+  if (necessaryMatches.length === 1 && input.keywordGroups.necessary.length >= 3) {
+    penalties.push("solo una dimension necesaria cubierta");
+    alignmentPenalty += 12;
+  }
+
+  if (!secondNecessaryMatched && input.keywordGroups.necessary.length >= 2) {
+    penalties.push("sin cobertura del objeto/poblacion principal del intake");
+    alignmentPenalty += 40;
+  }
+
+  if (necessaryTitleMatches.length === 0 && coverageRatio < 0.75) {
+    penalties.push("titulo sin dimension necesaria clara");
+    alignmentPenalty += 10;
+  }
+
+  if (!titleHasCoreMatch && !abstractHasCoreMatch) {
+    penalties.push("titulo/resumen sin señal clara del intake");
+    alignmentPenalty += 18;
+  }
 
   let scoreLabel: ReferenceScoreBreakdown["label"] = "BAJO";
-  let baseScore = 14;
+  let baseScore = 12;
 
-  if (necessaryMatches.length > 0 && complementaryMatches.length > 0) {
-    scoreLabel = "ALTO";
-    baseScore =
-      60 +
-      necessaryMatches.length * 7 +
-      complementaryMatches.length * 9 +
-      recency.bonus;
-  } else if (necessaryMatches.length > 0) {
+  if (necessaryMatches.length >= 2 && complementaryMatches.length > 0) {
+    scoreLabel = coverageRatio >= 0.5 ? "ALTO" : "MEDIO";
+    baseScore = 58 + necessaryMatches.length * 8 + complementaryMatches.length * 5;
+  } else if (necessaryMatches.length >= 2) {
     scoreLabel = "MEDIO";
-    baseScore = 35 + necessaryMatches.length * 8 + Math.min(recency.bonus, 3);
+    baseScore = 44 + necessaryMatches.length * 8;
+  } else if (necessaryMatches.length === 1 && complementaryMatches.length > 0) {
+    scoreLabel = "MEDIO";
+    baseScore = 34 + complementaryMatches.length * 3;
+  } else if (necessaryMatches.length === 1) {
+    scoreLabel = "BAJO";
+    baseScore = 26;
   } else if (optionalMatches.length > 0 && complementaryMatches.length === 0) {
     scoreLabel = "MINIMO";
-    baseScore = 8 + optionalMatches.length * 3;
+    baseScore = 8 + optionalMatches.length * 2;
   } else if (complementaryMatches.length > 0) {
-    baseScore = 18 + complementaryMatches.length * 5 + Math.min(recency.bonus, 2);
+    baseScore = 12 + complementaryMatches.length * 3;
   }
 
   const queryStageBonus =
     input.matchedQueryStage === "necessary_only"
-      ? 2
+      ? 3
       : input.matchedQueryStage === "complementary_boosted"
-        ? 3
+        ? 4
         : 0.5;
+  const coverageBonus = coverageRatio * 18;
+  const rawScore =
+    baseScore +
+    coverageBonus +
+    recency.bonus +
+    citationBonus +
+    abstractBonus +
+    accessBonus +
+    doiBonus +
+    venueBonus +
+    typeBonus +
+    titleBonus +
+    abstractAlignmentBonus +
+    venueAlignmentBonus +
+    languageAlignmentBonus +
+    localObjectBonus +
+    queryStageBonus -
+    alignmentPenalty;
 
   return {
-    score: baseScore + citationBonus + abstractBonus + accessBonus + queryStageBonus,
+    score: Math.max(0, Math.round(rawScore * 10) / 10),
     breakdown: {
       label: scoreLabel,
       necessaryMatches,
@@ -744,18 +1163,126 @@ function buildRelevanceScore(input: {
       recencyBonus: recency.bonus,
       matchedQuery: input.matchedQuery,
       matchedQueryStage: input.matchedQueryStage,
+      coverageRatio: Math.round(coverageRatio * 100) / 100,
+      citationBonus: Math.round(citationBonus * 10) / 10,
+      qualityBonus: Math.round((abstractBonus + accessBonus + doiBonus + venueBonus + typeBonus + languageAlignmentBonus) * 10) / 10,
+      penalties: localObjectMatches.length > 0
+        ? [...penalties, `objeto local: ${localObjectMatches.slice(0, 3).join(", ")}`]
+        : penalties,
     } satisfies ReferenceScoreBreakdown,
   };
 }
 
 function buildDedupKey(result: SearchCandidate) {
-  return result.doi
-    ? `doi:${result.doi.toLowerCase()}`
-    : `title:${normalizeTitle(result.title)}:${result.year ?? "na"}`;
+  const doi = normalizeScholarlyDoi(result.doi);
+  const version = scholarlyVersionClass(result.workType);
+  return doi ? `doi:${doi}${version === "other" || version === "journal" ? "" : `:${version}`}` : result.openAlexId ? `openalex:${result.openAlexId}`
+    : `unresolved:${fingerprint({ title: normalizeTitle(result.title), year: result.year, authors: result.authors, type: result.workType, url: result.landingPageUrl })}`;
 }
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Error desconocido.";
+
+function computeLocalLanguagePriority(input: {
+  candidate: RankedCandidate;
+  metadata: ReferenceSearchV2Metadata;
+  activeLanguage: string | null | undefined;
+}) {
+  const candidateLanguage = input.candidate.candidate.language?.split("-")[0]?.toLowerCase() ?? null;
+  const activeLanguage = input.activeLanguage?.split("-")[0]?.toLowerCase() ?? null;
+
+  if (!candidateLanguage || !activeLanguage || candidateLanguage !== activeLanguage) {
+    return null;
+  }
+
+  const normalizedTitle = normalizeTitle(input.candidate.resolvedTitle);
+  const normalizedText = normalizeTitle(
+    [input.candidate.resolvedTitle, input.candidate.abstract].filter(Boolean).join(" "),
+  );
+  const firstNecessary = input.metadata.keywordGroups.necessary[0];
+  const firstNecessaryInTitle = firstNecessary
+    ? firstNecessary.variants.some((variant) => textMatchesVariant(normalizedTitle, variant))
+    : false;
+  const necessaryTitleMatches = findMatchedLabels(
+    normalizedTitle,
+    input.metadata.keywordGroups.necessary,
+  );
+  const necessaryTextMatches = findMatchedLabels(normalizedText, input.metadata.keywordGroups.necessary);
+  const complementaryTitleMatches = findMatchedLabels(
+    normalizedTitle,
+    input.metadata.keywordGroups.complementary,
+  );
+  const localObjectTitleMatches = (input.metadata.localObjectTerms ?? []).filter((term) =>
+    textMatchesVariant(normalizedTitle, term),
+  );
+  const localObjectTextMatches = (input.metadata.localObjectTerms ?? []).filter((term) =>
+    textMatchesVariant(normalizedText, term),
+  );
+
+  if (necessaryTextMatches.length === 0 || localObjectTextMatches.length === 0) {
+    return null;
+  }
+
+  return (
+    10 +
+    (firstNecessaryInTitle ? 35 : -25) +
+    necessaryTitleMatches.length * 12 +
+    necessaryTextMatches.length * 6 +
+    Math.min(localObjectTitleMatches.length * 6, 24) +
+    Math.min(localObjectTextMatches.length * 2, 12) +
+    complementaryTitleMatches.length * 8 +
+    Math.min(input.candidate.citationCount, 10)
+  );
+}
+
+export function pickDiverseCandidates(input: {
+  rankedCandidates: RankedCandidate[];
+  desiredTotal: number;
+  metadata: ReferenceSearchV2Metadata;
+  activeLanguage: string | null | undefined;
+}) {
+  const compare = (left: RankedCandidate, right: RankedCandidate) => right.score - left.score ||
+    Number(Boolean(right.pdfUrl)) - Number(Boolean(left.pdfUrl)) ||
+    Number(extractAccessSignals(right.candidate).isOpenAccess) - Number(extractAccessSignals(left.candidate).isOpenAccess);
+  const sortedGlobal = [...input.rankedCandidates].sort(compare);
+  const selected = new Map<string, RankedCandidate>();
+  const add = (candidate: RankedCandidate) => {
+    selected.set(buildDedupKey(candidate.candidate), candidate);
+  };
+
+  const localLane = (input.metadata.enrichment ? [] : sortedGlobal)
+    .map((candidate) => ({
+      candidate,
+      priority: computeLocalLanguagePriority({
+        candidate,
+        metadata: input.metadata,
+        activeLanguage: input.activeLanguage,
+      }),
+    }))
+    .filter((item): item is { candidate: RankedCandidate; priority: number } =>
+      typeof item.priority === "number",
+    )
+    .map((item) => ({
+      ...item,
+      candidate: {
+        ...item.candidate,
+        score: Math.max(item.candidate.score, Math.round(item.priority * 10) / 10),
+      },
+    }))
+    .sort((left, right) => right.priority - left.priority || right.candidate.score - left.candidate.score);
+
+  for (const item of localLane.slice(0, 2)) {
+    add(item.candidate);
+  }
+
+  for (const candidate of sortedGlobal) {
+    if (selected.size >= input.desiredTotal) {
+      break;
+    }
+    add(candidate);
+  }
+
+  return Array.from(selected.values())
+    .sort(compare)
+    .slice(0, input.desiredTotal);
 }
 
 function buildSuggestedSelectionOrders(input: {
@@ -787,24 +1314,26 @@ function buildSuggestedSelectionOrders(input: {
 export async function searchProjectReferencesV2(
   userId: string,
   projectId: string,
+  input: SearchInput,
   options?: {
     desiredTotal?: number;
-    languageOverride?: string | null;
+    batchKind?: SourceDiscoveryBatchKind;
+    // Internal acceptance capability; never accepted from public route bodies.
+    openAlexOnlyAcceptance?: { planOperationId: string; maxQueries: number; semanticReview?: boolean };
   },
+  planningProvider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">,
 ): Promise<SearchProjectReferencesV2Result> {
+  const batchKind = options?.batchKind ?? "initial";
+  const requestedTotal = options?.desiredTotal ?? (batchKind === "more" ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE);
   const desiredTotal = Math.min(
-    Math.max(options?.desiredTotal ?? REFERENCE_BATCH_SIZE, MIN_SELECTED_REFERENCES),
-    MAX_SELECTED_REFERENCES,
+    Math.max(requestedTotal, MIN_SELECTED_REFERENCES),
+    batchKind === "more" ? MAX_SELECTED_REFERENCES : REFERENCE_BATCH_SIZE,
   );
-  const aggregationTarget = Math.max(desiredTotal + 10, 16);
   const [project, user, existingProjectReferences] = await Promise.all([
     prisma.project.findFirst({
       where: {
         id: projectId,
         userId,
-      },
-      include: {
-        intake: true,
       },
     }),
     prisma.user.findUnique({
@@ -822,9 +1351,39 @@ export async function searchProjectReferencesV2(
     }),
   ]);
 
-  if (!project || !project.intake) {
+  if (!project || input.intent.projectId !== projectId || input.intent.readiness !== "READY") {
     throw new Error("El proyecto no existe o aun no tiene intake.");
   }
+  const intentHash = fingerprint(input.intent);
+  const recentSearchAudits = await prisma.auditLog.findMany({ where: { projectId, eventType: "SEARCH_COMPLETED" },
+    orderBy: { createdAt: "desc" }, take: 20, select: { payloadJson: true } });
+  const priorSnapshots = recentSearchAudits.map(row => (row.payloadJson as { searchSnapshot?: ProjectReferenceSearchSnapshot } | null)?.searchSnapshot)
+    .filter((snapshot): snapshot is ProjectReferenceSearchSnapshot => Boolean(snapshot?.inputTrace?.searchIntentHash === intentHash));
+  const priorSnapshot = priorSnapshots[0] ?? null;
+  const acceptance = options?.openAlexOnlyAcceptance;
+  let preparedMetadata: ReferenceSearchV2Metadata | undefined;
+  if (acceptance) {
+    if (batchKind !== "initial" || !Number.isInteger(acceptance.maxQueries) || acceptance.maxQueries < 1 || acceptance.maxQueries > 4) throw new Error("INVALID_ACCEPTANCE_LIMIT");
+    const operation = await prisma.paidOperation.findFirst({ where: { id: acceptance.planOperationId, userId, projectId, status: "COMPLETED", purpose: "rc4-query-composition-plan" } });
+    const result = operation?.resultJson as { searchIntentHash?: string; metadata?: ReferenceSearchV2Metadata } | null;
+    if (result?.searchIntentHash !== fingerprint(input.intent)) throw new Error("ACCEPTANCE_PLAN_STALE_OR_UNAUTHORIZED");
+    preparedMetadata = result.metadata?.queryPack.compositionVersion === QUERY_COMPOSITION_VERSION
+      ? result.metadata : result.metadata && recomposeAcceptedSearchMetadata(result.metadata, acceptance.planOperationId);
+    const pack = preparedMetadata?.queryPack;
+    if (preparedMetadata?.enrichment?.planMode !== "SEMANTIC" || pack?.compositionVersion !== QUERY_COMPOSITION_VERSION || !pack.validation?.valid || validateScientificQueryPlan(pack).length || preparedMetadata.planning?.promptVersion !== REFERENCE_SEARCH_V2_2_PROMPT.version) throw new Error("ACCEPTANCE_PLAN_INVALID");
+    if (JSON.stringify(preparedMetadata.openAlexQueryPack?.strictBoolean) !== JSON.stringify(pack.necessaryOnly)) throw new Error("ACCEPTANCE_RENDERING_MISMATCH");
+  }
+  if (!preparedMetadata && !(batchKind === "initial" && planningProvider)) preparedMetadata = priorSnapshots.map(snapshot => reusableMetadata(snapshot, intentHash,
+    input.intent.sourceKind === "CONFIRMED_DEFINITION")).find((metadata): metadata is ReferenceSearchV2Metadata => Boolean(metadata)) ?? undefined;
+  if (batchKind === "more" && !preparedMetadata) throw new Error("MORE_REQUIRES_REUSABLE_INITIAL_PLAN");
+  if (batchKind === "initial" && !acceptance && !planningProvider && priorSnapshot &&
+      reusableMetadata(priorSnapshot, intentHash, input.intent.sourceKind === "CONFIRMED_DEFINITION") &&
+      Date.now() - Date.parse(priorSnapshot.savedAt) < PROVIDER_CACHE_TTL_MS) {
+    return { batchKind, searchQuery: priorSnapshot.searchQuery, attemptedQueries: [],
+      totalResults: priorSnapshot.references.length, createdCount: 0, updatedCount: 0,
+      providerBreakdown: { openAlex: 0, crossref: 0 }, searchSnapshot: priorSnapshot };
+  }
+  const inputTrace = await freezeSearchInput(userId, input);
 
   const baseSelectedReferenceIds = existingProjectReferences
     .filter((item) => item.selected)
@@ -835,34 +1394,74 @@ export async function searchProjectReferencesV2(
   const languageContext = resolveLanguageContext({
     userLocale: user?.locale,
     projectLanguage: project.language,
-    languageOverride: options?.languageOverride,
   });
-  const searchMetadata = await buildReferenceSearchMetadata(
-    normalizeIntakeForSearch(project.intake),
-    languageContext.activeLanguage,
-  );
+  const searchMetadata = preparedMetadata ?? await buildSearchMetadata(input, planningProvider);
+  const queryPlanHash = fingerprint({ intentHash, plannerCacheKey: searchMetadata.planning?.cacheKey ?? null,
+    compositionVersion: searchMetadata.queryPack.compositionVersion ?? null, queryPack: searchMetadata.queryPack.necessaryOnly,
+    policy: PROVIDER_QUERY_POLICY_VERSION });
   const searchQuery = searchMetadata.normalizedTopic;
-  const queryStages = [
+  const openAlexQueryPack = searchMetadata.openAlexQueryPack ??
+    buildOpenAlexQueryPack(searchMetadata.keywordGroups, input.plannerInput);
+  const exhaustiveQueryStages = [
     {
       stage: "necessary_only" as const,
-      queries: searchMetadata.queryPack.necessaryOnly,
+      queries: openAlexQueryPack.strictBoolean.length > 0
+        ? openAlexQueryPack.strictBoolean
+        : searchMetadata.queryPack.necessaryOnly,
+      openAlexFilters: searchMetadata.enrichment ? ["is_retracted:false", "is_paratext:false"] : OPENALEX_QUALITY_FILTERS,
     },
     {
       stage: "complementary_boosted" as const,
-      queries: searchMetadata.queryPack.complementaryBoosted,
+      queries: openAlexQueryPack.precisionBoolean.length > 0
+        ? openAlexQueryPack.precisionBoolean
+        : searchMetadata.queryPack.complementaryBoosted,
+      openAlexFilters: searchMetadata.enrichment ? ["is_retracted:false", "is_paratext:false"] : OPENALEX_QUALITY_FILTERS,
     },
     {
       stage: "optional_backup" as const,
-      queries: searchMetadata.queryPack.optionalBackups,
+      queries: [
+        ...(openAlexQueryPack.localLanguage ?? []),
+        ...(openAlexQueryPack.fallbackPlain.length > 0
+          ? openAlexQueryPack.fallbackPlain
+          : searchMetadata.queryPack.optionalBackups),
+      ],
+      openAlexFilters: [
+        "is_retracted:false",
+        "is_paratext:false",
+        "has_abstract:true",
+        "type:article|review|book-chapter",
+      ],
     },
   ];
+  const currentFamilyQueries = new Set(searchMetadata.queryPack.plannedQueries?.map(item => item.query) ?? exhaustiveQueryStages[0].queries);
+  const currentFamilyIds = new Set(searchMetadata.queryPack.plannedQueries?.map(item => item.id) ?? []);
+  const priorExecutions: ExecutedProviderQuery[] = priorSnapshots.flatMap(snapshot => snapshot.executedQueries ?? [])
+    .filter(item => item.provider === "OPENALEX" ? currentFamilyQueries.has(item.renderedQuery)
+      : currentFamilyIds.has(item.familyId));
+  // Older immutable snapshots predate query-level tracking. Their recorded
+  // page-one queries still count as executed; do not replay them for MORE.
+  for (const snapshot of priorSnapshots.filter(item => !item.executedQueries?.length)) for (const query of snapshot.attemptedQueries ?? []) {
+    if (!currentFamilyQueries.has(query)) continue;
+    const family = searchMetadata.queryPack.plannedQueries?.find(item => item.query === query);
+    const oldQuery: ProviderQuery = { familyId: family?.id ?? "legacy", familyType: family?.family ?? "LEGACY",
+      provider: "OPENALEX", renderedQuery: query, filters: exhaustiveQueryStages[0].openAlexFilters, page: 1 };
+    priorExecutions.push({ ...oldQuery, queryHash: providerQueryHash(queryPlanHash, oldQuery), executedAt: snapshot.savedAt,
+      resultCount: -1, newCandidateCount: -1, cacheHit: false, errorCategory: null });
+  }
+  const providerQueries = selectProviderQueries({ batchKind, planHash: queryPlanHash,
+    families: searchMetadata.queryPack.plannedQueries ?? [],
+    fallbackQueries: exhaustiveQueryStages[0].queries,
+    filters: exhaustiveQueryStages[0].openAlexFilters, prior: priorExecutions,
+    maxOpenAlexQueries: acceptance?.maxQueries ?? 2 });
   const attemptedQueries: string[] = [];
 
-  if (!searchQuery || queryStages.every((entry) => entry.queries.length === 0)) {
-    throw new Error(getSearchErrorMessage(languageContext.activeLanguage, "missing"));
+  if (!searchQuery || (batchKind === "initial" && providerQueries.length === 0)) {
+    throw new Error("No hay suficiente informacion para buscar fuentes.");
   }
 
-  await prisma.project.update({
+  let searchingUpdatedAt: Date | null = null;
+  try {
+  const searchingProject = await prisma.project.update({
     where: { id: project.id },
     data: {
       status: ProjectStatus.SEARCHING,
@@ -873,151 +1472,127 @@ export async function searchProjectReferencesV2(
       },
     },
   });
+  searchingUpdatedAt = searchingProject.updatedAt;
 
   const aggregatedResults = new Map<string, SearchCandidate>();
   const attemptSummaries: Array<{ query: string; resultCount: number }> = [];
+  const executedQueries: ExecutedProviderQuery[] = [];
+  const discoveryObservations: NonNullable<ProjectReferenceSearchSnapshot["discoveryObservations"]> = [];
+  const priorSeen = new Set(priorSnapshots.flatMap(snapshot => snapshot.candidateAdmissions?.map(item => item.candidateKey) ?? []));
+  let cacheHits = 0, cacheMisses = 0;
+  async function cachedProviderResults<T>(query: ProviderQuery, execute: () => Promise<T[]>): Promise<T[]> {
+    // The explicit operator acceptance path measures the provider itself and
+    // must not confuse a previous fixture response with a live result.
+    if (acceptance) { cacheMisses++; return execute(); }
+    const queryHash = providerQueryHash(queryPlanHash, query);
+    const row = await prisma.auditLog.findFirst({ where: { projectId, eventType: "SOURCE_PROVIDER_QUERY_COMPLETED",
+      createdAt: { gte: new Date(Date.now() - PROVIDER_CACHE_TTL_MS) }, payloadJson: { path: ["queryHash"], equals: queryHash } },
+      orderBy: { createdAt: "desc" }, select: { payloadJson: true } });
+    const cached = row?.payloadJson as { results?: T[] } | undefined;
+    if (Array.isArray(cached?.results)) { cacheHits++; return cached.results; }
+    cacheMisses++;
+    const results = await execute(); // Only successful responses are cached. Never cache a 429/timeout as empty.
+    await logAuditEvent({ eventType: "SOURCE_PROVIDER_QUERY_COMPLETED", actorType: "SYSTEM",
+      provider: query.provider === "OPENALEX" ? Provider.OPENALEX : Provider.CROSSREF, userId, projectId,
+      payloadJson: JSON.parse(JSON.stringify({ queryHash, queryPlanHash,
+        query: { ...query, renderedQueryHash: fingerprint(query.renderedQuery), renderedQuery: undefined },
+        resultCount: results.length, results, executedAt: new Date().toISOString() })) as Prisma.InputJsonValue });
+    return results;
+  }
   const providerBreakdown = {
     openAlex: 0,
     crossref: 0,
   };
-  const providerWarnings: string[] = [];
   let openAlexUnavailable = false;
 
-  for (const queryStage of queryStages) {
-    for (const attemptQuery of queryStage.queries) {
-      attemptedQueries.push(attemptQuery);
-      let attemptResults: Awaited<ReturnType<typeof searchOpenAlexWorks>> = [];
-
-      try {
-        attemptResults = await searchOpenAlexWorks(attemptQuery);
-      } catch (error) {
-        providerWarnings.push(
-          formatProviderWarning("OpenAlex", attemptQuery, error, languageContext.activeLanguage),
-        );
-        openAlexUnavailable = true;
-      }
-
-      attemptSummaries.push({
-        query: attemptQuery,
-        resultCount: attemptResults.length,
-      });
-
-      if (attemptResults.length === 0) {
-        if (openAlexUnavailable) {
-          break;
-        }
-
-        continue;
-      }
-
-      for (const result of attemptResults) {
-        const candidate: SearchCandidate = {
-          ...result,
-          matchedQuery: attemptQuery,
-          matchedQueryStage: queryStage.stage,
-          rawCrossrefJson: null,
-          sourceProvider: Provider.OPENALEX,
-        };
-        const dedupKey = buildDedupKey(candidate);
-
-        if (!aggregatedResults.has(dedupKey)) {
-          aggregatedResults.set(dedupKey, candidate);
-          providerBreakdown.openAlex += 1;
-        }
-      }
-
-      if (aggregatedResults.size >= aggregationTarget) {
-        break;
-      }
-
-      if (openAlexUnavailable) {
-        break;
-      }
-    }
-
-    if (aggregatedResults.size >= aggregationTarget || openAlexUnavailable) {
+  for (const query of providerQueries) {
+    if (openAlexUnavailable) break;
+    const queryHash = providerQueryHash(queryPlanHash, query);
+    attemptedQueries.push(query.renderedQuery);
+    const oldHits = cacheHits;
+    let attemptResults: Awaited<ReturnType<typeof searchOpenAlexWorks>>;
+    try {
+      attemptResults = await cachedProviderResults(query, () => searchOpenAlexWorks(query.renderedQuery, {
+        filters: query.filters, page: query.page, perPage: 35,
+        sort: "relevance_score:desc,cited_by_count:desc", retryRateLimit: !acceptance,
+      }));
+    } catch (error) {
+      if (acceptance) throw error;
+      if (!(error instanceof OpenAlexRequestError)) throw error;
+      openAlexUnavailable = true;
+      executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: 0,
+        newCandidateCount: 0, cacheHit: false, errorCategory: error instanceof Error ? error.message : "OPENALEX_PROVIDER_ERROR" });
       break;
     }
+    let newCandidateCount = 0;
+    attemptSummaries.push({ query: query.renderedQuery, resultCount: attemptResults.length });
+    for (const result of attemptResults) {
+      const candidate: SearchCandidate = { ...result, matchedQuery: query.renderedQuery,
+        matchedQueryStage: query.familyType === "CONTEXTUAL_OR_LOCAL" ? "optional_backup" : "necessary_only",
+        rawCrossrefJson: null, sourceProvider: Provider.OPENALEX };
+      const dedupKey = buildDedupKey(candidate);
+      discoveryObservations.push({ candidateKey: dedupKey, provider: "OPENALEX", queryHash });
+      if (batchKind === "more" && priorSeen.has(dedupKey)) continue;
+      if (!aggregatedResults.has(dedupKey)) { aggregatedResults.set(dedupKey, candidate); providerBreakdown.openAlex++; newCandidateCount++; }
+    }
+    executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: attemptResults.length,
+      newCandidateCount, cacheHit: cacheHits > oldHits, errorCategory: null });
   }
 
-  if (aggregatedResults.size < desiredTotal) {
-    for (const queryStage of [...queryStages].reverse()) {
-      for (const attemptQuery of [...queryStage.queries].reverse()) {
-        let crossrefResults: Awaited<ReturnType<typeof searchCrossrefWorks>> = [];
-
-        try {
-          crossrefResults = await searchCrossrefWorks(attemptQuery);
-        } catch (error) {
-          providerWarnings.push(
-            formatProviderWarning("Crossref", attemptQuery, error, languageContext.activeLanguage),
-          );
-        }
-
-        if (crossrefResults.length === 0) {
-          continue;
-        }
-
+  // Crossref discovery is bounded and secondary: only a provider failure or an
+  // explicit MORE request with no new OpenAlex candidate justifies it.
+  if (!acceptance && (openAlexUnavailable || batchKind === "more" && aggregatedResults.size === 0)) {
+    const family = searchMetadata.queryPack.plannedQueries?.[0];
+    if (family && searchMetadata.queryPack.conceptPlan) {
+      const renderedQuery = renderCrossrefFamily(family, searchMetadata.queryPack.conceptPlan);
+      const query: ProviderQuery = { familyId: family.id, familyType: family.family, provider: "CROSSREF", renderedQuery,
+        filters: [], page: 1 };
+      const queryHash = providerQueryHash(queryPlanHash, query);
+      if (!priorExecutions.some(item => item.queryHash === queryHash && item.errorCategory === null)) {
+        const oldHits = cacheHits;
+        const crossrefResults = await cachedProviderResults(query, () => searchCrossrefWorks(renderedQuery));
+        let newCandidateCount = 0;
         for (const result of crossrefResults) {
-          const candidate: SearchCandidate = {
-            ...result,
-            matchedQuery: attemptQuery,
-            matchedQueryStage: queryStage.stage,
-            normalizedTitle: result.title,
-            sourceProvider: Provider.CROSSREF,
-          };
+          const candidate: SearchCandidate = { ...result, matchedQuery: renderedQuery, matchedQueryStage: "necessary_only",
+            normalizedTitle: result.title, sourceProvider: Provider.CROSSREF };
           const dedupKey = buildDedupKey(candidate);
-
-          if (!aggregatedResults.has(dedupKey)) {
-            aggregatedResults.set(dedupKey, candidate);
-            providerBreakdown.crossref += 1;
+          discoveryObservations.push({ candidateKey: dedupKey, provider: "CROSSREF", queryHash });
+          if (batchKind === "more" && priorSeen.has(dedupKey)) {
+            const doi = normalizeScholarlyDoi(candidate.doi);
+            if (doi && candidate.rawCrossrefJson) {
+              const linked = await prisma.projectReference.findFirst({ where: { projectId, reference: { doi } },
+                include: { reference: true } });
+              if (linked && !linked.reference.rawCrossrefJson) await prisma.reference.update({ where: { id: linked.referenceId },
+                data: { crossrefId: doi, rawCrossrefJson: candidate.rawCrossrefJson as Prisma.InputJsonValue } });
+            }
+            continue;
           }
+          const existing = [...aggregatedResults.entries()].find(([, item]) => sameScientificWork(item, candidate));
+          if (existing) {
+            // One work, two observations; do not discard the richer OpenAlex representation.
+            existing[1].rawCrossrefJson = candidate.rawCrossrefJson;
+            continue;
+          }
+          aggregatedResults.set(dedupKey, candidate); providerBreakdown.crossref++; newCandidateCount++;
         }
-
-        if (aggregatedResults.size >= aggregationTarget) {
-          break;
-        }
-      }
-
-      if (aggregatedResults.size >= aggregationTarget) {
-        break;
+        attemptedQueries.push(renderedQuery);
+        attemptSummaries.push({ query: renderedQuery, resultCount: crossrefResults.length });
+        executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: crossrefResults.length,
+          newCandidateCount, cacheHit: cacheHits > oldHits, errorCategory: null });
       }
     }
   }
+  if (openAlexUnavailable && !executedQueries.some(item => item.errorCategory === null)) throw new Error("OPENALEX_PROVIDER_TEMPORARILY_UNAVAILABLE");
 
-  if (aggregatedResults.size === 0) {
-    await prisma.project.update({
-      where: { id: project.id },
-      data: {
-        status:
-          previousProjectReferenceIds.size > 0
-            ? ProjectStatus.SOURCES_REVIEW
-            : ProjectStatus.INTAKE_READY,
-      },
-    });
-
-    throw new Error(
-      providerWarnings.length > 0
-        ? getSearchErrorMessage(languageContext.activeLanguage, "none")
-        : isEnglishLanguage(languageContext.activeLanguage)
-          ? "No sources were found for this intake."
-          : "No se encontraron fuentes para este intake.",
-    );
-  }
-
-  const candidatePool = Array.from(aggregatedResults.values()).slice(0, aggregationTarget);
+  const candidatePool = Array.from(aggregatedResults.values());
   const rankedCandidates: RankedCandidate[] = [];
   let skippedCount = 0;
 
   for (const result of candidatePool) {
     let crossrefMetadata: CrossrefMessage | null = result.rawCrossrefJson ?? null;
 
-    if (!crossrefMetadata && result.doi) {
-      try {
-        crossrefMetadata = await fetchCrossrefWorkByDoi(result.doi);
-      } catch {
-        crossrefMetadata = null;
-      }
-    }
+    // Crossref discovery already supplied its metadata. DOI verification is a
+    // later inspection task, never an unbounded hidden provider request here.
 
     const resolvedTitle = result.title?.trim() || resolveCrossrefTitle(crossrefMetadata);
     const normalizedCandidateTitle = normalizeTitle(resolvedTitle);
@@ -1037,32 +1612,13 @@ export async function searchProjectReferencesV2(
       crossrefMetadata?.issued?.["date-parts"]?.[0]?.[0] ?? result.year;
     const resolvedWorkType = crossrefMetadata?.type ?? result.workType;
     const resolvedLandingPageUrl = crossrefMetadata?.URL ?? result.landingPageUrl;
-    const quality = evaluateReferenceQuality({
-      title: resolvedTitle,
-      sourceProvider: result.sourceProvider,
-      year: resolvedYear,
-      authors: resolvedAuthors,
-      abstract: resolvedAbstract,
-      venue: resolvedVenue,
-      doi: result.doi,
-      landingPageUrl: resolvedLandingPageUrl,
-      citationCount: result.citationCount,
-      rawOpenAlexJson: result.rawOpenAlexJson,
-      rawCrossrefJson: crossrefMetadata,
-    });
-
-    if (!quality.accepted) {
-      skippedCount += 1;
-      continue;
-    }
-
     const accessSignals = extractAccessSignals({
       rawOpenAlexJson: result.rawOpenAlexJson,
-      rawCrossrefJson: crossrefMetadata,
       landingPageUrl: resolvedLandingPageUrl,
       doi: result.doi,
     });
-    const pdfAccessible = await verifyPdfAccess(accessSignals.pdfUrl);
+    // This stage only sees provider-reported locations; no download/verification.
+    const pdfAccessible = false;
     const relevance = buildRelevanceScore({
       title: resolvedTitle,
       abstract: resolvedAbstract,
@@ -1071,8 +1627,14 @@ export async function searchProjectReferencesV2(
       keywordGroups: searchMetadata.keywordGroups,
       citationCount: result.citationCount,
       year: resolvedYear,
-      hasPdfUrl: pdfAccessible,
-      language: languageContext.activeLanguage,
+      hasPdfUrl: Boolean(accessSignals.pdfUrl),
+      hasDoi: Boolean(result.doi),
+      workType: resolvedWorkType,
+      venue: resolvedVenue,
+      language: result.language,
+      activeLanguage: languageContext.activeLanguage,
+      localObjectTerms: searchMetadata.localObjectTerms,
+      explicitExclusions: searchMetadata.enrichment?.explicitExclusions,
     });
 
     rankedCandidates.push({
@@ -1089,32 +1651,46 @@ export async function searchProjectReferencesV2(
       crossrefMetadata,
       score: relevance.score,
       scoreBreakdown: relevance.breakdown,
-      pdfUrl: pdfAccessible ? accessSignals.pdfUrl : null,
+      admission: decideReferenceAdmission({
+        title: resolvedTitle,
+        abstract: resolvedAbstract,
+        score: relevance.score,
+        breakdown: relevance.breakdown,
+      }),
+      pdfUrl: accessSignals.pdfUrl,
       pdfAccessible,
     });
   }
 
-  if (rankedCandidates.length === 0) {
-    await prisma.project.update({
-      where: { id: project.id },
-      data: {
-        status:
-          previousProjectReferenceIds.size > 0
-            ? ProjectStatus.SOURCES_REVIEW
-            : ProjectStatus.INTAKE_READY,
-      },
-    });
-
-    throw new Error(
-      isEnglishLanguage(languageContext.activeLanguage)
-        ? "Recovered candidates did not pass the academic source quality checks."
-        : "Los candidatos recuperados no pasaron los controles de calidad academica.",
-    );
+  let semanticReview: ProjectReferenceSearchSnapshot["semanticReview"];
+  const conceptPlan = searchMetadata.enrichment?.scientificConceptPlan;
+  if (conceptPlan && (!acceptance || acceptance.semanticReview)) {
+    const reviewInputs: ReviewCandidate[] = rankedCandidates.map(item => ({ candidateId: buildDedupKey(item.candidate),
+      title: item.resolvedTitle, abstract: item.abstract, authors: item.authors, year: item.year, venue: item.venue,
+      workType: item.workType, query: item.candidate.matchedQuery,
+      deterministicSignals: item.scoreBreakdown.semanticRelevance }));
+    const review = await reviewCandidateBatch(semanticPlannerInput(input.intent, fingerprint(input.intent)), conceptPlan, reviewInputs,
+      { generateStructuredObject: request => (planningProvider ?? getConfiguredLlmProvider()).generateStructuredObject(request) }, searchMetadata.enrichment?.explicitExclusions);
+    semanticReview = review.trace;
+    for (let i = 0; i < rankedCandidates.length; i++) {
+      const item = rankedCandidates[i], original = reviewInputs[i];
+      const assessment = review.assessments.get(original.candidateId) ?? {
+        policyVersion: CANDIDATE_REVIEW_VERSION, candidateId: original.candidateId, searchIntentHash: conceptPlan.searchIntentHash,
+        metadataHash: candidateMetadataHash(original), origin: "DETERMINISTIC" as const, relevance: "INSUFFICIENT_METADATA" as const,
+        role: "NONE" as const, confidence: "LOW" as const, rationale: "BOUNDED_REVIEW_DEFERRED_OR_UNAVAILABLE", matchedIntentDimensions: [], mismatches: [], evidence: [],
+      };
+      item.scoreBreakdown.candidateAssessment = assessment;
+      item.admission = decideReferenceAdmission({ title: item.resolvedTitle, abstract: item.abstract, score: item.score, breakdown: item.scoreBreakdown });
+      item.score = item.admission.state === "ADMITTED" ? assessment.relevance === "HIGHLY_RELEVANT" ? 200 : 100 : 0;
+      item.scoreBreakdown.label = item.admission.state === "ADMITTED" ? "ALTO" : "BAJO";
+    }
   }
-
-  const selectedCandidates = rankedCandidates
-    .sort((left, right) => right.score - left.score)
-    .slice(0, desiredTotal);
+  const selectedCandidates = pickDiverseCandidates({
+    rankedCandidates: admittedOnly(rankedCandidates),
+    desiredTotal: semanticReview ? Math.min(options?.desiredTotal ?? MAX_RECOMMENDATIONS, MAX_RECOMMENDATIONS) : desiredTotal,
+    metadata: searchMetadata,
+    activeLanguage: languageContext.activeLanguage,
+  });
 
   let createdCount = 0;
   let updatedCount = 0;
@@ -1122,58 +1698,72 @@ export async function searchProjectReferencesV2(
     referenceId: string;
     relevanceScore: number;
     scoreBreakdown: ReferenceScoreBreakdown;
+    admission: ReferenceAdmission;
     pdfUrl: string | null;
     pdfAccessible: boolean;
   }> = [];
 
   for (const ranked of selectedCandidates) {
     const result = ranked.candidate;
+    const canonicalDoi = normalizeScholarlyDoi(result.doi);
     const lookupKeys: Array<{ doi: string } | { openAlexId: string }> = [];
 
-    if (result.doi) {
-      lookupKeys.push({ doi: result.doi });
+    if (canonicalDoi) {
+      lookupKeys.push({ doi: canonicalDoi });
+      if (result.doi !== canonicalDoi) lookupKeys.push({ doi: result.doi! });
     }
 
     if (result.openAlexId) {
       lookupKeys.push({ openAlexId: result.openAlexId });
     }
 
-    const existingReference = await prisma.reference.findFirst({
+    const exactIdentity = lookupKeys.length ? await prisma.reference.findFirst({
       where:
         lookupKeys.length > 1
           ? { OR: lookupKeys }
-          : lookupKeys.length === 1
-            ? lookupKeys[0]
-            : {
-                normalizedTitle: ranked.normalizedTitle,
-                year: ranked.year ?? undefined,
-              },
-    });
+          : lookupKeys[0],
+    }) : null;
+    const titleMatches = !exactIdentity && !canonicalDoi && !result.openAlexId ? await prisma.reference.findMany({
+      where: { normalizedTitle: ranked.normalizedTitle, year: ranked.year ?? undefined }, take: 8 }) : [];
+    const exactIdentityCompatible = exactIdentity ? sameScientificWork({ ...result, title: ranked.resolvedTitle, authors: ranked.authors, year: ranked.year }, {
+      doi: exactIdentity.doi, openAlexId: exactIdentity.openAlexId, landingPageUrl: exactIdentity.landingPageUrl,
+      title: exactIdentity.title, year: exactIdentity.year,
+      authors: Array.isArray(exactIdentity.authorsJson) ? exactIdentity.authorsJson.filter((author): author is string => typeof author === "string") : [],
+      workType: exactIdentity.workType }) : false;
+    if (exactIdentity && !exactIdentityCompatible) {
+      ranked.admission = { policyVersion: REFERENCE_ADMISSION_POLICY_VERSION, state: "NEEDS_INSPECTION", reasons: ["UNCERTAIN_VERSION_IDENTITY"] };
+      continue;
+    }
+    const existingReference = (exactIdentityCompatible ? exactIdentity : null) ?? titleMatches.find(item => sameScientificWork({ ...result,
+      title: ranked.resolvedTitle, authors: ranked.authors, year: ranked.year }, {
+      doi: item.doi, openAlexId: item.openAlexId, landingPageUrl: item.landingPageUrl,
+      title: item.title, year: item.year, authors: Array.isArray(item.authorsJson) ? item.authorsJson.filter((author): author is string => typeof author === "string") : [],
+      workType: item.workType })) ?? null;
 
     const reference = existingReference
       ? await prisma.reference.update({
           where: { id: existingReference.id },
           data: {
-            doi: result.doi ?? existingReference.doi,
-            openAlexId: result.openAlexId,
+            doi: canonicalDoi ?? existingReference.doi,
+            openAlexId: result.openAlexId ?? existingReference.openAlexId,
             crossrefId: ranked.crossrefMetadata?.DOI ?? existingReference.crossrefId,
             title: ranked.resolvedTitle,
             normalizedTitle: ranked.normalizedTitle,
             authorsJson: ranked.authors,
-            abstract: ranked.abstract,
-            venue: ranked.venue,
+            abstract: ranked.abstract ?? existingReference.abstract,
+            venue: ranked.venue ?? existingReference.venue,
             year: ranked.year ?? existingReference.year,
             workType: ranked.workType,
             landingPageUrl: ranked.landingPageUrl,
             citationCount: ranked.citationCount,
-            rawOpenAlexJson: (result.rawOpenAlexJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+            rawOpenAlexJson: (result.rawOpenAlexJson ?? existingReference.rawOpenAlexJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
             rawCrossrefJson:
-              (ranked.crossrefMetadata ?? Prisma.JsonNull) as Prisma.InputJsonValue,
+              (ranked.crossrefMetadata ?? existingReference.rawCrossrefJson ?? Prisma.JsonNull) as Prisma.InputJsonValue,
           },
         })
       : await prisma.reference.create({
           data: {
-            doi: result.doi,
+            doi: canonicalDoi,
             openAlexId: result.openAlexId,
             crossrefId: ranked.crossrefMetadata?.DOI ?? null,
             title: ranked.resolvedTitle,
@@ -1205,7 +1795,7 @@ export async function searchProjectReferencesV2(
         },
       },
       update: {
-        sourceProvider: result.sourceProvider,
+        sourceProvider: existingReference?.rawOpenAlexJson ? Provider.OPENALEX : result.sourceProvider,
         relevanceScore: ranked.score,
       },
       create: {
@@ -1220,6 +1810,7 @@ export async function searchProjectReferencesV2(
       referenceId: reference.id,
       relevanceScore: ranked.score,
       scoreBreakdown: ranked.scoreBreakdown,
+      admission: ranked.admission,
       pdfUrl: ranked.pdfUrl,
       pdfAccessible: ranked.pdfAccessible,
     });
@@ -1228,7 +1819,9 @@ export async function searchProjectReferencesV2(
   const suggestedSelectionOrders = buildSuggestedSelectionOrders({
     baseSelectedReferenceIds,
     previousProjectReferenceIds,
-    latestReferenceIds: persistedResults.map((item) => item.referenceId),
+    latestReferenceIds: persistedResults
+      .filter((item) => item.relevanceScore >= 50)
+      .map((item) => item.referenceId),
   });
 
   const projectReferenceCount = await prisma.projectReference.count({
@@ -1246,25 +1839,48 @@ export async function searchProjectReferencesV2(
   });
 
   const searchSnapshot: ProjectReferenceSearchSnapshot = {
+    ...(semanticReview ? { semanticReview } : {}),
     referenceSearchVersion: "v2",
+    inputTrace,
+    batchKind,
     savedAt: new Date().toISOString(),
     searchQuery,
     attemptedQueries,
     totalResults: persistedResults.length,
     providerBreakdown,
+    queryPlanHash,
+    executedQueries: [...priorExecutions, ...executedQueries]
+      .filter((item, index, all) => all.findIndex(other => other.queryHash === item.queryHash && other.errorCategory === item.errorCategory) === index),
+    cacheHits,
+    cacheMisses,
+    discoveryObservations: [...(batchKind === "more" ? priorSnapshot?.discoveryObservations ?? [] : []), ...discoveryObservations]
+      .filter((item, index, all) => all.findIndex(other => other.candidateKey === item.candidateKey && other.provider === item.provider && other.queryHash === item.queryHash) === index),
+    resultState: batchKind === "initial" ? persistedResults.length ? undefined : "NO_RELEVANT_INITIAL_RESULTS"
+      : persistedResults.length ? "MORE_FOUND_NEW_RESULTS"
+      : !providerQueries.length && !executedQueries.length ? "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN" : "NO_NEW_RELEVANT_RESULTS",
     baseSelectedReferenceIds,
-    metadata: {
-      ...searchMetadata,
-      providerWarnings: providerWarnings.slice(0, 8),
-    },
-    references: persistedResults.map((item) => ({
+    metadata: searchMetadata,
+    admissionPolicyVersion: REFERENCE_ADMISSION_POLICY_VERSION,
+    candidateAdmissions: [...(batchKind === "more" ? priorSnapshot?.candidateAdmissions ?? [] : []), ...rankedCandidates.map((item) => ({
+      candidateKey: buildDedupKey(item.candidate),
+      title: item.resolvedTitle,
+      doi: item.candidate.doi,
+      year: item.year,
+      relevanceScore: item.score,
+      scoreBreakdown: item.scoreBreakdown,
+      admission: item.admission,
+      ...(acceptance ? { inspectionMetadata: { abstract: item.candidate.abstract, authors: item.candidate.authors, venue: item.candidate.venue, access: extractAccessSignals(item.candidate) } } : {}),
+    }))].filter((item, index, all) => all.findIndex(other => other.candidateKey === item.candidateKey) === index),
+    references: [...(batchKind === "more" ? priorSnapshot?.references ?? [] : []), ...persistedResults.map((item) => ({
       referenceId: item.referenceId,
       relevanceScore: item.relevanceScore,
       scoreBreakdown: item.scoreBreakdown,
+      admission: item.admission,
       suggestedSelectedOrder: suggestedSelectionOrders.get(item.referenceId) ?? null,
       pdfUrl: item.pdfUrl,
       pdfAccessible: item.pdfAccessible,
-    })),
+      accessStatus: item.pdfUrl ? "REPORTED_PDF" as const : "UNKNOWN" as const,
+    }))].filter((item, index, all) => all.findIndex(other => other.referenceId === item.referenceId) === index),
   };
 
   await logAuditEvent({
@@ -1275,6 +1891,8 @@ export async function searchProjectReferencesV2(
     projectId: project.id,
     payloadJson: {
       referenceSearchVersion: "v2",
+      inputTrace,
+      batchKind,
       searchQuery,
       searchIntent: searchMetadata.intentSummary,
       languageContext,
@@ -1286,12 +1904,18 @@ export async function searchProjectReferencesV2(
       updatedCount,
       skippedCount,
       providerBreakdown,
-      providerWarnings: providerWarnings.slice(0, 8),
+      queryPlanHash,
+      executedQueries,
+      cacheHits,
+      cacheMisses,
+      discoveryObservations,
       searchSnapshot,
+      providerFallback: openAlexUnavailable ? "OpenAlex unavailable; supported Crossref fallback used" : null,
     },
   });
 
   return {
+    batchKind,
     searchQuery,
     attemptedQueries,
     totalResults: persistedResults.length,
@@ -1300,6 +1924,17 @@ export async function searchProjectReferencesV2(
     providerBreakdown,
     searchSnapshot,
   };
+  } catch (error) {
+    if (searchingUpdatedAt) {
+      try {
+        await settleFailedSearch({ userId, projectId, searchingUpdatedAt, error,
+          searchIntentHash: fingerprint(input.intent), attemptedQueries });
+      } catch {
+        console.warn("SEARCH_FAILURE_SETTLEMENT_FAILED");
+      }
+    }
+    throw error;
+  }
 }
 
 export async function getLatestProjectReferenceSearchSnapshot(projectId: string) {
@@ -1321,5 +1956,10 @@ export async function getLatestProjectReferenceSearchSnapshot(projectId: string)
     return null;
   }
 
-  return payload.searchSnapshot ?? null;
+  const snapshot = payload.searchSnapshot;
+  if (!snapshot?.inputTrace || snapshot.inputTrace.confirmedDraftRevision === null) return snapshot ?? null;
+  const draft = await prisma.projectDraft.findUnique({ where: { projectId } });
+  const raw = (draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
+  const currentHash = raw ? fingerprint(definitionSchema.parse(raw)) : null;
+  return { ...snapshot, stale: searchInputIsStale(snapshot.inputTrace, { revision: draft?.confirmedRevision ?? null, definitionHash: currentHash }) };
 }

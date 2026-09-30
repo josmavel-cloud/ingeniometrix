@@ -19,7 +19,8 @@ export type CreateProjectInput = {
   customIdeaText?: string;
   title: string;
   degreeLevel: DegreeLevel;
-  university: University;
+  university?: University;
+  country: string;
   program: string;
   language: SupportedLanguage;
   templateKey: ProjectTemplateKey;
@@ -37,6 +38,9 @@ export type IntakeInput = {
   availableData?: string;
   preferredMethodology?: string;
   advisorNotes?: string;
+  researchScope?: string;
+  constructs?: string;
+  pendingDecisions?: string;
 };
 
 const DEGREE_LEVEL_VALUES = new Set(Object.values(DegreeLevel));
@@ -86,12 +90,16 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
     throw new Error("degreeLevel invalido.");
   }
 
-  if (!UNIVERSITY_VALUES.has(university as University)) {
+  if (university !== undefined && university !== null && !UNIVERSITY_VALUES.has(university as University)) {
     throw new Error("university invalida.");
   }
 
   const title = normalizeRequiredText(payload.title, "title");
   const program = normalizeRequiredText(payload.program, "program");
+  const country = normalizeOptionalText(payload.country)?.toUpperCase() ?? "PE";
+  if (!/^[A-Z]{2}$/.test(country)) {
+    throw new Error("country debe usar un codigo ISO de dos letras.");
+  }
   const topicOriginType = customIdeaText
     ? catalogTopicId
       ? TopicOriginType.HYBRID
@@ -116,7 +124,8 @@ export function parseCreateProjectInput(raw: unknown): CreateProjectInput {
     customIdeaText: customIdeaText ?? undefined,
     title,
     degreeLevel: degreeLevel as DegreeLevel,
-    university: university as University,
+    university: university as University | undefined,
+    country,
     program,
     language,
     templateKey,
@@ -142,6 +151,9 @@ export function parseIntakeInput(raw: unknown): IntakeInput {
     availableData: normalizeOptionalText(payload.availableData),
     preferredMethodology: normalizeOptionalText(payload.preferredMethodology),
     advisorNotes: normalizeOptionalText(payload.advisorNotes),
+    researchScope: normalizeOptionalText(payload.researchScope),
+    constructs: normalizeOptionalText(payload.constructs),
+    pendingDecisions: normalizeOptionalText(payload.pendingDecisions),
   };
 }
 

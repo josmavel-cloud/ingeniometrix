@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
-import { scheduleBlueprintJobRun } from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
 import { resumeLatestBlueprintJobDrainForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 type RouteContext = {
@@ -16,13 +15,6 @@ export async function POST(request: Request, context: RouteContext) {
     const user = await requireCurrentUser();
     const { id } = await context.params;
     const result = await resumeLatestBlueprintJobDrainForUser(user.id, id);
-
-    if (result.shouldContinue && result.job) {
-      scheduleBlueprintJobRun({
-        origin: new URL(request.url).origin,
-        jobId: result.job.id,
-      });
-    }
 
     return NextResponse.json({ result });
   } catch (error) {

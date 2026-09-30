@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
 
@@ -20,6 +20,11 @@ type ReferenceListItem = {
   id: string;
   selected: boolean;
   selectedOrder: number | null;
+  primaryRole?: "DIRECT" | "METHODOLOGICAL" | "THEORETICAL" | "CONTEXTUAL" | "NONE";
+  relevanceReason?: string;
+  evidenceLevel?: string;
+  preparationStatus?: string;
+  userUploaded?: boolean;
   relevanceScore: number | null;
   scoreBreakdown: {
     label: "ALTO" | "MEDIO" | "BAJO" | "MINIMO";
@@ -31,6 +36,7 @@ type ReferenceListItem = {
     matchedQuery: string;
     matchedQueryStage: "necessary_only" | "complementary_boosted" | "optional_backup";
   } | null;
+  admission?: { state: "ADMITTED" | "NEEDS_INSPECTION" | "REJECTED_OFF_TOPIC" };
   reference: {
     id: string;
     title: string;
@@ -52,6 +58,7 @@ type ReferenceListItem = {
 
 type ReferenceSearchSnapshot = {
   referenceSearchVersion: "v2";
+  resultState?: "NO_RELEVANT_INITIAL_RESULTS" | "MORE_FOUND_NEW_RESULTS" | "NO_NEW_RELEVANT_RESULTS" | "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN";
   savedAt: string;
   searchQuery: string;
   attemptedQueries: string[];
@@ -129,6 +136,20 @@ function renderScoreLabel(label: string | null | undefined, language: SupportedL
   return "LOW";
 }
 
+const roleLabels: Record<NonNullable<ReferenceListItem["primaryRole"]>, string> = {
+  DIRECT: "Directamente relacionada", METHODOLOGICAL: "Antecedente metodológico",
+  THEORETICAL: "Marco conceptual/teórico", CONTEXTUAL: "Contexto relevante",
+  NONE: "Rol por revisar",
+};
+function availabilityLabel(item: ReferenceListItem) {
+  if (item.preparationStatus === "PREPARED_FULL_TEXT") return "Documento preparado";
+  if (item.preparationStatus === "IDENTITY_REVIEW_REQUIRED") return "Identidad por revisar";
+  if (item.preparationStatus === "FAILED_ACCESS") return "Documento no disponible";
+  if (item.evidenceLevel === "ABSTRACT_AVAILABLE") return "Resumen disponible";
+  if (item.reference.pdfUrl) return "Enlace a texto/PDF por verificar";
+  return "Metadatos disponibles";
+}
+
 function mergeReferenceLists(
   current: ReferenceListItem[],
   incoming: ReferenceListItem[],
@@ -138,34 +159,18 @@ function mergeReferenceLists(
   }
 
   const currentByReferenceId = new Map(
-    current.map((item, index) => [item.reference.id, { item, index }] as const),
+    current.map((item) => [item.reference.id, item] as const),
   );
-  const merged = [...current];
-
-  for (const nextItem of incoming) {
-    const existing = currentByReferenceId.get(nextItem.reference.id);
-
-    if (!existing) {
-      merged.push(nextItem);
-      continue;
-    }
-
-    const preservedSelection =
-      existing.item.selected || existing.item.selectedOrder !== null
-        ? {
-            selected: existing.item.selected,
-            selectedOrder: existing.item.selectedOrder,
-          }
-        : {
-            selected: nextItem.selected,
-            selectedOrder: nextItem.selectedOrder,
-          };
-
-    merged[existing.index] = {
-      ...nextItem,
-      ...preservedSelection,
-    };
-  }
+  // The backend returns a cumulative, admitted recommendation snapshot for
+  // MORE. Keep local in-progress selections even if the snapshot is refreshed.
+  const merged = incoming.map((item) => {
+    const existing = currentByReferenceId.get(item.reference.id);
+    return existing?.selected
+      ? { ...item, selected: true, selectedOrder: existing.selectedOrder }
+      : item;
+  });
+  const incomingIds = new Set(incoming.map((item) => item.reference.id));
+  merged.push(...current.filter((item) => item.selected && !incomingIds.has(item.reference.id)));
 
   return merged;
 }
@@ -182,6 +187,13 @@ export function ReferenceSearchPanel({
   const router = useRouter();
   const copy = getProjectUiCopy(language).sourceSearch;
   const [references, setReferences] = useState(initialReferences);
+  useEffect(() => {
+    setReferences(current => {
+      const seen = new Set(current.map(item => item.reference.id));
+      const additions = initialReferences.filter(item => !seen.has(item.reference.id));
+      return additions.length ? [...current, ...additions] : current;
+    });
+  }, [initialReferences]);
   const [searchSnapshot, setSearchSnapshot] = useState<ReferenceSearchSnapshot | null>(
     initialSearchSnapshot,
   );
@@ -192,6 +204,7 @@ export function ReferenceSearchPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [isSearching, startSearchTransition] = useTransition();
+  const searchRequestPending = useRef(false);
   const [isSaving, startSaveTransition] = useTransition();
 
   const selectedCount = useMemo(
@@ -202,8 +215,9 @@ export function ReferenceSearchPanel({
     () => references.slice(0, visibleCount),
     [references, visibleCount],
   );
-  const nextVisibleTarget = Math.min(visibleCount + REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES);
-  const canExpand = visibleCount < Math.min(references.length, MAX_SELECTED_REFERENCES);
+  const maxVisibleRecommendations = 40;
+  const nextVisibleTarget = Math.min(visibleCount + REFERENCE_BATCH_SIZE, maxVisibleRecommendations);
+  const canExpand = visibleCount < Math.min(references.length, maxVisibleRecommendations);
   const statusMeta = getProjectStatusMetaForLanguage(status, language);
   const intakeChecklist = [
     {
@@ -247,7 +261,8 @@ export function ReferenceSearchPanel({
     });
   }
 
-  function runSearch(desiredTotal: number) {
+  function runSearch(desiredTotal: number, batchKind: "initial" | "more" = "initial") {
+    if (isSearching || searchRequestPending.current) return;
     setError(null);
     setMessage(null);
     setInfo(null);
@@ -257,75 +272,84 @@ export function ReferenceSearchPanel({
       return;
     }
 
+    searchRequestPending.current = true;
     startSearchTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ desiredTotal }),
-      });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/search`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": crypto.randomUUID(),
+          },
+          body: JSON.stringify({ desiredTotal, batchKind }),
+        });
 
-      const payload = (await response.json()) as {
-        error?: string;
-        result?: {
-          totalResults: number;
-          attemptedQueries: string[];
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+          result?: {
+            totalResults: number;
+            attemptedQueries: string[];
+          };
         };
-      };
 
-      if (!response.ok) {
-        setError(payload.error ?? copy.searchError);
-        return;
-      }
+        if (!response.ok) {
+          setError(payload.error ?? copy.searchError);
+          return;
+        }
 
-      const refreshResponse = await fetch(`/api/projects/${projectId}/references`);
-      const refreshPayload = (await refreshResponse.json()) as {
-        error?: string;
-        references?: ReferenceListItem[];
-        searchSnapshot?: ReferenceSearchSnapshot | null;
-      };
+        const refreshResponse = await fetch(`/api/projects/${projectId}/references`);
+        const refreshPayload = (await refreshResponse.json().catch(() => ({}))) as {
+          error?: string;
+          references?: ReferenceListItem[];
+          searchSnapshot?: ReferenceSearchSnapshot | null;
+        };
 
-      if (!refreshResponse.ok || !refreshPayload.references) {
-        setError(refreshPayload.error ?? copy.referencesLoadError);
-        return;
-      }
+        if (!refreshResponse.ok || !refreshPayload.references) {
+          setError(refreshPayload.error ?? copy.referencesLoadError);
+          return;
+        }
 
-      let mergedReferencesLength = refreshPayload.references.length;
-      let newUniqueCount = refreshPayload.references.length;
+        const priorIds = new Set(references.map(item => item.reference.id));
+        const newUniqueCount = refreshPayload.references.filter(item => !priorIds.has(item.reference.id)).length;
+        const mergedReferencesLength = mergeReferenceLists(references, refreshPayload.references).length;
 
-      setReferences((current) => {
-        const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
-        mergedReferencesLength = merged.length;
-        newUniqueCount = Math.max(0, merged.length - current.length);
-        return merged;
-      });
-      setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
-      setVisibleCount((current) =>
-        Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
-      );
-
-      const totalResults = payload.result?.totalResults ?? 0;
-
-      if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
-        setMessage(
-          desiredTotal > REFERENCE_BATCH_SIZE
-            ? copy.addedNew(newUniqueCount)
-            : copy.searchCompleted(
-                Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE),
-                MIN_SELECTED_REFERENCES,
-                MAX_SELECTED_REFERENCES,
-              ),
+        setReferences((current) => {
+          const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
+          return merged;
+        });
+        setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
+        setVisibleCount((current) =>
+          Math.min(Math.max(current, desiredTotal), mergedReferencesLength),
         );
-        setInfo(null);
-      } else if (mergedReferencesLength > 0) {
-        setMessage(null);
-        setInfo(copy.noNew);
-      } else {
-        setMessage(null);
-        setInfo(copy.noResults);
-      }
 
+        const totalResults = payload.result?.totalResults ?? 0;
+
+        if (newUniqueCount > 0 || (references.length === 0 && totalResults > 0)) {
+          setMessage(
+            batchKind === "more"
+              ? copy.addedNew(newUniqueCount)
+              : copy.searchCompleted(
+                  Math.min(mergedReferencesLength, REFERENCE_BATCH_SIZE),
+                  MIN_SELECTED_REFERENCES,
+                  MAX_SELECTED_REFERENCES,
+                ),
+          );
+          setInfo(null);
+        } else if (refreshPayload.searchSnapshot?.resultState === "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN") {
+          setMessage(null);
+          setInfo(copy.searchExhausted);
+        } else if (mergedReferencesLength > 0) {
+          setMessage(null);
+          setInfo(copy.noNew);
+        } else {
+          setMessage(null);
+          setInfo(copy.noResults);
+        }
+      } catch {
+        setError(copy.searchError);
+      } finally {
+        searchRequestPending.current = false;
+      }
     });
   }
 
@@ -339,11 +363,11 @@ export function ReferenceSearchPanel({
       return;
     }
 
-    if (!hasIntakeMinimum || references.length >= MAX_SELECTED_REFERENCES) {
+    if (!hasIntakeMinimum || references.length >= maxVisibleRecommendations) {
       return;
     }
 
-    runSearch(nextVisibleTarget);
+    runSearch(nextVisibleTarget, "more");
   }
 
   function saveSelection() {
@@ -365,23 +389,28 @@ export function ReferenceSearchPanel({
     }
 
     startSaveTransition(async () => {
-      const response = await fetch(`/api/projects/${projectId}/references`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ selectedReferenceIds }),
-      });
+      try {
+        const response = await fetch(`/api/projects/${projectId}/references`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ selectedReferenceIds }),
+        });
 
-      const payload = (await response.json()) as { error?: string };
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
 
-      if (!response.ok) {
-        setError(payload.error ?? copy.saveError);
-        return;
+        if (!response.ok) {
+          setError(payload.error ?? copy.saveError);
+          return;
+        }
+
+        setMessage(copy.saved);
+        window.dispatchEvent(new Event("imx-selection-saved"));
+        router.refresh();
+      } catch {
+        setError(copy.saveError);
       }
-
-      setMessage(copy.saved);
-      router.refresh();
     });
   }
 
@@ -470,7 +499,7 @@ export function ReferenceSearchPanel({
           ))}
         </div>
         {searchSnapshot ? (
-          <div className="mt-4 grid gap-4">
+          <div aria-hidden="true" className="hidden">
             <div className="grid gap-3 lg:grid-cols-3">
               <article className="rounded-[20px] border border-[rgba(74,58,97,0.08)] bg-white/86 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[rgba(100,94,115,0.62)]">
@@ -600,10 +629,10 @@ export function ReferenceSearchPanel({
       {references.length === 0 ? (
         <div className="mt-8 rounded-[28px] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center">
           <p className="font-[var(--font-heading)] text-xl font-semibold text-slate-950">
-            {copy.emptyTitle}
+            {searchSnapshot ? copy.noAdmitted : copy.emptyTitle}
           </p>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            {copy.emptyBody}
+            {searchSnapshot ? copy.noResults : copy.emptyBody}
           </p>
         </div>
       ) : (
@@ -626,15 +655,22 @@ export function ReferenceSearchPanel({
                   </span>
                 </label>
                 <div className="inline-flex rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
-                  {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)} -{" "}
-                  {item.relevanceScore?.toFixed(2) ?? "0.00"}
+                  Relevancia {renderScoreLabel(item.scoreBreakdown?.label ?? "BAJO", language)}
                 </div>
               </div>
 
               <div className="mt-4">
+                {item.selected && item.admission && item.admission.state !== "ADMITTED" ? (
+                  <p className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+                    {copy.selectionConflict}
+                  </p>
+                ) : null}
                 <h3 className="font-[var(--font-heading)] text-lg font-semibold text-slate-950">
                   {item.reference.translatedTitle ?? item.reference.title}
                 </h3>
+                <p className="mt-2 text-sm text-slate-600">{roleLabels[item.primaryRole ?? "NONE"]} · {availabilityLabel(item)}</p>
+                {item.relevanceReason ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.relevanceReason}</p> : null}
+                {item.userUploaded ? <p className="mt-2 text-xs text-amber-800">PDF aportado por ti: su identidad y pertinencia requieren revisión.</p> : null}
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
                     {[item.reference.venue, item.reference.year].filter(Boolean).join(" | ") || copy.noDate}
@@ -664,14 +700,14 @@ export function ReferenceSearchPanel({
                   </p>
                 ) : null}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
-                  {item.reference.pdfUrl && item.reference.pdfAccessible ? (
+                  {item.reference.pdfUrl ? (
                     <a
                       className="inline-flex items-center rounded-full border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-semibold text-rose-700 hover:border-rose-300 hover:text-rose-800"
                       href={item.reference.pdfUrl}
                       rel="noreferrer"
                       target="_blank"
                     >
-                      {copy.pdfLabel}
+                      Enlace a texto/PDF por verificar
                       <FileText className="ml-2 size-4" />
                     </a>
                   ) : null}
@@ -694,37 +730,9 @@ export function ReferenceSearchPanel({
                     </summary>
                     <div className="mt-3 grid gap-2 rounded-[20px] border border-slate-200 bg-slate-50/80 p-4">
                       <p>{copy.doiLabel}: {item.reference.doi ?? copy.unavailable}</p>
-                      <p>
-                        {copy.scoreLabel}:{" "}
-                        {renderScoreLabel(item.scoreBreakdown?.label, language) ??
-                          copy.unavailable}
-                      </p>
-                      <p>
-                        {copy.queryLabel}:{" "}
-                        {item.scoreBreakdown?.matchedQuery ?? copy.unavailable}
-                      </p>
-                      <p>
-                        {copy.stage}:{" "}
-                        {item.scoreBreakdown?.matchedQueryStage === "necessary_only"
-                          ? copy.stageNecessary
-                          : item.scoreBreakdown?.matchedQueryStage === "complementary_boosted"
-                            ? copy.stageComplementary
-                            : copy.stageBackup}
-                      </p>
-                      <p>
-                        {copy.necessaryMatches}:{" "}
-                        {item.scoreBreakdown?.necessaryMatches.join(", ") || copy.noStrongMatch}
-                      </p>
-                      <p>
-                        {copy.complementaryMatches}:{" "}
-                        {item.scoreBreakdown?.complementaryMatches.join(", ") ||
-                          copy.noBoost}
-                      </p>
-                      <p>
-                        {copy.optionalMatches}:{" "}
-                        {item.scoreBreakdown?.optionalMatches.join(", ") || copy.noMatch}
-                      </p>
-                      <p>{copy.recency}: {item.scoreBreakdown?.recencyBand ?? copy.unavailable}</p>
+                      <p>Relevancia temática: {renderScoreLabel(item.scoreBreakdown?.label, language) ?? copy.unavailable}</p>
+                      <p>Año de publicación: {item.reference.year ?? copy.unavailable}</p>
+                      <p>Revista o fuente: {item.reference.venue ?? copy.unavailable}</p>
                       <p>
                         {copy.pdfAccessible}:{" "}
                         {item.reference.pdfUrl && item.reference.pdfAccessible ? copy.yes : copy.notVerified}
@@ -748,11 +756,12 @@ export function ReferenceSearchPanel({
         </div>
       )}
 
-      {references.length > 0 && visibleCount < MAX_SELECTED_REFERENCES ? (
+      {searchSnapshot && (references.length === 0 || visibleCount < maxVisibleRecommendations) ? (
         <div className="mt-6 flex justify-start">
           <button
             className="brand-button-secondary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-            disabled={isSearching || (!canExpand && references.length >= MAX_SELECTED_REFERENCES)}
+            disabled={isSearching || searchSnapshot.resultState === "SEARCH_SPACE_EXHAUSTED_UNDER_CURRENT_PLAN" ||
+              (!canExpand && references.length >= maxVisibleRecommendations)}
             onClick={expandReferences}
             type="button"
           >
@@ -760,7 +769,7 @@ export function ReferenceSearchPanel({
               ? copy.loading
               : canExpand
                 ? copy.seeMore(Math.min(REFERENCE_BATCH_SIZE, references.length - visibleCount))
-                : copy.searchMore(Math.min(REFERENCE_BATCH_SIZE, MAX_SELECTED_REFERENCES - references.length))}
+                : copy.searchMore()}
           </button>
         </div>
       ) : null}

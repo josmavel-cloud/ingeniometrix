@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
 
-import {
-  scheduleBlueprintJobRun,
-  verifyBlueprintWorkerRequest,
-} from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
+import { verifyBlueprintWorkerRequest } from "@/server/blueprint-v2/jobs/blueprint-job-scheduler";
 import { runBlueprintJobDrain } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 type RouteContext = {
@@ -19,15 +16,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { jobId } = await context.params;
-  const origin = new URL(request.url).origin;
   const result = await runBlueprintJobDrain(jobId);
-
-  if (result.shouldContinue && result.job) {
-    scheduleBlueprintJobRun({
-      origin,
-      jobId: result.job.id,
-    });
-  }
 
   return NextResponse.json({
     accepted: true,

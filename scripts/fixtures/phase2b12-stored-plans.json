@@ -1,0 +1,913 @@
+{
+  "nano": {
+    "model": "gpt-5.4-nano-2026-03-17",
+    "enrichment": {
+      "schemaVersion": "search-enrichment.v1",
+      "policyVersion": "semantic-retrieval.v2",
+      "planMode": "SEMANTIC",
+      "status": "READY",
+      "terms": [
+        {
+          "sourceField": "originalIdea",
+          "anchor": "Simulación sísmica",
+          "text": "Simulación sísmica",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "originalIdea"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "originalIdea",
+          "anchor": "Simulación sísmica",
+          "text": "Seismic simulation",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "originalIdea"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "problem",
+          "anchor": "criterios de la nueva norma",
+          "text": "criterios normativos",
+          "type": "ACADEMIC_SYNONYM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "problem"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "problem",
+          "anchor": "respuesta sísmica",
+          "text": "respuesta sísmica",
+          "type": "EXACT_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "problem"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "object",
+          "anchor": "Especímenes de albañilería de escala natural",
+          "text": "especímenes de albañilería de escala natural",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "object"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "object",
+          "anchor": "Especímenes de albañilería",
+          "text": "especímenes de albañilería",
+          "type": "ACADEMIC_SYNONYM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "object"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "albañilería",
+          "text": "albañilería",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "diseño sismorresistente",
+          "text": "diseño sismorresistente",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "context",
+          "anchor": "Perú",
+          "text": "Perú",
+          "type": "RELATED_TERM",
+          "confidence": "LOW",
+          "sourceFields": [
+            "context"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "intendedOutput",
+          "anchor": "Evaluación de criterios normativos para diseño sismorresistente",
+          "text": "evaluación de criterios normativos",
+          "type": "ACADEMIC_SYNONYM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "intendedOutput"
+          ],
+          "role": "OUTPUT",
+          "tier": 2,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        }
+      ],
+      "ambiguities": [
+        {
+          "field": "methodPreference",
+          "reason": "No especificado el enfoque metodológico (p. ej., tipo de simulación, formulación numérica, estrategia de modelación), por lo que no hay términos de método plenamente sustentados.",
+          "blocksSearch": false
+        },
+        {
+          "field": "dataAccess",
+          "reason": "No especificado el acceso a datos/corpus (p. ej., si se emplean registros sísmicos, bases de datos, o documentación normativa), por lo que no se generan términos de datos.",
+          "blocksSearch": false
+        },
+        {
+          "field": "constraints",
+          "reason": "No se declaran restricciones explícitas adicionales (además del alcance normativo y la escala natural), por lo que no se incluyen términos de restricción.",
+          "blocksSearch": false
+        }
+      ],
+      "researchActionInterpretation": [],
+      "likelyEvidenceRoles": [
+        "DIRECT",
+        "THEORETICAL",
+        "CONTEXTUAL"
+      ],
+      "confidence": "UNASSESSED",
+      "reasonCodes": [
+        "UNSUPPORTED_OR_UNSAFE_TERM"
+      ],
+      "explicitExclusions": []
+    },
+    "groups": {
+      "necessary": [
+        {
+          "label": "PROBLEM: Simulación sísmica",
+          "variants": [
+            "Simulación sísmica",
+            "Seismic simulation"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "sourceFields": [
+            "originalIdea"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "Simulación sísmica"
+        },
+        {
+          "label": "OBJECT: Especímenes de albañilería de escala natural",
+          "variants": [
+            "especímenes de albañilería de escala natural"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "sourceFields": [
+            "object"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "Especímenes de albañilería de escala natural"
+        },
+        {
+          "label": "CONCEPT: albañilería",
+          "variants": [
+            "albañilería"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "albañilería"
+        }
+      ],
+      "complementary": [
+        {
+          "label": "CONCEPT: diseño sismorresistente",
+          "variants": [
+            "diseño sismorresistente"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "REFINER",
+          "anchor": "diseño sismorresistente"
+        }
+      ],
+      "optional": [
+        {
+          "label": "PROBLEM: criterios de la nueva norma",
+          "variants": [
+            "criterios normativos"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "sourceFields": [
+            "problem"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "criterios de la nueva norma"
+        },
+        {
+          "label": "PROBLEM: respuesta sísmica",
+          "variants": [
+            "respuesta sísmica"
+          ],
+          "role": "PROBLEM",
+          "tier": 1,
+          "sourceFields": [
+            "problem"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "respuesta sísmica"
+        },
+        {
+          "label": "OBJECT: Especímenes de albañilería",
+          "variants": [
+            "especímenes de albañilería"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "sourceFields": [
+            "object"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "Especímenes de albañilería"
+        },
+        {
+          "label": "CONTEXT: Perú",
+          "variants": [
+            "Perú"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "sourceFields": [
+            "context"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "Perú"
+        },
+        {
+          "label": "OUTPUT: Evaluación de criterios normativos para diseño sismorresistente",
+          "variants": [
+            "evaluación de criterios normativos"
+          ],
+          "role": "OUTPUT",
+          "tier": 2,
+          "sourceFields": [
+            "intendedOutput"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "Evaluación de criterios normativos para diseño sismorresistente"
+        }
+      ]
+    },
+    "queries": {
+      "compositionVersion": "scientific-query-composition.v2",
+      "plannedQueries": [
+        {
+          "id": "q1",
+          "family": "CORE_PHENOMENON",
+          "relaxationLevel": 1,
+          "requiredConcepts": [
+            "Simulación sísmica",
+            "albañilería"
+          ],
+          "refiners": [],
+          "sourceFields": [
+            "originalIdea",
+            "concepts"
+          ],
+          "query": "(\"Simulación sísmica\" OR \"Seismic simulation\") AND (\"albañilería\")",
+          "reason": "Main phenomenon and object/concept without secondary qualifiers"
+        },
+        {
+          "id": "q2",
+          "family": "OBJECT_OR_SYSTEM",
+          "relaxationLevel": 0,
+          "requiredConcepts": [
+            "Simulación sísmica",
+            "Especímenes de albañilería de escala natural"
+          ],
+          "refiners": [],
+          "sourceFields": [
+            "originalIdea",
+            "object"
+          ],
+          "query": "(\"Simulación sísmica\" OR \"Seismic simulation\") AND (\"especímenes de albañilería de escala natural\")",
+          "reason": "Confirmed object qualifier; general query remains available"
+        }
+      ],
+      "necessaryOnly": [
+        "(\"Simulación sísmica\" OR \"Seismic simulation\") AND (\"albañilería\")",
+        "(\"Simulación sísmica\" OR \"Seismic simulation\") AND (\"especímenes de albañilería de escala natural\")"
+      ],
+      "complementaryBoosted": [],
+      "optionalBackups": [],
+      "validation": {
+        "valid": true,
+        "reasons": []
+      }
+    }
+  },
+  "mini": {
+    "model": "gpt-5.4-mini-2026-03-17",
+    "enrichment": {
+      "schemaVersion": "search-enrichment.v1",
+      "policyVersion": "semantic-retrieval.v2",
+      "planMode": "SEMANTIC",
+      "status": "READY",
+      "terms": [
+        {
+          "sourceField": "scope",
+          "anchor": "Simulación sísmica aplicada a especímenes de escala natural de albañilería.",
+          "text": "simulación sísmica",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "scope"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "simulación sísmica",
+          "text": "seismic simulation",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "albañilería",
+          "text": "masonry",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "escala natural",
+          "text": "full-scale",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "object",
+          "anchor": "Especímenes de albañilería de escala natural.",
+          "text": "especímenes de albañilería de escala natural",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "object"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "object",
+          "anchor": "Especímenes de albañilería de escala natural.",
+          "text": "full-scale masonry specimens",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "object"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "authority": "CENTRAL",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "albañilería",
+          "text": "masonry specimens",
+          "type": "RELATED_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "diseño sismorresistente",
+          "text": "diseño sismorresistente",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "concepts",
+          "anchor": "diseño sismorresistente",
+          "text": "seismic-resistant design",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "concepts"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "purpose",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "text": "criterios normativos",
+          "type": "RELATED_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "purpose"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "purpose",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "text": "normative criteria",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "purpose"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "purpose",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "text": "evaluation",
+          "type": "RELATED_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "purpose"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "context",
+          "anchor": "Perú y nueva norma de diseño sismorresistente del 2026.",
+          "text": "Perú",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "context"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "context",
+          "anchor": "Perú y nueva norma de diseño sismorresistente del 2026.",
+          "text": "Peru",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "context"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "context",
+          "anchor": "Perú y nueva norma de diseño sismorresistente del 2026.",
+          "text": "new seismic-resistant design code 2026",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "context"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "context",
+          "anchor": "Perú y nueva norma de diseño sismorresistente del 2026.",
+          "text": "new code",
+          "type": "RELATED_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "context"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "taxonomy",
+          "anchor": "Ingeniería civil estructural / sismorresistencia.",
+          "text": "structural civil engineering",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "taxonomy"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "taxonomy",
+          "anchor": "Ingeniería civil estructural / sismorresistencia.",
+          "text": "sismorresistencia",
+          "type": "EXACT_TERM",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "taxonomy"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "taxonomy",
+          "anchor": "Ingeniería civil estructural / sismorresistencia.",
+          "text": "seismic resistance",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "taxonomy"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        }
+      ],
+      "ambiguities": [
+        {
+          "field": "context",
+          "reason": "La identidad exacta de la 'nueva norma de diseño sismorresistente del 2026' no está especificada; solo puede recuperarse como norma/código nuevo de diseño sismorresistente con referencia temporal 2026.",
+          "blocksSearch": false
+        },
+        {
+          "field": "purpose",
+          "reason": "'Evaluar' describe una acción de investigación y no un método específico; no se infiere diseño experimental, modelación o protocolo concreto.",
+          "blocksSearch": false
+        }
+      ],
+      "researchActionInterpretation": [
+        {
+          "sourceField": "purpose",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "text": "criterios normativos",
+          "type": "RELATED_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "purpose"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "purpose",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "text": "normative criteria",
+          "type": "TRANSLATION",
+          "confidence": "HIGH",
+          "sourceFields": [
+            "purpose"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "authority": "REFINER",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        },
+        {
+          "sourceField": "purpose",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "text": "evaluation",
+          "type": "RELATED_TERM",
+          "confidence": "MEDIUM",
+          "sourceFields": [
+            "purpose"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "authority": "EXPLORATORY",
+          "provenance": "AI_DERIVED_FOR_SEARCH"
+        }
+      ],
+      "likelyEvidenceRoles": [
+        "DIRECT",
+        "THEORETICAL",
+        "CONTEXTUAL"
+      ],
+      "confidence": "UNASSESSED",
+      "reasonCodes": [
+        "UNSUPPORTED_OR_UNSAFE_TERM"
+      ],
+      "explicitExclusions": []
+    },
+    "groups": {
+      "necessary": [
+        {
+          "label": "CONCEPT: simulación sísmica",
+          "variants": [
+            "seismic simulation"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "simulación sísmica"
+        },
+        {
+          "label": "CONCEPT: albañilería",
+          "variants": [
+            "masonry"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "albañilería"
+        },
+        {
+          "label": "CONCEPT: escala natural",
+          "variants": [
+            "full-scale"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "escala natural"
+        },
+        {
+          "label": "OBJECT: Especímenes de albañilería de escala natural.",
+          "variants": [
+            "especímenes de albañilería de escala natural",
+            "full-scale masonry specimens"
+          ],
+          "role": "OBJECT",
+          "tier": 1,
+          "sourceFields": [
+            "object"
+          ],
+          "authority": "CENTRAL",
+          "anchor": "Especímenes de albañilería de escala natural."
+        }
+      ],
+      "complementary": [
+        {
+          "label": "CONTEXT: Simulación sísmica aplicada a especímenes de escala natural de albañilería.",
+          "variants": [
+            "simulación sísmica"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "sourceFields": [
+            "scope"
+          ],
+          "authority": "REFINER",
+          "anchor": "Simulación sísmica aplicada a especímenes de escala natural de albañilería."
+        },
+        {
+          "label": "CONCEPT: diseño sismorresistente",
+          "variants": [
+            "diseño sismorresistente",
+            "seismic-resistant design"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "REFINER",
+          "anchor": "diseño sismorresistente"
+        },
+        {
+          "label": "PURPOSE: Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "variants": [
+            "normative criteria"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "sourceFields": [
+            "purpose"
+          ],
+          "authority": "REFINER",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural."
+        },
+        {
+          "label": "CONTEXT: Perú y nueva norma de diseño sismorresistente del 2026.",
+          "variants": [
+            "Perú",
+            "Peru",
+            "new seismic-resistant design code 2026"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "sourceFields": [
+            "context"
+          ],
+          "authority": "REFINER",
+          "anchor": "Perú y nueva norma de diseño sismorresistente del 2026."
+        },
+        {
+          "label": "CONTEXT: Ingeniería civil estructural / sismorresistencia.",
+          "variants": [
+            "structural civil engineering",
+            "sismorresistencia",
+            "seismic resistance"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "sourceFields": [
+            "taxonomy"
+          ],
+          "authority": "REFINER",
+          "anchor": "Ingeniería civil estructural / sismorresistencia."
+        }
+      ],
+      "optional": [
+        {
+          "label": "CONCEPT: albañilería",
+          "variants": [
+            "masonry specimens"
+          ],
+          "role": "CONCEPT",
+          "tier": 1,
+          "sourceFields": [
+            "concepts"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "albañilería"
+        },
+        {
+          "label": "PURPOSE: Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural.",
+          "variants": [
+            "criterios normativos",
+            "evaluation"
+          ],
+          "role": "PURPOSE",
+          "tier": 1,
+          "sourceFields": [
+            "purpose"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "Evaluar los criterios de la nueva norma de diseño sismorresistente del 2026 a partir de una simulación sísmica de especímenes de albañilería a escala natural."
+        },
+        {
+          "label": "CONTEXT: Perú y nueva norma de diseño sismorresistente del 2026.",
+          "variants": [
+            "new code"
+          ],
+          "role": "CONTEXT",
+          "tier": 2,
+          "sourceFields": [
+            "context"
+          ],
+          "authority": "EXPLORATORY",
+          "anchor": "Perú y nueva norma de diseño sismorresistente del 2026."
+        }
+      ]
+    },
+    "queries": {
+      "compositionVersion": "scientific-query-composition.v2",
+      "plannedQueries": [
+        {
+          "id": "q1",
+          "family": "CORE_PHENOMENON",
+          "relaxationLevel": 1,
+          "requiredConcepts": [
+            "escala natural",
+            "albañilería"
+          ],
+          "refiners": [],
+          "sourceFields": [
+            "concepts"
+          ],
+          "query": "(\"full-scale\") AND (\"masonry\")",
+          "reason": "Main phenomenon and object/concept without secondary qualifiers"
+        },
+        {
+          "id": "q2",
+          "family": "MODELING_OR_ANALYSIS_PRECEDENT",
+          "relaxationLevel": 3,
+          "requiredConcepts": [
+            "simulación sísmica",
+            "albañilería"
+          ],
+          "refiners": [],
+          "sourceFields": [
+            "concepts"
+          ],
+          "query": "(\"seismic simulation\") AND (\"masonry\")",
+          "reason": "Grounded alternative precedent, not a chosen research method"
+        }
+      ],
+      "necessaryOnly": [
+        "(\"full-scale\") AND (\"masonry\")",
+        "(\"seismic simulation\") AND (\"masonry\")"
+      ],
+      "complementaryBoosted": [],
+      "optionalBackups": [],
+      "validation": {
+        "valid": true,
+        "reasons": []
+      }
+    }
+  }
+}

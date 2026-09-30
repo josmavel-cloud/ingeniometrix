@@ -194,19 +194,29 @@ export function getProjectTemplateKeyForUniversity(
   return PROJECT_UNIVERSITY_TEMPLATE_KEYS[universityCode];
 }
 
-export function getUniversityRecordByProjectCode(code: ProjectUniversityCode) {
-  if (code === "OTHER") {
+export function getUniversityRecordByProjectCode(code: ProjectUniversityCode | null | undefined) {
+  if (!code || code === "OTHER") {
     return null;
   }
 
   return findUniversityRecordByCode(code);
 }
 
-export function getUniversityDisplayNameByCode(code: ProjectUniversityCode) {
+export function getUniversityDisplayNameByCode(code: ProjectUniversityCode | null | undefined) {
+  if (!code) return "";
   return getUniversityRecordByProjectCode(code)?.name ?? PROJECT_UNIVERSITY_FALLBACK_LABELS[code];
 }
 
-export function buildUniversityResearchContext(code: ProjectUniversityCode) {
+export function buildUniversityResearchContext(code: ProjectUniversityCode | null | undefined) {
+  if (!code) {
+    return {
+      universityName: "",
+      locationLabel: "",
+      managementLabel: "",
+      territorialScope: "",
+      contextSummary: "No se proporciono una institucion; no asumas requisitos universitarios especificos.",
+    };
+  }
   const record = getUniversityRecordByProjectCode(code);
   const displayName = getUniversityDisplayNameByCode(code);
   const locationParts = [record?.district, record?.province, record?.department].filter(

@@ -1,0 +1,27 @@
+export const STEP6_HERO_IMAGE_PROMPT = {
+  version: "ingeniometrix-step6-hero-image-v1",
+  storage: "filesystem_prompt_registry",
+  visualType: "methodological_infographic_cover",
+  promptTemplate: [
+    "Crear una imagen vertical de alta calidad para caratula de propuesta academica como infografia metodologica sobria.",
+    "No debe ser portada generica ni imagen decorativa.",
+    "Titulo contextual, no renderizar texto largo dentro de la imagen: {{title}}.",
+    "Objeto o tema central: {{topic}}.",
+    "Area de conocimiento: {{knowledge_area}}.",
+    "Contexto de aplicacion: {{country_context}}.",
+    "Metodologia o enfoque: {{methodology}}.",
+    "Secciones que el documento sintetiza: {{section_plan_summary}}.",
+    "Composicion: sujeto central claro, 3 a 5 nodos conectados, flechas discretas, modulo de contexto/aplicacion y salida academica.",
+    "Jerarquia visual: objeto de estudio, flujo metodologico, herramientas/componentes, contexto y entrega academica.",
+    "Estilo: profesional, academico, sobrio, limpio, legible, con iconografia conceptual y diagramacion de proceso.",
+    "No inventar graficos de datos, resultados, cifras, validaciones, citas, DOI, logos, marcas ni personas reconocibles.",
+  ].join(" "),
+  negativePrompt: [
+    "No usar estilo poster sensacionalista.",
+    "No crear portada generica de stock.",
+    "No mostrar resultados, rankings, graficos de datos falsos ni cifras.",
+    "No incluir citas bibliograficas, DOI, nombres de fuentes, rutas, hashes, prompts, quality gates ni metadatos internos.",
+    "No incluir logos ni marcas de agua.",
+    "No usar texto largo dentro de la imagen.",
+  ].join(" "),
+} as const;

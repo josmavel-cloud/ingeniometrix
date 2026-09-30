@@ -1,3 +1,5 @@
+import { SEARCH_QUERY_PLANNER_1_PROMPT } from "@/server/mvp/prompts/search-query-planner.v1";
+import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import referenceSearchPlanSchemaJson from "@/ai/schemas/reference-search-plan.schema.json";
 import { APP_DEFAULT_LANGUAGE } from "@/lib/language";
 import {
@@ -105,53 +107,7 @@ function buildPrompt(input: BuildReferenceSearchPlanInput) {
   const researchScope =
     pickOptionalSearchContext(input.researchLine, 8) ?? "UNSPECIFIED";
 
-  return `
-You are a senior academic literature retrieval specialist for master's thesis planning.
-Your task is to convert a student's structured intake into high-quality OpenAlex search queries.
-
-Search environment:
-- OpenAlex retrieval works better with English-first academic terminology
-- the student's original intake may be written in Spanish
-- preserve the technical meaning, but produce retrieval outputs optimized for English-language titles and abstracts
-- current project language is ${input.activeLanguage || APP_DEFAULT_LANGUAGE}, but search outputs should be English-first unless the topic is inherently local-language specific
-
-Primary goal:
-- maximize retrieval of recent, technically useful academic sources for a traceable blueprint
-
-Important rules:
-- do not invent facts, methods, populations, or results
-- do not turn the intake into a thesis proposal
-- do not use marketing wording or educational coaching language
-- use terminology commonly found in journal articles, review papers, and engineering research
-- prioritize short, high-signal query strings likely to match titles and abstracts
-- keep the core topic dominant
-- use problem context only if it improves precision
-- use target population only if it materially improves precision
-- avoid unnecessary institutional or program wording
-- preserve domain-specific technical terms if the user already provided them
-- prefer queries that can retrieve at least several papers with abstracts, methods, or technical findings
-- prefer recent literature when that does not distort the topic
-
-Input intake:
-- topic_es: ${input.topic}
-- problem_context_es: ${input.problemContext ?? "UNSPECIFIED"}
-- target_population_es: ${input.targetPopulation ?? "UNSPECIFIED"}
-- preferred_methodology_es: ${input.preferredMethodology ?? "UNSPECIFIED"}
-- research_line_es: ${input.researchLine ?? "UNSPECIFIED"}
-
-Compressed retrieval hints:
-- problem_frame_hint: ${problemFrame}
-- population_scope_hint: ${populationScope}
-- method_scope_hint: ${methodScope}
-- research_scope_hint: ${researchScope}
-
-Return a JSON object with:
-- normalized_topic: concise academic retrieval topic in English
-- intent_summary: one-sentence English summary of what literature should be retrieved
-- search_queries: 2 to 4 short English-first OpenAlex queries with different retrieval angles
-- cross_language_queries: up to 3 optional backup queries in Spanish or mixed language only if they may improve recall
-- focus_terms: 5 to 10 high-value English technical terms for local reranking
-`.trim();
+  return renderVersionedPrompt(SEARCH_QUERY_PLANNER_1_PROMPT, { var_0: (input.activeLanguage || APP_DEFAULT_LANGUAGE), var_1: (input.topic), var_2: (input.problemContext ?? "UNSPECIFIED"), var_3: (input.targetPopulation ?? "UNSPECIFIED"), var_4: (input.preferredMethodology ?? "UNSPECIFIED"), var_5: (input.researchLine ?? "UNSPECIFIED"), var_6: (problemFrame), var_7: (populationScope), var_8: (methodScope), var_9: (researchScope) }).trim();
 }
 
 export async function buildReferenceSearchPlan(input: BuildReferenceSearchPlanInput) {
@@ -163,6 +119,7 @@ export async function buildReferenceSearchPlan(input: BuildReferenceSearchPlanIn
       provider,
       prompt: buildPrompt(input),
       schemaName: "reference_search_plan",
+      trackingAttribution: { promptVersion: SEARCH_QUERY_PLANNER_1_PROMPT.version },
       schema: referenceSearchPlanSchemaJson as Record<string, unknown>,
     });
 

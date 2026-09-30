@@ -16,7 +16,7 @@ export function FloatingNavbar({
 }: FloatingNavbarProps) {
   return (
     <header className="sticky top-4 z-30 mx-auto w-full max-w-6xl px-4 sm:px-6">
-      <div className="flex items-center justify-between gap-3 rounded-[30px] border border-[rgba(74,58,97,0.12)] bg-[rgba(255,255,255,0.84)] px-4 py-3 text-[var(--color-ink)] shadow-[0_20px_50px_rgba(23,19,31,0.08)] backdrop-blur sm:px-5 sm:py-4 xl:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[30px] border border-[rgba(74,58,97,0.12)] bg-[rgba(255,255,255,0.84)] px-4 py-3 text-[var(--color-ink)] shadow-[0_20px_50px_rgba(23,19,31,0.08)] backdrop-blur sm:flex-nowrap sm:px-5 sm:py-4 xl:px-6">
         <Link className="min-w-0 flex-1" href="/">
           <BrandBadge compact={compact} context={brandContext} />
         </Link>
@@ -35,7 +35,13 @@ export function FloatingNavbar({
           </nav>
         )}
 
-        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <div
+          className={
+            compact
+              ? "flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap sm:gap-3"
+              : "flex shrink-0 items-center gap-2 sm:gap-3"
+          }
+        >
           {action ?? (
             <a
               className="brand-button-primary px-3 py-2 text-sm font-semibold sm:px-4"

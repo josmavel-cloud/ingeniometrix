@@ -21,6 +21,7 @@ const SCRYPT_PARAMS = {
   p: 1,
   maxmem: 64 * 1024 * 1024,
 };
+const DUMMY_PASSWORD_HASH = "scrypt$v=1$N=16384$r=8$p=1$SW5nZW5pb21ldHJpeER1bW15$Hck8qb3rAFIjaJbDBHmJ3S6ZXZmWfE1M-fbjpfkDX_m5ShAhOiapagfxwb5s-xAjZcFVq0P8R-wS9uoUcd7bSg";
 
 export function validatePassword(password: string) {
   return password.length >= 12;
@@ -75,11 +76,7 @@ function parsePasswordHash(value: string) {
 }
 
 export async function verifyPassword(password: string, storedHash: string | null | undefined) {
-  if (!storedHash) {
-    return false;
-  }
-
-  const parsed = parsePasswordHash(storedHash);
+  const parsed = parsePasswordHash(storedHash ?? DUMMY_PASSWORD_HASH);
 
   if (!parsed) {
     return false;

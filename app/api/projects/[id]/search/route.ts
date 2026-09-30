@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/server/auth/session";
 import { getProjectContentLanguageForUser } from "@/server/projects/project-language-service";
 import { searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
+import { withPaidRequest } from "@/server/mvp/pre-job-budget";
+import { loadSearchInput } from "@/server/retrieval/search-intent-service";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -14,14 +16,18 @@ export async function POST(_request: Request, context: RouteContext) {
   try {
     const user = await requireCurrentUser();
     const { id } = await context.params;
+    const searchInput = await loadSearchInput(user.id, id);
     language = await getProjectContentLanguageForUser(user.id, id);
     const body = (await _request.json().catch(() => ({}))) as {
       desiredTotal?: number;
+      batchKind?: "initial" | "more";
     };
-    const result = await searchProjectReferencesV2(user.id, id, {
+    if (body.batchKind !== undefined && body.batchKind !== "initial" && body.batchKind !== "more") throw new Error("INVALID_SEARCH_BATCH_KIND");
+    if (body.desiredTotal !== undefined && (!Number.isInteger(body.desiredTotal) || body.desiredTotal < 1 || body.desiredTotal > 40)) throw new Error("INVALID_SEARCH_SIZE");
+    const result = await withPaidRequest(_request, user.id, id, body, () => searchProjectReferencesV2(user.id, id, searchInput, {
       desiredTotal: body.desiredTotal,
-      languageOverride: language,
-    });
+      batchKind: body.batchKind,
+    }));
 
     return NextResponse.json({ result });
   } catch (error) {

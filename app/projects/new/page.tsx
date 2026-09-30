@@ -1,7 +1,8 @@
-import { CreateProjectForm } from "@/components/projects/create-project-form";
+import { ConversationalProjectCreate } from "@/components/projects/conversational-project-create";
 import { ProjectShell } from "@/components/projects/project-shell";
-import { requireCurrentUser } from "@/server/auth/session";
-import { getRequestLanguage } from "@/server/i18n/request-language";
+import { requireCurrentUser } from "@/lib/backend-http";
+
+export const dynamic = "force-dynamic";
 
 type NewProjectPageProps = {
   searchParams?: Promise<{
@@ -27,8 +28,8 @@ function getFirstNonBlankSearchValue(
 }
 
 export default async function NewProjectPage({ searchParams }: NewProjectPageProps) {
-  await requireCurrentUser();
-  const language = await getRequestLanguage();
+  const user = await requireCurrentUser();
+  const language = "es" as const;
   const resolvedSearchParams = (await searchParams) ?? {};
   const initialInterestText = getFirstNonBlankSearchValue(
     resolvedSearchParams.tema,
@@ -39,18 +40,11 @@ export default async function NewProjectPage({ searchParams }: NewProjectPagePro
 
   return (
     <ProjectShell
-      title={language === "en" ? "Create project" : "Crear proyecto"}
-      description={
-        language === "en"
-          ? "Complete the base context and continue to intake. Everything else is refined later."
-          : "Completa el contexto base y continua al intake. Todo lo demas se refina despues."
-      }
+      title="Crear proyecto"
+      description="Define tu investigación con una conversación breve y una revisión explícita."
     >
       <section className="surface-panel rounded-[34px] p-4 sm:p-8">
-        <CreateProjectForm
-          initialInterestText={initialInterestText}
-          language={language}
-        />
+        <ConversationalProjectCreate initialIdea={initialInterestText} ownerId={user.id} />
       </section>
     </ProjectShell>
   );

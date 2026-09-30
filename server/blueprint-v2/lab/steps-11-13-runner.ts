@@ -560,7 +560,7 @@ async function resolveLabInstitutionalRuntime(
       projectTemplateKey: project.templateKey,
       projectUniversity: project.university,
       projectDegreeLevel: project.degreeLevel,
-      projectProgram: project.program,
+      projectProgram: project.program ?? "",
     });
 
     if (resolved.runtime.templateKey !== MASTER_TEMPLATE_LATAM_KEY) {
@@ -690,7 +690,7 @@ export async function runMasterBlueprintSteps11To13(input: {
     projectTemplateKey: fixtures.project.templateKey,
     projectDegreeLevel: fixtures.project.degreeLevel,
     projectUniversity: fixtures.project.university,
-    projectProgram: fixtures.project.program,
+    projectProgram: fixtures.project.program ?? "",
     researchLine: fixtures.project.intake.researchLine,
     drafts: draftsWithMatrix,
     evidenceLedger,

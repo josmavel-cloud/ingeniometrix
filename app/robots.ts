@@ -6,10 +6,11 @@ export default function robots(): MetadataRoute.Robots {
   return {
     rules: {
       userAgent: "*",
-      allow: ["/", "/campana", "/recursos", "/recursos/"],
+      allow: ["/", "/recursos", "/recursos/"],
       disallow: [
         "/api/",
         "/blueprint-launch/",
+        "/campana",
         "/lab/",
         "/preview/",
         "/projects/",
