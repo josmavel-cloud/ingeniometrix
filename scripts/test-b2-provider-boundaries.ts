@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { searchOpenAlexWorks } from "@/server/retrieval/openalex-client";
+import { OpenAlexRequestError, searchOpenAlexWorks } from "@/server/retrieval/openalex-client";
 import { createOpenAiProvider } from "@/llm/providers/openai";
 
 async function main() {
@@ -7,7 +7,13 @@ async function main() {
   let calls = 0;
   globalThis.fetch = async () => { calls++; return new Response("Rate limited", { status: 429, headers: { "retry-after": "12056" } }); };
   try {
-    await assert.rejects(searchOpenAlexWorks("synthetic regression query"), /Retry-After 12056/);
+    await assert.rejects(searchOpenAlexWorks("synthetic regression query"), (error: unknown) => {
+      assert.ok(error instanceof OpenAlexRequestError);
+      assert.equal(error.code, "OPENALEX_RATE_LIMIT_BURST");
+      assert.equal(error.httpStatus, 429);
+      assert.equal(error.rateLimit.resetSeconds, 12056);
+      return true;
+    });
     assert.equal(calls, 1, "No insistir contra el limite externo ni esperar horas");
     process.env.IMX_LLM_RUN_BUDGET_USD = "0.000001";
     process.env.LLM_REQUEST_MAX_RETRIES = "0";

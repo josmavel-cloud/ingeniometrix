@@ -6,6 +6,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { prisma } from "@/lib/prisma";
 import { issueSessionToken, revokeSessionToken } from "@/server/auth/session";
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
+import { createConversationalProject, readDefinition, changeDefinition, confirmDefinition } from "@/server/projects/conversational-definition-service";
+import { prepareSelectedSources } from "@/server/projects/source-preparation-service";
+import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
 
 async function main() {
   if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("Isolated DB required");
@@ -32,19 +35,27 @@ async function main() {
     assert.equal((await request("/api/auth/google/start", "POST", {})).status, 503); checks++;
     assert.equal((await request("/api/payments/mercado-pago/webhook", "POST", {})).status, 503); checks++;
     assert.equal((await request("/api/commercial", "POST", { offerId: "forged", priceMinor: 1, userId: b.id })).status, 409); checks++;
-    const project = await prisma.project.create({ data: { userId: a.id, title: "Offline HTTP fixture", program: "Fixture", degreeLevel: "MAESTRIA", templateKey: "GENERIC_POSGRADO_PE", intake: { create: { topic: "Offline", problemContext: "Fixture", targetPopulation: "Corpus", preferredMethodology: "Documental", availableData: "Fixture", academicConstraints: "Fixture" } } } });
+    const project = await createConversationalProject(a.id, { intakeMode: "conversation", idea: "Offline HTTP fixture", degreeLevel: "MAESTRIA", requestId: randomUUID() });
+    const initial = await readDefinition(a.id, project.id);
+    assert.ok(initial);
+    const definition = await changeDefinition(a.id, project.id, { requestId: randomUUID(), baseRevision: initial.revision,
+      etag: initial.etag, action: { kind: "EDIT", field: "concepts", value: "feedback; digital mathematics", knowledge: "KNOWN" } });
+    await confirmDefinition(a.id, project.id, definition.revision, definition.definitionHash);
     const ref = await prisma.reference.create({ data: { title: "Offline HTTP reference", normalizedTitle: "offline-http-reference", authorsJson: ["Fixture"], abstract: "Offline evidence" } }); refs.push(ref.id);
     await prisma.projectReference.create({ data: { projectId: project.id, referenceId: ref.id, selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
-    const rejected = await request(`/api/projects/${project.id}/blueprints`, "POST", {});
+    await prepareSelectedSources(a.id, project.id);
+    await confirmEvidenceSet(a.id, project.id);
+    const generationRequest = { draftRevision: definition.revision };
+    const rejected = await request(`/api/projects/${project.id}/blueprints`, "POST", generationRequest);
     assert.equal(rejected.status, 402, await rejected.text()); checks++;
     assert.equal(await prisma.blueprintJob.count({ where: { projectId: project.id } }), 0); checks++;
     await grantTestPackage(a.id);
-    const started = await request(`/api/projects/${project.id}/blueprints`, "POST", {});
+    const started = await request(`/api/projects/${project.id}/blueprints`, "POST", generationRequest);
     assert.equal(started.status, 202, await started.clone().text()); const jobId = (await started.json()).job.id; checks++;
     assert.equal(await prisma.commercialReservation.count({ where: { jobId } }), 1); checks++;
-    const retry = await request(`/api/projects/${project.id}/blueprints`, "POST", {});
+    const retry = await request(`/api/projects/${project.id}/blueprints`, "POST", generationRequest);
     assert.equal((await retry.json()).job.id, jobId); checks++;
-    const denied = await request(`/api/projects/${project.id}/blueprints`, "POST", {}, other);
+    const denied = await request(`/api/projects/${project.id}/blueprints`, "POST", generationRequest, other);
     assert.ok(denied.status >= 400); checks++;
     assert.equal((await request(`/api/projects/${project.id}`, "GET", undefined, other)).status, 404); checks++;
     assert.equal((await request("/api/commercial/purchases/unknown", "GET", undefined, other)).status, 404); checks++;
