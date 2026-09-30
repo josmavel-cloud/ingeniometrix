@@ -76,13 +76,16 @@ export async function submitIntakeTurn(userId: string, projectId: string, raw: u
       failureStage = "OUTPUT_VALIDATION";
       if (parsed.baseRevision !== input.baseRevision) throw new Error("MODEL_REVISION_MISMATCH");
       if ([...parsed.ambiguities, ...(parsed.nextQuestion ? [parsed.nextQuestion] : [])].some(a => ["originalIdea", "academicLevel"].includes(a.field))) throw new Error("USE_EXPLICIT_FIELD_CONTROL");
-      if (new Set(parsed.proposedChanges.map(p => p.field)).size !== parsed.proposedChanges.length) throw new Error("DUPLICATE_PROPOSED_FIELD");
-      for (const p of parsed.proposedChanges) {
+      // UNKNOWN is not a proposed scientific fact. Some structured model
+      // responses still put explanatory text in its value; discard that field
+      // proposal instead of wasting the paid turn or asserting uncertain text.
+      const normalized = { ...parsed, proposedChanges: parsed.proposedChanges.filter(p => p.knowledge === "KNOWN" && p.value.trim()) };
+      if (new Set(normalized.proposedChanges.map(p => p.field)).size !== normalized.proposedChanges.length) throw new Error("DUPLICATE_PROPOSED_FIELD");
+      for (const p of normalized.proposedChanges) {
         if (["originalIdea", "academicLevel"].includes(p.field) || p.sourceMessageIds.some(id => !knownIds.has(id))) throw new Error("INVALID_PROPOSAL_PROVENANCE");
-        if (p.knowledge !== "KNOWN" && p.value.trim()) throw new Error("UNKNOWN_MUST_BE_EMPTY");
         if (claim.view.definition.proposals.some(old => old.status === "REJECTED" && old.field === p.field && old.proposed.value === p.value)) throw new Error("REJECTED_PROPOSAL_REPEATED");
       }
-      return { ...parsed, ambiguities: materialAmbiguities(parsed), nextQuestion: materialQuestion(parsed, claim.view.definition, previousQuestions) };
+      return { ...normalized, ambiguities: materialAmbiguities(normalized), nextQuestion: materialQuestion(normalized, claim.view.definition, previousQuestions) };
     });
     failureStage = "DRAFT_PERSISTENCE";
     return await prisma.$transaction(async tx => {

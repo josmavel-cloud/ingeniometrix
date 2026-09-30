@@ -18,7 +18,7 @@ async function main() {
       const state = (await readDefinition(user.id, p.id))!;
       const input = { message: index === 0 ? idea : "Me interesa comprender el fenómeno, aún no conozco el método", requestId: randomUUID(), baseRevision: state.revision, etag: state.etag, ...(index === 0 ? { initial: true as const } : {}) };
       const mock = async () => { calls++; return { schemaVersion: "intake-turn.v1", baseRevision: input.baseRevision, assistantText: "Podemos precisar el objeto sin elegir aún un método.",
-        proposedChanges: [{ field: "purpose", value: "Comprender el fenómeno", origin: "AI_INFERRED", knowledge: "KNOWN", sourceMessageIds: [input.requestId], interpretationConfidence: "MEDIUM" }, ...(index === 0 ? [{ field: "object", value: "Sistema de visualización geoespacial", origin: "AI_INFERRED" as const, knowledge: "KNOWN" as const, sourceMessageIds: [input.requestId], interpretationConfidence: "MEDIUM" as const }] : [])],
+        proposedChanges: [{ field: "purpose", value: "Comprender el fenómeno", origin: "AI_INFERRED", knowledge: "KNOWN", sourceMessageIds: [input.requestId], interpretationConfidence: "MEDIUM" }, ...(index === 0 ? [{ field: "object", value: "Sistema de visualización geoespacial", origin: "AI_INFERRED" as const, knowledge: "KNOWN" as const, sourceMessageIds: [input.requestId], interpretationConfidence: "MEDIUM" as const }, { field: "methodPreference", value: "Método todavía no determinado", origin: "AI_PROPOSED" as const, knowledge: "UNKNOWN" as const, sourceMessageIds: [input.requestId], interpretationConfidence: "LOW" as const }] : [])],
         ambiguities: [], nextQuestion: { field: "object", question: "¿Qué objeto o corpus te interesa?", options: [] }, starterIdea: null }; };
       const result = await submitIntakeTurn(user.id, p.id, input, mock);
       assert.equal(result.status, "COMPLETE");
@@ -27,6 +27,7 @@ async function main() {
         assert.equal((firstTurn.inputJson as { initial?: boolean }).initial, true);
         assert.equal((firstTurn.resultJson as { nextQuestion?: unknown }).nextQuestion, null, "A faithful proposal removes a redundant question");
         assert.equal(result.state!.definition.fields.object.value, "", "Proposal did not become scientific fact");
+        assert.equal(result.state!.definition.proposals.some(p => p.field === "methodPreference"), false, "Unknown model text is not a scientific proposal");
       }
       assert.equal(result.state!.definition.fields.purpose.value, "");
       assert.equal(result.state!.definition.proposals[0].proposed.acceptance, "UNREVIEWED");
