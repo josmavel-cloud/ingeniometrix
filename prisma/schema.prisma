@@ -655,12 +655,34 @@ model Reference {
   classification   ReferenceClassification?
   indexMemberships ReferenceIndexMembership[]
   keywords         ReferenceKeyword[]
+  displayTranslations ReferenceDisplayTranslation[]
 
   @@index([doi])
   @@index([normalizedTitle, year])
 }
 
-// Append-only snapshot of an explicit human evidence confirmation. Later
+// Presentation cache only. Bibliographic truth and evidence pool versions stay in Reference.
+model ReferenceDisplayTranslation {
+  id                 String   @id @default(uuid())
+  referenceId        String
+  contentHash        String
+  targetLanguage     String
+  policyVersion      String
+  sourceLanguage     String?
+  displayTitle       String?  @db.Text
+  displayAbstract    String?  @db.Text
+  provider           String?
+  model              String?
+  promptVersion      String?
+  provenance         String
+  createdAt          DateTime @default(now())
+  reference          Reference @relation(fields: [referenceId], references: [id], onDelete: Cascade)
+
+  @@unique([referenceId, contentHash, targetLanguage, policyVersion])
+  @@index([referenceId, targetLanguage])
+}
+
+// Append-only snapshot of a user-authorized evidence operation. Later
 // selection or preparation changes create a new version, never rewrite this.
 model ProjectEvidenceSet {
   id               String   @id @default(uuid())

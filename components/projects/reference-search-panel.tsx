@@ -15,6 +15,7 @@ import {
   MAX_SELECTED_REFERENCES,
   MIN_SELECTED_REFERENCES,
 } from "@/lib/research-workflow";
+import { registerSelectionFlush } from "@/lib/selection-save-queue";
 
 type ReferenceListItem = {
   id: string;
@@ -370,12 +371,12 @@ export function ReferenceSearchPanel({
     runSearch(nextVisibleTarget, "more");
   }
 
-  function saveSelection() {
+  async function saveSelectionForContinue() {
     setError(null);
     setMessage(null);
     setInfo(null);
 
-    const selectedReferenceIds = references
+    const selectedReferenceIds = selectionForFlush.current
       .filter((reference) => reference.selected)
       .sort((left, right) => (left.selectedOrder ?? 999) - (right.selectedOrder ?? 999))
       .map((reference) => reference.reference.id);
@@ -384,13 +385,10 @@ export function ReferenceSearchPanel({
       selectedReferenceIds.length < MIN_SELECTED_REFERENCES ||
       selectedReferenceIds.length > MAX_SELECTED_REFERENCES
     ) {
-      setError(copy.saveRange(MIN_SELECTED_REFERENCES, MAX_SELECTED_REFERENCES));
-      return;
+      throw new Error(copy.saveRange(MIN_SELECTED_REFERENCES, MAX_SELECTED_REFERENCES));
     }
 
-    startSaveTransition(async () => {
-      try {
-        const response = await fetch(`/api/projects/${projectId}/references`, {
+      const response = await fetch(`/api/projects/${projectId}/references`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -400,19 +398,17 @@ export function ReferenceSearchPanel({
 
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
 
-        if (!response.ok) {
-          setError(payload.error ?? copy.saveError);
-          return;
-        }
-
+        if (!response.ok) throw new Error(payload.error ?? copy.saveError);
         setMessage(copy.saved);
         window.dispatchEvent(new Event("imx-selection-saved"));
         router.refresh();
-      } catch {
-        setError(copy.saveError);
-      }
-    });
   }
+
+  const selectionForFlush = useRef(references);
+  selectionForFlush.current = references;
+  const flushCallback = useRef(saveSelectionForContinue);
+  flushCallback.current = saveSelectionForContinue;
+  useEffect(() => registerSelectionFlush(projectId, () => flushCallback.current()), [projectId]);
 
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
@@ -646,7 +642,7 @@ export function ReferenceSearchPanel({
                 <label className="inline-flex items-center gap-3 text-sm font-medium text-slate-600">
                   <input
                     checked={item.selected}
-                    className="size-4 rounded border-slate-300 text-lime-500 focus:ring-lime-400"
+                    className="size-4 rounded border-slate-300 text-[var(--color-plum)] focus:ring-[var(--color-lilac-strong)]"
                     onChange={() => toggleReference(item.reference.id)}
                     type="checkbox"
                   />
@@ -665,11 +661,15 @@ export function ReferenceSearchPanel({
                     {copy.selectionConflict}
                   </p>
                 ) : null}
-                <h3 className="font-[var(--font-heading)] text-lg font-semibold text-slate-950">
-                  {item.reference.translatedTitle ?? item.reference.title}
+                <h3 className="font-[var(--font-heading)] text-lg font-semibold text-[var(--color-ink)]">
+                  {item.reference.title}
                 </h3>
+                {item.reference.translatedTitle && item.reference.translatedTitle !== item.reference.title &&
+                  item.reference.sourceLanguage !== "es" ? <p className="mt-1 text-sm text-[var(--color-muted)]" lang="es">
+                    {item.reference.translatedTitle}
+                  </p> : null}
                 <p className="mt-2 text-sm text-slate-600">{roleLabels[item.primaryRole ?? "NONE"]} · {availabilityLabel(item)}</p>
-                {item.relevanceReason ? <p className="mt-2 text-sm leading-6 text-slate-600">{item.relevanceReason}</p> : null}
+                {item.relevanceReason ? <p className="mt-2 text-sm leading-6 text-slate-600"><strong>Por qué es relevante para tu investigación: </strong>{item.relevanceReason}</p> : null}
                 {item.userUploaded ? <p className="mt-2 text-xs text-amber-800">PDF aportado por ti: su identidad y pertinencia requieren revisión.</p> : null}
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold uppercase tracking-[0.18em]">
                   <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-slate-500">
@@ -691,14 +691,15 @@ export function ReferenceSearchPanel({
                     {renderAuthors(item.reference.authorsJson)}
                   </p>
                 ) : null}
-                {item.reference.abstract ? (
-                  <p className="mt-4 text-sm leading-7 text-slate-600">
-                    {(item.reference.translatedAbstract ?? item.reference.abstract).slice(0, 320)}
-                    {(item.reference.translatedAbstract ?? item.reference.abstract).length > 320
-                      ? "..."
-                      : ""}
-                  </p>
-                ) : null}
+                <div className="mt-4 text-sm leading-7 text-slate-600">
+                  <p className="font-semibold">Resumen del artículo</p>
+                  {!item.reference.abstract ? <p>La publicación no ofrece un resumen.</p> :
+                    item.reference.sourceLanguage === "es" || item.reference.translatedAbstract ?
+                      <p>{(item.reference.translatedAbstract ?? item.reference.abstract).slice(0, 320)}
+                        {(item.reference.translatedAbstract ?? item.reference.abstract).length > 320 ? "…" : ""}</p> :
+                      <details><summary className="cursor-pointer">Traducción pendiente; ver resumen original</summary>
+                        <p lang={item.reference.sourceLanguage ?? undefined}>{item.reference.abstract.slice(0, 320)}</p></details>}
+                </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {item.reference.pdfUrl ? (
                     <a
@@ -737,16 +738,9 @@ export function ReferenceSearchPanel({
                         {copy.pdfAccessible}:{" "}
                         {item.reference.pdfUrl && item.reference.pdfAccessible ? copy.yes : copy.notVerified}
                       </p>
-                      {item.reference.hasAutoTranslation &&
-                      item.reference.translatedTitle &&
-                      item.reference.translatedTitle !== item.reference.title ? (
-                        <p>{copy.originalTitle}: {item.reference.title}</p>
-                      ) : null}
-                      {item.reference.hasAutoTranslation &&
-                      item.reference.translatedAbstract &&
-                      item.reference.abstract ? (
-                        <p>{copy.originalAbstract}</p>
-                      ) : null}
+                      {item.reference.translatedAbstract && item.reference.abstract ?
+                        <details><summary className="cursor-pointer">Resumen original</summary>
+                          <p lang={item.reference.sourceLanguage ?? undefined}>{item.reference.abstract}</p></details> : null}
                     </div>
                   </details>
                 </div>
@@ -774,17 +768,7 @@ export function ReferenceSearchPanel({
         </div>
       ) : null}
 
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm leading-6 text-slate-500">{copy.saveHint}</p>
-        <button
-          className="brand-button-primary px-5 py-3 text-sm font-semibold disabled:cursor-wait disabled:opacity-70"
-          disabled={isSaving || references.length === 0}
-          onClick={saveSelection}
-          type="button"
-        >
-          {isSaving ? copy.saving : copy.saveSelection}
-        </button>
-      </div>
+      <p className="mt-6 text-sm leading-6 text-[var(--color-muted)]">Tu selección se guardará al continuar al plan.</p>
     </section>
   );
 }

@@ -8,6 +8,7 @@ import { MVP_SOURCE_INSPECTION_KEY, sourceInspectionFingerprint,
 import { evaluateSnapshotCoverage } from "@/server/retrieval/evidence-coverage-snapshot";
 import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import { loadSearchInput } from "@/server/retrieval/search-intent-service";
+import { definitionSchema } from "@/lib/conversational-intake";
 
 export const EVIDENCE_SET_VERSION = "evidence-set.v1";
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -48,12 +49,25 @@ export async function latestEvidenceSet(userId: string, projectId: string) {
   return prisma.projectEvidenceSet.findFirst({ where: { projectId }, orderBy: { version: "desc" } });
 }
 
-export async function confirmEvidenceSet(userId: string, projectId: string) {
+export async function confirmEvidenceSet(userId: string, projectId: string, operationId?: string) {
   const search = await loadSearchInput(userId, projectId);
   const searchIntentHash = fingerprint(search.intent);
   const searchSnapshot = await getLatestProjectReferenceSearchSnapshot(projectId);
   const coverage = searchSnapshot?.inputTrace?.searchIntentHash === searchIntentHash && !searchSnapshot.stale
     ? evaluateSnapshotCoverage(search.intent, searchSnapshot) : null;
+  // Verify potentially large private files before acquiring the project row lock.
+  const preflightRun = await prisma.mvpStepRun.findFirst({ where: { projectId, stepKey: MVP_SOURCE_INSPECTION_KEY,
+    status: { in: ["COMPLETED", "PARTIALLY_COMPLETED"] } }, orderBy: { startedAt: "desc" },
+    select: { id: true, outputSnapshotJson: true } });
+  const preflightReport = preflightRun?.outputSnapshotJson as MvpSourceInspectionResult | null;
+  const verifiedFullText = new Set<string>();
+  for (const item of preflightReport?.items ?? []) {
+    if (!item.downloaded_pdf_path || !item.full_text_path || !item.pdf_sha256 || !item.full_text_sha256) continue;
+    const [pdf, fullText] = await Promise.all([readFile(item.downloaded_pdf_path).catch(() => null),
+      readFile(item.full_text_path).catch(() => null)]);
+    if (pdf && fullText && createHash("sha256").update(pdf).digest("hex") === item.pdf_sha256 &&
+      createHash("sha256").update(fullText).digest("hex") === item.full_text_sha256) verifiedFullText.add(item.source_id);
+  }
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} AND "userId" = ${userId} FOR UPDATE`;
     const project = await tx.project.findFirst({ where: { id: projectId, userId }, include: {
@@ -66,12 +80,15 @@ export async function confirmEvidenceSet(userId: string, projectId: string) {
     if (search.intent.sourceKind === "CONFIRMED_DEFINITION" &&
       (confirmed?.revision !== search.intent.confirmedDraftRevision ||
        confirmed?.definitionHash !== search.intent.definitionHash ||
-       project.draft?.confirmedRevision !== search.intent.confirmedDraftRevision)) throw new Error("EVIDENCE_INTENT_STALE");
+       project.draft?.confirmedRevision !== search.intent.confirmedDraftRevision ||
+       fingerprint(definitionSchema.parse((project.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition)) !== search.intent.definitionHash))
+      throw new Error("EVIDENCE_INTENT_STALE");
     const selected = project.projectReferences;
     const selectedIds = selected.map(row => row.referenceId);
     const inspectionRun = await tx.mvpStepRun.findFirst({ where: { projectId, stepKey: MVP_SOURCE_INSPECTION_KEY,
       status: { in: ["COMPLETED", "PARTIALLY_COMPLETED"] } }, orderBy: { startedAt: "desc" },
       select: { id: true, outputSnapshotJson: true } });
+    if (inspectionRun?.id !== preflightRun?.id) throw new Error("EVIDENCE_PREPARATION_CHANGED");
     const report = inspectionRun?.outputSnapshotJson as MvpSourceInspectionResult | null;
     const inspectionById = new Map((report?.items ?? []).map(item => [item.source_id, item]));
     const materials = await tx.projectSourceMaterialization.findMany({ where: { projectId,
@@ -97,11 +114,7 @@ export async function confirmEvidenceSet(userId: string, projectId: string) {
       let preparationStatus = !item || !material ? "NOT_PREPARED" :
         item.source_fingerprint !== expected || materialFingerprint !== expected ? "STALE" : material.status;
       if (preparationStatus === "PREPARED_FULL_TEXT") {
-        const pdf = item?.downloaded_pdf_path ? await readFile(item.downloaded_pdf_path).catch(() => null) : null;
-        const fullText = item?.full_text_path ? await readFile(item.full_text_path).catch(() => null) : null;
-        if (!pdf || !fullText || !item?.pdf_sha256 || !item.full_text_sha256 ||
-          createHash("sha256").update(pdf).digest("hex") !== item.pdf_sha256 ||
-          createHash("sha256").update(fullText).digest("hex") !== item.full_text_sha256) {
+        if (!verifiedFullText.has(row.referenceId)) {
           preparationStatus = "STALE";
         }
       }
@@ -157,9 +170,9 @@ export async function confirmEvidenceSet(userId: string, projectId: string) {
     const created = await tx.projectEvidenceSet.create({ data: { projectId, createdBy: userId,
       version: (prior?.version ?? 0) + 1, searchIntentHash, definitionHash: search.intent.definitionHash,
       sourcePoolVersion, selectionHash, contentHash, readiness, snapshotJson: json(snapshot) } });
-    await tx.auditLog.create({ data: { projectId, userId, actorType: "USER",
-      eventType: "EVIDENCE_SET_CONFIRMED_V1", payloadJson: json({ evidenceSetId: created.id,
-        version: created.version, contentHash, readiness, limitations }) } });
+    await tx.auditLog.create({ data: { projectId, userId, actorType: operationId ? "SYSTEM" : "USER",
+      eventType: operationId ? "EVIDENCE_SET_ASSEMBLED_V1" : "EVIDENCE_SET_CONFIRMED_V1", payloadJson: json({ evidenceSetId: created.id,
+        version: created.version, contentHash, readiness, limitations, ...(operationId ? { operationId } : {}) }) } });
     return created;
   });
 }

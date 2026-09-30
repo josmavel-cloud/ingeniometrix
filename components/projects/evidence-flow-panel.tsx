@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, BookOpenCheck } from "lucide-react";
+import { startProjectPlan } from "@/lib/generation-client";
 
 type Prepared = { referenceId: string; status: string; evidenceLevel?: string; warnings?: string[] };
 type Evidence = { id: string; version: number; readiness: string; selectedSourceCount: number;
@@ -14,10 +16,13 @@ const statusLabel: Record<string, string> = {
   FAILED_ACCESS: "Documento no disponible; fuente conservada", IDENTITY_REVIEW_REQUIRED: "Identidad por revisar",
 };
 
-export function EvidenceFlowPanel({ projectId, selectedCount }: { projectId: string; selectedCount: number }) {
+export function EvidenceFlowPanel({ projectId, ownerId, selectedCount, confirmedDefinitionHash }: { projectId: string; ownerId: string;
+  selectedCount: number; confirmedDefinitionHash?: string | null }) {
+  const router = useRouter();
+  const submission = useRef(false);
   const [items, setItems] = useState<Prepared[]>([]);
   const [evidenceSet, setEvidenceSet] = useState<Evidence | null>(null);
-  const [busy, setBusy] = useState<"prepare" | "confirm" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   async function refresh() {
@@ -34,40 +39,30 @@ export function EvidenceFlowPanel({ projectId, selectedCount }: { projectId: str
     window.addEventListener("imx-selection-saved", onSelection);
     return () => window.removeEventListener("imx-selection-saved", onSelection);
   }, [projectId, selectedCount]);
-  async function submit(kind: "prepare" | "confirm") {
-    if (busy) return;
-    setBusy(kind); setError(null); setMessage(null);
+  async function continueToPlan() {
+    if (submission.current) return;
+    submission.current = true;
+    setBusy(true); setError(null); setMessage(null);
     try {
-      const endpoint = kind === "prepare" ? "sources/prepare" : "evidence-set";
-      const response = await fetch(`/api/projects/${projectId}/${endpoint}`, { method: "POST" });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error ?? "No se pudo completar la operación.");
-      setMessage(kind === "prepare" ? "Fuentes seleccionadas preparadas. Revisa sus límites antes de confirmar."
-        : "Conjunto de evidencia congelado. Los cambios posteriores crearán una nueva versión.");
-      await refresh();
+      await startProjectPlan(projectId, ownerId, confirmedDefinitionHash, true);
+      setMessage("Preparando tus fuentes. Puedes volver a este proyecto cuando quieras.");
+      router.push(`/projects/${projectId}?step=plan`);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo completar la operación."); }
-    finally { setBusy(null); }
+    finally { submission.current = false; setBusy(false); }
   }
   return <section className="surface-panel rounded-[28px] p-5 sm:p-7">
-    <h2 className="font-[var(--font-heading)] text-xl font-semibold">Preparar y confirmar evidencia</h2>
-    <p className="mt-2 text-sm leading-6 text-slate-600">Guarda primero tu selección. La preparación conserva las fuentes sin documento y declara sus límites; confirmar crea una versión inmutable para el plan.</p>
-    <div className="mt-4 flex flex-wrap gap-3">
-      <button className="brand-button-secondary px-4 py-2 text-sm font-semibold disabled:opacity-50"
-        disabled={Boolean(busy) || selectedCount === 0} onClick={() => void submit("prepare")} type="button">
-        {busy === "prepare" ? "Preparando…" : "Preparar fuentes seleccionadas"}
-      </button>
-      <button className="brand-button px-4 py-2 text-sm font-semibold disabled:opacity-50"
-        disabled={Boolean(busy) || selectedCount === 0 || items.some(item => ["NOT_PREPARED", "STALE"].includes(item.status))}
-        onClick={() => void submit("confirm")} type="button">
-        {busy === "confirm" ? "Confirmando…" : "Confirmar fuentes"}
-      </button>
-    </div>
+    <div className="flex items-start gap-3"><BookOpenCheck className="mt-1 size-5 text-[var(--color-plum)]" aria-hidden="true" />
+      <div><h2 className="font-[var(--font-heading)] text-xl font-semibold">Tus fuentes para el plan</h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-muted)]">Al continuar, guardaremos las fuentes elegidas y prepararemos la evidencia necesaria. La generación puede consumir créditos de tu cuenta.</p></div></div>
+    <button className="brand-button-primary mt-5 inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold disabled:opacity-50"
+      disabled={busy} onClick={() => void continueToPlan()} type="button">
+      {busy ? "Guardando tu selección…" : "Continuar al plan"}<ArrowRight className="size-4" aria-hidden="true" />
+    </button>
     <ul className="mt-4 grid gap-2 text-sm">{items.map(item => <li className="rounded-xl border border-slate-200 p-3" key={item.referenceId}>
       {statusLabel[item.status] ?? "Requiere revisión"}</li>)}</ul>
-    {evidenceSet ? <p className="mt-4 text-sm text-slate-700">EvidenceSet v{evidenceSet.version}: {evidenceSet.isCurrent
+    {evidenceSet ? <p className="mt-4 text-sm text-slate-700">Estado de la evidencia: {evidenceSet.isCurrent
       ? evidenceSet.readiness === "READY" ? "listo" : "listo con limitaciones" : "desactualizado por cambios en fuentes o definición"}.
       {evidenceSet.unresolvedGapCount ? ` ${evidenceSet.unresolvedGapCount} vacío(s) material(es) sin resolver.` : ""}</p> : null}
-    {evidenceSet?.isCurrent ? <Link className="mt-3 inline-block text-sm font-semibold underline" href={`/projects/${projectId}?step=plan`}>Continuar al plan de tesis</Link> : null}
     {error ? <p className="mt-3 text-sm text-rose-700" role="alert">{error}</p> : null}
     {message ? <p className="mt-3 text-sm text-emerald-700" role="status">{message}</p> : null}
   </section>;

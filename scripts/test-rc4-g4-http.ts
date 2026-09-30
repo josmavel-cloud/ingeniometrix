@@ -45,6 +45,12 @@ async function main() {
     await prisma.projectReference.create({ data: { projectId: project.id, referenceId: ref.id, selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
     await prepareSelectedSources(a.id, project.id);
     await confirmEvidenceSet(a.id, project.id);
+    const missingRevision = await request(`/api/projects/${project.id}/blueprints`, "POST", {});
+    assert.equal(missingRevision.status, 400); assert.equal((await missingRevision.json()).code, "GENERATION_CONTRACT_INCOMPLETE"); checks++;
+    const contextResponse = await request(`/api/projects/${project.id}/blueprints/context`);
+    assert.equal(contextResponse.status, 200); assert.equal((await contextResponse.json()).context.confirmedRevision, definition.revision); checks++;
+    const staleRevision = await request(`/api/projects/${project.id}/blueprints`, "POST", { draftRevision: 0 });
+    assert.equal(staleRevision.status, 409); assert.equal((await staleRevision.json()).code, "DRAFT_REVISION_CONFLICT"); checks++;
     const generationRequest = { draftRevision: definition.revision };
     const rejected = await request(`/api/projects/${project.id}/blueprints`, "POST", generationRequest);
     assert.equal(rejected.status, 402, await rejected.text()); checks++;

@@ -82,15 +82,17 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
                 status={project.status}
               />
               <PrivatePdfUpload projectId={id} />
-              <EvidenceFlowPanel projectId={id} selectedCount={selectedReferenceCount} />
+              <EvidenceFlowPanel projectId={id} ownerId={user.id} selectedCount={selectedReferenceCount}
+                confirmedDefinitionHash={project.confirmedDefinitionHash} />
               </>}
             </>
           ) : null}
           {currentStep === "plan" ? (
             <>
               <BlueprintPanel
+                ownerId={user.id}
+                confirmedDefinitionHash={project.confirmedDefinitionHash}
                 activeVersionId={activeVersion?.id ?? null}
-                draftRevision={project.draft?.revision ?? 0}
                 hasIntakeMinimum={hasIntakeMinimum}
                 language={language}
                 projectId={project.id}
