@@ -10,6 +10,7 @@ import { ReferenceSearchPanel } from "@/components/projects/reference-search-pan
 import { PrivatePdfUpload } from "@/components/projects/private-pdf-upload";
 import { EvidenceFlowPanel } from "@/components/projects/evidence-flow-panel";
 import { WorkflowStageNav } from "@/components/projects/workflow-stage-nav";
+import { ResearchChatDrawer } from "@/components/projects/research-chat-drawer";
 import { getLocaleForLanguage } from "@/lib/language";
 import { requireCurrentUser, pageData } from "@/lib/backend-http";
 
@@ -61,6 +62,7 @@ export default async function ProjectDetailPage({ params, searchParams }: Projec
           title={project.title}
         />}
         <main className="grid gap-6">
+          {project.conversationalIntake && currentStep !== "define" && <ResearchChatDrawer projectId={id} ownerId={user.id} />}
           {currentStep === "define" && project.conversationalIntake ? <ConversationalIntake projectId={id} ownerId={user.id} /> : currentStep === "define" ? (
             <section className="surface-panel rounded-[32px] p-6 sm:p-8">
               <p className="brand-kicker">Paso 1 · Define tu investigación · editor histórico</p>

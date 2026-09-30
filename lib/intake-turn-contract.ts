@@ -1,5 +1,13 @@
 import { z } from "zod";
 import { fieldKeySchema } from "./conversational-intake";
+export const starterResearchIdeaSchema = z.object({
+  schemaVersion: z.literal("starter-research-idea.v1"),
+  workingTitle: z.string().max(300), researchProblem: z.string().max(1200), purpose: z.string().max(1200),
+  objectOrPopulation: z.string().max(600), context: z.string().max(600), coreConcepts: z.array(z.string().max(200)).max(8),
+  possibleResearchAction: z.string().max(600), possibleOutput: z.string().max(600),
+  assumptions: z.array(z.string().max(400)).max(6), uncertainties: z.array(z.string().max(400)).max(6),
+  provenance: z.literal("AI_PROPOSED"),
+}).strict();
 export const intakeTurnInputSchema = z.object({ requestId: z.string().uuid(), baseRevision: z.number().int().positive(), etag: z.string().max(128), message: z.string().trim().min(1).max(8000), initial: z.literal(true).optional() }).strict();
 export const intakeTurnResultSchema = z.object({
   schemaVersion: z.literal("intake-turn.v1"), baseRevision: z.number().int().positive(), assistantText: z.string().min(1).max(1000),
@@ -7,5 +15,6 @@ export const intakeTurnResultSchema = z.object({
     knowledge: z.enum(["KNOWN", "UNKNOWN", "NOT_APPLICABLE"]), sourceMessageIds: z.array(z.string()).min(1).max(8), interpretationConfidence: z.enum(["LOW", "MEDIUM", "HIGH"]) }).strict()).max(8),
   ambiguities: z.array(z.object({ field: fieldKeySchema, question: z.string().min(1).max(600), blocksSearch: z.boolean() }).strict()).max(3),
   nextQuestion: z.object({ field: fieldKeySchema, question: z.string().min(1).max(600), options: z.array(z.string().min(1).max(160)).max(4) }).strict().nullable(),
+  starterIdea: starterResearchIdeaSchema.nullable(),
 }).strict();
 export type IntakeTurnResult = z.infer<typeof intakeTurnResultSchema>;

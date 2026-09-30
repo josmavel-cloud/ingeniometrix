@@ -26,7 +26,11 @@ export async function planSemanticSearch(input: SemanticPlannerInput, provider: 
     const plan = validateSearchEnrichment(input, parsedRaw);
     plan.rawPlannerOutput = parsedRaw;
     return plan.status === "READY" ? plan : fallbackSearchEnrichment(input, "ENRICHMENT_INSUFFICIENT");
-  } catch {
-    return fallbackSearchEnrichment(input, "ENRICHMENT_UNAVAILABLE_OR_INVALID");
+  } catch (error) {
+    const status = error && typeof error === "object" && "status" in error ? error.status : null;
+    const reason = error instanceof z.ZodError || error instanceof SyntaxError ? "PLANNER_OUTPUT_INVALID" :
+      status === 429 || status === 502 || status === 503 || status === 504 ? "PROVIDER_UNAVAILABLE" :
+      "INTERNAL_SEARCH_PLANNING_ERROR";
+    return fallbackSearchEnrichment(input, reason);
   }
 }

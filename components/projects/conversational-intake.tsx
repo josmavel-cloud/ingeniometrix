@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { DEFINITION_FIELDS, FIELD_LABELS, ambiguityBlocksSearch, canDeferAmbiguity, definitionReadiness, usable, type ConversationalView, type DefinitionAction, type DefinitionField } from "@/lib/conversational-intake";
+import { DEFINITION_FIELDS, FIELD_LABELS, ambiguityBlocksSearch, canDeferAmbiguity, definitionReadiness, globalConfirmationPreview, usable, type ConversationalView, type DefinitionAction, type DefinitionField } from "@/lib/conversational-intake";
 import type { IntakeTurnResult } from "@/lib/intake-turn-contract";
 import { DefinitionSaveQueue } from "@/lib/definition-save-queue";
 import { registerDraftFlush } from "@/lib/draft-save-queue";
@@ -135,21 +135,22 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
     return () => { clearTimeout(timer); controller.abort(); };
   }, [edit]);
   if (!state) return <p role="status">{error || notice}</p>;
-  const d = state.definition, readiness = definitionReadiness(d);
+  const d = state.definition, preview = globalConfirmationPreview(d), readiness = definitionReadiness(preview);
   const latest = [...turns].reverse().find(t => t.kind === "MESSAGE" && t.status === "COMPLETE");
   const proposedQuestion = latest?.resultJson?.nextQuestion;
   const question = proposedQuestion && d.fields[proposedQuestion.field].lastChangedRevision <= (latest?.resultJson?.baseRevision ?? 0) ? proposedQuestion : null;
-  const blocking = d.ambiguities.filter(ambiguityBlocksSearch);
+  const blocking = preview.ambiguities.filter(ambiguityBlocksSearch);
   const proposals = d.proposals.filter(p => p.status === "PENDING").sort((a, b) => Number(blocking.some(q => q.field === b.field)) - Number(blocking.some(q => q.field === a.field)));
   const busy = actionBusy || confirming;
   const confirmReason = conflict ? "Carga la revisión actual y resuelve el conflicto antes de continuar." : dirty ? "Guardando los cambios antes de continuar…" : modelBusy ? "Espera a que termine la respuesta; después revisa la definición." : busy ? "Guardando la definición…" : readiness.evidenceSearch.reasons[0];
-  const summaryFields: DefinitionField[] = ["topic", d.fields.purpose.value ? "purpose" : "problem", "object", "context", "concepts", "intendedOutput"];
-  const shownFields = summaryFields.filter(k => k === "topic" || (k === "object" && !usable(d.fields.concepts)) || usable(d.fields[k]));
-  const otherConfirmed = DEFINITION_FIELDS.filter(k => usable(d.fields[k]) && !shownFields.includes(k));
+  const summaryFields: DefinitionField[] = ["topic", "problem", "purpose", "object", "context", "concepts", "intendedOutput"];
+  const shownFields = [...new Set([...summaryFields, ...proposals.map(p => p.field)])]
+    .filter(k => k === "topic" || usable(preview.fields[k]));
+  const otherConfirmed = DEFINITION_FIELDS.filter(k => usable(preview.fields[k]) && !shownFields.includes(k));
   const proposalCard = (p: typeof proposals[number]) => <article key={p.id} className="rounded-[20px] border border-[var(--color-line)] bg-white/90 p-3 sm:p-4">
     <p className="text-xs font-medium text-[var(--color-muted)]">Sugerencia · {FIELD_LABELS[p.field]}</p>
     <p className="mt-1 text-sm leading-6">{p.proposed.value || (p.proposed.knowledge === "UNKNOWN" ? "Por definir" : "No aplica")}</p>
-    <div className="mt-3 flex flex-wrap items-center gap-2"><button type="button" className={primary} disabled={busy || conflict} onClick={() => void action({ kind: "ACCEPT", proposalId: p.id })}>Correcto</button>
+    <div className="mt-3 flex flex-wrap items-center gap-2"><span className="text-xs text-[var(--color-plum)]">Propuesta incluida al confirmar el resumen</span>
       <button type="button" className={button} onClick={() => { advanced.current!.open = true; setEdit({ field: p.field, value: p.proposed.value, knowledge: p.proposed.knowledge }); requestAnimationFrame(() => document.getElementById("definition-value")?.focus()); }}>Cambiar</button>
       <button type="button" disabled={busy || conflict} className="px-2 text-xs text-[var(--color-muted)] underline" onClick={() => void action({ kind: "REJECT", proposalId: p.id })}>Descartar</button></div>
   </article>;
@@ -161,12 +162,13 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
         {turns.filter(t => t.kind !== "ACTION").map(t => <article key={t.requestId} className="space-y-2 text-sm leading-6 whitespace-pre-wrap">
           {(t.kind === "INITIAL_IDEA" || !t.inputJson.initial) && <p className="ml-auto max-w-[88%] rounded-[20px] bg-[var(--color-plum)] px-4 py-3 text-white"><span className="sr-only">Tú: </span>{t.inputJson.message ?? t.inputJson.idea}</p>}
           {t.status === "COMPLETE" && t.resultJson?.assistantText && <p className="max-w-[92%] rounded-[20px] border border-[var(--color-line)] bg-white/90 px-4 py-3"><span className="sr-only">Asesor: </span>{t.resultJson.assistantText}</p>}
+          {t.status === "COMPLETE" && t.resultJson?.starterIdea && <div className="max-w-[92%] rounded-[20px] border border-[var(--color-lilac)] bg-[var(--color-lilac)]/20 px-4 py-3"><p className="font-semibold">Una idea para empezar · propuesta</p><p>{t.resultJson.starterIdea.workingTitle}</p><p className="text-xs">Puedes cambiar cualquier parte por chat antes de confirmarla.</p></div>}
           {t.status === "FAILED" && <p>Tu mensaje se conservó; la asistencia no está disponible.</p>}
           {t.status === "STALE" && <p>Respuesta anterior a tus últimos cambios; no aplicada.</p>}
           {t.status === "RUNNING" && <p>Preparando una propuesta a partir de tu idea…</p>}
         </article>)}
         {proposals.length > 0 && <div className="space-y-2" aria-label="Sugerencias por revisar">
-          <p className="text-xs font-semibold text-[var(--color-muted)]">Revisa estas propuestas antes de usarlas</p>
+          <p className="text-xs font-semibold text-[var(--color-muted)]">Esto es lo que entendí. Puedes modificarlo antes de confirmar.</p>
           {proposals.slice(0, 2).map(proposalCard)}
           {proposals.length > 2 && <details className="text-sm"><summary className="cursor-pointer text-[var(--color-plum)]">Ver {proposals.length - 2} sugerencias más</summary><div className="mt-2 space-y-2">{proposals.slice(2).map(proposalCard)}</div></details>}
         </div>}
@@ -194,7 +196,8 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
       <p className="mt-1 text-xs text-[var(--color-muted)]">{state.confirmedRevision === state.revision ? "Lista para buscar fuentes" : "Cambios pendientes de confirmar"}</p>
       <dl className="mt-4 space-y-3">{shownFields.map(k => <div key={k} className="rounded-2xl border border-[var(--color-line)] bg-white/90 p-3">
         <dt className="flex items-center gap-2 text-xs font-semibold text-[var(--color-plum)]">{k === "topic" ? <Lightbulb className="size-4" aria-hidden="true" /> : k === "purpose" || k === "problem" ? <Target className="size-4" aria-hidden="true" /> : k === "context" ? <MapPin className="size-4" aria-hidden="true" /> : null}{k === "topic" ? "Tema / intención" : FIELD_LABELS[k]}</dt>
-        <dd className="mt-1 text-sm leading-5 whitespace-pre-wrap">{publicValue(k, d.fields[k].value) || (d.fields[k].knowledge === "NOT_APPLICABLE" ? "No aplica" : "Por precisar")}</dd>
+        <dd className="mt-1 text-sm leading-5 whitespace-pre-wrap">{publicValue(k, preview.fields[k].value) || (preview.fields[k].knowledge === "NOT_APPLICABLE" ? "No aplica" : "Por precisar")}</dd>
+        {d.fields[k].acceptance !== "ACCEPTED" && usable(preview.fields[k]) && <dd className="text-xs text-[var(--color-muted)]">Propuesta de IA · pendiente de tu confirmación global</dd>}
         <dd><button type="button" className="mt-1 text-xs text-[var(--color-plum)] underline" onClick={() => void chooseField(k)}>Editar</button></dd>
       </div>)}</dl>
       <details ref={advanced} className="mt-4" ><summary className="cursor-pointer text-sm font-semibold text-[var(--color-plum)]">Más detalles</summary>
@@ -217,9 +220,9 @@ export function ConversationalIntake({ projectId, ownerId }: { projectId: string
           {canDeferAmbiguity(a) && <button type="button" className="mt-2 text-xs underline" disabled={busy || conflict} onClick={() => void action({ kind: "DEFER", ambiguityId: a.id })}>Dejar pendiente; buscar con la definición aceptada</button>}
         </form>)}
         <button className={primary} disabled={modelBusy || conflict || busy} onClick={() => { void flush().then(v => { reviewing.current = { revision: v.revision, definitionHash: v.definitionHash }; setReview(true); }).catch(() => undefined); }}>Revisar definición</button>
-        {review && <div className="mt-4 text-sm" aria-label="Revisión antes de confirmar"><h3 className="font-semibold">Esto entendimos para buscar evidencia</h3><dl>{shownFields.filter(k => usable(d.fields[k])).map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap">{publicValue(k, d.fields[k].value)}</dd></div>)}</dl>
-          {otherConfirmed.length > 0 && <details><summary className="cursor-pointer text-[var(--color-plum)]">Ver otros valores que se incluirán</summary><dl>{otherConfirmed.map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap">{publicValue(k, d.fields[k].value)}</dd></div>)}</dl></details>}
-          <p className="my-3 text-xs text-[var(--color-muted)]">{proposals.length ? `${proposals.length} propuestas sin aceptar no se incluirán. ` : ""}{readiness.evidenceSearch.reasons.length ? "Resuelve los puntos anteriores para continuar. " : ""}La confirmación prepara la búsqueda; no inicia una generación.</p>
+        {review && <div className="mt-4 text-sm" aria-label="Revisión antes de confirmar"><h3 className="font-semibold">Esto es lo que entendí</h3><dl>{shownFields.filter(k => usable(preview.fields[k])).map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap">{publicValue(k, preview.fields[k].value)}</dd></div>)}</dl>
+          {otherConfirmed.length > 0 && <details><summary className="cursor-pointer text-[var(--color-plum)]">Ver otros valores que se incluirán</summary><dl>{otherConfirmed.map(k => <div className="my-2" key={k}><dt className="font-medium">{FIELD_LABELS[k]}</dt><dd className="whitespace-pre-wrap">{publicValue(k, preview.fields[k].value)}</dd></div>)}</dl></details>}
+          <p className="my-3 text-xs text-[var(--color-muted)]">{proposals.length ? "Las propuestas visibles se incluirán al confirmar este resumen. " : ""}{readiness.evidenceSearch.reasons.length ? "Resuelve los puntos anteriores para continuar. " : ""}La confirmación prepara la búsqueda; no inicia una generación.</p>
           <button type="button" className="mb-3 text-sm text-[var(--color-plum)] underline" onClick={() => { setReview(false); document.getElementById("intake-message")?.focus(); }}>Seguir aclarando</button>
           {confirmReason && <p id="confirmation-reason" role="status" className="my-2 text-xs">{confirmReason}</p>}
           <button className={primary} aria-describedby={confirmReason ? "confirmation-reason" : undefined} disabled={readiness.evidenceSearch.status !== "READY" || dirty || conflict || modelBusy || busy} onClick={async () => {

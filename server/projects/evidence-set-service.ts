@@ -8,7 +8,7 @@ import { MVP_SOURCE_INSPECTION_KEY, sourceInspectionFingerprint,
 import { evaluateSnapshotCoverage } from "@/server/retrieval/evidence-coverage-snapshot";
 import { getLatestProjectReferenceSearchSnapshot } from "@/server/retrieval/reference-search-v2";
 import { loadSearchInput } from "@/server/retrieval/search-intent-service";
-import { definitionSchema } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 
 export const EVIDENCE_SET_VERSION = "evidence-set.v1";
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
@@ -80,8 +80,7 @@ export async function confirmEvidenceSet(userId: string, projectId: string, oper
     if (search.intent.sourceKind === "CONFIRMED_DEFINITION" &&
       (confirmed?.revision !== search.intent.confirmedDraftRevision ||
        confirmed?.definitionHash !== search.intent.definitionHash ||
-       project.draft?.confirmedRevision !== search.intent.confirmedDraftRevision ||
-       fingerprint(definitionSchema.parse((project.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition)) !== search.intent.definitionHash))
+       !confirmedScientificDefinitionMatches((project.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition, confirmed)))
       throw new Error("EVIDENCE_INTENT_STALE");
     const selected = project.projectReferences;
     const selectedIds = selected.map(row => row.referenceId);

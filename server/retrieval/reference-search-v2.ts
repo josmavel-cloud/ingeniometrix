@@ -13,7 +13,7 @@ import { prisma } from "@/lib/prisma";
 import { getConfiguredLlmProvider } from "@/llm";
 import { logAuditEvent } from "@/server/audit/audit-service";
 import type { IntakeInput } from "@/server/projects/project-validation";
-import { definitionSchema } from "@/lib/conversational-intake";
+import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { freezeSearchInput, searchInputIsStale, type SearchInput, type SearchInputTrace } from "./search-intent-service";
 import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
@@ -24,9 +24,10 @@ import { assessSemanticRelevance, type SemanticRelevance } from "./semantic-rele
 import { QUERY_COMPOSITION_VERSION, validateScientificQueryPlan, type ScientificQuery } from "@/lib/retrieval-query-composition";
 import type { ScientificConceptPlan } from "@/lib/retrieval-scientific-concepts";
 import { reviewCandidateBatch } from "./candidate-semantic-review";
-import { recoverCentralTranslations, recoveryModel } from "./search-concept-translation";
+import { recoverCachedCentralTranslations, recoverCentralTranslations, recoveryModel } from "./search-concept-translation";
 import { SEARCH_CONCEPT_TRANSLATION_PROMPT } from "@/server/mvp/prompts/search-concept-translation.v1";
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
+import { chooseSafeSearchPlan, SearchPlanningError, validateSearchPlan } from "@/lib/search-planning-outcome";
 import { candidateMetadataHash, CANDIDATE_REVIEW_VERSION, MAX_RECOMMENDATIONS, type CandidateAssessment, type ReviewCandidate } from "./candidate-review-policy";
 
 import {
@@ -827,21 +828,63 @@ async function buildReferenceSearchMetadata(intake: IntakeInput): Promise<Refere
 export async function buildSearchMetadata(input: SearchInput, provider?: Pick<import("@/llm/provider").LlmProvider, "generateStructuredObject">): Promise<ReferenceSearchV2Metadata> {
   if (input.intent.sourceKind === "LEGACY_COMPATIBILITY") return buildReferenceSearchMetadata(input.plannerInput);
   const structured = semanticPlannerInput(input.intent, fingerprint(input.intent));
+  if (structured.readiness !== "READY") throw new SearchPlanningError("REAL_USER_CLARIFICATION_REQUIRED");
+  const cacheKey = fingerprint({ searchIntentHash: structured.searchIntentHash, promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version,
+    model: searchEnrichmentModel(), policyVersion: structured.policyVersion, compositionVersion: QUERY_COMPOSITION_VERSION,
+    translationPromptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version, translationModel: recoveryModel() });
+  const priorPlanning = provider ? null : (await prisma.auditLog.findMany({ where: { projectId: input.intent.projectId,
+    eventType: { in: ["SEARCH_PLANNER_PREPARED", "SEARCH_PLANNER_FAILED"] } },
+    orderBy: { createdAt: "desc" }, take: 30, select: { eventType: true, payloadJson: true } }))
+    .find(row => (row.payloadJson as { cacheKey?: string }).cacheKey === cacheKey) ?? null;
+  const cached = priorPlanning?.eventType === "SEARCH_PLANNER_PREPARED"
+    ? (priorPlanning.payloadJson as { enrichment?: SearchEnrichment }).enrichment ?? null : null;
   let llm = provider;
   let enrichment: SearchEnrichment;
-  try { llm ??= getConfiguredLlmProvider(); enrichment = await planSemanticSearch(structured, llm); }
-  catch { enrichment = fallbackSearchEnrichment(structured); }
-  if (enrichment.translationTrace?.length) enrichment.translationTrace = enrichment.translationTrace.map(t => ({ ...t, plannerOperationId: currentPaidOperation()?.id ?? null }));
-  if (llm && enrichment.planMode === "SEMANTIC" && enrichment.status === "READY") enrichment = await recoverCentralTranslations(structured, enrichment, llm);
-  const keywordGroups = enrichmentGroups(enrichment);
-  const queryPack = semanticQueryPack(keywordGroups);
-  if (enrichment.status !== "READY" || !queryPack.validation.valid || validateScientificQueryPlan(queryPack).length) throw new Error("SEARCH_NEEDS_CLARIFICATION");
+  if (cached) enrichment = cached;
+  else if (priorPlanning?.eventType === "SEARCH_PLANNER_FAILED") enrichment = fallbackSearchEnrichment(structured, "PREVIOUS_PLANNER_FAILURE");
+  else {
+    try { llm ??= getConfiguredLlmProvider(); enrichment = await planSemanticSearch(structured, llm); }
+    catch { enrichment = fallbackSearchEnrichment(structured, "PROVIDER_UNAVAILABLE"); }
+    if (enrichment.translationTrace?.length) enrichment.translationTrace = enrichment.translationTrace.map(t => ({ ...t, plannerOperationId: currentPaidOperation()?.id ?? null }));
+    if (llm && enrichment.planMode === "SEMANTIC" && enrichment.status === "READY") enrichment = await recoverCentralTranslations(structured, enrichment, llm);
+  }
+  const semanticAssessment = validateSearchPlan(enrichment);
+  let selected: ReturnType<typeof chooseSafeSearchPlan>;
+  try { selected = chooseSafeSearchPlan(structured, enrichment); }
+  catch (error) {
+    if (!provider && !priorPlanning) await logAuditEvent({ eventType: "SEARCH_PLANNER_FAILED", actorType: "SYSTEM",
+      userId: currentPaidOperation()?.userId, projectId: input.intent.projectId,
+      payloadJson: { cacheKey, searchIntentHash: structured.searchIntentHash,
+        category: error instanceof SearchPlanningError ? error.code : "INTERNAL_SEARCH_PLANNING_ERROR" } });
+    throw error;
+  }
+  if (selected.degraded && !cached) selected = chooseSafeSearchPlan(structured,
+    await recoverCachedCentralTranslations(structured, selected.enrichment));
+  enrichment = selected.enrichment;
+  const keywordGroups = selected.groups;
+  const queryPack = selected.pack;
+  if (!cached && !provider) {
+    const operation = currentPaidOperation();
+    const cacheableEnrichment = { ...enrichment };
+    delete cacheableEnrichment.rawPlannerOutput;
+    await logAuditEvent({ eventType: "SEARCH_PLANNER_PREPARED", actorType: "SYSTEM", userId: operation?.userId,
+      projectId: input.intent.projectId, payloadJson: JSON.parse(JSON.stringify({ cacheKey, searchIntentHash: structured.searchIntentHash,
+        plannerVersion: REFERENCE_SEARCH_V2_2_PROMPT.version, policyVersion: structured.policyVersion,
+        compositionVersion: QUERY_COMPOSITION_VERSION, planMode: enrichment.planMode,
+        degradationReason: selected.degradationReason, enrichment: cacheableEnrichment })) as Prisma.InputJsonValue });
+    if (selected.degraded) await logAuditEvent({ eventType: "DETERMINISTIC_FALLBACK_USED", actorType: "SYSTEM",
+      userId: operation?.userId, projectId: input.intent.projectId,
+      payloadJson: { cacheKey, searchIntentHash: structured.searchIntentHash, reason: selected.degradationReason ?? "SEMANTIC_PLANNER_DEGRADED" } });
+    if (selected.degraded) await logAuditEvent({ eventType: "SEMANTIC_PLANNER_DEGRADED", actorType: "SYSTEM",
+      userId: operation?.userId, projectId: input.intent.projectId,
+      payloadJson: { cacheKey, searchIntentHash: structured.searchIntentHash,
+        category: selected.degradationReason ?? "PLANNER_OUTPUT_INVALID",
+        reasonCodes: semanticAssessment.reasons.filter(reason => /^[A-Z][A-Z0-9_]*$/.test(reason)) } });
+  }
   return {
     enrichment, planSource: enrichment.planMode === "SEMANTIC" ? "llm" : "fallback",
     planning: { model: searchEnrichmentModel(), promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version, policyVersion: structured.policyVersion,
-      cacheKey: fingerprint({ searchIntentHash: structured.searchIntentHash, promptVersion: REFERENCE_SEARCH_V2_2_PROMPT.version,
-        model: searchEnrichmentModel(), policyVersion: structured.policyVersion,
-        translationPromptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version, translationModel: recoveryModel() }) },
+      cacheKey },
     normalizedTopic: input.intent.topic ?? "", intentSummary: input.intent.coreProblem ?? input.intent.topic ?? "",
     keywordGroups, queryPack,
     focusTerms: enrichment.terms.filter(t => t.authority === "CENTRAL").map(t => t.text), localObjectTerms: [],
@@ -1958,8 +2001,10 @@ export async function getLatestProjectReferenceSearchSnapshot(projectId: string)
 
   const snapshot = payload.searchSnapshot;
   if (!snapshot?.inputTrace || snapshot.inputTrace.confirmedDraftRevision === null) return snapshot ?? null;
-  const draft = await prisma.projectDraft.findUnique({ where: { projectId } });
+  const [draft, intake] = await Promise.all([prisma.projectDraft.findUnique({ where: { projectId } }), prisma.intake.findUnique({ where: { projectId } })]);
   const raw = (draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
-  const currentHash = raw ? fingerprint(definitionSchema.parse(raw)) : null;
-  return { ...snapshot, stale: searchInputIsStale(snapshot.inputTrace, { revision: draft?.confirmedRevision ?? null, definitionHash: currentHash }) };
+  const confirmed = intake?.confirmedDefinitionJson as { revision?: number; definitionHash?: string; definition?: unknown } | null;
+  const matches = confirmedScientificDefinitionMatches(raw, confirmed);
+  return { ...snapshot, stale: searchInputIsStale(snapshot.inputTrace, { revision: matches ? confirmed?.revision ?? null : null,
+    definitionHash: matches ? confirmed?.definitionHash ?? null : null }) };
 }

@@ -139,3 +139,33 @@ export async function recoverCentralTranslations(input: SemanticPlannerInput, en
   return { ...enrichment, translationTrace: traces, scientificConceptPlan: plan,
     translationRecovery: { status, model: recoveryModel(), promptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version, requestedIds: items.map(i => i.conceptId), cacheHits: cached.size } };
 }
+
+// Planning degradation may reuse previously validated terminology without a
+// provider call. Cache misses are deliberately left as literal source terms.
+export async function recoverCachedCentralTranslations(input: SemanticPlannerInput, enrichment: SearchEnrichment): Promise<SearchEnrichment> {
+  const plan = enrichment.scientificConceptPlan ? structuredClone(enrichment.scientificConceptPlan) : undefined;
+  if (!plan || enrichment.status !== "READY") return enrichment;
+  const domainContext = input.signals.find(s => s.sourceField === "taxonomy" && s.value)?.value?.slice(0, 200) ?? "";
+  const traces = [...enrichment.translationTrace ?? []];
+  const missing = missingCentralTranslations(plan, "en");
+  let hits = 0;
+  for (const concept of missing) {
+    const item: Item = { conceptId: concept.id, originalText: concept.value, role: concept.role,
+      sourceLanguage: sourceLanguage(concept), targetLanguage: "en", domainContext };
+    const hit = await readCache(translationCacheKey(item));
+    if (hit?.status !== "TRANSLATED" || validateTranslation(item, hit.translatedTerm, hit.academicEquivalent, hit.confidence) !== "ACCEPTED") continue;
+    const target = plan.concepts.find(row => row.id === concept.id)!;
+    target.terms.push({ value: hit.translatedTerm, language: "en", expansionType: "VALIDATED_TRANSLATION",
+      translationOf: target.id, origin: "AI_DERIVED_FOR_SEARCH", confidence: "HIGH" });
+    traces.push(traceFor(item, hit.translatedTerm, "TRANSLATION_CACHE", "ACCEPTED", "STRUCTURALLY_VALIDATED", target));
+    if (hit.academicEquivalent && validateTranslation(item, hit.academicEquivalent, null, hit.confidence) === "ACCEPTED") {
+      target.terms.push({ value: hit.academicEquivalent, language: "en", expansionType: "ACADEMIC_EQUIVALENT",
+        origin: "AI_DERIVED_FOR_SEARCH", confidence: "HIGH" });
+      traces.push(traceFor(item, hit.academicEquivalent, "TRANSLATION_CACHE", "ACCEPTED", "STRUCTURALLY_VALIDATED", target, "ACADEMIC_SYNONYM"));
+    }
+    hits++;
+  }
+  return { ...enrichment, scientificConceptPlan: plan, translationTrace: traces,
+    translationRecovery: { status: hits === missing.length ? "COMPLETE" : "LIMITED", model: recoveryModel(),
+      promptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version, requestedIds: [], cacheHits: hits } };
+}

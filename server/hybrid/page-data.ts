@@ -5,16 +5,13 @@ import { listBlueprintVersionsForUser } from "@/server/blueprint/blueprint-servi
 import { getTopicProjectForUser, listTopicSuggestionsForUser } from "@/server/projects/topic-suggestion-service";
 import { purchaseForUser } from "@/server/commercial/purchases";
 import type { PageContract } from "@/lib/hybrid-contracts";
-import { definitionSchema } from "@/lib/conversational-intake";
-import { fingerprint } from "@/server/mvp/job-execution-context";
+import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 
 function definitionConfirmed(p: { draft?: { confirmedRevision: number | null; contentJson: unknown } | null;
   intake?: { confirmedDefinitionJson: unknown } | null }) {
   const saved = p.intake?.confirmedDefinitionJson as { revision?: number; definitionHash?: string } | null | undefined;
   const raw = (p.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
-  const parsed = raw ? definitionSchema.safeParse(raw) : null;
-  return Boolean(saved?.definitionHash && saved.revision === p.draft?.confirmedRevision && parsed?.success &&
-    fingerprint(parsed.data) === saved.definitionHash);
+  return confirmedScientificDefinitionMatches(raw, saved);
 }
 
 // Older conversational confirmations intentionally left Project.status=DRAFT.

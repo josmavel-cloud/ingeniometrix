@@ -2,13 +2,13 @@ import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { applyDefinitionAction, definitionActionSchema, definitionReadiness, definitionSchema, emptyDefinition, projectIntake, searchIntent, usable, userValue, type ConversationalView, type ResearchDefinition } from "@/lib/conversational-intake";
+import { applyDefinitionAction, confirmedScientificDefinitionMatches, definitionActionSchema, definitionReadiness, definitionSchema, emptyDefinition, globalConfirmationPreview, projectIntake, sameScientificDefinition, searchIntent, usable, userValue, type ConversationalView, type ResearchDefinition } from "@/lib/conversational-intake";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { DraftConflict } from "./project-draft-service";
 import { assignPrimaryAcademicField, resolveAcademicField } from "./topic-area-service";
 
 export const jsonValue = (v: unknown): Prisma.InputJsonValue => JSON.parse(JSON.stringify(v));
-export const createDefinitionSchema = z.object({ intakeMode: z.literal("conversation"), idea: z.string().trim().min(8).max(8000), degreeLevel: z.enum(["PREGRADO", "MAESTRIA", "PROYECTO_INVESTIGACION"]), requestId: z.string().uuid() }).strict();
+export const createDefinitionSchema = z.object({ intakeMode: z.literal("conversation"), idea: z.string().trim().min(2).max(8000), degreeLevel: z.enum(["PREGRADO", "MAESTRIA", "PROYECTO_INVESTIGACION"]), requestId: z.string().uuid() }).strict();
 export const definitionMutationSchema = z.object({ requestId: z.string().uuid(), baseRevision: z.number().int().min(1), etag: z.string().min(1), action: definitionActionSchema }).strict();
 export function definitionView(row: { id: string; revision: number; confirmedRevision: number | null; contentJson: unknown; contentHash: string }): ConversationalView {
   const definition = definitionSchema.parse((row.contentJson as Record<string, unknown>).researchDefinition);
@@ -33,8 +33,10 @@ export async function nextTurnSequence(tx: Prisma.TransactionClient, projectId: 
 export async function writeDefinition(tx: Prisma.TransactionClient, row: { id: string; revision: number; contentJson: unknown; staleScopesJson: unknown }, definition: ResearchDefinition) {
   const content = { ...(row.contentJson as Record<string, unknown>), researchDefinition: definition };
   const scopes = ["SCIENTIFIC_DECISION", "RESEARCH_DESIGN", "EVIDENCE_PACK", "SECTIONS", "CONSISTENCY_MATRIX", "ASSETS"];
+  const before = definitionSchema.parse((row.contentJson as Record<string, unknown>).researchDefinition);
+  const scientificChange = !sameScientificDefinition(before, definition);
   return tx.projectDraft.update({ where: { id: row.id }, data: { contentJson: jsonValue(content), contentHash: fingerprint(content), revision: row.revision + 1,
-    staleScopesJson: jsonValue([...new Set([...(Array.isArray(row.staleScopesJson) ? row.staleScopesJson : []), ...scopes])]), lastInvalidatedAt: new Date() } });
+    ...(scientificChange ? { staleScopesJson: jsonValue([...new Set([...(Array.isArray(row.staleScopesJson) ? row.staleScopesJson : []), ...scopes])]), lastInvalidatedAt: new Date() } : {}) } });
 }
 export async function createConversationalProject(userId: string, raw: unknown) {
   const input = createDefinitionSchema.parse(raw);
@@ -50,7 +52,9 @@ export async function createConversationalProject(userId: string, raw: unknown) 
     }
     const d = emptyDefinition(), messageId = input.requestId;
     d.fields.originalIdea = userValue(input.idea, 1, messageId);
-    d.fields.topic = userValue(input.idea, 1, messageId);
+    // A broad area is a seed for a starter proposal, not an already confirmed
+    // research topic. The original words remain immutable in originalIdea.
+    if (input.idea.trim().split(/\s+/u).length > 3) d.fields.topic = userValue(input.idea, 1, messageId);
     d.fields.academicLevel = userValue(input.degreeLevel, 1, messageId);
     const content = { version: "draft.v1", researchDefinition: d };
     const p = await tx.project.create({ data: { id, userId, title: input.idea.slice(0, 180), topicSeedText: input.idea, topicOriginType: "CUSTOM", degreeLevel: input.degreeLevel,
@@ -90,16 +94,29 @@ export async function confirmDefinition(userId: string, projectId: string, revis
     const { project, draft, view } = await lockedDefinition(tx, userId, projectId);
     checkRevision(view, revision);
     if (view.definitionHash !== definitionHash) throw new DraftConflict();
-    if (definitionReadiness(view.definition).evidenceSearch.status !== "READY") throw new Error("DEFINITION_NEEDS_CLARIFICATION");
+    const approved = globalConfirmationPreview(view.definition);
+    if (definitionReadiness(approved).evidenceSearch.status !== "READY") throw new Error("DEFINITION_NEEDS_CLARIFICATION");
     if (draft.confirmedRevision === revision) return view;
-    const snapshot = structuredClone(view.definition);
+    const acceptedProposalIds = approved.proposals.filter(p => p.status === "ACCEPTED" && view.definition.proposals.some(old => old.id === p.id && old.status === "PENDING")).map(p => p.id);
+    const approvedRow = acceptedProposalIds.length ? await writeDefinition(tx, draft, approved) : draft;
+    const approvedRevision = approvedRow.revision;
+    const approvedHash = fingerprint(approved);
+    const priorConfirmed = project.intake?.confirmedDefinitionJson as { definition?: unknown; revision?: number; definitionHash?: string } | null;
+    const sameScience = priorConfirmed?.definition && sameScientificDefinition(approved, definitionSchema.parse(priorConfirmed.definition));
+    if (sameScience) {
+      const row = await tx.projectDraft.update({ where: { id: draft.id }, data: { confirmedRevision: approvedRevision } });
+      await tx.auditLog.create({ data: { userId, projectId, actorType: "USER", eventType: "RESEARCH_DEFINITION_REVIEWED_UNCHANGED",
+        payloadJson: { revision: approvedRevision, scientificRevision: priorConfirmed?.revision, acceptedProposalIds } } });
+      return definitionView(row);
+    }
+    const snapshot = structuredClone(approved);
     snapshot.proposals = [];
     for (const [key, value] of Object.entries(snapshot.fields)) {
-      if (usable(value)) value.confirmation = { actorId: userId, revision, valueHash: fingerprint({ key, value: value.value, knowledge: value.knowledge }), timestamp: new Date().toISOString() };
+      if (usable(value)) value.confirmation = { actorId: userId, revision: approvedRevision, valueHash: fingerprint({ key, value: value.value, knowledge: value.knowledge }), timestamp: new Date().toISOString() };
       else if (value.knowledge === "KNOWN") { value.value = ""; value.knowledge = "UNKNOWN"; }
     }
     const projection = projectIntake(snapshot);
-    const confirmed = { definition: snapshot, revision, definitionHash, actorId: userId };
+    const confirmed = { definition: snapshot, revision: approvedRevision, definitionHash: approvedHash, actorId: userId };
     const data = { ...projection, confirmedDefinitionJson: jsonValue(confirmed), searchQuery: null };
     await tx.intake.upsert({ where: { projectId }, create: { projectId, ...data }, update: data });
     const taxonomy = usable(snapshot.fields.taxonomy) ? await resolveAcademicField({ topicAreaLabel: snapshot.fields.taxonomy.value }) : null;
@@ -107,9 +124,9 @@ export async function confirmDefinition(userId: string, projectId: string, revis
     await tx.project.update({ where: { id: projectId }, data: { title: projection.topic.slice(0, 180), degreeLevel: snapshot.fields.academicLevel.value as typeof project.degreeLevel,
       topicAreaId: taxonomy?.topicAreaId ?? null, topicAreaLabel: taxonomy?.topicAreaLabel ?? null } });
     // Compatibility consumers use the last explicitly confirmed projection only.
-    const content = { ...(draft.contentJson as Record<string, unknown>), intake: projection };
-    const row = await tx.projectDraft.update({ where: { id: draft.id }, data: { contentJson: jsonValue(content), contentHash: fingerprint(content), confirmedRevision: revision } });
-    await tx.auditLog.create({ data: { userId, projectId, actorType: "USER", eventType: "RESEARCH_DEFINITION_CONFIRMED", payloadJson: { revision, definitionHash } } });
+    const content = { ...(approvedRow.contentJson as Record<string, unknown>), intake: projection };
+    const row = await tx.projectDraft.update({ where: { id: draft.id }, data: { contentJson: jsonValue(content), contentHash: fingerprint(content), confirmedRevision: approvedRevision } });
+    await tx.auditLog.create({ data: { userId, projectId, actorType: "USER", eventType: "RESEARCH_DEFINITION_CONFIRMED", payloadJson: { revision: approvedRevision, definitionHash: approvedHash, acceptedProposalIds } } });
     return definitionView(row);
   });
 }
@@ -118,7 +135,6 @@ export async function readConfirmedSearchIntent(userId: string, projectId: strin
   if (!p) throw new Error("PROJECT_NOT_FOUND");
   const saved = p.intake?.confirmedDefinitionJson as { definition: unknown; revision: number; definitionHash: string } | null;
   const rawDefinition = (p.draft?.contentJson as Record<string, unknown> | undefined)?.researchDefinition;
-  if (!saved || !rawDefinition || p.draft?.confirmedRevision !== saved.revision ||
-      fingerprint(definitionSchema.parse(rawDefinition)) !== saved.definitionHash) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
+  if (!saved || !rawDefinition || !confirmedScientificDefinitionMatches(rawDefinition, saved)) throw new Error("DEFINITION_CONFIRMATION_REQUIRED");
   return searchIntent(projectId, saved.revision, saved.definitionHash, definitionSchema.parse(saved.definition));
 }

@@ -66,18 +66,14 @@ async function main() {
       const result = await submitIntakeTurn(user.id, projectId, { requestId, baseRevision: v.revision, etag: v.etag, message: answering ? "Relatos en Lima" : "Precisar el contexto" }, async () => ({
         schemaVersion: "intake-turn.v1", baseRevision: v.revision, assistantText: answering ? "Propongo conservar el contexto que indicaste." : "¿Qué contexto quieres conservar?",
         proposedChanges: answering ? [{ field: "context", value: "Relatos de estudiantes migrantes en Lima", origin: "AI_INFERRED", knowledge: "KNOWN", sourceMessageIds: [requestId], interpretationConfidence: "HIGH" }] : [],
-        ambiguities: answering ? [] : [{ field: "context", question: "¿Qué contexto quieres conservar?", blocksSearch: true }], nextQuestion: null,
+        ambiguities: answering ? [] : [{ field: "context", question: "¿Qué contexto quieres conservar?", blocksSearch: true }], nextQuestion: null, starterIdea: null,
       }));
       assert.equal(result.status, "COMPLETE");
     }
     await call("Page.navigate", { url: `${origin}/projects/${projectId}?step=define` });
     await until("document.body.innerText.includes('Relatos y experiencias de estudiantes migrantes')");
-    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Guardar aclaración')");
     await click("Revisar definición");
-    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Confirmar para buscar evidencia' && e.disabled)");
-    await click("Correcto");
-    await until("!Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Guardar aclaración')");
-    await click("Revisar definición"); await until("document.body.innerText.includes('Esto entendimos para buscar evidencia')");
+    await until("document.body.innerText.includes('Esto es lo que entendí')");
     await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Confirmar para buscar evidencia' && !e.disabled)");
     // Another tab edits after this tab reviewed: server must reject the old
     // confirmation and the UI must offer explicit conflict recovery.
@@ -98,6 +94,17 @@ async function main() {
     const api = await evaluate(`fetch('/api/projects/${projectId}/definition?view=search-intent').then(r=>r.json())`);
     assert.equal(api.intent.readiness, "READY"); assert.equal(api.intent.methodologicalSignals.length, 0);
     await call("Page.reload"); await until("document.body.innerText.includes('Busca fuentes académicas para comenzar')");
+    await click("Refinar investigación");
+    await until("Boolean(document.querySelector('[role=dialog][aria-label=\"Refinar investigación\"] #intake-message'))");
+    await click("Cerrar");
+    await call("Page.navigate", { url: `${origin}/projects/${projectId}?step=plan` });
+    await until("Array.from(document.querySelectorAll('button')).some(e=>e.textContent==='Refinar investigación')");
+    await delay(600); // Wait for client hydration before dispatching the click.
+    await click("Refinar investigación");
+    await until("Boolean(document.querySelector('[role=dialog][aria-label=\"Refinar investigación\"] #intake-message'))");
+    await click("Cerrar");
+    await call("Page.navigate", { url: `${origin}/projects/${projectId}?step=evidence` });
+    await until("document.body.innerText.includes('Busca fuentes académicas para comenzar')");
     assert.ok(await evaluate("document.body.innerText.toLowerCase().includes('investigacion definida')"), "Confirmed definition is not labelled Base por definir");
     await call("Page.navigate", { url: `${origin}/projects` });
     await until(`Boolean(document.querySelector('a[href="/projects/${projectId}"]'))`);

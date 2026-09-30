@@ -27,8 +27,8 @@ export function ConversationalProjectCreate({ initialIdea, ownerId }: { initialI
     } catch (e) { setError(e instanceof Error ? e.message : "No se pudo conectar."); setBusy(false); }
   }}>
     <label className="text-xl font-semibold" htmlFor="research-idea">Cuéntame qué quieres investigar.</label>
-    <p>Puedes escribir una idea general o un tema detallado. No necesitas decidir el método todavía.</p>
-    <textarea id="research-idea" className="min-h-36 rounded-xl border p-4" minLength={8} maxLength={8000} required value={idea} disabled={busy || Boolean(request.current)} onChange={e => setIdea(e.target.value)} />
+    <p>Solo dime el área que te interesa y te ayudo a plantear una investigación. También puedes escribir una idea detallada.</p>
+    <textarea id="research-idea" className="min-h-36 rounded-xl border p-4" minLength={2} maxLength={8000} required value={idea} disabled={busy || Boolean(request.current)} onChange={e => setIdea(e.target.value)} />
     <label htmlFor="academic-level">Nivel académico</label>
     <select id="academic-level" required className="rounded-xl border p-3" value={level} disabled={busy || Boolean(request.current)} onChange={e => setLevel(e.target.value)}>
       <option value="">Selecciona tu nivel</option><option value="PREGRADO">Pregrado</option><option value="MAESTRIA">Maestría</option><option value="PROYECTO_INVESTIGACION">Proyecto de investigación</option>
