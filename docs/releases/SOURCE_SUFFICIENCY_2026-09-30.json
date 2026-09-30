@@ -46,6 +46,26 @@
   },
   "acceptance": {
     "authenticatedProduction": "OWNER_MANUAL",
-    "releaseStatus": "PENDING_DEPLOYMENT"
+    "releaseStatus": "STAGING_VALIDATED_PRODUCTION_PREPARED",
+    "stagingDeployment": "dpl_57W9ism2D91Ttij1E167rMTwsgN8",
+    "stagingAuthenticatedBrowser": "PASS: normal login; keyboard typeahead; Define/Evidence/Plan at 360,768,1280",
+    "ideaOptionsRealCall": "PASS: 3 options; repeated request cached",
+    "liveSearch": {
+      "openAlexQueries": 2,
+      "crossrefQueries": 0,
+      "astraOperations": 0,
+      "astraReason": "NOT_NEEDED: core coverage reached",
+      "core": 12,
+      "exploratory": 8,
+      "automaticallySelected": 0
+    },
+    "providerEstimatedUsd": 0.057276,
+    "syntheticPdfUpload": "PASS: 430334 bytes, matching hash; private technical project only"
+  },
+  "runtimeCommit": "21fbe4f1d855e5e9cae500665eadd0110cc4bb1b",
+  "productionBackup": {
+    "id": "05260dba7626e5028c4e2c7e9991a5623b8540342871d21e7c04fe787c153b78",
+    "time": "2026-09-30T21:47:38.15812915Z",
+    "integrity": "PASS: restic full data check, temporary restore, pg_restore list, artifact hashes"
   }
 }
