@@ -16,7 +16,7 @@ services:
     environment:
       PGDATABASE: imx_rc4_production
   app:
-    image: imx-rc4-flowfix-runtime:1db3032
+    image: imx-rc4-intake-runtime:169a603
     build: !reset null
     environment: &production_runtime
       DATABASE_URL: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
@@ -34,7 +34,7 @@ services:
       MP_APPLICATION_ID: ""
       MP_WEBHOOK_SECRET: ""
   worker:
-    image: imx-rc4-flowfix-runtime:1db3032
+    image: imx-rc4-intake-runtime:169a603
     environment:
       <<: *production_runtime
       DATABASE_URL: postgresql://imx_worker:${WORKER_DB_PASSWORD:?required}@db:5432/imx_rc4_production
