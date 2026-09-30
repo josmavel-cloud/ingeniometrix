@@ -1,6 +1,6 @@
 import type { Intake } from "@prisma/client";
 import { DEFINITION_FIELDS, type ConfirmedResearchSearchIntent } from "./conversational-intake";
-import type { IntakeInput } from "@/server/projects/project-validation";
+import type { IntakeInput } from "./project-intake-input";
 
 type LegacySource = Pick<Intake, "topic" | "problemContext" | "targetPopulation" | "researchScope" | "constructs" | "preferredMethodology" | "academicConstraints" | "researchLine" | "availableData" | "advisorNotes" | "pendingDecisions">;
 const nonempty = (text: string | null | undefined) => text?.trim() || null;
