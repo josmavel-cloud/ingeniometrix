@@ -100,7 +100,7 @@ export async function recoverCentralTranslations(input: SemanticPlannerInput, en
   let response: z.infer<typeof RESPONSE> | null = null;
   if (pending.length) {
     try {
-      response = RESPONSE.parse(await provider.generateStructuredObject({ model: recoveryModel(), reasoningEffort: "low", maxOutputTokens: 2500,
+      response = RESPONSE.parse(await provider.generateStructuredObject({ maxRetries: 0, model: recoveryModel(), reasoningEffort: "low", maxOutputTokens: 2500,
         schemaName: "search_concept_translation_v1", schema: z.toJSONSchema(RESPONSE),
         prompt: renderVersionedPrompt(SEARCH_CONCEPT_TRANSLATION_PROMPT, { var_0: JSON.stringify({ searchIntentHash: input.searchIntentHash, concepts: pending }) }),
         trackingLabel: "structured:search_concept_translation", trackingAttribution: { stage: "source_discovery", promptVersion: SEARCH_CONCEPT_TRANSLATION_PROMPT.version },

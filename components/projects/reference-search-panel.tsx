@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, FileText, Search, Sparkles } from "lucide-react";
 
@@ -20,6 +20,8 @@ import { registerSelectionFlush } from "@/lib/selection-save-queue";
 type ReferenceListItem = {
   id: string;
   selected: boolean;
+  relevanceTier?: "CORE" | "EXPLORATORY" | "EXCLUDED";
+  scientificallyUsable?: boolean;
   selectedOrder: number | null;
   primaryRole?: "DIRECT" | "METHODOLOGICAL" | "THEORETICAL" | "CONTEXTUAL" | "NONE";
   relevanceReason?: string;
@@ -213,7 +215,7 @@ export function ReferenceSearchPanel({
     [references],
   );
   const visibleReferences = useMemo(
-    () => references.slice(0, visibleCount),
+    () => [...references].sort((a, b) => Number(a.relevanceTier === "EXPLORATORY") - Number(b.relevanceTier === "EXPLORATORY")).slice(0, visibleCount),
     [references, visibleCount],
   );
   const maxVisibleRecommendations = 40;
@@ -238,28 +240,38 @@ export function ReferenceSearchPanel({
     },
   ];
 
-  function toggleReference(referenceId: string) {
-    setReferences((current) => {
-      const isSelected = current.find((item) => item.reference.id === referenceId)?.selected;
-
-      if (!isSelected && selectedCount >= MAX_SELECTED_REFERENCES) {
-        setError(copy.maxSelected(MAX_SELECTED_REFERENCES));
-        return current;
-      }
-
-      setError(null);
-
-      const updated = current.map((item) =>
-        item.reference.id === referenceId
-          ? { ...item, selected: !item.selected }
-          : item,
-      );
-
-      let order = 1;
-      return updated.map((item) =>
-        item.selected ? { ...item, selectedOrder: order++ } : { ...item, selectedOrder: null },
-      );
+  const persistence = useRef<Promise<void>>(Promise.resolve());
+  const persistedIds = useRef(initialReferences.filter(item => item.selected).sort((a,b) => (a.selectedOrder ?? 999) - (b.selectedOrder ?? 999)).map(item => item.reference.id));
+  const persistSelection = (items: ReferenceListItem[]) => {
+    const ids = items.filter(item => item.selected).sort((a,b) => (a.selectedOrder ?? 999) - (b.selectedOrder ?? 999)).map(item => item.reference.id);
+    const pending = persistence.current.catch(() => undefined).then(async () => {
+      if (JSON.stringify(ids) === JSON.stringify(persistedIds.current)) return;
+      const response = await fetch(`/api/projects/${projectId}/references`, {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ selectedReferenceIds: ids }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error ?? copy.saveError);
+      persistedIds.current = ids;
+      window.dispatchEvent(new CustomEvent("imx-selection-saved", { detail: { projectId, count: ids.length } }));
     });
+    persistence.current = pending;
+    return pending;
+  };
+
+  function toggleReference(referenceId: string) {
+    const current = selectionForFlush.current;
+    const target = current.find(item => item.reference.id === referenceId);
+    if (!target || (!target.selected && current.filter(item => item.selected).length >= MAX_SELECTED_REFERENCES)) {
+      setError(copy.maxSelected(MAX_SELECTED_REFERENCES)); return;
+    }
+    setError(null);
+    let order = 1;
+    const updated = current.map(item => item.reference.id === referenceId ? { ...item, selected: !item.selected } : item)
+      .map(item => ({ ...item, selectedOrder: item.selected ? order++ : null }));
+    selectionForFlush.current = updated;
+    setReferences(updated);
+    window.dispatchEvent(new CustomEvent("imx-selection-changed", { detail: { projectId, count: order - 1 } }));
+    void persistSelection(updated).catch(() => setError("No se guardó la selección. Conservamos tus cambios para reintentarlo antes de continuar."));
   }
 
   function runSearch(desiredTotal: number, batchKind: "initial" | "more" = "initial") {
@@ -372,36 +384,9 @@ export function ReferenceSearchPanel({
   }
 
   async function saveSelectionForContinue() {
-    setError(null);
-    setMessage(null);
-    setInfo(null);
-
-    const selectedReferenceIds = selectionForFlush.current
-      .filter((reference) => reference.selected)
-      .sort((left, right) => (left.selectedOrder ?? 999) - (right.selectedOrder ?? 999))
-      .map((reference) => reference.reference.id);
-
-    if (
-      selectedReferenceIds.length < MIN_SELECTED_REFERENCES ||
-      selectedReferenceIds.length > MAX_SELECTED_REFERENCES
-    ) {
-      throw new Error(copy.saveRange(MIN_SELECTED_REFERENCES, MAX_SELECTED_REFERENCES));
-    }
-
-      const response = await fetch(`/api/projects/${projectId}/references`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ selectedReferenceIds }),
-        });
-
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-
-        if (!response.ok) throw new Error(payload.error ?? copy.saveError);
-        setMessage(copy.saved);
-        window.dispatchEvent(new Event("imx-selection-saved"));
-        router.refresh();
+    await persistSelection(selectionForFlush.current);
+    setMessage(copy.saved);
+    router.refresh();
   }
 
   const selectionForFlush = useRef(references);
@@ -633,7 +618,9 @@ export function ReferenceSearchPanel({
         </div>
       ) : (
         <div className="mt-8 grid gap-4">
-          {visibleReferences.map((item) => (
+          {visibleReferences.map((item, index) => (
+            <Fragment key={item.id}>
+              {(index === 0 || visibleReferences[index - 1].relevanceTier !== item.relevanceTier) && <h3 className="mt-4 text-lg font-semibold">{item.relevanceTier === "EXPLORATORY" ? "También podrías explorar" : item.relevanceTier === "EXCLUDED" ? "Fuentes seleccionadas pendientes de verificar" : "Más relevantes"}</h3>}
             <article
               className="surface-panel rounded-[28px] p-5"
               key={item.id}
@@ -656,7 +643,8 @@ export function ReferenceSearchPanel({
               </div>
 
               <div className="mt-4">
-                {item.selected && item.admission && item.admission.state !== "ADMITTED" ? (
+                {item.relevanceTier === "EXPLORATORY" && <p className="mb-3 rounded-xl bg-[var(--color-lilac)]/20 p-3 text-sm">Fuente relacionada, no central. Puede aportar una perspectiva complementaria; conservará esta limitación al preparar el plan.</p>}
+                {item.selected && item.admission && item.admission.state !== "ADMITTED" && item.relevanceTier !== "EXPLORATORY" ? (
                   <p className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
                     {copy.selectionConflict}
                   </p>
@@ -746,6 +734,7 @@ export function ReferenceSearchPanel({
                 </div>
               </div>
             </article>
+            </Fragment>
           ))}
         </div>
       )}
@@ -768,7 +757,7 @@ export function ReferenceSearchPanel({
         </div>
       ) : null}
 
-      <p className="mt-6 text-sm leading-6 text-[var(--color-muted)]">Tu selección se guardará al continuar al plan.</p>
+      <p className="mt-6 text-sm leading-6 text-[var(--color-muted)]">Tu selección se guarda automáticamente. Puedes elegir hasta 10 fuentes; necesitas al menos 3 utilizables para continuar.</p>
     </section>
   );
 }

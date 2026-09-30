@@ -86,9 +86,9 @@ function requireUsage(response: { usage?: {
   };
 }
 
-async function runWithTimeoutAndRetry<T>(work: () => Promise<T>) {
+async function runWithTimeoutAndRetry<T>(work: () => Promise<T>, retryOverride?: 0) {
   const timeoutMs = resolveTimeoutMs();
-  const maxRetries = resolveRetryCount();
+  const maxRetries = retryOverride ?? resolveRetryCount();
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
@@ -177,7 +177,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
               schema: input.schema,
             },
           },
-        }, input.trackingAttribution),
+        }, input.trackingAttribution), input.maxRetries,
       );
       const usage = requireUsage(response);
 

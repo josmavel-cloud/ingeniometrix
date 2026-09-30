@@ -29,19 +29,8 @@ export type CreateProjectInput = {
   topicOriginType: TopicOriginType;
 };
 
-export type IntakeInput = {
-  topic: string;
-  problemContext?: string;
-  researchLine?: string;
-  academicConstraints?: string;
-  targetPopulation?: string;
-  availableData?: string;
-  preferredMethodology?: string;
-  advisorNotes?: string;
-  researchScope?: string;
-  constructs?: string;
-  pendingDecisions?: string;
-};
+import type { IntakeInput } from "@/lib/project-intake-input";
+export type { IntakeInput } from "@/lib/project-intake-input";
 
 const DEGREE_LEVEL_VALUES = new Set(Object.values(DegreeLevel));
 const UNIVERSITY_VALUES = new Set(Object.values(University));

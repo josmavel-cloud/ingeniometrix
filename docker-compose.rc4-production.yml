@@ -16,14 +16,15 @@ services:
     environment:
       PGDATABASE: imx_rc4_production
   app:
-    image: imx-rc4-intake-runtime:76cc1d9
+    image: imx-rc4-source-sufficiency:20260930
     build: !reset null
     environment: &production_runtime
       DATABASE_URL: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
       DATABASE_URL_UNPOOLED: postgresql://imx_app:${APP_DB_PASSWORD:?required}@db:5432/imx_rc4_production
       IMX_AUTHLESS_WORKSPACE: "0"
-      IMX_ENABLE_ASTRA_WEB_DISCOVERY: "0"
-      IMX_ENABLE_ASTRA_WEB_CONVERGENCE: "0"
+      IMX_ASTRA_WEB_MINIMUM_SOURCE_FALLBACK: "1"
+      IMX_ENABLE_ASTRA_WEB_DISCOVERY: "1"
+      IMX_ENABLE_ASTRA_WEB_CONVERGENCE: "1"
       IMX_ENABLE_DEEP_RESEARCH: "0"
       IMX_PAYMENT_MODE: disabled
       IMX_PAYMENT_ACCOUNT_CONTEXT: disabled
@@ -34,7 +35,7 @@ services:
       MP_APPLICATION_ID: ""
       MP_WEBHOOK_SECRET: ""
   worker:
-    image: imx-rc4-intake-runtime:76cc1d9
+    image: imx-rc4-source-sufficiency:20260930
     environment:
       <<: *production_runtime
       DATABASE_URL: postgresql://imx_worker:${WORKER_DB_PASSWORD:?required}@db:5432/imx_rc4_production

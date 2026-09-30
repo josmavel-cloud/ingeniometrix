@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireCurrentUser } from "@/server/auth/session";
+import { convergeSourceSufficiency } from "@/server/retrieval/source-sufficiency-controller";
 import { searchProjectReferencesV2 } from "@/server/retrieval/reference-search-v2";
 import { withPaidRequest } from "@/server/mvp/pre-job-budget";
 import { loadSearchInput } from "@/server/retrieval/search-intent-service";
@@ -23,7 +24,7 @@ export async function POST(_request: Request, context: RouteContext) {
     };
     if (body.batchKind !== undefined && body.batchKind !== "initial" && body.batchKind !== "more") throw new Error("INVALID_SEARCH_BATCH_KIND");
     if (body.desiredTotal !== undefined && (!Number.isInteger(body.desiredTotal) || body.desiredTotal < 1 || body.desiredTotal > 40)) throw new Error("INVALID_SEARCH_SIZE");
-    const result = await withPaidRequest(_request, user.id, id, body, () => searchProjectReferencesV2(user.id, id, searchInput, {
+    const result = body.batchKind !== "more" ? await convergeSourceSufficiency(user.id, id, searchInput) : await withPaidRequest(_request, user.id, id, body, () => searchProjectReferencesV2(user.id, id, searchInput, {
       desiredTotal: body.desiredTotal,
       batchKind: body.batchKind,
     }));

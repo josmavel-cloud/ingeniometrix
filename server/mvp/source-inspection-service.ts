@@ -1,3 +1,4 @@
+import { MIN_SELECTED_USABLE_SOURCES, MIN_USEFUL_SOURCE_TEXT_CHARS } from "@/lib/source-sufficiency-policy";
 import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
@@ -27,8 +28,8 @@ const execFileAsync = promisify(execFile);
 const FETCH_TIMEOUT_MS = 35_000;
 const MAX_PDF_BYTES = 35 * 1024 * 1024;
 const MAX_SAMPLE_CHARS = 18_000;
-const MIN_USEFUL_TEXT_CHARS = 500;
-const MIN_USABLE_SOURCES = 3;
+const MIN_USEFUL_TEXT_CHARS = MIN_USEFUL_SOURCE_TEXT_CHARS;
+const MIN_USABLE_SOURCES = MIN_SELECTED_USABLE_SOURCES;
 const MIN_DIRECT_OR_METHOD_SOURCES = 2;
 
 export const MVP_SOURCE_INSPECTION_KEY = "step_4_source_inspection";

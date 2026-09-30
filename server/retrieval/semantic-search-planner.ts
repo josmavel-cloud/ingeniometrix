@@ -10,7 +10,7 @@ export async function planSemanticSearch(input: SemanticPlannerInput, provider: 
   try {
     // One logical call, no second text-fallback operation. Existing provider
     // budget/idempotency and transport retry policy remain in charge.
-    const raw = await provider.generateStructuredObject({
+    const raw = await provider.generateStructuredObject({ maxRetries: 0,
       model: searchEnrichmentModel(), reasoningEffort: "low", maxOutputTokens: 4500,
       schemaName: "research_search_enrichment_roles_v2", schema: z.toJSONSchema(enrichmentModelOutputSchema),
       prompt: renderVersionedPrompt(REFERENCE_SEARCH_V2_2_PROMPT, { var_0: JSON.stringify({

@@ -37,7 +37,7 @@ export async function reviewCandidateBatch(input: SemanticPlannerInput, plan: Sc
     const batchStart = Date.now();
     let phase: "PROVIDER" | "VALIDATION" = "PROVIDER";
     try {
-      const raw = await provider.generateStructuredObject({ model: candidateReviewModel(), reasoningEffort: "low", maxOutputTokens: 14000,
+      const raw = await provider.generateStructuredObject({ maxRetries: 0, model: candidateReviewModel(), reasoningEffort: "low", maxOutputTokens: 14000,
         schemaName: "candidate_semantic_review_v2", schema: z.toJSONSchema(candidateReviewSchema),
         prompt: renderVersionedPrompt(CANDIDATE_SEMANTIC_REVIEW_PROMPT_V2, { var_0: JSON.stringify(signals.map(({ sourceField, value, role, tier }) => ({ sourceField, value, role, tier }))),
           var_1: JSON.stringify(batch.map(({ candidateId, title, abstract, year, authors, venue, workType, query, deterministicSignals, reviewTask, evidenceUnits }) =>

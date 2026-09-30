@@ -3,6 +3,7 @@ import { mkdir, open, rename, unlink, stat } from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { PdfUploadError } from "./pdf-upload-error";
 
 export interface ArtifactStore {
   putPdf(key: string, stream: ReadableStream<Uint8Array>, expectedBytes: number): Promise<{ byteSize: number; sha256: string }>;
@@ -19,33 +20,43 @@ export class PrivateFileArtifactStore implements ArtifactStore {
   pathForPdf(key: string) { return this.file(key); }
   async exists(key: string) { try { return (await stat(this.file(key))).isFile(); } catch { return false; } }
   async putPdf(key: string, stream: ReadableStream<Uint8Array>, expectedBytes: number) {
-    await mkdir(this.root, { recursive: true, mode: 0o700 });
     const destination = this.file(key), temporary = `${destination}.part`;
-    if (await this.exists(key)) throw new Error("STORAGE_KEY_EXISTS");
-    const file = await open(temporary, "wx", 0o600);
     const reader = stream.getReader(), hash = createHash("sha256");
-    let byteSize = 0, prefix = Buffer.alloc(0);
+    let byteSize = 0, prefix = Buffer.alloc(0), stage = "STORAGE_OPEN";
+    let file: Awaited<ReturnType<typeof open>> | undefined;
     try {
+      await mkdir(this.root, { recursive: true, mode: 0o700 });
+      if (await this.exists(key)) throw new Error("STORAGE_KEY_EXISTS");
+      file = await open(temporary, "wx", 0o600);
+      stage = "BODY_READ";
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         byteSize += value.byteLength;
-        if (byteSize > expectedBytes) throw new Error("UPLOAD_TOO_LARGE");
+        if (byteSize > expectedBytes) throw new PdfUploadError("BODY_LENGTH_MISMATCH", expectedBytes, byteSize, stage);
         if (prefix.length < 5) prefix = Buffer.concat([prefix, Buffer.from(value)]).subarray(0, 5);
         hash.update(value);
+        stage = "STORAGE_WRITE";
         await file.writeFile(value);
+        stage = "BODY_READ";
       }
-      if (byteSize !== expectedBytes || prefix.toString() !== "%PDF-") throw new Error("INVALID_PDF");
+      if (byteSize !== expectedBytes) throw new PdfUploadError("BODY_LENGTH_MISMATCH", expectedBytes, byteSize, stage);
+      if (prefix.toString() !== "%PDF-") throw new PdfUploadError("INVALID_PDF_SIGNATURE", expectedBytes, byteSize, "SIGNATURE");
+      stage = "STORAGE_SYNC";
       await file.sync(); await file.close();
+      stage = "PDFINFO";
       // Parser validation is NOT malware/relevance approval. Remains quarantined.
       const { stdout } = await promisify(execFile)("pdfinfo", [temporary], { timeout: 15_000, maxBuffer: 65536, encoding: "utf8", env: { PATH: process.env.PATH, LANG: "C", NODE_ENV: process.env.NODE_ENV } });
       const pages = Number(/^Pages:\s+(\d+)/m.exec(stdout)?.[1]);
       if (!pages || pages > 1000 || /^Encrypted:\s+yes/m.test(stdout)) throw new Error("UNSUPPORTED_PDF");
+      stage = "STORAGE_RENAME";
       await rename(temporary, destination);
       return { byteSize, sha256: hash.digest("hex") };
     } catch (error) {
-      await reader.cancel().catch(() => {}); await file.close().catch(() => {}); await unlink(temporary).catch(() => {});
-      throw error;
+      await reader.cancel().catch(() => {}); await file?.close().catch(() => {});
+      if (file) await unlink(temporary).catch(() => {});
+      throw error instanceof PdfUploadError ? error : new PdfUploadError(stage === "PDFINFO" ? "PDFINFO_VALIDATION_FAILED"
+        : stage.startsWith("STORAGE_") ? "PRIVATE_STORAGE_WRITE_FAILED" : "OTHER_SAFE_CATEGORY", expectedBytes, byteSize, stage);
     } finally { reader.releaseLock(); }
   }
 }

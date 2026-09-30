@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { hybridOrigins } from "@/lib/hybrid-origins";
 import { PrivateFileArtifactStore } from "@/server/storage/artifact-store";
+import { PdfUploadError } from "@/server/storage/pdf-upload-error";
 import { rateLimit } from "@/server/auth/security-events";
 
 export const MAX_UPLOAD_BYTES = 30 * 1024 * 1024;
@@ -64,13 +65,22 @@ export async function receivePdf(token: string, body: ReadableStream<Uint8Array>
   const grant = await consumeTransfer(token, "UPLOAD");
   const doc = await prisma.uploadedPdf.findUniqueOrThrow({ where: { id: grant.documentId! } });
   await prisma.uploadedPdf.update({ where: { id: doc.id }, data: { status: "UPLOADING" } });
+  let finalizing = false;
   try {
     const result = await new PrivateFileArtifactStore().putPdf(doc.storageKey, body, grant.maxBytes);
+    finalizing = true;
     await prisma.uploadedPdf.update({ where: { id: doc.id }, data: { ...result, status: "QUARANTINED" } });
     return { id: doc.id, status: "QUARANTINED", ...result };
-  } catch {
-    await prisma.uploadedPdf.update({ where: { id: doc.id }, data: { status: "REJECTED" } });
-    throw new Error("UPLOAD_REJECTED");
+  } catch (cause) {
+    const failure = cause instanceof PdfUploadError ? cause : new PdfUploadError(finalizing ? "TRANSFER_FINALIZATION_FAILED" : "OTHER_SAFE_CATEGORY", grant.maxBytes, 0, finalizing ? "FINALIZATION" : "RECEIVE");
+    await prisma.$transaction([
+      prisma.uploadedPdf.update({ where: { id: doc.id }, data: { status: "REJECTED" } }),
+      prisma.auditLog.create({ data: { projectId: grant.projectId, userId: grant.userId, actorType: "SYSTEM",
+        eventType: "PDF_UPLOAD_FAILED", payloadJson: { operationId: grant.id, documentId: doc.id,
+          category: failure.category, stage: failure.stage, status: 400,
+          declaredBytes: failure.declaredBytes, receivedBytes: failure.receivedBytes } } }),
+    ]);
+    throw failure;
   }
 }
 

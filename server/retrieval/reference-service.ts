@@ -1,3 +1,4 @@
+import { MIN_USEFUL_SOURCE_TEXT_CHARS } from "@/lib/source-sufficiency-policy";
 import { Prisma, ProjectStatus, Provider } from "@prisma/client";
 
 import { resolveLanguageContext } from "@/lib/language";
@@ -27,6 +28,8 @@ import {
   resolveReferenceSourceLanguage,
 } from "./reference-translation-service";
 import { getLatestProjectReferenceSearchSnapshot } from "./reference-search-v2";
+import { SOURCE_ASSESSMENT_EVENT, currentSourceAssessment, type VerifiedSourceAssessment } from "./verified-source-review";
+import { sourceRelevanceTier } from "./source-relevance-tier";
 import { decideReferenceAdmission } from "./reference-admission";
 import { MAX_RECOMMENDATIONS } from "./candidate-review-policy";
 import { buildReferenceSearchPlan } from "./search-query-planner";
@@ -533,7 +536,7 @@ export async function listProjectReferences(
   projectId: string,
   options?: { languageOverride?: string | null },
 ) {
-  const [project, user, references, searchSnapshot, preparations, uploaded] = await Promise.all([
+  const [project, user, references, searchSnapshot, preparations, uploaded, assessmentRows, pdfMetrics] = await Promise.all([
     prisma.project.findFirst({
       where: {
         id: projectId,
@@ -556,13 +559,21 @@ export async function listProjectReferences(
     prisma.projectSourceMaterialization.findMany({ where: { projectId, materializationType: "SOURCE_PREPARATION_V1" },
       orderBy: { createdAt: "desc" }, select: { referenceId: true, status: true, metricsJson: true } }),
     prisma.uploadedPdf.findMany({ where: { projectId, userId, status: "PREPARED", referenceId: { not: null } },
-      select: { referenceId: true, identityStatus: true } }),
+      select: { id: true, sha256: true, referenceId: true, identityStatus: true, extractionStatus: true } }),
+    prisma.auditLog.findMany({ where: { projectId, eventType: SOURCE_ASSESSMENT_EVENT }, orderBy: { createdAt: "desc" }, select: { payloadJson: true } }),
+    prisma.auditLog.findMany({ where: { projectId, eventType: "PDF_SOURCE_PREPARED" }, select: { payloadJson: true } }),
   ]);
 
   if (!project) {
     throw new Error("Proyecto no encontrado.");
   }
 
+  const verifiedAssessments = new Map<string, VerifiedSourceAssessment>();
+  for (const row of assessmentRows) {
+    const payload = row.payloadJson as unknown as VerifiedSourceAssessment;
+    const reference = references.find(item => item.referenceId === payload.referenceId)?.reference;
+    if (reference && !verifiedAssessments.has(payload.referenceId) && currentSourceAssessment(payload, reference, searchSnapshot?.inputTrace?.searchIntentHash)) verifiedAssessments.set(payload.referenceId, payload);
+  }
   const scoreBreakdownByReferenceId = new Map(
     (searchSnapshot?.references ?? []).map((item) => [item.referenceId, item] as const),
   );
@@ -580,7 +591,7 @@ export async function listProjectReferences(
       : references;
   // Historical snapshots stay immutable. Re-evaluate only their current
   // presentation, and always retain explicit human selections.
-  const visibleReferences = [...references.filter((item) => item.selected || uploadReferenceIds.has(item.referenceId)), ...orderedReferences]
+  const visibleReferences = [...references.filter((item) => item.selected || uploadReferenceIds.has(item.referenceId)), ...orderedReferences, ...references.filter(item => verifiedAssessments.has(item.referenceId))]
     .filter((item, index, all) => all.findIndex((other) => other.referenceId === item.referenceId) === index)
     .filter((item) => {
       if (item.selected || uploadReferenceIds.has(item.referenceId)) return true;
@@ -590,7 +601,8 @@ export async function listProjectReferences(
         abstract: item.reference.abstract,
         score: entry?.relevanceScore ?? item.relevanceScore,
         breakdown: entry?.scoreBreakdown ?? null,
-      }).state === "ADMITTED";
+      }).state === "ADMITTED" || sourceRelevanceTier(verifiedAssessments.get(item.referenceId)?.assessment ?? entry?.scoreBreakdown?.candidateAssessment,
+        Boolean(verifiedAssessments.has(item.referenceId) || item.reference.doi || item.reference.openAlexId)) !== "EXCLUDED";
     })
     .slice(0, searchSnapshot?.semanticReview ? MAX_RECOMMENDATIONS * 2 : MAX_SELECTED_REFERENCES * 2);
 
@@ -625,12 +637,19 @@ export async function listProjectReferences(
     });
     const pdfUrl = snapshotEntry?.pdfUrl ?? accessSignals.pdfUrl;
     const pdfAccessible = snapshotEntry?.pdfAccessible ?? false;
-    const assessment = snapshotEntry?.scoreBreakdown?.candidateAssessment;
+    const assessment = verifiedAssessments.get(item.referenceId)?.assessment ?? snapshotEntry?.scoreBreakdown?.candidateAssessment;
     const preparation = preparationByReferenceId.get(item.referenceId);
     const preparationMetrics = preparation?.metricsJson as { evidenceLevel?: string } | null;
 
+    const relevanceTier = sourceRelevanceTier(assessment, Boolean(verifiedAssessments.has(item.referenceId) || item.reference.doi || item.reference.openAlexId));
+    const evidenceLevel = preparationMetrics?.evidenceLevel ?? (uploaded.some(doc => doc.referenceId === item.referenceId && doc.identityStatus === "MATCHED" && doc.extractionStatus === "TEXT_EXTRACTED" && pdfMetrics.some(row => {
+      const metric = row.payloadJson as { documentId?: string; sha256?: string; textCharCount?: number; identityResolved?: boolean };
+      return metric.documentId === doc.id && metric.sha256 === doc.sha256 && metric.identityResolved && (metric.textCharCount ?? 0) >= MIN_USEFUL_SOURCE_TEXT_CHARS;
+    })) ? "FULL_TEXT_MATERIALIZED" : item.reference.abstract ? "ABSTRACT_AVAILABLE" : "METADATA_ONLY");
     return {
       ...item,
+      relevanceTier,
+      scientificallyUsable: relevanceTier !== "EXCLUDED" && ["ABSTRACT_AVAILABLE", "FULL_TEXT_MATERIALIZED"].includes(evidenceLevel),
       // Recommendations are suggestions, never human selection. The persisted
       // ProjectReference row is the sole authority for the checkbox state.
       selected: item.selected,
@@ -639,14 +658,14 @@ export async function listProjectReferences(
       scoreBreakdown: snapshotEntry?.scoreBreakdown ?? null,
       admission,
       primaryRole: assessment?.role ?? "NONE",
-      relevanceReason: assessment?.origin === "MODEL_REVIEW" && assessment.evidence?.length
-        ? `Fundamento en ${assessment.evidence[0].field === "title" ? "el título" : "el resumen"}: ${assessment.evidence[0].quote.slice(0, 180)}`
-        : admission.state === "ADMITTED"
-          ? "Coincide con dimensiones del tema en los metadatos disponibles; verifica su aporte antes de usarla."
+      relevanceReason: relevanceTier === "EXPLORATORY"
+        ? "La evaluación del título y resumen identifica un aporte relacionado o complementario, con límites respecto del tema central."
+        : relevanceTier === "CORE"
+          ? "La evaluación del título y resumen identifica un aporte central al problema, objeto o conceptos de tu investigación."
           : "La pertinencia necesita revisión con la información disponible.",
       recommendationState: item.selected ? "SELECTED" : admission.state === "ADMITTED" ? "RECOMMENDED" : admission.state,
       sourceState: item.selected ? "SELECTED" : "CANDIDATE",
-      evidenceLevel: preparationMetrics?.evidenceLevel ?? (item.reference.abstract ? "ABSTRACT_AVAILABLE" : "METADATA_ONLY"),
+      evidenceLevel,
       preparationStatus: preparation?.status ?? "NOT_PREPARED",
       userUploaded: uploadReferenceIds.has(item.referenceId),
       provenance: { provider: item.sourceProvider, searchSnapshotSavedAt: searchSnapshot?.savedAt ?? null },

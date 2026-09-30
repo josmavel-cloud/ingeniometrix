@@ -25,7 +25,7 @@ export function PrivatePdfUpload({ projectId }: { projectId: string }) {
     const response = await fetch(`/api/projects/${projectId}/documents`, { cache: "no-store" });
     if (!response.ok) throw new Error("No se pudieron consultar los documentos.");
     const next = await response.json() as State;
-    setState(next); return next;
+    setState(next); window.dispatchEvent(new Event("imx-selection-saved")); return next;
   }
   useEffect(() => { void refresh().catch(() => setMessage("No se pudieron cargar los PDF.")); }, [projectId]);
   if (!state?.capability.enabled) return <UserPdfPlaceholder />;
@@ -55,7 +55,12 @@ export function PrivatePdfUpload({ projectId }: { projectId: string }) {
         request.upload.onprogress = event => { if (event.lengthComputable) setPending({ file,
           progress: Math.floor(event.loaded * 100 / event.total), error: null }); };
         request.onerror = () => reject(new Error("Se interrumpió la carga. Puedes reintentar."));
-        request.onload = () => request.status >= 200 && request.status < 300 ? resolve() : reject(new Error("No se pudo recibir el PDF."));
+        request.onload = () => {
+          if (request.status >= 200 && request.status < 300) { resolve(); return; }
+          let message = "No pudimos completar la carga del PDF. Conserva tu archivo e inténtalo más tarde.";
+          try { const payload = JSON.parse(request.responseText); if (typeof payload.error === "string" && !/^[A-Z_]+$/.test(payload.error)) message = payload.error; } catch {}
+          reject(new Error(message));
+        };
         request.send(file);
       });
       uploaded = true;

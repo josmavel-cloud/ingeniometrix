@@ -1,3 +1,4 @@
+import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-context";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
@@ -65,7 +66,7 @@ async function main() {
       etag: view.etag, action: { kind: "EDIT", field: "concepts", value: "feedback; digital mathematics",
         knowledge: "KNOWN" } });
     await confirmDefinition(user.id, project.id, view.revision, view.definitionHash);
-    for (const [index, abstract] of ["Study of feedback in digital mathematics education.", null,
+    for (const [index, abstract] of ["Study of feedback in digital mathematics education.", "Related theoretical work on feedback and learning.",
       "Methodology for feedback in mathematics education.", null].entries()) {
       const title = `Digital mathematics evidence ${index + 1}`;
       const ref = await prisma.reference.create({ data: { title, normalizedTitle: normalizeTitle(title),
@@ -75,12 +76,13 @@ async function main() {
       await prisma.projectReference.create({ data: { projectId: project.id, referenceId: ref.id,
         sourceProvider: "SYSTEM", relevanceScore: 50 } });
     }
+    await fixtureSourceAssessments(user.id, project.id, references, references[1]);
     await updateSelectedProjectReferences(user.id, project.id, references.slice(0, 3));
     const listed = await listProjectReferences(user.id, project.id);
     assert.equal(listed.filter(row => row.selected).length, 3, "selection must reflect persisted state only");
     const first = await prepareSelectedSources(user.id, project.id);
     assert.equal(first.items.length, 3);
-    assert.equal(first.items.filter(row => row.status === "PREPARED_ABSTRACT").length, 2);
+    assert.equal(first.items.filter(row => row.status === "PREPARED_ABSTRACT").length, 3);
     const materialCount = await prisma.projectSourceMaterialization.count({ where: { projectId: project.id,
       materializationType: "SOURCE_PREPARATION_V1" } });
     const repeated = await prepareSelectedSources(user.id, project.id);

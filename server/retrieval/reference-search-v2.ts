@@ -1,3 +1,4 @@
+import { recoverExploratoryCache } from "./recover-exploratory-cache";
 import { REFERENCE_SEARCH_V2_1_PROMPT } from "@/server/mvp/prompts/reference-search-v2.v1";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
 import { Prisma, ProjectStatus, Provider } from "@prisma/client";
@@ -38,7 +39,8 @@ import {
 import { extractAccessSignals } from "./reference-access";
 import { OPENALEX_QUALITY_FILTERS, OpenAlexRequestError, searchOpenAlexWorks } from "./openalex-client";
 import { settleFailedSearch } from "./search-failure-state";
-import { admittedOnly, decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
+import { sourceRelevanceTier } from "./source-relevance-tier";
+import { decideReferenceAdmission, REFERENCE_ADMISSION_POLICY_VERSION, type ReferenceAdmission } from "./reference-admission";
 import { PROVIDER_CACHE_TTL_MS, PROVIDER_QUERY_POLICY_VERSION, providerQueryHash, renderCrossrefFamily,
   sameScientificWork, selectProviderQueries, normalizeScholarlyDoi, scholarlyVersionClass, type ExecutedProviderQuery, type ProviderQuery } from "./provider-query-policy";
 
@@ -1361,6 +1363,7 @@ export async function searchProjectReferencesV2(
   options?: {
     desiredTotal?: number;
     batchKind?: SourceDiscoveryBatchKind;
+    automaticConvergence?: boolean;
     // Internal acceptance capability; never accepted from public route bodies.
     openAlexOnlyAcceptance?: { planOperationId: string; maxQueries: number; semanticReview?: boolean };
   },
@@ -1422,9 +1425,10 @@ export async function searchProjectReferencesV2(
   if (batchKind === "initial" && !acceptance && !planningProvider && priorSnapshot &&
       reusableMetadata(priorSnapshot, intentHash, input.intent.sourceKind === "CONFIRMED_DEFINITION") &&
       Date.now() - Date.parse(priorSnapshot.savedAt) < PROVIDER_CACHE_TTL_MS) {
+    const recovered = await recoverExploratoryCache(userId, projectId, priorSnapshot);
     return { batchKind, searchQuery: priorSnapshot.searchQuery, attemptedQueries: [],
       totalResults: priorSnapshot.references.length, createdCount: 0, updatedCount: 0,
-      providerBreakdown: { openAlex: 0, crossref: 0 }, searchSnapshot: priorSnapshot };
+      providerBreakdown: { openAlex: 0, crossref: 0 }, searchSnapshot: recovered };
   }
   const inputTrace = await freezeSearchInput(userId, input);
 
@@ -1494,8 +1498,8 @@ export async function searchProjectReferencesV2(
   const providerQueries = selectProviderQueries({ batchKind, planHash: queryPlanHash,
     families: searchMetadata.queryPack.plannedQueries ?? [],
     fallbackQueries: exhaustiveQueryStages[0].queries,
-    filters: exhaustiveQueryStages[0].openAlexFilters, prior: priorExecutions,
-    maxOpenAlexQueries: acceptance?.maxQueries ?? 2 });
+    filters: exhaustiveQueryStages[0].openAlexFilters, prior: options?.automaticConvergence ? priorExecutions.map(query => ({ ...query, errorCategory: null })) : priorExecutions,
+    maxOpenAlexQueries: acceptance?.maxQueries ?? (options?.automaticConvergence ? Math.max(0, Math.min(2, 6 - new Set(priorExecutions.filter(q => q.provider === "OPENALEX").map(q => q.queryHash)).size)) : 2) });
   const attemptedQueries: string[] = [];
 
   if (!searchQuery || (batchKind === "initial" && providerQueries.length === 0)) {
@@ -1591,7 +1595,8 @@ export async function searchProjectReferencesV2(
       const query: ProviderQuery = { familyId: family.id, familyType: family.family, provider: "CROSSREF", renderedQuery,
         filters: [], page: 1 };
       const queryHash = providerQueryHash(queryPlanHash, query);
-      if (!priorExecutions.some(item => item.queryHash === queryHash && item.errorCategory === null)) {
+      if (!priorExecutions.some(item => item.provider === "CROSSREF")) {
+        try {
         const oldHits = cacheHits;
         const crossrefResults = await cachedProviderResults(query, () => searchCrossrefWorks(renderedQuery));
         let newCandidateCount = 0;
@@ -1622,10 +1627,15 @@ export async function searchProjectReferencesV2(
         attemptSummaries.push({ query: renderedQuery, resultCount: crossrefResults.length });
         executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: crossrefResults.length,
           newCandidateCount, cacheHit: cacheHits > oldHits, errorCategory: null });
+        } catch (error) {
+          if (!options?.automaticConvergence) throw error;
+          executedQueries.push({ ...query, queryHash, executedAt: new Date().toISOString(), resultCount: 0,
+            newCandidateCount: 0, cacheHit: false, errorCategory: "CROSSREF_UNAVAILABLE" });
+        }
       }
     }
   }
-  if (openAlexUnavailable && !executedQueries.some(item => item.errorCategory === null)) throw new Error("OPENALEX_PROVIDER_TEMPORARILY_UNAVAILABLE");
+  if (!options?.automaticConvergence && openAlexUnavailable && !executedQueries.some(item => item.errorCategory === null)) throw new Error("OPENALEX_PROVIDER_TEMPORARILY_UNAVAILABLE");
 
   const candidatePool = Array.from(aggregatedResults.values());
   const rankedCandidates: RankedCandidate[] = [];
@@ -1729,7 +1739,8 @@ export async function searchProjectReferencesV2(
     }
   }
   const selectedCandidates = pickDiverseCandidates({
-    rankedCandidates: admittedOnly(rankedCandidates),
+    rankedCandidates: rankedCandidates.filter(item => item.admission.state === "ADMITTED" ||
+      sourceRelevanceTier(item.scoreBreakdown.candidateAssessment, Boolean(item.candidate.doi || item.candidate.openAlexId)) === "EXPLORATORY"),
     desiredTotal: semanticReview ? Math.min(options?.desiredTotal ?? MAX_RECOMMENDATIONS, MAX_RECOMMENDATIONS) : desiredTotal,
     metadata: searchMetadata,
     activeLanguage: languageContext.activeLanguage,
@@ -1912,7 +1923,7 @@ export async function searchProjectReferencesV2(
       relevanceScore: item.score,
       scoreBreakdown: item.scoreBreakdown,
       admission: item.admission,
-      ...(acceptance ? { inspectionMetadata: { abstract: item.candidate.abstract, authors: item.candidate.authors, venue: item.candidate.venue, access: extractAccessSignals(item.candidate) } } : {}),
+      inspectionMetadata: { abstract: item.candidate.abstract, authors: item.candidate.authors, venue: item.candidate.venue, access: extractAccessSignals(item.candidate) },
     }))].filter((item, index, all) => all.findIndex(other => other.candidateKey === item.candidateKey) === index),
     references: [...(batchKind === "more" ? priorSnapshot?.references ?? [] : []), ...persistedResults.map((item) => ({
       referenceId: item.referenceId,
