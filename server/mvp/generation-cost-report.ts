@@ -1,6 +1,11 @@
 type CostEntry = { id: string; purpose: string; stage: string; model: string; actualModel: string | null;
   estimate: number | null; maximum: number; status: string; retry: boolean;
-  usage: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } | null };
+  usage: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number;
+    input_tokens?: number; output_tokens?: number; output_tokens_details?: { reasoning_tokens?: number } } | null };
+
+const tokens = (usage: CostEntry["usage"]) => ({ input: usage?.inputTokens ?? usage?.input_tokens ?? 0,
+  output: usage?.outputTokens ?? usage?.output_tokens ?? 0,
+  reasoning: usage?.reasoningTokens ?? usage?.output_tokens_details?.reasoning_tokens ?? 0 });
 
 export function generationCostReport(record: { entries?: CostEntry[] } | null,
   miniOperations: Array<{ operationId: string; estimatedCostUsd: number | null; reservedCostUsd: number;
@@ -21,10 +26,11 @@ export function generationCostReport(record: { entries?: CostEntry[] } | null,
     reasoningTokens: 0, knownCostUsd: 0, unresolvedReservationUsd: 0 }]));
   for (const entry of record?.entries ?? []) {
     const aggregate = byStage[category(entry)];
+    const usage = tokens(entry.usage);
     aggregate.calls++;
-    aggregate.inputTokens += entry.usage?.inputTokens ?? 0;
-    aggregate.outputTokens += entry.usage?.outputTokens ?? 0;
-    aggregate.reasoningTokens += entry.usage?.reasoningTokens ?? 0;
+    aggregate.inputTokens += usage.input;
+    aggregate.outputTokens += usage.output;
+    aggregate.reasoningTokens += usage.reasoning;
     if (entry.estimate !== null) aggregate.knownCostUsd += entry.estimate;
     else aggregate.unresolvedReservationUsd += entry.maximum;
   }
