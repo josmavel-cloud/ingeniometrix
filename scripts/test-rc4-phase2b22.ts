@@ -7,7 +7,8 @@ import { ASTRA_WEB_COST_POLICY, webDiscoveryCostBound } from "@/server/retrieval
 import { createOpenAiWebDiscoveryProvider, webDiscoveryRequestForTest } from "@/server/retrieval/web-discovery-provider";
 import { normalizePublicWebUrl, extractWebObservations, validateWebDiscoveryProposals, WEB_DISCOVERY_JSON_SCHEMA } from "@/server/retrieval/web-discovery-validation";
 import { webDiscoveryOperationIdentity, runWebDiscoveryOperation } from "@/server/retrieval/web-discovery-operation";
-import type { WebDiscoveryInput, WebDiscoveryProposal } from "@/server/retrieval/web-discovery-contract";
+import { DESIGN_MINI_RESEARCH_PURPOSE, type WebDiscoveryInput, type WebDiscoveryProposal } from "@/server/retrieval/web-discovery-contract";
+import { withJobExecution } from "@/server/mvp/job-execution-context";
 
 const testDatabase = new URL(process.env.DATABASE_URL ?? "");
 if (testDatabase.hostname !== "127.0.0.1" || testDatabase.port !== "55440" ||
@@ -87,6 +88,11 @@ async function main() {
       gapSetHash:"one",seenSetHash:"seen",...c.policy }).requestId,
       webDiscoveryOperationIdentity({ userId,searchIntentHash:c.researchIntentProjection.searchIntentHash,
       gapSetHash:"two",seenSetHash:"seen",...c.policy }).requestId);
+    assert.notEqual(webDiscoveryOperationIdentity({ userId,searchIntentHash:c.researchIntentProjection.searchIntentHash,
+      gapSetHash:"one",seenSetHash:"seen",...c.policy }).requestId,
+      webDiscoveryOperationIdentity({ userId,searchIntentHash:c.researchIntentProjection.searchIntentHash,
+      gapSetHash:"one",seenSetHash:"seen",...c.policy,purpose:DESIGN_MINI_RESEARCH_PURPOSE }).requestId,
+      "Design support and source discovery cannot share a paid operation identity");
     let calls = 0;
     const provider = createOpenAiWebDiscoveryProvider({apiKey:"offline-fixture",createResponse:async()=>{calls++;return response([proposal("A")]);}});
     const run = { userId,smoke:true,gapSetHash:"one",seenSetHash:"seen",researchIntentProjection:c.researchIntentProjection,
@@ -95,8 +101,22 @@ async function main() {
     assert.equal(first.state,"COMPLETED"); assert.equal(first.candidates.length,1); assert(first.estimatedCostUsd!>0);
     const again = await runWebDiscoveryOperation(run);
     assert.equal(again.responseId, first.responseId); assert.equal(calls,1,"completed operation reuses persisted result");
+    process.env.IMX_ENABLE_DESIGN_MINI_RESEARCH = "1";
+    const designProject = await prisma.project.create({ data: { userId, title: "Synthetic design support", program: "Fixture", university: "OTHER", degreeLevel: "MAESTRIA", templateKey: "GENERIC_POSGRADO_PE" } });
+    try {
+      const designRun: Parameters<typeof runWebDiscoveryOperation>[0] = { ...run, smoke:false, projectId:designProject.id, purpose:DESIGN_MINI_RESEARCH_PURPOSE,
+        policy: { maxToolCalls:2, maxCandidates:5, maxOutputTokens:4096 } };
+      const designRequest = webDiscoveryRequestForTest({ ...c, operationContext:{operationId:"test-design",smoke:false,purpose:DESIGN_MINI_RESEARCH_PURPOSE}, policy:designRun.policy });
+      assert.match(String(designRequest.instructions), /brecha metodológica/);
+      const inDesignJob = () => withJobExecution({ jobId:"synthetic-job-budget-boundary", startedAt:new Date(), stage:"resolving_design" }, () => runWebDiscoveryOperation(designRun));
+      const designFirst = await inDesignJob();
+      assert.equal(designFirst.state,"COMPLETED");
+      assert.equal((await prisma.paidOperation.findUniqueOrThrow({where:{id:designFirst.operationId}})).purpose,DESIGN_MINI_RESEARCH_PURPOSE);
+      assert.equal((await inDesignJob()).operationId,designFirst.operationId);
+      assert.equal(calls,2,"One source discovery and one distinct design-support operation only");
+    } finally { await prisma.project.delete({where:{id:designProject.id}}); delete process.env.IMX_ENABLE_DESIGN_MINI_RESEARCH; }
     await assert.rejects(()=>runWebDiscoveryOperation({...run,evidenceGaps:[{...c.evidenceGaps[0],requiredDimension:"changed"}]}),/PAID_REQUEST_INPUT_CONFLICT/);
-    assert.equal(calls,1);
+    assert.equal(calls,2);
     const call = await prisma.paidOperationCall.findFirstOrThrow({where:{operationId:first.operationId}});
     assert.equal(call.status,"COMPLETED"); assert(call.reservedMicros<=2_500_000);
     const oversized = Array.from({length:30},(_,i)=>({title:`source-${i}`.padEnd(200,"x"),url:`https://example.org/${i}/`.padEnd(512,"x")}));

@@ -5,6 +5,7 @@ export const WEB_DISCOVERY_SCHEMA_VERSION = "web-discovery-result.v1";
 export const WEB_DISCOVERY_POLICY_VERSION = "astra-web-discovery-policy.v1";
 export const WEB_DISCOVERY_PROMPT_VERSION = "astra-web-discovery.v1";
 export const WEB_DISCOVERY_PURPOSE = "ASTRA_WEB_DISCOVERY";
+export const DESIGN_MINI_RESEARCH_PURPOSE = "DESIGN_SUPPORT_MINI_RESEARCH";
 
 export const WEB_SOURCE_TYPES = ["PEER_REVIEWED_ARTICLE", "CONFERENCE_PAPER", "THESIS", "ACADEMIC_REPOSITORY",
   "STANDARD_OR_CODE", "OFFICIAL_GOVERNMENT_SOURCE", "OFFICIAL_DATASET", "INSTITUTIONAL_TECHNICAL_REPORT",
@@ -53,7 +54,7 @@ export type WebDiscoveryResult = {
 };
 export type ResearchDiscoveryContext = { searchIntentHash: string; scientificSignals: Array<{ field: string; value: string }> };
 export type WebDiscoveryInput = {
-  operationContext: { operationId: string; smoke: boolean };
+  operationContext: { operationId: string; smoke: boolean; purpose?: typeof WEB_DISCOVERY_PURPOSE | typeof DESIGN_MINI_RESEARCH_PURPOSE };
   researchIntentProjection: ResearchDiscoveryContext;
   evidenceGaps: Array<Pick<EvidenceGap, "gapId" | "searchIntentHash" | "kind" | "importance" | "requiredDimension" |
     "desiredEvidenceRole" | "preferredSourceTypes" | "unresolvedPremises" | "webDiscoveryEligible">>;

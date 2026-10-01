@@ -1,13 +1,14 @@
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, buildMethodEvidencePack, intentFromIntake, migrateLegacyCritique, migrateLegacyScopeSemantics, validateScientificDecision, validateDesignCritique, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
-import { approveScientificDecision, approvedDesignForCurrentJob, critiqueScientificDecision, decisionForUser, proposeScientificDecision, reviseScientificDecision } from "@/server/mvp/scientific-decision-service";
-import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { approvedDesignForCurrentJob, critiqueScientificDecision, decisionForUser, proposeScientificDecision, resolveAutonomousDesignBundle, resolveAutonomousDesignForJob, selectAutonomousCandidate } from "@/server/mvp/scientific-decision-service";
+import { enqueueBlueprintJobForUser, resumeLatestBlueprintJobForUser, runNextBlueprintJobStage, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
 import { definition, design, ledger, matrix } from "./test-b3-scientific-contracts";
 import { responseCostBound } from "@/llm/providers/openai-cost-bound";
@@ -15,6 +16,13 @@ import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { SCIENTIFIC_DESIGN_CRITIC_PROMPT } from "@/server/mvp/prompts/scientific-design-critic.v3";
 import { prepareSelectedSources } from "@/server/projects/source-preparation-service";
 import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
+import { createConversationalProject, readDefinition, changeDefinition, confirmDefinition } from "@/server/projects/conversational-definition-service";
+import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-context";
+import { updateSelectedProjectReferences } from "@/server/retrieval/reference-service";
+import { normalizeTitle } from "@/lib/text";
+import { generationContextForUser } from "@/server/projects/generation-context-service";
+import { designSupportGaps, designSupportMetadataEligible } from "@/server/mvp/design-mini-research";
+import { generationCostReport } from "@/server/mvp/generation-cost-report";
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const alternative: DesignAlternative = { id: "option-1", label: "Propuesta cualitativa sintética", scope_fulfilled: "Preserva intención de prueba", definition, research_design: design, components: [{ name: "Análisis temático", kind: "method", role: "Interpretación", inputs: ["Corpus propuesto"], outputs: ["Categorías propuestas"], dependencies: [], support: [{ source_id: "S1", evidence_id: "E3" }] }], scope_changes: [], applicability_conditions: ["Acceso por confirmar"], baselines_or_comparisons: [], transfer_limits: ["Caso único"], feasibility: "Propuesta sintética", discarded_alternative_reasons: [], qualitative_component: "Análisis temático", quantitative_component: null, integration_strategy: null, pending_user_decisions: [] };
@@ -35,6 +43,17 @@ async function main() {
   assert.ok(accountDecisionSources(pack, decision).some((s) => s.used_to_justify_decision));
   assert.ok(accountDecisionSources(pack, { ...decision, alternatives: [] }).every((s) => s.excluded && s.exclusion_reason), "Selected sources not cited in the design remain accounted for");
   validateDesignCritique(decision, critique);
+  assert.equal(selectAutonomousCandidate(decision, critique)?.id, alternative.id);
+  const scopeChanged = { ...alternativeV2, scope_effect: "narrows" as const, scope_changes: [{ requirement_id: "scope", proposed_change: "Otra población", reason: "Fixture" }] };
+  assert.equal(selectAutonomousCandidate({ ...decision, alternatives: [scopeChanged] }, critique), undefined, "A material scope change cannot be auto-approved");
+  assert.equal(selectAutonomousCandidate(decision, rejectedCritique), undefined, "A blocking scientific finding cannot be auto-approved");
+  const costs = generationCostReport({ entries: [
+    { id: "evidence", purpose: "extraction", stage: "EVIDENCE", model: "fixture", actualModel: "fixture", maximum: 0.02, estimate: 0.01, status: "completed", retry: false, usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 2 } },
+    { id: "mini", purpose: "DESIGN_SUPPORT_MINI_RESEARCH", stage: "DESIGN_MINI_RESEARCH_1", model: "fixture", actualModel: null, maximum: 0.03, estimate: null, status: "failed_unknown_usage", retry: false, usage: null },
+  ] }, [{ operationId: "separate-mini", estimatedCostUsd: 0.02, reservedCostUsd: 0.04, usage: { inputTokens: 8, outputTokens: 3, reasoningTokens: 1 } }]);
+  assert.equal(costs.total.knownCostUsd, 0.03);
+  assert.equal(costs.total.unresolvedReservationUsd, 0.03);
+  assert.equal(costs.byStage.mini_research.calls, 2);
   const mixed = structuredClone(decision); mixed.alternatives[0].research_design.approach = "mixed";
   assert.throws(() => validateScientificDecision(mixed, intent, pack), /MIXED_METHODS/);
   mixed.alternatives[0].quantitative_component = "Componente cuantitativo propuesto"; mixed.alternatives[0].integration_strategy = "Integración explícita en interpretación";
@@ -101,6 +120,36 @@ async function main() {
   } } as any });
   assert.equal(repairCalls, 3, "One selector, ONE critic, at most ONE targeted repair");
   assert.equal(rejected.repair_rounds, 1);
+  const gapBundle = structuredClone(rejected);
+  gapBundle.intent.unit_population_corpus = "Corpus sintético";
+  gapBundle.critique.assessments[0].critical_findings[0].affected_field = "validation_strategy";
+  gapBundle.critique.assessments[0].critical_findings[0].required_action = "Verificar la aplicabilidad del método con una fuente técnica primaria";
+  assert.equal(designSupportGaps(gapBundle).length, 1);
+  assert.equal(designSupportGaps(gapBundle)[0].maxCandidates, 5);
+  const sourceMetadata = { title: "Thematic analysis of interview corpora", abstract: "A methodological evaluation of thematic analysis for interview corpora with explicit validation procedures and documented limitations.", doi: "10.1234/example", venue: "Journal of Methods", observedUrl: "https://example.org/article", requestedUrl: "https://example.org/article", method: "thematic analysis", object: "interview corpora" };
+  assert.equal(designSupportMetadataEligible(sourceMetadata), true);
+  assert.equal(designSupportMetadataEligible({ ...sourceMetadata, title: "Retail pricing strategy", abstract: "An economic evaluation of retail pricing strategies in supermarkets with explicit sales and inventory metrics from multiple vendors." }), false);
+  assert.equal(designSupportMetadataEligible({ ...sourceMetadata, observedUrl: "https://example.org/another" }), false);
+  assert.equal(designSupportMetadataEligible({ ...sourceMetadata, doi: null, venue: null }), false);
+  const autonomousCalls: string[] = [];
+  const resolvedBundle = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "fixture",
+    researchSupport: async () => ({ status: "LIMITED", support: [], limitations: ["No se verificó apoyo técnico adicional."], operations: [] }),
+    provider: { generateStructuredObject: async (request: any) => {
+      autonomousCalls.push(request.schemaName);
+      return request.schemaName === "autonomous_design_revision_v1" ? { replacements: [structuredClone(alternativeV2)], corrected_findings: ["Criterio corregido"], unresolved_findings: [] } : critique;
+    } } as any });
+  assert.deepEqual(autonomousCalls, ["autonomous_design_revision_v1", "autonomous_design_critic_0"]);
+  assert.equal(resolvedBundle.revised, true);
+  assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
+  assert.ok(resolvedBundle.alternative.transfer_limits.includes("No se verificó apoyo técnico adicional."));
+  let unsafeCalls = 0;
+  await assert.rejects(() => resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "unsafe",
+    researchSupport: async () => ({ status: "NOT_NEEDED", support: [], limitations: [], operations: [] }),
+    provider: { generateStructuredObject: async (request: any) => {
+      unsafeCalls++;
+      return request.schemaName === "autonomous_design_revision_v1" ? { replacements: [structuredClone(alternativeV2)], corrected_findings: [], unresolved_findings: [] } : rejectedCritique;
+    } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
+  assert.equal(unsafeCalls, 2, "A failed independent critique cannot trigger an unbounded revision debate");
   assert.ok(!alternativeIsApprovable(rejected.decision.alternatives[0], rejected.critique));
   const outputCalls: string[] = [];
   const restored = await proposeScientificDecision({ projectId: "fixture", runId: "fixture", intake: { topic: "Fixture" }, academicLevel: "MAESTRIA", ledger, provider: { generateStructuredObject: async (request: any) => {
@@ -135,14 +184,27 @@ async function main() {
   const user = await prisma.user.create({ data: { email: `rc4-design-${Date.now()}@example.test` } });
   const other = await prisma.user.create({ data: { email: `rc4-design-other-${Date.now()}@example.test` } });
   await grantTestPackage(user.id);
+  const referenceIds: string[] = [];
   try {
-    const project = await prisma.project.create({ data: { userId: user.id, title: "Fixture", program: "Fixture", university: "OTHER", degreeLevel: "MAESTRIA", templateKey: "GENERIC_POSGRADO_PE", intake: { create: { topic: "Comprender un fenómeno", problemContext: definition.problem, targetPopulation: "Corpus sintético", preferredMethodology: "Cualitativa", availableData: "No confirmados", academicConstraints: "Solo pruebas" } } }, include: { intake: true } });
-    const reference = await prisma.reference.create({ data: { title: "Fixture", normalizedTitle: "rc4 fixture", authorsJson: ["Autor sintético"],
-      abstract: "Fixture evidence for qualitative interpretation with source-level limitations." } });
-    await prisma.projectReference.create({ data: { projectId: project.id, referenceId: reference.id, selected: true, selectedOrder: 1, sourceProvider: "SYSTEM" } });
+    const created = await createConversationalProject(user.id, { intakeMode: "conversation", idea: "Feedback in digital mathematics", degreeLevel: "MAESTRIA", requestId: randomUUID() });
+    const view = (await readDefinition(user.id, created.id))!;
+    const edited = await changeDefinition(user.id, created.id, { requestId: randomUUID(), baseRevision: view.revision,
+      etag: view.etag, action: { kind: "EDIT", field: "concepts", value: "feedback; digital mathematics", knowledge: "KNOWN" } });
+    await confirmDefinition(user.id, created.id, edited.revision, edited.definitionHash);
+    const project = await prisma.project.findUniqueOrThrow({ where: { id: created.id }, include: { intake: true } });
+    for (const index of [1, 2, 3]) {
+      const title = `Evidencia sintética de aprendizaje ${index}`;
+      const reference = await prisma.reference.create({ data: { title, normalizedTitle: normalizeTitle(title), authorsJson: ["Autor sintético"],
+        abstract: `Estudio sintético ${index} sobre experiencias de aprendizaje digital.`, year: 2020 + index } });
+      referenceIds.push(reference.id);
+      await prisma.projectReference.create({ data: { projectId: project.id, referenceId: reference.id, selected: false, sourceProvider: "SYSTEM", relevanceScore: 50 } });
+    }
+    await fixtureSourceAssessments(user.id, project.id, referenceIds);
+    await updateSelectedProjectReferences(user.id, project.id, referenceIds);
     await prepareSelectedSources(user.id, project.id);
     await confirmEvidenceSet(user.id, project.id);
-    const testLedger = structuredClone(ledger); testLedger.project_id = project.id; testLedger.source_registry[0].reference_id = reference.id; testLedger.references[0].reference_id = reference.id;
+    const expectedContext = await generationContextForUser(user.id, project.id);
+    const testLedger = structuredClone(ledger); testLedger.project_id = project.id; testLedger.source_registry[0].reference_id = referenceIds[0]; testLedger.references[0].reference_id = referenceIds[0];
     const dir = await mkdtemp(path.join(os.tmpdir(), "imx-rc4-design-"));
     let selectorCalls = 0, criticCalls = 0, scienceCalls = 0, step5Calls = 0;
     const provider = { generateStructuredObject: async (request: any) => {
@@ -167,6 +229,7 @@ async function main() {
         return { status: "completed", step_run_id: step.id, artifact_manifest_path: dir } as never;
       },
       recommend: async ({ runId }) => proposeScientificDecision({ projectId: project.id, runId, intake: project.intake as unknown as Record<string, unknown>, academicLevel: project.degreeLevel, ledger: testLedger, provider }),
+      resolve: resolveAutonomousDesignForJob,
       generate: async ({ runId }) => {
         const approved = await approvedDesignForCurrentJob(project.intake, testLedger);
         assert.ok(approved);
@@ -175,43 +238,33 @@ async function main() {
         throw new Error("PDF_SYNTHETIC_PRESENTATION_FAILURE");
       },
     };
-    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: 0 });
+    const operationId = randomUUID();
+    const job = await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", expectedContext, operationId });
     await runNextBlueprintJobStage(job.id, executor);
-    const waiting = await runNextBlueprintJobStage(job.id, executor);
-    assert.equal(waiting.job?.status, "WAITING_USER_DECISION");
+    await runNextBlueprintJobStage(job.id, executor);
+    const designed = await runNextBlueprintJobStage(job.id, executor);
+    assert.equal(designed.job?.status, "WAITING_NEXT_STAGE");
+    assert.equal(designed.job?.currentStage, "resolving_design");
     assert.equal(scienceCalls, 0);
-    assert.equal((await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", confirmedDraftRevision: 0 })).id, job.id);
-    for (let i = 0; i < 10; i++) await runNextBlueprintJobStage(job.id, executor);
+    assert.equal((await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", expectedContext, operationId })).id, job.id);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval" } });
+    const recovery = await resumeLatestBlueprintJobForUser(user.id, project.id);
+    assert.equal(recovery.state, "autonomous_recovery_scheduled");
+    assert.equal(recovery.job.currentStage, "resolving_design");
+    const replay = await resumeLatestBlueprintJobForUser(user.id, project.id);
+    assert.equal(replay.state, "already_scheduled", "Second owner visit cannot duplicate the recovery");
+    const resolved = await runNextBlueprintJobStage(job.id, executor);
+    assert.equal(resolved.job?.status, "WAITING_NEXT_STAGE");
+    assert.equal(resolved.job?.currentStage, "generating_plan");
     assert.equal(selectorCalls, 1); assert.equal(criticCalls, 1); assert.equal(step5Calls, 1);
+    assert.equal((await decisionForUser(user.id, project.id, job.id)).decision, null, "No post-Sources approval is presented");
     await assert.rejects(() => decisionForUser(other.id, project.id, job.id));
-    const publicDecision = await decisionForUser(user.id, project.id, job.id);
-    const approval = { userId: user.id, projectId: project.id, jobId: job.id, decisionFingerprint: publicDecision.decision!.fingerprint, alternativeId: alternative.id, acceptScopeChanges: false };
-    await assert.rejects(() => approveScientificDecision({ ...approval, userId: other.id }));
-    await assert.rejects(() => approveScientificDecision({ ...approval, decisionFingerprint: "0".repeat(64) }), /REVISION_CONFLICT/);
-    await assert.rejects(() => reviseScientificDecision(approval), /REQUIRES_CHANGED_INPUT/);
-    project.intake = await prisma.intake.update({ where: { projectId: project.id }, data: { academicConstraints: "Restricción corregida explícitamente por el usuario" } });
-    await assert.rejects(() => approveScientificDecision(approval), /INPUT_CHANGED/);
-    const cost = { policy: { hard: 2 }, entries: [{ id: "fixture-reservation", maximum: 0.2, estimate: null, status: "failed_unknown_usage" }] };
-    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(cost) } });
-    await Promise.all([reviseScientificDecision(approval), reviseScientificDecision(approval)]);
-    assert.deepEqual((await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } })).outputJson, cost);
-    assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).attempts, 0);
-    assert.equal(await prisma.blueprintJobStage.count({ where: { jobId: job.id, stageKey: { startsWith: "archive:design-revision-1:" } } }), 7, "Includes the paid selector response envelope for safe replay");
-    await runNextBlueprintJobStage(job.id, executor); await runNextBlueprintJobStage(job.id, executor);
-    const revised = await decisionForUser(user.id, project.id, job.id);
-    assert.notEqual(revised.decision!.fingerprint, approval.decisionFingerprint);
-    await reviseScientificDecision(approval);
-    assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).status, "WAITING_USER_DECISION", "Old revision replay cannot schedule calls");
-    approval.decisionFingerprint = revised.decision!.fingerprint;
-    await Promise.all([approveScientificDecision(approval), approveScientificDecision(approval)]);
     await runNextBlueprintJobStage(job.id, executor);
-    assert.equal(scienceCalls, 10, "Approved questions/objectives/design replace three paid re-generation calls");
+    assert.equal(scienceCalls, 10, "Autonomous design replaces post-Sources questions and approval");
     const after = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     assert.equal(after.status, "FAILED");
-    const repeated = await approveScientificDecision(approval);
-    assert.ok(repeated.approved);
-    assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).status, "FAILED", "approval replay cannot restart failure");
-    console.log("PASS RC4 scientific decision: model/effort contract, evidence pointers, mixed-method conditions, owned approval, pause/idempotency, approved-state consumption; mocked only, paid calls=0.");
-  } finally { await removeTestCommercialData([user.id, other.id]); await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: other.id } }); await prisma.$disconnect(); }
+    assert.equal(await prisma.blueprintJobStage.count({ where: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN", status: "COMPLETED" } }), 1);
+    console.log("PASS RC4 scientific decision: model/effort contract, evidence pointers, automatic in-scope resolution and checkpoint consumption; mocked only, paid calls=0.");
+  } finally { await removeTestCommercialData([user.id, other.id]); await prisma.user.delete({ where: { id: user.id } }); await prisma.user.delete({ where: { id: other.id } }); for (const id of referenceIds) await prisma.reference.deleteMany({ where: { id } }); await prisma.$disconnect(); }
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

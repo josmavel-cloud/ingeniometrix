@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { currentJobExecution, reserveJobCall } from "./job-execution-context";
-import { reservePreJobCall } from "./pre-job-budget";
+import { currentPaidOperation, reservePreJobCall } from "./pre-job-budget";
 import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
 
 export type BudgetEntry = { purpose: string; model: string; reserved_usd: number; estimated_usd: number | null; provider_usage: unknown; status: "reserved" | "completed" | "failed_unknown_usage" | "cancelled_before_dispatch" };
@@ -24,7 +24,11 @@ export class ApplicationBudget {
 }
 const context = new AsyncLocalStorage<ApplicationBudget>();
 const callAttempt = new AsyncLocalStorage<number>();
+const standalonePaidBudget = new AsyncLocalStorage<boolean>();
 export const withPaidCallAttempt = <T>(attempt: number, work: () => Promise<T>) => callAttempt.run(attempt, work);
+// Design-support web research is its own PaidOperation, limited by the existing
+// web daily cap. It must not consume the thesis-composition job's smaller cap.
+export const withStandalonePaidBudget = <T>(work: () => Promise<T>) => standalonePaidBudget.run(true, work);
 export const currentApplicationBudget = () => context.getStore();
 export function withApplicationBudget<T>(budget: ApplicationBudget, work: () => Promise<T>) { return context.run(budget, work); }
 
@@ -34,7 +38,7 @@ export async function reservePaidCall(purpose: string, model: string, maximumUsd
   const local = currentApplicationBudget()?.reserve(purpose, model, maximumUsd);
   let durable;
   try {
-    durable = currentJobExecution() ? await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0)
+    durable = currentJobExecution() && !standalonePaidBudget.getStore() ? await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0, currentPaidOperation()?.id)
       : await reservePreJobCall(purpose, model, maximumUsd, attribution);
   } catch (error) { local?.cancelBeforeDispatch(); throw error; }
   return {
