@@ -54,6 +54,14 @@ async function main() {
   assert.equal(costs.total.knownCostUsd, 0.03);
   assert.equal(costs.total.unresolvedReservationUsd, 0.03);
   assert.equal(costs.byStage.mini_research.calls, 2);
+  const persistedUsage = generationCostReport({ entries: [
+    { id: "persisted", purpose: "design_critic_0", stage: "scientific_design", model: "fixture", actualModel: "fixture",
+      maximum: 0.2, estimate: 0.09, status: "completed", retry: false,
+      usage: { input_tokens: 8065, output_tokens: 2587, output_tokens_details: { reasoning_tokens: 1552 } } },
+  ] });
+  assert.equal(persistedUsage.byStage.design.inputTokens, 8065);
+  assert.equal(persistedUsage.byStage.design.outputTokens, 2587);
+  assert.equal(persistedUsage.byStage.design.reasoningTokens, 1552);
   const mixed = structuredClone(decision); mixed.alternatives[0].research_design.approach = "mixed";
   assert.throws(() => validateScientificDecision(mixed, intent, pack), /MIXED_METHODS/);
   mixed.alternatives[0].quantitative_component = "Componente cuantitativo propuesto"; mixed.alternatives[0].integration_strategy = "Integración explícita en interpretación";
