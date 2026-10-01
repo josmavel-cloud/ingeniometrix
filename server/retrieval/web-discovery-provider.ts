@@ -2,8 +2,9 @@ import OpenAI from "openai";
 import { reservePaidCall } from "@/server/mvp/application-budget";
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { WEB_DISCOVERY_PROMPT } from "@/server/mvp/prompts/web-discovery.v1";
+import { DESIGN_MINI_WEB_RESEARCH_PROMPT } from "@/server/mvp/prompts/design-mini-web-research.v1";
 import { ASTRA_WEB_COST_POLICY, webDiscoveryActualCost, webDiscoveryCostBound } from "./astra-web-cost-policy";
-import { WEB_DISCOVERY_PURPOSE, WEB_DISCOVERY_SCHEMA_VERSION,
+import { DESIGN_MINI_RESEARCH_PURPOSE, WEB_DISCOVERY_PURPOSE, WEB_DISCOVERY_SCHEMA_VERSION,
   type WebDiscoveryInput, type WebDiscoveryProvider, type WebDiscoveryResult } from "./web-discovery-contract";
 import { WEB_DISCOVERY_JSON_SCHEMA, extractWebObservations, validateWebDiscoveryProposals,
   validateWebToolLimit } from "./web-discovery-validation";
@@ -26,6 +27,7 @@ function boundedRequest(input: WebDiscoveryInput) {
     throw new Error("INVALID_WEB_DISCOVERY_SCOPE");
   }
   if (input.operationContext.smoke ? process.env.IMX_RUN_WEB_DISCOVERY_SMOKE !== "1" :
+      input.operationContext.purpose === DESIGN_MINI_RESEARCH_PURPOSE ? process.env.IMX_ENABLE_DESIGN_MINI_RESEARCH !== "1" :
       process.env.IMX_ENABLE_ASTRA_WEB_DISCOVERY !== "1") throw new Error("WEB_DISCOVERY_DISABLED");
   const signals = input.researchIntentProjection.scientificSignals;
   if (signals.length < 1 || signals.length > 12 || signals.some(s => !CONTEXT_FIELDS.has(s.field) ||
@@ -42,7 +44,7 @@ function boundedRequest(input: WebDiscoveryInput) {
     // These two documented web-search fields are newer than the installed SDK typings.
     tools: [{ type: "web_search", external_web_access: true, search_context_size: "low", return_token_budget: "default" } as unknown as OpenAI.Responses.WebSearchTool],
     tool_choice: "required", max_tool_calls: input.policy.maxToolCalls, include: ["web_search_call.action.sources"],
-    max_output_tokens: input.policy.maxOutputTokens, input: prompt, instructions: WEB_DISCOVERY_PROMPT.instructions,
+    max_output_tokens: input.policy.maxOutputTokens, input: prompt, instructions: input.operationContext.purpose === DESIGN_MINI_RESEARCH_PURPOSE ? DESIGN_MINI_WEB_RESEARCH_PROMPT.instructions : WEB_DISCOVERY_PROMPT.instructions,
     text: { format: { type: "json_schema", name: "web_discovery_result_v1", strict: true, schema: WEB_DISCOVERY_JSON_SCHEMA } },
     background: false, store: false } as unknown as ResponseParams;
   return params;
@@ -64,7 +66,7 @@ export function createOpenAiWebDiscoveryProvider(config: {
     // The trace is derived from the same params object passed to responses.create.
     // It is persisted before any provider dispatch, even if the process later dies.
     await persistWebDiscoveryDiagnostic(input.operationContext.operationId, diagnostics);
-    const ticket = await reservePaidCall(WEB_DISCOVERY_PURPOSE, ASTRA_WEB_COST_POLICY.model, bound.maximumUsd);
+    const ticket = await reservePaidCall(input.operationContext.purpose ?? WEB_DISCOVERY_PURPOSE, ASTRA_WEB_COST_POLICY.model, bound.maximumUsd);
     let response: Response;
     try { response = config.createResponse ? await config.createResponse(params) : await client!.responses.create(params); }
     catch (error) {

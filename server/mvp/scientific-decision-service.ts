@@ -14,14 +14,17 @@ import { SCIENTIFIC_DESIGN_CRITIC_PROMPT as critic } from "./prompts/scientific-
 import { SCIENTIFIC_DESIGN_CRITIC_RECOVERY_PROMPT as criticRecovery } from "./prompts/scientific-design-critic-recovery.v1";
 import { SCIENTIFIC_DESIGN_REPAIR_PROMPT as repair } from "./prompts/scientific-design-repair.v1";
 import { SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT as outputRepair } from "./prompts/scientific-design-output-repair.v1";
+import { SCIENTIFIC_DESIGN_AUTONOMOUS_REVISION_PROMPT as autonomousRevision } from "./prompts/scientific-design-autonomous-revision.v1";
+import { researchDesignSupport } from "./design-mini-research";
 import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
 export const SCIENTIFIC_DECISION_STAGE = "checkpoint:SCIENTIFIC_DECISION";
 export const SCIENTIFIC_APPROVAL_STAGE = "approval:SCIENTIFIC_DESIGN";
+export const AUTONOMOUS_DESIGN_STAGE = "checkpoint:AUTONOMOUS_DESIGN";
 const json = (v: unknown) => JSON.parse(JSON.stringify(v)) as Prisma.InputJsonValue;
 const criticRequiredFields = ["assessments", "alternative_id", "decision", "intent_preserved", "scope", "status", "current_user_intent", "recommended_scope", "difference", "rationale", "confirmation_required", "confirmed", "theory_framework_fit", "method_fit", "method_integration", "mixed_methods_validity", "data_feasibility", "validation_strategy", "procedural_executability", "evidence_support", "transferability", "uncertainty_disclosure", "question_objective_method_alignment", "complexity_discipline", "novelty_discipline", "academic_level_fit", "critical_findings", "user_decisions_required", "repair_targets"];
 export function missingCriticSchemaFields(partial: string) { return criticRequiredFields.filter((field) => !partial.includes(`\"${field}\"`)); }
-export async function critiqueScientificDecision(input: { projectId: string; runId: string; intent: ResearchIntentContract; pack: MethodEvidencePack; decision: ScientificDecision; provider: LlmProvider; previousIncomplete?: { partialOutput: string; reason: string }; allowRecovery?: boolean }) {
+export async function critiqueScientificDecision(input: { projectId: string; runId: string; intent: ResearchIntentContract; pack: MethodEvidencePack; decision: ScientificDecision; provider: LlmProvider; previousIncomplete?: { partialOutput: string; reason: string }; allowRecovery?: boolean; checkpointPrefix?: string }) {
   const promptRecords: unknown[] = [];
   async function attempt(key: string, record: typeof critic | typeof criticRecovery, variables: Record<string, unknown>) {
     const prompt = `${record.systemPrompt}\n\n${record.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable]))}`;
@@ -40,8 +43,8 @@ export async function critiqueScientificDecision(input: { projectId: string; run
     promptRecords.push({ id: record.id, version: record.version, model: record.model, reasoning_effort: record.reasoning_effort, max_output_tokens: record.max_output_tokens, variables: record.variables, schema: schemaJson, actual_roles: "single concatenated Responses input", completion_status: value.status, request_hash: fingerprint(prompt) });
     return value;
   }
-  const first = input.previousIncomplete ? criticAttemptEnvelopeSchema.parse({ status: input.previousIncomplete.reason === "max_output_tokens" ? "INCOMPLETE_TOKEN_LIMIT" : "INCOMPLETE_PROVIDER", critique: null, incomplete_output: input.previousIncomplete.partialOutput, incomplete_reason: input.previousIncomplete.reason, missing_schema_fields: missingCriticSchemaFields(input.previousIncomplete.partialOutput) }) : await attempt("DESIGN_CRITIC_0", critic, { intent_json: input.intent, method_evidence_pack_json: input.pack, decision_json: input.decision });
-  const final = first.status === "INCOMPLETE_TOKEN_LIMIT" && input.allowRecovery !== false ? await attempt("DESIGN_CRITIC_RECOVERY_1", criticRecovery, { intent_json: input.intent, method_evidence_pack_json: input.pack, decision_json: input.decision, incomplete_critic_json: first.incomplete_output, missing_schema_fields_json: first.missing_schema_fields }) : first;
+  const first = input.previousIncomplete ? criticAttemptEnvelopeSchema.parse({ status: input.previousIncomplete.reason === "max_output_tokens" ? "INCOMPLETE_TOKEN_LIMIT" : "INCOMPLETE_PROVIDER", critique: null, incomplete_output: input.previousIncomplete.partialOutput, incomplete_reason: input.previousIncomplete.reason, missing_schema_fields: missingCriticSchemaFields(input.previousIncomplete.partialOutput) }) : await attempt(`${input.checkpointPrefix ?? "DESIGN"}_CRITIC_0`, critic, { intent_json: input.intent, method_evidence_pack_json: input.pack, decision_json: input.decision });
+  const final = first.status === "INCOMPLETE_TOKEN_LIMIT" && input.allowRecovery !== false ? await attempt(`${input.checkpointPrefix ?? "DESIGN"}_CRITIC_RECOVERY_1`, criticRecovery, { intent_json: input.intent, method_evidence_pack_json: input.pack, decision_json: input.decision, incomplete_critic_json: first.incomplete_output, missing_schema_fields_json: first.missing_schema_fields }) : first;
   if (final.status !== "COMPLETE" || !final.critique) throw new Error(`SCIENTIFIC_CRITIC_${final.status}: ${final.incomplete_reason ?? "sin dictamen completo"}`);
   validateDesignCritique(input.decision, final.critique);
   return { critique: final.critique, completion: { first: first.status, recovery: first === final ? null : final.status, recoveryCalls: first === final ? 0 : 1 }, promptRecords };
@@ -112,6 +115,64 @@ export async function recommendDesignForJob(input: { jobId: string; userId: stri
   return proposeScientificDecision({ projectId: input.projectId, runId: input.runId, intake: project.intake as unknown as Record<string, unknown>, academicLevel: project.degreeLevel, ledger });
 }
 
+export function selectAutonomousCandidate(decision: ScientificDecision, critique: DesignCritique) {
+  const ordered = [...decision.alternatives].sort((a, b) => Number(b.id === decision.recommended_id) - Number(a.id === decision.recommended_id));
+  return ordered.find((alternative) => {
+    const assessment = critique.assessments.find((item) => item.alternative_id === alternative.id);
+    return "scope_effect" in alternative && alternative.scope_effect === "preserves" && !alternative.scope_changes.length &&
+      !alternative.pending_user_decisions.some((item) => item.blocking) &&
+      assessment?.decision === "ACCEPT" && assessment.intent_preserved &&
+      ["PRESERVED", "CLARIFIED"].includes(assessment.scope.status) &&
+      !assessment.scope.confirmation_required && !assessment.user_decisions_required.length &&
+      !assessment.critical_findings.some((finding) => finding.severity === "BLOCKING");
+  });
+}
+
+// The saved selector and first independent critique remain the authority. A
+// recovered job reuses both checkpoints and may pay for at most one revision and
+// its independent critique. It cannot approve a scope change on the user's behalf.
+export async function resolveAutonomousDesignForJob(input: { jobId: string; userId: string; projectId: string; runId: string }) {
+  const row = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: input.jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
+  const bundle = (row.outputJson as unknown as { value: ScientificDecisionBundle }).value;
+  if (!bundle?.decisionFingerprint || fingerprint({ intent: bundle.intent, evidence_pack: bundle.evidence_pack, source_decisions: bundle.source_decisions, decision: bundle.decision, critique: bundle.critique, critic_completion: bundle.critic_completion, repair_rounds: bundle.repair_rounds, contextFingerprint: bundle.contextFingerprint, academicLevel: bundle.academicLevel, prompt_records: bundle.prompt_records }) !== bundle.decisionFingerprint) throw new Error("SCIENTIFIC_DECISION_CHECKPOINT_INVALID");
+  return resolveAutonomousDesignBundle(bundle, input);
+}
+
+export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBundle,
+  input: { userId: string; projectId: string; runId: string; provider?: LlmProvider;
+    researchSupport?: typeof researchDesignSupport }) {
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: autonomousRevision.version, maxRevisionLoops: 1 }, async () => {
+    let decision = bundle.decision;
+    let critique = bundle.critique;
+    let revised = false;
+    let designSupport: Awaited<ReturnType<typeof researchDesignSupport>> | null = null;
+    if (!selectAutonomousCandidate(decision, critique)) {
+      designSupport = await (input.researchSupport ?? researchDesignSupport)({ userId: input.userId, projectId: input.projectId, runId: input.runId, bundle });
+      const provider = input.provider ?? getConfiguredLlmProvider();
+      const prompt = `${autonomousRevision.systemPrompt}\n\n${autonomousRevision.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(({ intent_json: bundle.intent, method_evidence_pack_json: bundle.evidence_pack, decision_json: decision, critique_json: critique, design_support_json: designSupport } as Record<string, unknown>)[variable]))}`;
+      if (Buffer.byteLength(prompt) > 60000) throw new Error("AUTONOMOUS_DESIGN_CONTEXT_TOO_LARGE");
+      const schema = z.toJSONSchema(designRepairSchema);
+      const patch = designRepairSchema.parse(await stageCheckpoint("AUTONOMOUS_DESIGN_REVISION_1", { promptHash: fingerprint(prompt), schema, model: autonomousRevision.model, version: autonomousRevision.version }, () => provider.generateStructuredObject({ prompt, schema, schemaName: "autonomous_design_revision_v1", model: autonomousRevision.model, reasoningEffort: autonomousRevision.reasoning_effort, maxOutputTokens: autonomousRevision.max_output_tokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_revision", promptVersion: autonomousRevision.version, schemaName: "autonomous_design_revision_v1" } })));
+      const allowed = new Set(decision.alternatives.map((alternative) => alternative.id));
+      if (new Set(patch.replacements.map((alternative) => alternative.id)).size !== patch.replacements.length || patch.replacements.some((alternative) => !allowed.has(alternative.id))) throw new Error("AUTONOMOUS_DESIGN_REVISION_SCOPE_INVALID");
+      decision = { ...decision, alternatives: decision.alternatives.map((alternative) => patch.replacements.find((replacement) => replacement.id === alternative.id) ?? alternative) };
+      validateScientificDecision(decision, bundle.intent, bundle.evidence_pack);
+      const review = await critiqueScientificDecision({ projectId: input.projectId, runId: input.runId, intent: bundle.intent, pack: bundle.evidence_pack, decision, provider, checkpointPrefix: "AUTONOMOUS_DESIGN", allowRecovery: false });
+      critique = review.critique;
+      revised = true;
+    }
+    const selected = selectAutonomousCandidate(decision, critique);
+    if (!selected) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: no existe un diseño validado dentro del alcance confirmado.");
+    const alternative = { ...selected,
+      transfer_limits: [...new Set([...selected.transfer_limits,
+        ...(designSupport?.limitations ?? []),
+        ...selected.pending_user_decisions.map(item => `Verificar durante la investigación: ${item.question}`)])],
+      pending_user_decisions: [] };
+    validateScientificDecision({ ...decision, alternatives: [alternative], recommended_id: alternative.id }, bundle.intent, bundle.evidence_pack);
+    return { decisionFingerprint: bundle.decisionFingerprint, contextFingerprint: bundle.contextFingerprint, academicLevel: bundle.academicLevel, alternative, critique, revised, designSupport, policyVersion: autonomousRevision.version };
+  });
+}
+
 export async function decisionForUser(userId: string, projectId: string, jobId: string) {
   const job = await prisma.blueprintJob.findFirst({ where: { id: jobId, projectId, userId }, include: { stages: { where: { stageKey: { in: [SCIENTIFIC_DECISION_STAGE, SCIENTIFIC_APPROVAL_STAGE] } } } } });
   if (!job) throw new Error("PROJECT_NOT_FOUND");
@@ -159,8 +220,8 @@ export async function approvedDesignForCurrentJob(intake: unknown, ledger: MvpSt
   if (!execution) return undefined;
   const job = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, include: { project: { select: { degreeLevel: true } } } });
   if ((job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile !== "rc4") return undefined;
-  const approval = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: job.id, stageKey: SCIENTIFIC_APPROVAL_STAGE } } });
-  const saved = approval?.outputJson as { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string } | null;
+  const approval = await prisma.blueprintJobStage.findFirst({ where: { jobId: job.id, stageKey: { in: [AUTONOMOUS_DESIGN_STAGE, SCIENTIFIC_APPROVAL_STAGE] }, status: "COMPLETED" }, orderBy: { completedAt: "desc" } });
+  const saved = (approval?.outputJson as { value?: { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string }; contextFingerprint?: string; alternative?: DesignAlternative; academicLevel?: string } | null)?.value ?? approval?.outputJson as { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string } | null;
   if (!saved || saved.academicLevel !== (currentGenerationInput()?.project.degreeLevel ?? job.project.degreeLevel) || saved.contextFingerprint !== decisionContextFingerprint(intake, ledger)) throw new Error("DESIGN_APPROVAL_REQUIRED_OR_STALE");
   return saved.alternative;
 }

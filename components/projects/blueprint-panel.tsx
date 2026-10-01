@@ -1,10 +1,9 @@
 "use client";
 import { AccountPanel } from "@/components/commercial/account-panel";
 
-import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
-import { ScientificDesignApproval } from "./scientific-design-approval";
 import { startProjectPlan } from "@/lib/generation-client";
 
 import { getLocaleForLanguage, type SupportedLanguage } from "@/lib/language";
@@ -159,6 +158,7 @@ export function BlueprintPanel({
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const recoveryAttempted = useRef<string | null>(null);
 
   const latestVersion = versions.find((version) => version.id === activeVersionId) ?? versions[0] ?? null;
   const latestBlueprintDocxUrl = latestVersion
@@ -288,7 +288,8 @@ export function BlueprintPanel({
   const progressJobActive =
     progress?.jobStatus === "QUEUED" ||
     progress?.jobStatus === "RUNNING" ||
-    progress?.jobStatus === "WAITING_NEXT_STAGE";
+    progress?.jobStatus === "WAITING_NEXT_STAGE" ||
+    progress?.jobStatus === "WAITING_USER_DECISION";
   const hasActiveGeneration = Boolean(activeJobId) || progressJobActive;
   const shouldPollProgress =
     isPending ||
@@ -323,6 +324,18 @@ export function BlueprintPanel({
 
         setError(null);
         setProgress(payload.progress);
+
+        // Historical RC4 jobs are resumed only by their authenticated owner
+        // revisiting Plan. The server revalidates frozen definition, selection,
+        // EvidenceSet, authorization and competing jobs before requeueing.
+        if (payload.progress.jobStatus === "WAITING_USER_DECISION" && payload.progress.jobId && recoveryAttempted.current !== payload.progress.jobId) {
+          recoveryAttempted.current = payload.progress.jobId;
+          const recovery = await fetch(`/api/projects/${projectId}/blueprints/resume`, { method: "POST" });
+          if (!recovery.ok) {
+            const body = await recovery.json().catch(() => ({})) as { error?: string };
+            if (!isCancelled) setError({ message: body.error ?? "No pudimos reanudar el plan. Tu trabajo sigue guardado." });
+          }
+        }
 
         if (payload.progress.jobId) {
           setActiveJobId(payload.progress.jobId);
@@ -420,7 +433,6 @@ export function BlueprintPanel({
   return (
     <section className="surface-panel rounded-[32px] p-6 sm:p-8">
       <AccountPanel compact />
-      {(progress?.jobStatus === "WAITING_USER_DECISION" || progress?.jobStatus === "FAILED") && progress.jobId && <ScientificDesignApproval projectId={projectId} jobId={progress.jobId} onApproved={() => { setProgress({ ...progress, jobStatus: "WAITING_NEXT_STAGE", label: "Continuando con tu decisión" }); router.refresh(); }} />}
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="max-w-xl">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-500">
@@ -467,12 +479,12 @@ export function BlueprintPanel({
             : "border-[rgba(74,58,97,0.08)] bg-[rgba(244,241,248,0.72)] text-[var(--color-ink)]"
         }`}
       >
-        {hasActiveGeneration ? copy.generating : progress?.jobStatus === "FAILED" ? copy.generateError : canGenerate
+        {hasActiveGeneration ? copy.generating : progress?.jobStatus === "FAILED" ? copy.generateError : canGenerate || selectedReferenceCount >= MIN_SELECTED_REFERENCES && selectedReferenceCount <= MAX_SELECTED_REFERENCES
           ? copy.readyToGenerate(selectedReferenceCount)
           : copy.missingSources}
       </div>
 
-      <details className="mt-4 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
+      {!hasActiveGeneration && <details className="mt-4 rounded-[24px] border border-[rgba(74,58,97,0.08)] bg-[rgba(255,255,255,0.72)] p-4">
         <summary className="cursor-pointer text-sm font-semibold text-[var(--color-ink)]">
           {copy.preparation}
         </summary>
@@ -494,9 +506,9 @@ export function BlueprintPanel({
         <p className="mt-4 text-sm leading-6 text-[var(--color-muted)]">
           {copy.currentStatus}: <strong>{statusMeta.label}</strong>. {copy.checklist} {readyCount}/3.
         </p>
-      </details>
+      </details>}
 
-      {!canGenerate ? (
+      {!canGenerate && !hasActiveGeneration && (selectedReferenceCount < MIN_SELECTED_REFERENCES || selectedReferenceCount > MAX_SELECTED_REFERENCES) ? (
         <p className="mt-5 text-sm leading-6 text-slate-500">
           {copy.projectStill(
             statusMeta.label,

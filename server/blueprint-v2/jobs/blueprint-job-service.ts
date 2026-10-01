@@ -25,7 +25,7 @@ import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-po
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
-import { recommendDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
+import { SCIENTIFIC_DECISION_STAGE, recommendDesignForJob, resolveAutonomousDesignForJob, type ScientificDecisionBundle } from "@/server/mvp/scientific-decision-service";
 import { appendGenerationInput, currentGenerationInput, frozenProject, readGenerationInput, researchProjectFingerprint, withGenerationInput } from "@/server/projects/generation-input-snapshot";
 import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 import { assertExpectedGenerationContext, generationContextForUser, type GenerationContext } from "@/server/projects/generation-context-service";
@@ -50,12 +50,14 @@ export type ReleaseJobExecutor = {
   materialize(input: { userId: string; projectId: string; runId: string }): Promise<Step5Result>;
   generate(input: { userId: string; projectId: string; runId: string }): Promise<Step6Result>;
   recommend?(input: { jobId: string; userId: string; projectId: string; runId: string; stepRunId: string }): Promise<ScientificDecisionBundle>;
+  resolve?(input: { jobId: string; userId: string; projectId: string; runId: string }): Promise<unknown>;
 };
 
 const productionExecutor: ReleaseJobExecutor = {
   materialize: runMvpEvidenceMaterialization,
   generate: runMvpStep6BlueprintDocx,
   recommend: recommendDesignForJob,
+  resolve: resolveAutonomousDesignForJob,
 };
 
 type StoredStep6 = Pick<
@@ -165,7 +167,8 @@ function stageLabel(stage: string | null, language: string) {
     materializing_evidence: ["Inspeccionando y materializando evidencia", "Inspecting and materializing evidence"],
     generating_plan: ["Generando el plan cientifico", "Generating the scientific plan"],
     scientific_design: ["Evaluando alternativas de investigación", "Evaluating research alternatives"],
-    awaiting_design_approval: ["Confirma el diseño de tu investigación", "Confirm your research design"],
+    resolving_design: ["Diseñando la investigación", "Resolving research design"],
+    awaiting_design_approval: ["Preparando la continuación del plan", "Preparing plan continuation"],
     persisting_artifacts: ["Guardando entregables privados", "Persisting private deliverables"],
     completed: ["Plan listo", "Plan ready"],
     failed: ["La generacion requiere revision", "Generation requires review"],
@@ -488,8 +491,16 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
       if (!data.step5 || !executor.recommend) throw new Error("SCIENTIFIC_DESIGN_EXECUTOR_REQUIRED");
       await withJobHeartbeat(jobId, () => executor.recommend!({ jobId, userId: job.userId, projectId: job.projectId, runId: data.runId, stepRunId: data.step5!.stepRunId }));
       await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 50 });
-      const updated = await prisma.blueprintJob.update({ where: { id: jobId, startedAt: job.startedAt }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval", progress: 50, lockedAt: null, nextAttemptAt: null, metadataJson: executionMetadata(job, stage, "COMPLETED") } });
-      return { job: toJobSummary(updated), shouldContinue: false, state: "awaiting_user_decision" as const };
+      const updated = await prisma.blueprintJob.update({ where: { id: jobId, startedAt: job.startedAt }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null, metadataJson: executionMetadata(job, stage, "COMPLETED") } });
+      return { job: toJobSummary(updated), shouldContinue: true, state: "continued" as const };
+    }
+
+    if (stage === "resolving_design") {
+      if (!executor.resolve) throw new Error("AUTONOMOUS_DESIGN_EXECUTOR_REQUIRED");
+      await withJobHeartbeat(jobId, () => executor.resolve!({ jobId, userId: job.userId, projectId: job.projectId, runId: data.runId }));
+      await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.COMPLETED, progress: 60 });
+      const updated = await prisma.blueprintJob.update({ where: { id: jobId, startedAt: job.startedAt }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "generating_plan", progress: 60, lockedAt: null, nextAttemptAt: null, metadataJson: executionMetadata(job, stage, "COMPLETED") } });
+      return { job: toJobSummary(updated), shouldContinue: true, state: "continued" as const };
     }
 
     if (stage === "generating_plan") {
@@ -607,11 +618,46 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   const job = await prisma.blueprintJob.findFirst({ where: { userId, projectId }, orderBy: { createdAt: "desc" } });
   if (!job) throw new Error("No hay un job para reanudar.");
   if (job.status === BlueprintJobStatus.COMPLETED) return { job: toJobSummary(job), shouldContinue: false, state: "completed" as const };
+  if (job.status === BlueprintJobStatus.WAITING_USER_DECISION && (job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile === "rc4") return authorizeAutonomousDesignRecoveryForUser(userId, projectId, job.id);
   if (job.status === BlueprintJobStatus.FAILED && (job.errorJson as { category?: string } | null)?.category === "PRESENTATION") return authorizePresentationRecoveryForUser(userId, projectId, job.id);
   // Active jobs already belong to the worker. Resume must not steal a lease, erase
   // backoff, or resurrect a failed/exhausted job. Repeated calls are observational.
   const retryable = job.attempts < job.maxAttempts && ACTIVE_STATUSES.some((status) => status === job.status);
   return { job: toJobSummary(job), shouldContinue: retryable, state: retryable ? "already_scheduled" as const : "not_retryable" as const };
+}
+
+export async function authorizeAutonomousDesignRecoveryForUser(userId: string, projectId: string, jobId: string) {
+  const candidate = await prisma.blueprintJob.findFirstOrThrow({ where: { id: jobId, userId, projectId } });
+  const data = readJobData(candidate);
+  if (!data.inputSnapshotId || !data.inputFingerprint || !data.expectedContext || !data.step5?.stepRunId) throw new Error("AUTONOMOUS_RECOVERY_INPUT_MISSING");
+  const frozen = await readGenerationInput(jobId, data.inputSnapshotId);
+  if (!frozen?.evidenceSet?.id) throw new Error("AUTONOMOUS_RECOVERY_EVIDENCE_MISSING");
+  const expectedContext = data.expectedContext;
+  const evidenceSetId = frozen.evidenceSet.id;
+  const stepRunId = data.step5.stepRunId;
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
+    const job = await tx.blueprintJob.findFirstOrThrow({ where: { id: jobId, userId, projectId } });
+    if (ACTIVE_STATUSES.some((status) => status === job.status)) return { job: toJobSummary(job), shouldContinue: true, state: "already_scheduled" as const };
+    if (job.status !== BlueprintJobStatus.WAITING_USER_DECISION || job.currentStage !== "awaiting_design_approval") throw new Error("AUTONOMOUS_RECOVERY_NOT_ELIGIBLE");
+    const competing = await tx.blueprintJob.count({ where: { projectId, id: { not: jobId }, status: { in: [...INCOMPLETE_STATUSES] } } });
+    if (competing) throw new Error("AUTONOMOUS_RECOVERY_COMPETING_JOB");
+    const scientific = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
+    if (scientific?.status !== BlueprintJobStageStatus.COMPLETED || !(scientific.outputJson as { value?: { decisionFingerprint?: string } } | null)?.value?.decisionFingerprint) throw new Error("AUTONOMOUS_RECOVERY_DESIGN_MISSING");
+    const owned = await tx.project.findFirstOrThrow({ where: { id: projectId, userId }, include: { intake: true, projectReferences: { where: { selected: true }, include: { reference: true }, orderBy: { id: "asc" } } } });
+    if (researchProjectFingerprint(owned) !== data.inputFingerprint) throw new Error("INPUT_CHANGED: definición o selección posterior al inicio del plan.");
+    const currentContext = await generationContextForUser(userId, projectId, tx);
+    assertExpectedGenerationContext(expectedContext, currentContext);
+    if (currentContext.evidenceSetId !== evidenceSetId) throw new Error("EVIDENCE_SET_CHANGED");
+    const ledger = await tx.projectEvidenceLedger.findFirst({ where: { projectId, stepRunId }, select: { id: true } });
+    if (!ledger) throw new Error("AUTONOMOUS_RECOVERY_EVIDENCE_LEDGER_MISSING");
+    const commercialPolicy = (job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy;
+    if (commercialPolicy === INTERNAL_GENERATION_POLICY) await reserveInternalGenerationJob(tx, jobId);
+    else if (commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
+    else throw new Error("AUTONOMOUS_RECOVERY_COMMERCIAL_POLICY_UNKNOWN");
+    const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null, metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null), autonomousRecovery: { recoveredAt: new Date().toISOString(), from: "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId } }) } });
+    return { job: toJobSummary(updated), shouldContinue: true, state: "autonomous_recovery_scheduled" as const };
+  });
 }
 
 export async function authorizePresentationRecoveryForUser(userId: string, projectId: string, jobId: string) {
