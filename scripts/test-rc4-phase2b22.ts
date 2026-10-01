@@ -9,7 +9,10 @@ import { normalizePublicWebUrl, extractWebObservations, validateWebDiscoveryProp
 import { webDiscoveryOperationIdentity, runWebDiscoveryOperation } from "@/server/retrieval/web-discovery-operation";
 import type { WebDiscoveryInput, WebDiscoveryProposal } from "@/server/retrieval/web-discovery-contract";
 
-if (new URL(process.env.DATABASE_URL ?? "").pathname !== "/imx_b4_validation_rc4") throw new Error("ISOLATED_TEST_DB_REQUIRED");
+const testDatabase = new URL(process.env.DATABASE_URL ?? "");
+if (testDatabase.hostname !== "127.0.0.1" || testDatabase.port !== "55440" ||
+  !["/imx_b4_validation_rc4", "/imx_reliability_20261001"].includes(testDatabase.pathname))
+  throw new Error("ISOLATED_TEST_DB_REQUIRED");
 process.env.IMX_RUN_WEB_DISCOVERY_SMOKE = "1";
 process.env.IMX_ENABLE_ASTRA_WEB_DISCOVERY = "0";
 let networkAttempts = 0;

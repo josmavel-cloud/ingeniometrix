@@ -102,11 +102,23 @@ const includesPhrase = (s: string, phrase: string) => (` ${normalizeSearchText(s
 // Fallback never invents a synonym or splits a sentence into positional groups.
 export function fallbackSearchEnrichment(input: SemanticPlannerInput, reason = "PLANNER_UNAVAILABLE"): SearchEnrichment {
   const terms: SearchTerm[] = input.signals.filter(s => s.value && s.category !== "UNRESOLVED_OR_UNKNOWN" && !["constraints", "advisorNotes", "dataAccess", "academicLevel"].includes(s.sourceField))
-    .flatMap(s => (s.sourceField === "concepts" ? s.value!.split(/[;\n]+/) : [s.value!]).map(text => text.trim())
-      .filter(text => text.length >= 2 && text.length <= 160)
-      .map(text => ({ text, anchor: text, type: "EXACT_TERM" as const, confidence: "HIGH" as const,
+    .flatMap(s => {
+      // A confirmed object may contain a short identity followed by comma-separated
+      // qualifications. Keep the complete field in the scientific input and retain
+      // each qualification as a refiner. A comma is a grammatical boundary, not a
+      // positional word limit; otherwise the exact confirmed object remains whole.
+      const clauses = s.sourceField === "object" ? s.value!.split(/[,;\n]+/).map(v => v.trim()).filter(Boolean) : [];
+      const shortHead = clauses.length > 1 && clauses[0].split(/\s+/).length >= 2 && clauses[0].split(/\s+/).length <= 8;
+      const pieces = s.sourceField === "object" && shortHead ? clauses.map((text, index) => ({ text, qualifier: index > 0 })) :
+        (s.sourceField === "concepts" ? s.value!.split(/[;\n]+/) : [s.value!]).map(text => ({ text, qualifier: false }));
+      return pieces.map(({ text, qualifier }) => ({ text: text.trim(), qualifier }))
+      .filter(({ text }) => text.length >= 2 && text.length <= 160)
+      .map(({ text, qualifier }) => ({ text, anchor: text, type: "EXACT_TERM" as const, confidence: "HIGH" as const,
         sourceField: s.sourceField, sourceFields: [s.sourceField], role: s.role, tier: s.tier,
-        authority: s.tier === 1 ? "CENTRAL" as const : "REFINER" as const, provenance: "CONFIRMED_EXTRACT" as const })));
+        ...(s.sourceField === "object" ? { scientificRole: qualifier ? "QUALIFIER" as const : "OBJECT_OR_SYSTEM" as const } : {}),
+        authority: qualifier ? "REFINER" as const : s.tier === 1 ? "CENTRAL" as const : "REFINER" as const,
+        provenance: "CONFIRMED_EXTRACT" as const }));
+    });
   return finish(input, terms, "DEGRADED", [reason]);
 }
 function finish(input: SemanticPlannerInput, terms: SearchTerm[], planMode: SearchEnrichment["planMode"], reasonCodes: string[]): SearchEnrichment {

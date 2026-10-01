@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { jobCostPolicy } from "./execution-policy";
 import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
+import { INTERNAL_GENERATION_POLICY, settleInternalGenerationJob } from "@/server/commercial/internal-generation";
 
 type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
 const context = new AsyncLocalStorage<Execution>();
@@ -33,7 +34,10 @@ const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + 
 // Call inside the SAME transaction that makes the job terminal. Uncertain/in-flight
 // spend is not refunded: retain its full reservation until late usage reconciliation.
 export async function closeJobCostControl(tx: Prisma.TransactionClient, jobId: string, jobStatus: "COMPLETED" | "FAILED") {
-  await settleCommercialJob(tx, jobId, jobStatus);
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { metadataJson: true } });
+  if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy === INTERNAL_GENERATION_POLICY)
+    await settleInternalGenerationJob(tx, jobId, jobStatus);
+  else await settleCommercialJob(tx, jobId, jobStatus);
   const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
   if (!row) return;
   const record = row.outputJson as unknown as CostRecord;

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { jobCostPolicy } from "@/server/mvp/execution-policy";
 import { securityAudit } from "@/server/auth/security-events";
 import { offerSchema, type Offer } from "./catalog";
+import { assertInternalGenerationAuthorization, INTERNAL_GENERATION_POLICY } from "./internal-generation";
 
 type Tx = Prisma.TransactionClient;
 const available = (a: CommercialEntitlement, unit: "PLAN_SLOT" | "COMPUTE_CREDIT") => unit === "PLAN_SLOT"
@@ -53,8 +54,13 @@ export async function reserveCommercialJob(tx: Tx, jobId: string) {
 }
 export async function assertCommercialPaidAuthorization(tx: Tx, jobId: string) {
   const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId } });
+  if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy === INTERNAL_GENERATION_POLICY)
+    return assertInternalGenerationAuthorization(tx, jobId);
   // Only pre-G4 persisted jobs retain their historical platform-funded authorization.
-  if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy !== "commercial-v1") return null;
+  if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy !== "commercial-v1") {
+    if ((job.metadataJson as { executionPolicy?: string } | null)?.executionPolicy === "b4.v1") throw new Error("UNKNOWN_GENERATION_FUNDING_POLICY");
+    return null;
+  }
   const r = await tx.commercialReservation.findUnique({ where: { jobId }, include: { entitlement: true } });
   if (!r || r.status !== "RESERVED" || r.entitlement.status !== "ACTIVE") throw new Error("COMMERCIAL_RESERVATION_REQUIRED");
   return offerSchema.parse(r.policy).hardCapUsdMicros / 1e6;

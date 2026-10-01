@@ -254,6 +254,49 @@ model User {
   uploadedPdfs       UploadedPdf[]
   evidenceSets       ProjectEvidenceSet[]
   intakeTurns        IntakeTurn[]
+  referenceDisplayJobs ReferenceDisplayJob[]
+  internalGenerationCapabilities InternalGenerationCapability[]
+  internalGenerationAuthorizations InternalGenerationAuthorization[]
+}
+
+// Explicit, revocable platform funding for a named internal user. This never
+// grants project ownership, commercial credits or administrative functions.
+model InternalGenerationCapability {
+  id            String    @id @default(uuid())
+  userId        String
+  grantKey      String    @unique
+  status        String    @default("ACTIVE")
+  issuedBy      String
+  reason        String
+  expiresAt     DateTime?
+  createdAt     DateTime  @default(now())
+  revokedAt     DateTime?
+  revokedBy     String?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  authorizations InternalGenerationAuthorization[]
+
+  @@index([userId, status])
+}
+
+// Operational cost is recorded here; customer entitlements and credits are
+// never manufactured for an internal generation job.
+model InternalGenerationAuthorization {
+  id               String    @id @default(uuid())
+  jobId            String    @unique
+  userId           String
+  projectId        String
+  capabilityId     String
+  policyVersion    String
+  status           String    @default("RESERVED")
+  hardCapMicros    Int
+  actualCostMicros Int?
+  createdAt        DateTime  @default(now())
+  closedAt         DateTime?
+  job              BlueprintJob @relation(fields: [jobId], references: [id], onDelete: Restrict)
+  user             User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  capability       InternalGenerationCapability @relation(fields: [capabilityId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
 }
 
 // Pre-generation business spend. Customer credits remain a separate ledger.
@@ -547,6 +590,7 @@ model Project {
   projectReferences         ProjectReference[]
   blueprintVersions         BlueprintVersion[]
   blueprintJobs             BlueprintJob[]
+  referenceDisplayJobs      ReferenceDisplayJob[]
   generatedArtifacts        GeneratedArtifact[]
   auditLogs                 AuditLog[]
   stepRuns                  MvpStepRun[]
@@ -682,6 +726,28 @@ model ReferenceDisplayTranslation {
   @@index([referenceId, targetLanguage])
 }
 
+// Runs on the existing release worker. A failed or uncertain paid batch is
+// retained; page refresh never starts another provider call for the same key.
+model ReferenceDisplayJob {
+  id            String   @id @default(uuid())
+  userId        String
+  projectId     String
+  requestKey    String   @unique
+  targetLanguage String
+  referenceIdsJson Json
+  status        String   @default("QUEUED")
+  failureCategory String?
+  lockedAt      DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  completedAt   DateTime?
+  user          User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  project       Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+  @@index([projectId, status])
+}
+
 // Append-only snapshot of a user-authorized evidence operation. Later
 // selection or preparation changes create a new version, never rewrite this.
 model ProjectEvidenceSet {
@@ -782,6 +848,7 @@ model BlueprintJob {
   generatedArtifacts    GeneratedArtifact[]
   blueprintVersion      BlueprintVersion?
   commercialReservation CommercialReservation?
+  internalAuthorization InternalGenerationAuthorization?
 
   @@index([projectId, status])
   @@index([userId, status])

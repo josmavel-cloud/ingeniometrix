@@ -43,9 +43,15 @@ export function validateScientificConcepts(input: SemanticPlannerInput, terms: S
     // a whole sentence cannot be treated as equivalent to one arbitrary clause.
     const anchor = term.type === "EXACT_TERM" && containsConcept(term.anchor, term.text) ? term.text : term.anchor;
     const objectSpan = containsConcept(value("object"), anchor);
-    if (conceptWordCount(anchor) > (objectSpan ? 8 : 6)) { reject("NON_ATOMIC_CONCEPT_ANCHOR"); continue; }
+    const exactConfirmedObject = term.sourceField === "object" && term.type === "EXACT_TERM" &&
+      term.provenance === "CONFIRMED_EXTRACT" && term.scientificRole === "OBJECT_OR_SYSTEM" &&
+      normalizeConcept(anchor) === normalizeConcept(source.value);
+    // Long model-selected spans still need an atomic concept. An exact, already
+    // confirmed object is different: length alone cannot erase its identity.
+    if (!exactConfirmedObject && conceptWordCount(anchor) > (objectSpan ? 8 : 6)) { reject("NON_ATOMIC_CONCEPT_ANCHOR"); continue; }
     let forced: ScientificRole | undefined;
     if (term.scientificRole === "QUALIFIER" || qualifierOnly(anchor) || qualifierOnly(term.text)) forced = "QUALIFIER";
+    else if (exactConfirmedObject) forced = "OBJECT_OR_SYSTEM";
     else if (standardOrTime(anchor)) forced = "TIME_OR_STANDARD";
     else if (term.sourceField === "context" || (containsConcept(value("context"), anchor) && !objectSpan)) forced = term.scientificRole === "GEOGRAPHY" ? "GEOGRAPHY" : "CONTEXT";
     else if (term.scientificRole && protectedRoles.includes(term.scientificRole)) forced = term.scientificRole;

@@ -22,7 +22,8 @@ function configuredMicros(name: string, fallback: number, maximum = 2) {
 }
 const rollingDay = () => new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-export async function withPaidOperation<T>(input: { userId: string; requestId: string; purpose: string; projectId?: string; draftId?: string; revision: string; inputs: unknown }, work: () => Promise<T>): Promise<T> {
+export async function withPaidOperation<T>(input: { userId: string; requestId: string; purpose: string; projectId?: string; draftId?: string; revision: string; inputs: unknown;
+  recoverFailed?: { version: string; completedCallPurposes: string[] } }, work: () => Promise<T>): Promise<T> {
   if (!/^[a-zA-Z0-9:_-]{8,160}$/.test(input.requestId) || !input.revision) throw new Error("INVALID_PAID_REQUEST_CONTEXT");
   const hash = fingerprint({ purpose: input.purpose, projectId: input.projectId, draftId: input.draftId, revision: input.revision, inputs: input.inputs });
   const operation = await prisma.$transaction(async (tx) => {
@@ -32,8 +33,31 @@ export async function withPaidOperation<T>(input: { userId: string; requestId: s
     const old = await tx.paidOperation.findUnique({ where: { userId_requestId: { userId: input.userId, requestId: input.requestId } } });
     if (old) {
       if (old.inputFingerprint !== hash) throw new Error("PAID_REQUEST_INPUT_CONFLICT");
-      if (old.status !== "COMPLETED") throw new Error(old.status === "RUNNING" ? "PAID_REQUEST_IN_PROGRESS" : "PAID_REQUEST_ALREADY_FAILED");
-      return old;
+      if (old.status === "COMPLETED") return old;
+      if (old.status === "RUNNING") throw new Error("PAID_REQUEST_IN_PROGRESS");
+      const recovery = input.recoverFailed;
+      if (!recovery || input.purpose !== "SOURCE_SUFFICIENCY" || !/^[a-z0-9.-]{1,64}$/.test(recovery.version) || old.boundBreached)
+        throw new Error("PAID_REQUEST_ALREADY_FAILED");
+      const priorCalls = await tx.paidOperationCall.findMany({ where: { operationId: old.id }, select: { purpose: true, status: true, estimatedMicros: true } });
+      if (priorCalls.some(call => call.status !== "COMPLETED" || call.estimatedMicros === null ||
+        !recovery.completedCallPurposes.includes(call.purpose))) throw new Error("PAID_REQUEST_USAGE_RECONCILIATION_REQUIRED");
+      // The logical request and its failed cost record stay immutable. This
+      // deterministic child is one bounded new attempt, not a random bypass.
+      const retryId = `source-recovery:${fingerprint([old.requestId, old.inputFingerprint, recovery.version])}`;
+      const priorAttempt = await tx.paidOperation.findUnique({ where: { userId_requestId: { userId: input.userId, requestId: retryId } } });
+      if (priorAttempt) {
+        if (priorAttempt.inputFingerprint !== hash) throw new Error("PAID_REQUEST_INPUT_CONFLICT");
+        if (priorAttempt.status !== "COMPLETED") throw new Error(priorAttempt.status === "RUNNING" ? "PAID_REQUEST_IN_PROGRESS" : "PAID_REQUEST_ALREADY_FAILED");
+        return priorAttempt;
+      }
+      const attempt = await tx.paidOperation.create({ data: { userId: input.userId, projectId: input.projectId, draftId: input.draftId,
+        revision: input.revision, requestId: retryId, purpose: input.purpose, inputFingerprint: hash,
+        hardCapMicros: configuredMicros("IMX_PRE_JOB_REQUEST_CAP_USD", 0.25) } });
+      await tx.auditLog.create({ data: { userId: input.userId, projectId: input.projectId, actorType: "SYSTEM",
+        eventType: "PAID_OPERATION_RECOVERY_STARTED", payloadJson: { logicalRequestId: old.requestId,
+          previousOperationId: old.id, attemptOperationId: attempt.id, recoveryVersion: recovery.version,
+          previousCommittedMicros: old.committedMicros } } });
+      return attempt;
     }
     // Bound even no-provider/fallback request spam before entering expensive services.
     if (await tx.paidOperation.count({ where: { userId: input.userId, createdAt: { gte: rollingDay() } } }) >= 100) throw new Error("PRE_JOB_REQUEST_LIMIT");
@@ -43,7 +67,7 @@ export async function withPaidOperation<T>(input: { userId: string; requestId: s
       hardCapMicros: web ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_REQUEST_CAP_USD", 0.25) } });
   });
   if (operation.status === "COMPLETED") return operation.resultJson as T;
-  return context.run({ id: operation.id, userId: input.userId, requestId: input.requestId, revision: input.revision, projectId: input.projectId, draftId: input.draftId }, () => withLlmUsageContext({ userId: input.userId, projectId: input.projectId, draftId: input.draftId, revision: input.revision, requestId: input.requestId }, async () => {
+  return context.run({ id: operation.id, userId: input.userId, requestId: operation.requestId, revision: input.revision, projectId: input.projectId, draftId: input.draftId }, () => withLlmUsageContext({ userId: input.userId, projectId: input.projectId, draftId: input.draftId, revision: input.revision, requestId: operation.requestId }, async () => {
     try {
       const result = await work();
       await prisma.paidOperation.update({ where: { id: operation.id }, data: { status: "COMPLETED", resultJson: result == null ? Prisma.JsonNull : json(result), completedAt: new Date() } });

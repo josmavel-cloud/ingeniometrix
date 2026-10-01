@@ -9,6 +9,7 @@ export type CrossrefMessage = {
     "date-parts"?: number[][] | undefined;
   };
   publisher?: string;
+  "container-title"?: string[];
   author?: Array<{
     given?: string;
     family?: string;

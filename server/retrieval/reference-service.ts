@@ -13,6 +13,7 @@ import {
   REFERENCE_BATCH_SIZE,
 } from "@/lib/research-workflow";
 import { prisma } from "@/lib/prisma";
+import { referenceDisplayText } from "@/lib/reference-display-text";
 import { syncSourceSelectionToDraft } from "@/server/projects/project-draft-service";
 import { logAuditEvent } from "@/server/audit/audit-service";
 
@@ -621,13 +622,14 @@ export async function listProjectReferences(
       landingPageUrl: item.reference.landingPageUrl,
       doi: item.reference.doi,
     });
-    const sourceLanguage = resolveReferenceSourceLanguage({
+    const cachedTranslation = displayTranslations.get(item.reference.id) ?? null;
+    const sourceLanguage = cachedTranslation?.sourceLanguage ?? resolveReferenceSourceLanguage({
         id: item.reference.id,
         title: item.reference.title,
         abstract: item.reference.abstract,
         rawOpenAlexJson: item.reference.rawOpenAlexJson,
+        rawCrossrefJson: item.reference.rawCrossrefJson,
       });
-    const cachedTranslation = displayTranslations.get(item.reference.id) ?? null;
     const snapshotEntry = scoreBreakdownByReferenceId.get(item.reference.id);
     const admission = decideReferenceAdmission({
       title: item.reference.title,
@@ -671,10 +673,18 @@ export async function listProjectReferences(
       provenance: { provider: item.sourceProvider, searchSnapshotSavedAt: searchSnapshot?.savedAt ?? null },
       reference: {
         ...item.reference,
+        title: referenceDisplayText(item.reference.title) ?? "Título no disponible",
+        abstract: referenceDisplayText(item.reference.abstract),
+        venue: (() => {
+          const raw = item.reference.rawCrossrefJson;
+          const container = raw && typeof raw === "object" && !Array.isArray(raw) ? raw["container-title"] : null;
+          const journal = Array.isArray(container) && typeof container[0] === "string" ? container[0] : null;
+          return referenceDisplayText(journal ?? item.reference.venue);
+        })(),
         sourceLanguage,
         displayLanguage: languageContext.activeLanguage,
-        translatedTitle: cachedTranslation?.translatedTitle ?? null,
-        translatedAbstract: cachedTranslation?.translatedAbstract ?? null,
+        translatedTitle: referenceDisplayText(cachedTranslation?.translatedTitle) ?? null,
+        translatedAbstract: referenceDisplayText(cachedTranslation?.translatedAbstract) ?? null,
         hasAutoTranslation: Boolean(
           cachedTranslation?.translatedTitle || cachedTranslation?.translatedAbstract,
         ),

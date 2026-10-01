@@ -3,7 +3,7 @@ import { mkdir, open, rename, unlink, stat } from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { PdfUploadError } from "./pdf-upload-error";
+import { PdfUploadError, type PdfSafeDiagnostics } from "./pdf-upload-error";
 
 export interface ArtifactStore {
   putPdf(key: string, stream: ReadableStream<Uint8Array>, expectedBytes: number): Promise<{ byteSize: number; sha256: string }>;
@@ -23,6 +23,7 @@ export class PrivateFileArtifactStore implements ArtifactStore {
     const destination = this.file(key), temporary = `${destination}.part`;
     const reader = stream.getReader(), hash = createHash("sha256");
     let byteSize = 0, prefix = Buffer.alloc(0), stage = "STORAGE_OPEN";
+    let diagnostics: PdfSafeDiagnostics = {};
     let file: Awaited<ReturnType<typeof open>> | undefined;
     try {
       await mkdir(this.root, { recursive: true, mode: 0o700 });
@@ -45,10 +46,23 @@ export class PrivateFileArtifactStore implements ArtifactStore {
       stage = "STORAGE_SYNC";
       await file.sync(); await file.close();
       stage = "PDFINFO";
+      diagnostics = { inputSha256: hash.copy().digest("hex") };
       // Parser validation is NOT malware/relevance approval. Remains quarantined.
-      const { stdout } = await promisify(execFile)("pdfinfo", [temporary], { timeout: 15_000, maxBuffer: 65536, encoding: "utf8", env: { PATH: process.env.PATH, LANG: "C", NODE_ENV: process.env.NODE_ENV } });
+      let stdout: string;
+      try {
+        ({ stdout } = await promisify(execFile)("pdfinfo", [temporary], { timeout: 15_000, maxBuffer: 65536, encoding: "utf8", env: { PATH: process.env.PATH, LANG: "C", NODE_ENV: process.env.NODE_ENV } }));
+      } catch (error) {
+        const failure = error as NodeJS.ErrnoException & { signal?: string; killed?: boolean };
+        diagnostics = { ...diagnostics, processExitCode: typeof failure.code === "number" ? failure.code : null,
+          processSignal: typeof failure.signal === "string" ? failure.signal : null,
+          timedOut: Boolean(failure.killed && failure.signal),
+          maxBufferExceeded: failure.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" };
+        throw new PdfUploadError("PDFINFO_VALIDATION_FAILED", expectedBytes, byteSize, stage, diagnostics);
+      }
       const pages = Number(/^Pages:\s+(\d+)/m.exec(stdout)?.[1]);
-      if (!pages || pages > 1000 || /^Encrypted:\s+yes/m.test(stdout)) throw new Error("UNSUPPORTED_PDF");
+      diagnostics = { ...diagnostics, pages: Number.isFinite(pages) ? pages : null,
+        encrypted: /^Encrypted:\s+yes/m.test(stdout) };
+      if (!pages || pages > 1000 || diagnostics.encrypted) throw new PdfUploadError("PDFINFO_VALIDATION_FAILED", expectedBytes, byteSize, stage, diagnostics);
       stage = "STORAGE_RENAME";
       await rename(temporary, destination);
       return { byteSize, sha256: hash.digest("hex") };
@@ -56,7 +70,7 @@ export class PrivateFileArtifactStore implements ArtifactStore {
       await reader.cancel().catch(() => {}); await file?.close().catch(() => {});
       if (file) await unlink(temporary).catch(() => {});
       throw error instanceof PdfUploadError ? error : new PdfUploadError(stage === "PDFINFO" ? "PDFINFO_VALIDATION_FAILED"
-        : stage.startsWith("STORAGE_") ? "PRIVATE_STORAGE_WRITE_FAILED" : "OTHER_SAFE_CATEGORY", expectedBytes, byteSize, stage);
+        : stage.startsWith("STORAGE_") ? "PRIVATE_STORAGE_WRITE_FAILED" : "OTHER_SAFE_CATEGORY", expectedBytes, byteSize, stage, diagnostics);
     } finally { reader.releaseLock(); }
   }
 }

@@ -4,7 +4,9 @@ import { grantEntitlement } from "@/server/commercial/ledger";
 
 function isolated() {
   const url = new URL(process.env.DATABASE_URL!);
-  if (url.hostname !== "127.0.0.1" || url.port !== "55440" || !url.pathname.startsWith("/imx_b4_validation")) throw new Error("Isolated validation DB required");
+  if (url.hostname !== "127.0.0.1" || url.port !== "55440" ||
+    !["/imx_b4_validation_rc4", "/imx_reliability_20261001"].includes(url.pathname))
+    throw new Error("Isolated validation DB required");
 }
 export async function grantTestPackage(userId: string, slots = 5) {
   isolated();

@@ -13,7 +13,10 @@ import { convergePaidWebDiscoveryOperation, listWebConvergenceRecords } from "..
 import { WEB_DISCOVERY_PURPOSE, type ValidatedWebCandidate, type WebDiscoveryResult, type WebSourceObservation } from "../server/retrieval/web-discovery-contract";
 import type { ProjectReferenceSearchSnapshot } from "../server/retrieval/reference-search-v2";
 
-if (new URL(process.env.DATABASE_URL ?? "").pathname !== "/imx_b4_validation_rc4") throw new Error("ISOLATED_TEST_DB_REQUIRED");
+const testDatabase = new URL(process.env.DATABASE_URL ?? "");
+if (testDatabase.hostname !== "127.0.0.1" || testDatabase.port !== "55440" ||
+  !["/imx_b4_validation_rc4", "/imx_reliability_20261001"].includes(testDatabase.pathname))
+  throw new Error("ISOLATED_TEST_DB_REQUIRED");
 const originalFetch = global.fetch;
 global.fetch = async () => { throw new Error("PROVIDER_NETWORK_FORBIDDEN"); };
 process.env.IMX_ENABLE_ASTRA_WEB_CONVERGENCE = "1";

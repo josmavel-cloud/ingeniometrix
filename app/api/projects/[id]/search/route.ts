@@ -42,6 +42,12 @@ export async function POST(_request: Request, context: RouteContext) {
       } catch { /* Keep the generic, non-sensitive question. */ }
       return NextResponse.json({ code: "REAL_USER_CLARIFICATION_REQUIRED", error: question }, { status: 409 });
     }
+    if (["PAID_REQUEST_ALREADY_FAILED", "PAID_REQUEST_USAGE_RECONCILIATION_REQUIRED", "PAID_REQUEST_IN_PROGRESS"].includes(code))
+      return NextResponse.json({ code: "SEARCH_RECONCILIATION_REQUIRED",
+        error: "Conservamos tu definición y las fuentes obtenidas. Este intento necesita revisión antes de volver a ejecutar la búsqueda." }, { status: 409 });
+    if (["PRE_JOB_COST_LIMIT", "BUDGET_BLOCKED", "PRE_JOB_REQUEST_LIMIT"].includes(code))
+      return NextResponse.json({ code: "SEARCH_BUDGET_BLOCKED",
+        error: "La búsqueda está temporalmente limitada por el presupuesto operativo. Conservamos tu definición y las fuentes disponibles." }, { status: 429 });
     const unavailable = code === "PROVIDER_UNAVAILABLE" || code === "OPENALEX_UNAVAILABLE";
     return NextResponse.json({ code: unavailable ? "PROVIDER_UNAVAILABLE" : "SEARCH_PLANNING_FAILED",
       error: unavailable ? "El servicio de búsqueda no está disponible ahora. Conservamos tu definición; vuelve a intentarlo más tarde." :

@@ -7,6 +7,7 @@ import referenceTranslationBatchSchemaJson from "@/ai/schemas/reference-translat
 import { APP_DEFAULT_LANGUAGE, normalizeLanguageCode } from "@/lib/language";
 import { prisma } from "@/lib/prisma";
 import { fingerprint } from "@/server/mvp/job-execution-context";
+import { referenceDisplayText, REFERENCE_DISPLAY_TEXT_VERSION } from "@/lib/reference-display-text";
 import { getConfiguredLlmProvider } from "@/llm";
 
 import { generateStructuredObjectWithTextFallback } from "./retrieval-llm-json";
@@ -16,6 +17,7 @@ type ReferenceRecordLike = {
   title: string;
   abstract: string | null;
   rawOpenAlexJson: Prisma.JsonValue | null;
+  rawCrossrefJson?: Prisma.JsonValue | null;
 };
 
 type CachedReferenceTranslation = {
@@ -54,7 +56,7 @@ type TranslationTarget = {
   sourceLanguage: string;
 };
 
-export const DISPLAY_TRANSLATION_POLICY = "reference-display.es.v1";
+export const DISPLAY_TRANSLATION_POLICY = `reference-display.es.v2:${REFERENCE_DISPLAY_TEXT_VERSION}`;
 export function referenceDisplayContentHash(reference: Pick<ReferenceRecordLike, "title" | "abstract">) {
   return fingerprint([reference.title, reference.abstract]);
 }
@@ -321,10 +323,14 @@ function buildTranslationPrompt(input: {
 }
 
 export function resolveReferenceSourceLanguage(reference: ReferenceRecordLike) {
+  const crossrefLanguage = isRecord(reference.rawCrossrefJson) &&
+    typeof reference.rawCrossrefJson.language === "string"
+      ? normalizeLanguageCode(reference.rawCrossrefJson.language) : null;
   return (
     getLanguageFromRawOpenAlex(reference.rawOpenAlexJson) ??
+    crossrefLanguage ??
     getCachedDetectedLanguage(reference.rawOpenAlexJson)?.detectedLanguage ??
-    detectLanguageHeuristically(`${reference.title} ${reference.abstract ?? ""}`)
+    detectLanguageHeuristically(`${referenceDisplayText(reference.title) ?? reference.title} ${referenceDisplayText(reference.abstract) ?? ""}`)
   );
 }
 
@@ -353,6 +359,7 @@ export function resolveReferenceTranslationForLanguage(input: {
 export async function ensureReferenceTranslationsForLanguage(input: {
   references: ReferenceRecordLike[];
   targetLanguage: string;
+  strict?: boolean;
 }) {
   const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? APP_DEFAULT_LANGUAGE;
   const sourceLanguages = new Map<string, string | null>();
@@ -364,6 +371,42 @@ export async function ensureReferenceTranslationsForLanguage(input: {
     sourceLanguages.set(reference.id, sourceLanguage);
   }
 
+  const unknown = input.references.filter(reference => !sourceLanguages.get(reference.id));
+  if (unknown.length) {
+    try {
+      const detection = await generateStructuredObjectWithTextFallback<LanguageDetectionBatchResponse>({
+        provider: getConfiguredLlmProvider(),
+        prompt: buildLanguageDetectionPrompt({ items: unknown.map(reference => ({ referenceId: reference.id,
+          title: referenceDisplayText(reference.title) ?? reference.title,
+          abstract: referenceDisplayText(reference.abstract) })) }),
+        schemaName: "reference_language_detection_batch",
+        schema: referenceLanguageDetectionBatchSchemaJson as Record<string, unknown>,
+        trackingAttribution: { stage: "source_language_detection", promptVersion: REFERENCE_TRANSLATION_SERVICE_1_PROMPT.version },
+      });
+      for (const reference of unknown) {
+        const item = detection.detections.find(candidate => candidate.reference_id === reference.id);
+        const language = normalizeDetectedLanguageValue(item?.detected_language);
+        if (!language) {
+          if (input.strict) throw new Error("REFERENCE_LANGUAGE_UNDETERMINED");
+          continue;
+        }
+        sourceLanguages.set(reference.id, language);
+        if (language === targetLanguage) {
+          await prisma.referenceDisplayTranslation.upsert({ where: { referenceId_contentHash_targetLanguage_policyVersion: {
+            referenceId: reference.id, contentHash: referenceDisplayContentHash(reference), targetLanguage,
+            policyVersion: DISPLAY_TRANSLATION_POLICY } },
+            create: { referenceId: reference.id, contentHash: referenceDisplayContentHash(reference), targetLanguage,
+              policyVersion: DISPLAY_TRANSLATION_POLICY, sourceLanguage: language, displayTitle: null, displayAbstract: null,
+              provider: "configured-llm", model: process.env.LLM_DEFAULT_MODEL ?? null,
+              promptVersion: REFERENCE_TRANSLATION_SERVICE_1_PROMPT.version, provenance: "LLM_LANGUAGE_DETECTION" },
+            update: {} });
+        }
+      }
+    } catch (error) {
+      if (input.strict) throw error;
+    }
+  }
+
   for (const reference of input.references) {
     const sourceLanguage = sourceLanguages.get(reference.id) ?? null;
     const cachedTranslation = output.get(reference.id);
@@ -372,15 +415,15 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       continue;
     }
 
-    if (cachedTranslation) {
+    if (cachedTranslation?.translatedTitle && (!reference.abstract || cachedTranslation.translatedAbstract)) {
       output.set(reference.id, cachedTranslation);
       continue;
     }
 
     pending.push({
       referenceId: reference.id,
-      title: reference.title,
-      abstract: reference.abstract,
+      title: referenceDisplayText(reference.title) ?? reference.title,
+      abstract: referenceDisplayText(reference.abstract),
       sourceLanguage,
     });
   }
@@ -406,7 +449,8 @@ export async function ensureReferenceTranslationsForLanguage(input: {
       schema: referenceTranslationBatchSchemaJson as Record<string, unknown>,
       trackingAttribution: { stage: "source_translation", promptVersion: REFERENCE_TRANSLATION_SERVICE_2_PROMPT.version },
     });
-  } catch {
+  } catch (error) {
+    if (input.strict) throw error;
     return {
       translations: output,
       sourceLanguages,
@@ -414,6 +458,9 @@ export async function ensureReferenceTranslationsForLanguage(input: {
   }
 
   const referencesById = new Map(input.references.map((reference) => [reference.id, reference]));
+  if (input.strict && pending.some(item => !batch.translations.some(value => value.reference_id === item.referenceId &&
+    value.translated_title?.trim() && (!item.abstract || value.translated_abstract?.trim()))))
+    throw new Error("REFERENCE_TRANSLATION_INCOMPLETE");
 
   await Promise.all(
     batch.translations.map(async (item) => {

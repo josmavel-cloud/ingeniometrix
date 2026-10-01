@@ -1,7 +1,10 @@
 # Apply to docker-compose.g5.yml with the protected staging environment only.
 services:
+  migrate:
+    image: imx-rc4-reliability-migration:20261001
+    build: !reset null
   app:
-    image: imx-rc4-source-sufficiency:20260930
+    image: imx-rc4-reliability:20261001
     build: !reset null
     environment: &bounded_discovery
       IMX_ASTRA_WEB_MINIMUM_SOURCE_FALLBACK: "1"
@@ -9,6 +12,6 @@ services:
       IMX_ENABLE_ASTRA_WEB_CONVERGENCE: "1"
       IMX_ENABLE_DEEP_RESEARCH: "0"
   worker:
-    image: imx-rc4-source-sufficiency:20260930
+    image: imx-rc4-reliability:20261001
     environment:
       <<: *bounded_discovery

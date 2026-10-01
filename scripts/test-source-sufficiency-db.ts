@@ -12,7 +12,8 @@ import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-con
 import { withPaidOperation } from "@/server/mvp/pre-job-budget";
 async function main() {
   const url = new URL(process.env.DATABASE_URL ?? "");
-  assert.equal(url.hostname, "127.0.0.1"); assert.equal(url.port, "55440"); assert.equal(url.pathname, "/imx_b4_validation_rc4");
+  assert.equal(url.hostname, "127.0.0.1"); assert.equal(url.port, "55440");
+  assert(["/imx_b4_validation_rc4", "/imx_reliability_20261001"].includes(url.pathname));
   global.fetch = async () => { throw new Error("NETWORK_FORBIDDEN"); };
   const user = await prisma.user.create({ data: { email: `source-policy-${randomUUID()}@example.test` } });
   const other = await prisma.user.create({ data: { email: `source-other-${randomUUID()}@example.test` } });
