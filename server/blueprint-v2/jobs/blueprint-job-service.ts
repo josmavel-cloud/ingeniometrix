@@ -20,6 +20,7 @@ import { runMvpEvidenceMaterialization } from "@/server/mvp/evidence-materializa
 import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-service";
 import { closeJobCostControl, currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
 import { reserveCommercialJob } from "@/server/commercial/ledger";
+import { activeInternalGenerationCapability, INTERNAL_GENERATION_POLICY, reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
 import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-policy";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
@@ -349,6 +350,7 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
     const previous = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
     if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint))
       throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
+    const internalCapability = await activeInternalGenerationCapability(userId, tx);
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     const created = await tx.blueprintJob.create({
       data: {
@@ -363,14 +365,17 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         maxAttempts: DEFAULT_MAX_ATTEMPTS,
         stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint,
           expectedContext: options?.expectedContext, operationId: options?.operationId } satisfies JobData),
-        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1", commercialPolicy: "commercial-v1", scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
+        metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1",
+          commercialPolicy: internalCapability ? INTERNAL_GENERATION_POLICY : "commercial-v1",
+          scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
       },
     });
     if (options?.scientificProfile === "rc4" && !options.expectedContext) {
       const frozen = await appendGenerationInput(tx, { jobId, projectId, userId, revision: 1 });
       await tx.blueprintJob.update({ where: { id: jobId }, data: { stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint: researchProjectFingerprint(frozen.project), inputSnapshotId: frozen.snapshot.id }) } });
     }
-    await reserveCommercialJob(tx, jobId);
+    if (internalCapability) await reserveInternalGenerationJob(tx, jobId);
+    else await reserveCommercialJob(tx, jobId);
     return created;
   });
   return toJobSummary(job);
@@ -627,6 +632,8 @@ export async function authorizePresentationRecoveryForUser(userId: string, proje
     if (missing.length) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${missing.join(",")}`);
     const nextData: JobData = { ...data, recoveryMode: "PRESENTATION_ONLY" };
     if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
+    else if ((job.metadataJson as { commercialPolicy?: string } | null)?.commercialPolicy === INTERNAL_GENERATION_POLICY)
+      await reserveInternalGenerationJob(tx, jobId);
     const previousMetadata = job.metadataJson as Record<string, unknown> | null;
     const recoveryHistory = Array.isArray(previousMetadata?.presentationRecovery) ? previousMetadata.presentationRecovery : [];
     const updated = await tx.blueprintJob.update({

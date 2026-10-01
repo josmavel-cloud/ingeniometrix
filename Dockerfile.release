@@ -27,7 +27,8 @@ RUN DATABASE_URL=postgresql://offline:offline@127.0.0.1:1/offline \
     DATABASE_URL_UNPOOLED=postgresql://offline:offline@127.0.0.1:1/offline \
     NODE_ENV=production \
     npm run build \
-  && npm run build:release-worker
+  && npm run build:release-worker \
+  && npm run build:internal-provision
 
 FROM build AS migration
 ENV NODE_ENV=production
@@ -52,6 +53,7 @@ COPY --from=build /app/node_modules/.prisma /app/node_modules/.prisma
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/dist/release-worker.cjs ./dist/release-worker.cjs
+COPY --from=build /app/dist/provision-internal-generation.cjs ./dist/provision-internal-generation.cjs
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/scripts/mvp/python ./scripts/mvp/python
 COPY --from=build /app/scripts/seed-taxonomy-catalogs.mjs ./scripts/seed-taxonomy-catalogs.mjs

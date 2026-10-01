@@ -9,7 +9,10 @@ import type { PaymentProvider, VerifiedOrder } from "@/server/commercial/payment
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 
 async function main() {
-  if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("Isolated DB required");
+  const testDatabase = new URL(process.env.DATABASE_URL ?? "");
+  if (testDatabase.hostname !== "127.0.0.1" || testDatabase.port !== "55440" ||
+    !["/imx_b4_validation_rc4", "/imx_reliability_20261001"].includes(testDatabase.pathname))
+    throw new Error("Isolated DB required");
   global.fetch = async () => { throw new Error("No external calls"); };
   Object.assign(process.env, { IMX_PAYMENT_MODE: "sandbox", IMX_PAYMENT_ACCOUNT_CONTEXT: "test_user", MP_TEST_ACCESS_TOKEN: "offline-not-a-token", MP_WEBHOOK_SECRET: "offline-test-secret", MP_TEST_MERCHANT_ID: "123", MP_APPLICATION_ID: "456", APP_ORIGIN: "https://app.example.test" });
   const users = await Promise.all([1,2,3].map((i) => prisma.user.create({ data: { email: `g4-${randomUUID()}-${i}@example.test` } })));

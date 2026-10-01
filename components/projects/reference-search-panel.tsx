@@ -120,9 +120,8 @@ function renderAuthors(authorsJson: unknown) {
 }
 
 function renderScoreLabel(label: string | null | undefined, language: SupportedLanguage) {
-  if (!label || language !== "en") {
-    return label;
-  }
+  if (!label) return label;
+  if (language !== "en") return ({ ALTO: "alta", MEDIO: "media", BAJO: "baja", MINIMO: "mínima" } as Record<string, string>)[label] ?? label;
 
   if (label === "ALTO") {
     return "HIGH";
@@ -145,7 +144,7 @@ const roleLabels: Record<NonNullable<ReferenceListItem["primaryRole"]>, string> 
   NONE: "Rol por revisar",
 };
 function availabilityLabel(item: ReferenceListItem) {
-  if (item.preparationStatus === "PREPARED_FULL_TEXT") return "Documento preparado";
+  if (item.preparationStatus === "PREPARED_FULL_TEXT") return "Texto completo disponible";
   if (item.preparationStatus === "IDENTITY_REVIEW_REQUIRED") return "Identidad por revisar";
   if (item.preparationStatus === "FAILED_ACCESS") return "Documento no disponible";
   if (item.evidenceLevel === "ABSTRACT_AVAILABLE") return "Resumen disponible";
@@ -156,6 +155,7 @@ function availabilityLabel(item: ReferenceListItem) {
 function mergeReferenceLists(
   current: ReferenceListItem[],
   incoming: ReferenceListItem[],
+  pendingSelectedIds: string[] | null = null,
 ) {
   if (current.length === 0) {
     return incoming;
@@ -164,16 +164,17 @@ function mergeReferenceLists(
   const currentByReferenceId = new Map(
     current.map((item) => [item.reference.id, item] as const),
   );
-  // The backend returns a cumulative, admitted recommendation snapshot for
-  // MORE. Keep local in-progress selections even if the snapshot is refreshed.
+  // Always accept new display fields from the server. Only an unacknowledged
+  // local selection may temporarily override the server's checkbox state.
   const merged = incoming.map((item) => {
     const existing = currentByReferenceId.get(item.reference.id);
-    return existing?.selected
-      ? { ...item, selected: true, selectedOrder: existing.selectedOrder }
+    return existing && pendingSelectedIds
+      ? { ...item, selected: pendingSelectedIds.includes(item.reference.id),
+          selectedOrder: pendingSelectedIds.includes(item.reference.id) ? existing.selectedOrder : null }
       : item;
   });
   const incomingIds = new Set(incoming.map((item) => item.reference.id));
-  merged.push(...current.filter((item) => item.selected && !incomingIds.has(item.reference.id)));
+  if (pendingSelectedIds) merged.push(...current.filter(item => pendingSelectedIds.includes(item.reference.id) && !incomingIds.has(item.reference.id)));
 
   return merged;
 }
@@ -190,13 +191,38 @@ export function ReferenceSearchPanel({
   const router = useRouter();
   const copy = getProjectUiCopy(language).sourceSearch;
   const [references, setReferences] = useState(initialReferences);
+  const pendingSelectionIds = useRef<string[] | null>(null);
+  const refreshSequence = useRef(0);
+  const lastDisplayStatus = useRef("");
+  const [displayJobs, setDisplayJobs] = useState<Record<string, string>>({});
   useEffect(() => {
-    setReferences(current => {
-      const seen = new Set(current.map(item => item.reference.id));
-      const additions = initialReferences.filter(item => !seen.has(item.reference.id));
-      return additions.length ? [...current, ...additions] : current;
-    });
+    setReferences(current => mergeReferenceLists(current, initialReferences, pendingSelectionIds.current));
   }, [initialReferences]);
+  useEffect(() => {
+    let mounted = true;
+    const endpoint = `/api/projects/${projectId}/reference-display`;
+    async function poll() {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      if (!response.ok || !mounted) return;
+      const jobs = ((await response.json()) as { jobs?: Array<{ status: string; referenceIdsJson: string[] }> }).jobs ?? [];
+      const statusKey = JSON.stringify(jobs.map(job => [job.status, job.referenceIdsJson]));
+      if (statusKey === lastDisplayStatus.current) return;
+      lastDisplayStatus.current = statusKey;
+      const states: Record<string, string> = {};
+      for (const job of jobs) for (const id of job.referenceIdsJson) states[id] ??= job.status;
+      setDisplayJobs(states);
+      if (jobs.some(job => job.status === "COMPLETED")) {
+        const sequence = ++refreshSequence.current;
+        const updated = await fetch(`/api/projects/${projectId}/references`, { cache: "no-store" });
+        if (!updated.ok || !mounted || sequence !== refreshSequence.current) return;
+        const payload = await updated.json() as { references?: ReferenceListItem[] };
+        if (payload.references) setReferences(current => mergeReferenceLists(current, payload.references!, pendingSelectionIds.current));
+      }
+    }
+    void fetch(endpoint, { method: "POST" }).then(() => poll()).catch(() => undefined);
+    const interval = window.setInterval(() => { void poll().catch(() => undefined); }, 10_000);
+    return () => { mounted = false; window.clearInterval(interval); };
+  }, [projectId]);
   const [searchSnapshot, setSearchSnapshot] = useState<ReferenceSearchSnapshot | null>(
     initialSearchSnapshot,
   );
@@ -252,6 +278,7 @@ export function ReferenceSearchPanel({
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error ?? copy.saveError);
       persistedIds.current = ids;
+      if (JSON.stringify(pendingSelectionIds.current) === JSON.stringify(ids)) pendingSelectionIds.current = null;
       window.dispatchEvent(new CustomEvent("imx-selection-saved", { detail: { projectId, count: ids.length } }));
     });
     persistence.current = pending;
@@ -269,6 +296,7 @@ export function ReferenceSearchPanel({
     const updated = current.map(item => item.reference.id === referenceId ? { ...item, selected: !item.selected } : item)
       .map(item => ({ ...item, selectedOrder: item.selected ? order++ : null }));
     selectionForFlush.current = updated;
+    pendingSelectionIds.current = updated.filter(item => item.selected).map(item => item.reference.id);
     setReferences(updated);
     window.dispatchEvent(new CustomEvent("imx-selection-changed", { detail: { projectId, count: order - 1 } }));
     void persistSelection(updated).catch(() => setError("No se guardó la selección. Conservamos tus cambios para reintentarlo antes de continuar."));
@@ -307,6 +335,11 @@ export function ReferenceSearchPanel({
 
         if (!response.ok) {
           setError(payload.error ?? copy.searchError);
+          const retained = await fetch(`/api/projects/${projectId}/references`, { cache: "no-store" }).catch(() => null);
+          if (retained?.ok) {
+            const partial = await retained.json() as { references?: ReferenceListItem[] };
+            if (partial.references) setReferences(current => mergeReferenceLists(current, partial.references!, pendingSelectionIds.current));
+          }
           return;
         }
 
@@ -324,10 +357,10 @@ export function ReferenceSearchPanel({
 
         const priorIds = new Set(references.map(item => item.reference.id));
         const newUniqueCount = refreshPayload.references.filter(item => !priorIds.has(item.reference.id)).length;
-        const mergedReferencesLength = mergeReferenceLists(references, refreshPayload.references).length;
+        const mergedReferencesLength = mergeReferenceLists(references, refreshPayload.references, pendingSelectionIds.current).length;
 
         setReferences((current) => {
-          const merged = mergeReferenceLists(current, refreshPayload.references ?? []);
+          const merged = mergeReferenceLists(current, refreshPayload.references ?? [], pendingSelectionIds.current);
           return merged;
         });
         setSearchSnapshot(refreshPayload.searchSnapshot ?? null);
@@ -685,7 +718,13 @@ export function ReferenceSearchPanel({
                     item.reference.sourceLanguage === "es" || item.reference.translatedAbstract ?
                       <p>{(item.reference.translatedAbstract ?? item.reference.abstract).slice(0, 320)}
                         {(item.reference.translatedAbstract ?? item.reference.abstract).length > 320 ? "…" : ""}</p> :
-                      <details><summary className="cursor-pointer">Traducción pendiente; ver resumen original</summary>
+                      <details><summary className="cursor-pointer">{displayJobs[item.reference.id] === "QUEUED" || displayJobs[item.reference.id] === "RUNNING"
+                        ? "Traducción en preparación; ver resumen original"
+                        : displayJobs[item.reference.id] === "BUDGET_UNAVAILABLE"
+                          ? "Traducción no disponible por presupuesto; ver resumen original"
+                          : displayJobs[item.reference.id] === "FAILED"
+                            ? "No pudimos traducir este resumen; ver original"
+                            : "Resumen original disponible; traducción no programada"}</summary>
                         <p lang={item.reference.sourceLanguage ?? undefined}>{item.reference.abstract.slice(0, 320)}</p></details>}
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-3">

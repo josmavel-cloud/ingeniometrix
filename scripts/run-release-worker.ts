@@ -2,6 +2,7 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { claimAndRunNextBlueprintJob } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { writeWorkerHeartbeat } from "@/server/operations/worker-health";
+import { runNextReferenceDisplayJob } from "@/server/retrieval/reference-display-jobs";
 
 const once = process.argv.includes("--once");
 const pollIntervalMs = Math.max(500, Number(process.env.BLUEPRINT_WORKER_POLL_MS ?? 2_000));
@@ -26,8 +27,10 @@ async function main() {
     if (result) {
       process.stdout.write(`${JSON.stringify({ event: "blueprint_job_stage", result })}\n`);
     }
+    const display = await runNextReferenceDisplayJob();
+    if (display) process.stdout.write(`${JSON.stringify({ event: "reference_display_job", ...display })}\n`);
     if (once) break;
-    if (!result) { await writeWorkerHeartbeat("IDLE"); await delay(pollIntervalMs); }
+    if (!result && !display) { await writeWorkerHeartbeat("IDLE"); await delay(pollIntervalMs); }
   } while (!stopping);
   } finally { clearInterval(heartbeat); await writeWorkerHeartbeat("STOPPING"); }
 }

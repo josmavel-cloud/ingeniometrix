@@ -5,7 +5,10 @@ import { candidateMetadataHash } from "@/server/retrieval/candidate-review-polic
 import { SOURCE_SUFFICIENCY_POLICY } from "@/lib/source-sufficiency-policy";
 /** Synthetic DB-test evidence. No provider execution or real project input. */
 export async function fixtureSourceAssessments(userId: string, projectId: string, referenceIds: string[], exploratoryId?: string) {
-  if (new URL(process.env.DATABASE_URL ?? "").pathname !== "/imx_b4_validation_rc4") throw new Error("ISOLATED_DB_REQUIRED");
+  const url = new URL(process.env.DATABASE_URL ?? "");
+  if (url.hostname !== "127.0.0.1" || url.port !== "55440" ||
+    !["/imx_b4_validation_rc4", "/imx_reliability_20261001"].includes(url.pathname))
+    throw new Error("ISOLATED_DB_REQUIRED");
   const input = await loadSearchInput(userId, projectId), inputTrace = await freezeSearchInput(userId, input);
   const rows = await prisma.reference.findMany({ where: { id: { in: referenceIds } } });
   const searchIntentHash = fingerprint(input.intent);

@@ -78,7 +78,8 @@ export async function receivePdf(token: string, body: ReadableStream<Uint8Array>
       prisma.auditLog.create({ data: { projectId: grant.projectId, userId: grant.userId, actorType: "SYSTEM",
         eventType: "PDF_UPLOAD_FAILED", payloadJson: { operationId: grant.id, documentId: doc.id,
           category: failure.category, stage: failure.stage, status: 400,
-          declaredBytes: failure.declaredBytes, receivedBytes: failure.receivedBytes } } }),
+          declaredBytes: failure.declaredBytes, receivedBytes: failure.receivedBytes,
+          diagnostics: failure.diagnostics } } }),
     ]);
     throw failure;
   }

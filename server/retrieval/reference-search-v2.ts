@@ -29,6 +29,7 @@ import { recoverCachedCentralTranslations, recoverCentralTranslations, recoveryM
 import { SEARCH_CONCEPT_TRANSLATION_PROMPT } from "@/server/mvp/prompts/search-concept-translation.v1";
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { chooseSafeSearchPlan, SearchPlanningError, validateSearchPlan } from "@/lib/search-planning-outcome";
+import { enqueueReferenceDisplayJobs } from "./reference-display-jobs";
 import { candidateMetadataHash, CANDIDATE_REVIEW_VERSION, MAX_RECOMMENDATIONS, type CandidateAssessment, type ReviewCandidate } from "./candidate-review-policy";
 
 import {
@@ -1660,7 +1661,7 @@ export async function searchProjectReferencesV2(
         [author.given, author.family].filter(Boolean).join(" "),
       ) ?? result.authors;
     const resolvedAbstract = crossrefMetadata?.abstract ?? result.abstract;
-    const resolvedVenue = crossrefMetadata?.publisher ?? result.venue;
+    const resolvedVenue = crossrefMetadata?.["container-title"]?.[0] ?? result.venue ?? crossrefMetadata?.publisher ?? null;
     const resolvedYear =
       crossrefMetadata?.issued?.["date-parts"]?.[0]?.[0] ?? result.year;
     const resolvedWorkType = crossrefMetadata?.type ?? result.workType;
@@ -1967,6 +1968,11 @@ export async function searchProjectReferencesV2(
       providerFallback: openAlexUnavailable ? "OpenAlex unavailable; supported Crossref fallback used" : null,
     },
   });
+
+  // Display work is independent of scholarly discovery and commercial plan
+  // purchase. Scheduling failure cannot erase already admitted references.
+  await enqueueReferenceDisplayJobs(userId, projectId, languageContext.activeLanguage)
+    .catch(() => console.warn("REFERENCE_DISPLAY_ENQUEUE_FAILED"));
 
   return {
     batchKind,
