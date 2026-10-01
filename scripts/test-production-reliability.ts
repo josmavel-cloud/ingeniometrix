@@ -7,8 +7,9 @@ import { referenceDisplayText } from "@/lib/reference-display-text";
 import { shouldRunAutomaticAstra } from "@/server/retrieval/source-sufficiency-controller";
 import { withPaidOperation, reservePreJobCall } from "@/server/mvp/pre-job-budget";
 import { prisma } from "@/lib/prisma";
-import { assertInternalGenerationAuthorization, INTERNAL_GENERATION_POLICY, reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
+import { assertInternalGenerationAuthorization, INTERNAL_GENERATION_POLICY } from "@/server/commercial/internal-generation";
 import { enqueueReferenceDisplayJobs } from "@/server/retrieval/reference-display-jobs";
+import { enqueueBlueprintJobForUser } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 
 global.fetch = async () => { throw new Error("NETWORK_FORBIDDEN_IN_RELIABILITY_TEST"); };
 
@@ -54,6 +55,13 @@ async function main() {
   const project = await prisma.project.create({ data: { userId: owner.id, title: "Synthetic reliability project", degreeLevel: "MAESTRIA" } });
   const refs: string[] = [];
   try {
+    await prisma.intake.create({ data: { projectId: project.id, topic: "Synthetic reliability study" } });
+    const fundingFixture = await prisma.reference.create({ data: { title: "Estudio sintético de fiabilidad",
+      normalizedTitle: "estudio sintetico de fiabilidad", abstract: "Resumen real de una publicación sintética.",
+      authorsJson: [], rawCrossrefJson: { language: "es" } } });
+    refs.push(fundingFixture.id);
+    await prisma.projectReference.create({ data: { projectId: project.id, referenceId: fundingFixture.id,
+      sourceProvider: "SYSTEM", selected: true, selectedOrder: 1 } });
     const requestId = `source-sufficiency:${randomUUID()}`;
     const operation = { userId: owner.id, projectId: project.id, requestId, purpose: "SOURCE_SUFFICIENCY",
       revision: "synthetic-intent", inputs: { searchIntentHash: "synthetic-intent", policyVersion: "synthetic-test" } };
@@ -93,9 +101,9 @@ async function main() {
 
     const grant = await prisma.internalGenerationCapability.create({ data: { userId: owner.id,
       grantKey: `synthetic:${randomUUID()}`, issuedBy: "isolated-test", reason: "regression" } });
-    const job = await prisma.blueprintJob.create({ data: { projectId: project.id, userId: owner.id,
-      metadataJson: { commercialPolicy: INTERNAL_GENERATION_POLICY, executionPolicy: "b4.v1" } } });
-    await prisma.$transaction(tx => reserveInternalGenerationJob(tx, job.id));
+    const job = await enqueueBlueprintJobForUser(owner.id, project.id);
+    assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } }).then(row =>
+      (row.metadataJson as { commercialPolicy: string }).commercialPolicy)), INTERNAL_GENERATION_POLICY);
     assert((await prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id))) > 0);
     await prisma.internalGenerationCapability.update({ where: { id: grant.id }, data: { status: "REVOKED", revokedAt: new Date(), revokedBy: "isolated-test" } });
     await assert.rejects(prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id)), /CAPABILITY_REQUIRED/);
@@ -105,7 +113,8 @@ async function main() {
     const english = await prisma.reference.create({ data: { title: "Digital learning and public engagement", normalizedTitle: "digital learning and public engagement",
       abstract: "The study compares methods and outcomes in public education.", authorsJson: [], rawOpenAlexJson: { language: "en" } } });
     refs.push(spanish.id, english.id);
-    for (const referenceId of refs) await prisma.projectReference.create({ data: { projectId: project.id, referenceId, sourceProvider: "SYSTEM" } });
+    for (const referenceId of [spanish.id, english.id])
+      await prisma.projectReference.create({ data: { projectId: project.id, referenceId, sourceProvider: "SYSTEM" } });
     const queued = await enqueueReferenceDisplayJobs(owner.id, project.id);
     assert.equal(queued.length, 1);
     assert.equal((await enqueueReferenceDisplayJobs(owner.id, project.id)).length, 1);

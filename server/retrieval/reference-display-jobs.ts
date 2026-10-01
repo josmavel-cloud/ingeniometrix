@@ -51,9 +51,19 @@ export async function referenceDisplayStatus(userId: string, projectId: string) 
 }
 
 export async function runNextReferenceDisplayJob() {
-  // A lost worker lease must never cause an uncertain model call to be replayed.
-  await prisma.referenceDisplayJob.updateMany({ where: { status: "RUNNING", lockedAt: { lt: new Date(Date.now() - 10 * 60_000) } },
-    data: { status: "FAILED", failureCategory: "WORKER_INTERRUPTED_RECONCILIATION_REQUIRED", completedAt: new Date() } });
+  // A lost worker lease with no paid operation can safely resume. A completed
+  // operation reuses its persisted result. Any in-flight/uncertain call stays
+  // terminal for operator reconciliation and is never sent to the model again.
+  const stale = await prisma.referenceDisplayJob.findMany({ where: { status: "RUNNING",
+    lockedAt: { lt: new Date(Date.now() - 10 * 60_000) } }, take: 20 });
+  for (const row of stale) {
+    const paid = await prisma.paidOperation.findUnique({ where: { userId_requestId: {
+      userId: row.userId, requestId: row.requestKey } }, select: { status: true } });
+    await prisma.referenceDisplayJob.updateMany({ where: { id: row.id, status: "RUNNING", lockedAt: row.lockedAt },
+      data: !paid ? { status: "QUEUED", lockedAt: null } : paid.status === "COMPLETED"
+        ? { status: "COMPLETED", completedAt: new Date() }
+        : { status: "FAILED", failureCategory: "WORKER_INTERRUPTED_RECONCILIATION_REQUIRED", completedAt: new Date() } });
+  }
   const job = await prisma.$transaction(async tx => {
     const [row] = await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "ReferenceDisplayJob"
       WHERE status = 'QUEUED' ORDER BY "createdAt" FOR UPDATE SKIP LOCKED LIMIT 1`;
