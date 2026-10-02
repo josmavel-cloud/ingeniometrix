@@ -5,16 +5,20 @@ import { getConfiguredLlmProvider } from "@/llm";
 import { openAiBackgroundRequestFingerprint } from "@/llm/providers/openai";
 import type { LlmProvider } from "@/llm/provider";
 import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
-import { currentJobExecution, fingerprint, stageCheckpoint, stableJson } from "./job-execution-context";
+import { responseCostBound } from "@/llm/providers/openai-cost-bound";
+import { currentJobExecution, fingerprint, preflightWholeJobCost, stageCheckpoint, stableJson } from "./job-execution-context";
 import { assessEvidenceCoverage } from "./evidence-coverage";
 import type { MvpStep5EvidenceLedger } from "./evidence-materialization-types";
-import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, buildMethodEvidencePack, criticAttemptEnvelopeSchema, decisionContextFingerprint, designCritiqueSchema, designRepairSchema, intentFromIntake, scientificDecisionV2Schema, validateDesignCritique, validateScientificDecision, type DesignAlternative, type DesignCritique, type MethodEvidencePack, type ResearchIntentContract, type ScientificDecision } from "./scientific-decision-contracts";
+import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, autonomousDesignPatchSchema, buildMethodEvidencePack, criticAttemptEnvelopeSchema, decisionContextFingerprint, designCritiqueSchema, designRepairSchema, intentFromIntake, scientificDecisionV2Schema, targetedAutonomousCriticSchema, validateDesignCritique, validateScientificDecision, type DesignAlternative, type DesignCritique, type MethodEvidencePack, type ResearchIntentContract, type ScientificDecision } from "./scientific-decision-contracts";
 import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT as selector } from "./prompts/scientific-design-selector.v3";
 import { SCIENTIFIC_DESIGN_CRITIC_PROMPT as critic } from "./prompts/scientific-design-critic.v3";
 import { SCIENTIFIC_DESIGN_CRITIC_RECOVERY_PROMPT as criticRecovery } from "./prompts/scientific-design-critic-recovery.v1";
 import { SCIENTIFIC_DESIGN_REPAIR_PROMPT as repair } from "./prompts/scientific-design-repair.v1";
 import { SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT as outputRepair } from "./prompts/scientific-design-output-repair.v1";
-import { SCIENTIFIC_DESIGN_AUTONOMOUS_REVISION_PROMPT as autonomousRevision } from "./prompts/scientific-design-autonomous-revision.v1";
+import { SCIENTIFIC_DESIGN_AUTONOMOUS_PATCH_PROMPT as autonomousPatch } from "./prompts/scientific-design-autonomous-patch.v1";
+import { SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT as targetedCritic } from "./prompts/scientific-design-autonomous-targeted-critic.v1";
+import { applyAutonomousDesignPatch, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "./autonomous-design-resolution";
+import { mandatoryCompositionReservationFloor } from "./whole-job-cost-forecast";
 import { researchDesignSupport } from "./design-mini-research";
 import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
@@ -145,38 +149,63 @@ export async function resolveAutonomousDesignForJob(input: { jobId: string; user
 export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBundle,
   input: { userId: string; projectId: string; runId: string; provider?: LlmProvider;
     researchSupport?: typeof researchDesignSupport }) {
-  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: autonomousRevision.version, maxRevisionLoops: 1 }, async () => {
-    let decision = bundle.decision;
-    let critique = bundle.critique;
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: autonomousPatch.version, maxRevisionLoops: 1 }, async () => {
+    const decision = bundle.decision;
+    const critique = bundle.critique;
     let revised = false;
-    let designSupport: Awaited<ReturnType<typeof researchDesignSupport>> | null = null;
-    if (!selectAutonomousCandidate(decision, critique)) {
-      designSupport = await (input.researchSupport ?? researchDesignSupport)({ userId: input.userId, projectId: input.projectId, runId: input.runId, bundle });
+    const designSupport: Awaited<ReturnType<typeof researchDesignSupport>> | null = null;
+    let selected = selectAutonomousCandidate(decision, critique);
+    const deterministicResolution = selected ? null : resolveNonmaterialDecisions({ decision, critique, intent: bundle.intent, pack: bundle.evidence_pack });
+    if (deterministicResolution) { selected = deterministicResolution.alternative; revised = true; }
+    let targetedReview: typeof targetedAutonomousCriticSchema._output | null = null;
+    if (!selected) {
+      const candidates = inScopeAlternatives(decision, critique);
+      if (!candidates.length) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: no hay alternativa dentro del alcance confirmado.");
+      const alternative = candidates.find((item) => item.id === decision.recommended_id) ?? candidates[0];
+      const assessment = critique.assessments.find((item) => item.alternative_id === alternative.id)!;
+      // Mini research is not a response to every limitation. Existing inspected
+      // evidence and a targeted repair are tried first; no new web spend here.
+      const evidenceIds = new Set([ ...alternative.research_design.methodological_support, ...alternative.components.flatMap((item) => item.support) ].map((item) => `${item.source_id}:${item.evidence_id}`));
+      const relevantEvidence = bundle.evidence_pack.items.filter((item) => evidenceIds.has(`${item.source_id}:${item.evidence_id}`));
+      const findings = assessment.critical_findings;
       const provider = input.provider ?? getConfiguredLlmProvider();
-      const prompt = `${autonomousRevision.systemPrompt}\n\n${autonomousRevision.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(({ intent_json: bundle.intent, method_evidence_pack_json: bundle.evidence_pack, decision_json: decision, critique_json: critique, design_support_json: designSupport } as Record<string, unknown>)[variable]))}`;
-      if (Buffer.byteLength(prompt) > 60000) throw new Error("AUTONOMOUS_DESIGN_CONTEXT_TOO_LARGE");
-      const schema = z.toJSONSchema(designRepairSchema);
-      const request = { prompt, schema, schemaName: "autonomous_design_revision_v1", model: autonomousRevision.model, reasoningEffort: autonomousRevision.reasoning_effort, maxOutputTokens: autonomousRevision.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_revision", promptVersion: autonomousRevision.version, schemaName: "autonomous_design_revision_v1" } };
-      const patch = designRepairSchema.parse(await stageCheckpoint("AUTONOMOUS_DESIGN_REVISION_1", { promptHash: fingerprint(prompt), schema, model: autonomousRevision.model, version: autonomousRevision.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()
-        ? provider.generateBackgroundStructuredObject({ ...request, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: "AUTONOMOUS_DESIGN_REVISION_1", promptHash: fingerprint(prompt), version: autonomousRevision.version }), requestFingerprint: openAiBackgroundRequestFingerprint(request) })
+      const variables = { intent_json: bundle.intent, alternative_json: compactAlternativeForRepair(alternative), findings_json: findings, evidence_json: relevantEvidence };
+      const prompt = `${autonomousPatch.systemPrompt}\n\n${autonomousPatch.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable as keyof typeof variables]))}`;
+      const schema = z.toJSONSchema(autonomousDesignPatchSchema);
+      const request = { prompt, schema, schemaName: "autonomous_design_patch_v1", model: autonomousPatch.model, reasoningEffort: autonomousPatch.reasoning_effort, maxOutputTokens: autonomousPatch.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_patch", promptVersion: autonomousPatch.version, schemaName: "autonomous_design_patch_v1" } };
+      const patchBound = responseCostBound({ model: request.model, reasoning: { effort: request.reasoningEffort },
+        background: true, store: true, input: request.prompt, max_output_tokens: request.maxOutputTokens,
+        text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema } } });
+      const criticMinimum = responseCostBound({ model: targetedCritic.model,
+        input: stableJson({ intent: bundle.intent, alternative: compactAlternativeForRepair(alternative), findings, evidence: relevantEvidence }),
+        max_output_tokens: targetedCritic.max_output_tokens });
+      if (!patchBound || !criticMinimum) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
+      const compositionFloor = mandatoryCompositionReservationFloor(bundle, alternative.id).reduce((sum, phase) => sum + phase.minimumReservationUsd, 0);
+      await preflightWholeJobCost({ nextStage: "autonomous_design_patch", nextStageReservation: patchBound.maximumUsd,
+        minimumRemainingMandatoryReservation: criticMinimum.maximumUsd + compositionFloor });
+      const patch = autonomousDesignPatchSchema.parse(await stageCheckpoint("AUTONOMOUS_DESIGN_PATCH_1", { promptHash: fingerprint(prompt), schema, model: autonomousPatch.model, version: autonomousPatch.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()
+        ? provider.generateBackgroundStructuredObject({ ...request, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: "AUTONOMOUS_DESIGN_PATCH_1", promptHash: fingerprint(prompt), version: autonomousPatch.version }), requestFingerprint: openAiBackgroundRequestFingerprint(request) })
         : provider.generateStructuredObject(request)));
-      const allowed = new Set(decision.alternatives.map((alternative) => alternative.id));
-      if (new Set(patch.replacements.map((alternative) => alternative.id)).size !== patch.replacements.length || patch.replacements.some((alternative) => !allowed.has(alternative.id))) throw new Error("AUTONOMOUS_DESIGN_REVISION_SCOPE_INVALID");
-      decision = { ...decision, alternatives: decision.alternatives.map((alternative) => patch.replacements.find((replacement) => replacement.id === alternative.id) ?? alternative) };
-      validateScientificDecision(decision, bundle.intent, bundle.evidence_pack);
-      const review = await critiqueScientificDecision({ projectId: input.projectId, runId: input.runId, intent: bundle.intent, pack: bundle.evidence_pack, decision, provider, checkpointPrefix: "AUTONOMOUS_DESIGN", allowRecovery: false });
-      critique = review.critique;
+      selected = applyAutonomousDesignPatch({ decision, critique, intent: bundle.intent, pack: bundle.evidence_pack, patch });
+      const reviewVariables = { ...variables, alternative_json: compactAlternativeForRepair(selected), patch_json: patch };
+      const reviewPrompt = `${targetedCritic.systemPrompt}\n\n${targetedCritic.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(reviewVariables[variable as keyof typeof reviewVariables]))}`;
+      const reviewSchema = z.toJSONSchema(targetedAutonomousCriticSchema);
+      const reviewRequest = { prompt: reviewPrompt, schema: reviewSchema, schemaName: "autonomous_design_targeted_critic_v1", model: targetedCritic.model, reasoningEffort: targetedCritic.reasoning_effort, maxOutputTokens: targetedCritic.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_targeted_critic", promptVersion: targetedCritic.version, schemaName: "autonomous_design_targeted_critic_v1" } };
+      targetedReview = targetedAutonomousCriticSchema.parse(await stageCheckpoint("AUTONOMOUS_DESIGN_TARGETED_CRITIC_1", { promptHash: fingerprint(reviewPrompt), schema: reviewSchema, model: targetedCritic.model, version: targetedCritic.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()
+        ? provider.generateBackgroundStructuredObject({ ...reviewRequest, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: "AUTONOMOUS_DESIGN_TARGETED_CRITIC_1", promptHash: fingerprint(reviewPrompt), version: targetedCritic.version }), requestFingerprint: openAiBackgroundRequestFingerprint(reviewRequest) })
+        : provider.generateStructuredObject(reviewRequest)));
+      const priorBlocking = new Set(findings.filter((finding) => finding.severity === "BLOCKING").map((finding) => finding.code));
+      if (targetedReview.alternativeId !== selected.id || !targetedReview.intentPreserved || !targetedReview.methodCoherent || !targetedReview.evidenceSupported || targetedReview.blockingScientificIssue || targetedReview.unresolvedFindingCodes.some((code) => priorBlocking.has(code)) || [...priorBlocking].some((code) => !targetedReview!.resolvedFindingCodes.includes(code))) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección.");
       revised = true;
     }
-    const selected = selectAutonomousCandidate(decision, critique);
     if (!selected) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: no existe un diseño validado dentro del alcance confirmado.");
     const alternative = { ...selected,
       transfer_limits: [...new Set([...selected.transfer_limits,
-        ...(designSupport?.limitations ?? []),
+        ...(targetedReview?.limitations ?? []),
         ...selected.pending_user_decisions.map(item => `Verificar durante la investigación: ${item.question}`)])],
       pending_user_decisions: [] };
     validateScientificDecision({ ...decision, alternatives: [alternative], recommended_id: alternative.id }, bundle.intent, bundle.evidence_pack);
-    return { decisionFingerprint: bundle.decisionFingerprint, contextFingerprint: bundle.contextFingerprint, academicLevel: bundle.academicLevel, alternative, critique, revised, designSupport, policyVersion: autonomousRevision.version };
+    return { decisionFingerprint: bundle.decisionFingerprint, contextFingerprint: bundle.contextFingerprint, academicLevel: bundle.academicLevel, alternative, critique, deterministicResolution: deterministicResolution?.reclassified ?? null, targetedReview, revised, designSupport, policyVersion: autonomousPatch.version };
   });
 }
 

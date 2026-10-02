@@ -12,7 +12,7 @@ import { SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT, SCIENTIFIC_TASKS_LATAM_COMPACT } 
 import { CONSISTENCY_MATRIX_PROMPT } from "./prompts/consistency-matrix.v1";
 import { compactSectionToBudget } from "./section-budget";
 import { stageCheckpoint, stableJson } from "./job-execution-context";
-import { generationBudget, GENERATION_POLICY_VERSION, priorSectionsForPhase, SCIENTIFIC_MODEL } from "./generation-budgets";
+import { evidenceContextForPhase, generationBudget, GENERATION_POLICY_VERSION, priorSectionsForPhase, SCIENTIFIC_MODEL } from "./generation-budgets";
 import type { DesignAlternative } from "./scientific-decision-contracts";
 import { APPROVED_SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT, APPROVED_SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-approved.v1";
 import { LATAM_COMPACT_GENERATION_ORDER, latamCompactSectionPlan, validateLatamCompactDefinition } from "./document-profiles/latam-compact-v1";
@@ -99,8 +99,12 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
   async function call<S extends z.ZodType>(phase: keyof typeof SCIENTIFIC_TASKS_LATAM_COMPACT, schema: S, extra: object = {}): Promise<z.infer<S>> {
     const sectionBudget = generationBudget(phase, compactProfile ? "latam-compact-v1" : "legacy-release0");
     const upstream = priorSectionsForPhase(phase, sections);
-    if (JSON.stringify(evidence).length > sectionBudget.evidence_context_budget || JSON.stringify(upstream).length > sectionBudget.prior_context_budget) throw new Error("USER_ACTION_REQUIRED: scientific context exceeds safe profile; no evidence silently discarded");
-    const context = { intake: input.intake, stable_definition: definition, research_design: design, evidence: phase === "final_title" || phase === "executive_summary" ? [] : evidence, coverage, upstream_sections: upstream, word_budget: sectionBudget.target_words === null ? null : [sectionBudget.target_words, sectionBudget.max_words], section_budget: sectionBudget, document_profile: compactProfile ? "latam-compact-v1" : "legacy-release0", ...extra };
+    const requiredMethodSupport = new Set((input.approvedDesign?.research_design.methodological_support ?? [])
+      .map((item) => `${item.source_id}:${item.evidence_id}`));
+    const phaseEvidence = compactProfile ? evidenceContextForPhase(phase, evidence,
+      phase === "methodology" ? requiredMethodSupport : new Set()) : evidence;
+    if (JSON.stringify(phaseEvidence).length > sectionBudget.evidence_context_budget || JSON.stringify(upstream).length > sectionBudget.prior_context_budget) throw new Error("USER_ACTION_REQUIRED: scientific context exceeds safe profile; no evidence silently discarded");
+    const context = { intake: input.intake, stable_definition: definition, research_design: design, evidence: phase === "final_title" || phase === "executive_summary" ? [] : phaseEvidence, coverage, upstream_sections: upstream, word_budget: sectionBudget.target_words === null ? null : [sectionBudget.target_words, sectionBudget.max_words], section_budget: sectionBudget, document_profile: compactProfile ? "latam-compact-v1" : "legacy-release0", ...extra };
     const prompt = `${scientificPrompt.systemPrompt}\n\n${scientificPrompt.userPromptTemplate.replace("{{task}}", scientificTasks[phase]).replace("{{context_json}}", stableJson(context))}`;
     const schemaJson = z.toJSONSchema(schema);
     const maxOutputTokens = sectionBudget.max_output_tokens;
@@ -108,7 +112,11 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
     const budget = sectionBudget.max_words === null ? null : [sectionBudget.target_words ?? sectionBudget.max_words, sectionBudget.max_words] as const;
     if (budget && output && typeof output === "object" && "paragraphs" in output) {
       const original = narrativeSchema.parse(output);
-      original.paragraphs.forEach((p) => checkPointers(p.citations));
+      const available = phase === "executive_summary" ? validPointers : new Set(phaseEvidence.map((item) => `${item.source_id}:${item.evidence_id}`));
+      original.paragraphs.forEach((p) => {
+        checkPointers(p.citations);
+        if (p.citations.some((citation) => !available.has(`${citation.source_id}:${citation.evidence_id}`))) throw new Error("SECTION_CITED_EVIDENCE_NOT_IN_CONTEXT");
+      });
       const compacted = await compactSectionToBudget({ provider: input.provider, section: phase, maxWords: budget[1], paragraphs: original.paragraphs, projectId: input.projectId, runId: input.runId }).catch((error) => {
         if (!(error instanceof Error) || !error.message.includes("CHANGED_EVIDENCE")) throw error;
         return { paragraphs: original.paragraphs, prompt_record: { phase, warning: "EDITORIAL_REJECTED_CHANGED_EVIDENCE: original scientific text retained", budget_unresolved: true } };

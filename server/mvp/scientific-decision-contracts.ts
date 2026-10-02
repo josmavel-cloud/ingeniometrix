@@ -78,6 +78,23 @@ export const designAlternativeV2Schema = designAlternativeSchema.extend({
 });
 export const scientificDecisionV2Schema = scientificDecisionSchema.extend({ alternatives: z.array(designAlternativeV2Schema).max(3) });
 export const designRepairSchema = z.object({ replacements: z.array(designAlternativeV2Schema).max(3), corrected_findings: list, unresolved_findings: list });
+// A repair can clarify execution and limits, but cannot rewrite the confirmed
+// problem, objectives, scope, method graph or evidence pointers.
+export const autonomousDesignPatchSchema = z.object({
+  alternativeId: text,
+  procedure: list.max(12), qualityCriteria: list.max(12),
+  samplingSelection: text.optional(), analysisMethod: text.optional(), feasibility: text.optional(),
+  dataRequirements: z.array(z.object({ description: text, availability: z.enum(["PROPOSED", "PENDING"]), confirmation_or_action: text })).max(12),
+  assumptionsAdded: list.max(12), validationRequirementsAdded: list.max(12),
+  limitationsAdded: list.max(12), rationale: text,
+  resolvedFindingCodes: list.max(10), unresolvedFindingCodes: list.max(10),
+});
+export const targetedAutonomousCriticSchema = z.object({
+  alternativeId: text, intentPreserved: z.boolean(), methodCoherent: z.boolean(),
+  evidenceSupported: z.boolean(), blockingScientificIssue: z.boolean(),
+  blockingReason: z.string(), limitations: list.max(10),
+  resolvedFindingCodes: list.max(10), unresolvedFindingCodes: list.max(10),
+});
 export const CRITIQUE_DIMENSIONS = ["intent", "feasibility", "evidence", "coherence", "transferability", "causal_identification", "measurement", "evaluation", "theory_framework_fit", "method_integration", "mixed_methods_validity", "uncertainty", "question_objective_alignment", "complexity", "novelty"] as const;
 // Historical G1 critic payloads remain readable for deterministic migration only.
 export const legacyDesignCritiqueSchema = z.object({

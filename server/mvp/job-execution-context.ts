@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { jobCostPolicy } from "./execution-policy";
 import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
 import { INTERNAL_GENERATION_POLICY, settleInternalGenerationJob } from "@/server/commercial/internal-generation";
+import { wholeJobCostEquation } from "./whole-job-cost-forecast";
 
 type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
 const context = new AsyncLocalStorage<Execution>();
@@ -270,6 +271,37 @@ export async function jobCostSnapshot() {
   return { jobId: execution.jobId, ...record, calls: record.entries.length, committed_usd: committed(record.entries), estimated_known_usd: record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0), unknown_usage_calls: record.entries.filter((entry) => entry.estimate === null).length, retry_committed_usd: committed(record.entries.filter((entry) => entry.retry)), pricing: "estimated from provider tokens; actual billed USD unknown" };
 }
 
+// Forecasts are planning records, never charges. The reservation guard still
+// checks the actual serialized request at dispatch. This gate stops a costly
+// discretionary step when even a conservative mandatory path cannot fit.
+export async function preflightWholeJobCost(input: { nextStage: string; nextStageReservation: number; minimumRemainingMandatoryReservation: number }) {
+  const execution = context.getStore();
+  if (!execution) return null;
+  return locked(execution, async (tx) => {
+    const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
+    const record = row?.outputJson as unknown as CostRecord ?? { policy: jobCostPolicy(), entries: [] };
+    const knownSpent = record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0);
+    const unknownReserved = record.entries.reduce((sum, entry) => sum + (entry.estimate === null ? entry.maximum : 0), 0);
+    const safetyReserve = record.policy.mandatoryReserve;
+    const equation = wholeJobCostEquation({ knownSpent, unknownReserved,
+      nextStageReservation: input.nextStageReservation,
+      minimumRemainingMandatoryReservation: input.minimumRemainingMandatoryReservation,
+      safetyReserve, hardCap: record.policy.hard });
+    const forecast = { version: "whole-job-preflight.v1", nextStage: input.nextStage,
+      knownSpent, unknownReserved, nextStageReservation: input.nextStageReservation,
+      minimumRemainingMandatoryReservation: input.minimumRemainingMandatoryReservation,
+      safetyReserve, hardCap: record.policy.hard,
+      projectedCommitment: equation.projectedCommitment,
+      at: new Date().toISOString() };
+    if (![forecast.nextStageReservation, forecast.minimumRemainingMandatoryReservation].every((value) => Number.isFinite(value) && value >= 0)) throw new Error("WHOLE_JOB_FORECAST_INVALID");
+    await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:forecast" } },
+      create: { jobId: execution.jobId, stageKey: "control:forecast", status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) },
+      update: { status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) } });
+    if (!equation.allowed) throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");
+    return forecast;
+  });
+}
+
 export function classifyPlanSourceDisposition(input: {
   hasEvidenceCard: boolean;
   materializationStatus?: string | null;
@@ -350,9 +382,10 @@ export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () 
   }
   if (execution.checkpointOnly && !execution.allowedCheckpointWork?.includes(key)) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${key}`);
   const oldInput = previous?.inputJson as { fingerprint?: string; attempts?: number } | null;
-  const oldError = previous?.errorJson as { category?: string } | null;
+  const oldError = previous?.errorJson as { category?: string; message?: string } | null;
   const providerRetrievalContinuation = previous?.status === "RUNNING" && oldError?.category === "PROVIDER_RESPONSE_PENDING";
-  const attempts = oldInput?.fingerprint === hash ? providerRetrievalContinuation ? (oldInput.attempts ?? 1) : (oldInput.attempts ?? 0) + 1 : 1;
+  const budgetPreflightContinuation = previous?.status === "FAILED" && /COST_LIMIT_REACHED: el trabajo restante completo/.test(oldError?.message ?? "");
+  const attempts = oldInput?.fingerprint === hash ? providerRetrievalContinuation || budgetPreflightContinuation ? (oldInput.attempts ?? 1) : (oldInput.attempts ?? 0) + 1 : 1;
   if (attempts > (key.startsWith("EDITORIAL:") ? 1 : 3)) throw new Error(`STAGE_ATTEMPTS_EXHAUSTED: ${key}`);
   await locked(execution, (tx) => tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } }, create: { jobId: execution.jobId, stageKey, status: "RUNNING", progress: 0, startedAt: new Date(), inputJson: json({ fingerprint: hash, attempts }) }, update: { status: "RUNNING", startedAt: new Date(), completedAt: null, inputJson: json({ fingerprint: hash, attempts }), errorJson: Prisma.DbNull } }));
   try {

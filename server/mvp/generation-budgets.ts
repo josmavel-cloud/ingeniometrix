@@ -19,3 +19,21 @@ export function priorSectionsForPhase<T>(phase: string, sections: Record<string,
   const keys = phase === "methodology" || phase === "research_design" ? ["problem_definition", "conceptual_framework", "state_of_knowledge"] : ["problem_definition", "state_of_knowledge"];
   return Object.fromEntries(Object.entries(sections).filter(([key]) => keys.includes(key)));
 }
+
+// The complete frozen evidence remains in the ledger. A drafting phase receives
+// the extracts relevant to its task; the synthesis and final scientific review
+// retain complete access. This avoids sending the same unrelated excerpts to
+// every section while keeping source pointers inspectable.
+export function evidenceContextForPhase<T extends { section_key: string; source_id?: string; evidence_id?: string }>(phase: string, evidence: T[], requiredPointers: ReadonlySet<string> = new Set()): T[] {
+  const sections: Record<string, string[]> = {
+    problem_definition: ["problem_statement", "research_antecedents"],
+    conceptual_framework: ["theoretical_framework", "variables_or_categories"],
+    methodology: ["methodology", "analysis_plan"],
+  };
+  if (phase === "final_title" || phase === "executive_summary") return [];
+  const allowed = sections[phase];
+  if (!allowed) return evidence;
+  const selected = evidence.filter((item) => allowed.includes(item.section_key) ||
+    item.source_id && item.evidence_id && requiredPointers.has(`${item.source_id}:${item.evidence_id}`));
+  return selected.length ? selected : evidence;
+}

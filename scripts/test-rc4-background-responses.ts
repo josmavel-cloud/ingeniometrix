@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { createOpenAiProvider, openAiBackgroundRequestFingerprint, ProviderResponsePendingError } from "@/llm/providers/openai";
 import { ApplicationBudget, withApplicationBudget } from "@/server/mvp/application-budget";
-import { closeJobCostControl, jobCostSnapshot, reconcileBackgroundJobUsage, recordRetrievedBackgroundResponse, settleCurrentJobCall, withJobExecution } from "@/server/mvp/job-execution-context";
+import { closeJobCostControl, jobCostSnapshot, preflightWholeJobCost, reconcileBackgroundJobUsage, recordRetrievedBackgroundResponse, settleCurrentJobCall, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
 import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { INTERNAL_GENERATION_POLICY, reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
 
@@ -177,6 +177,14 @@ async function main() {
       assert.rejects(() => rejectedProvider.generateBackgroundStructuredObject!({ ...request("preflight-reject", 0),
         maxOutputTokens: 100000, requestFingerprint: openAiBackgroundRequestFingerprint({ ...request("preflight-reject", 0), maxOutputTokens: 100000 }) }), /COST_LIMIT/));
     assert.equal(rejectedCreates, 0, "cost guard rejects before provider dispatch");
+    const forecastRun = () => withJobExecution({ jobId: rejected.jobId, startedAt: rejected.startedAt, stage: "offline-reject" }, () =>
+      stageCheckpoint("BUDGET_PREFLIGHT_FIXTURE", { version: 1 }, () => preflightWholeJobCost({
+        nextStage: "offline", nextStageReservation: 1.2, minimumRemainingMandatoryReservation: 0.8 })));
+    for (let i = 0; i < 4; i++) await assert.rejects(forecastRun, /COST_LIMIT_REACHED/);
+    const budgetCheckpoint = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: {
+      jobId: rejected.jobId, stageKey: "checkpoint:BUDGET_PREFLIGHT_FIXTURE" } } });
+    assert.equal((budgetCheckpoint.inputJson as any).attempts, 1, "a pre-dispatch budget rejection cannot exhaust scientific recovery attempts");
+    assert.equal(rejectedCreates, 0);
 
     for (const terminal of ["completed", "failed", "cancelled", "incomplete"] as const) {
       const terminalState = await job(terminal); createdUsers.push(terminalState.userId);

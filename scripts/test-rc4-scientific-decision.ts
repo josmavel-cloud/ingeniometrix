@@ -23,6 +23,9 @@ import { normalizeTitle } from "@/lib/text";
 import { generationContextForUser } from "@/server/projects/generation-context-service";
 import { designSupportGaps, designSupportMetadataEligible } from "@/server/mvp/design-mini-research";
 import { generationCostReport } from "@/server/mvp/generation-cost-report";
+import { applyAutonomousDesignPatch, classifyPendingDecision, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "@/server/mvp/autonomous-design-resolution";
+import { mandatoryCompositionReservationFloor, wholeJobCostEquation } from "@/server/mvp/whole-job-cost-forecast";
+import { evidenceContextForPhase } from "@/server/mvp/generation-budgets";
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const alternative: DesignAlternative = { id: "option-1", label: "Propuesta cualitativa sintética", scope_fulfilled: "Preserva intención de prueba", definition, research_design: design, components: [{ name: "Análisis temático", kind: "method", role: "Interpretación", inputs: ["Corpus propuesto"], outputs: ["Categorías propuestas"], dependencies: [], support: [{ source_id: "S1", evidence_id: "E3" }] }], scope_changes: [], applicability_conditions: ["Acceso por confirmar"], baselines_or_comparisons: [], transfer_limits: ["Caso único"], feasibility: "Propuesta sintética", discarded_alternative_reasons: [], qualitative_component: "Análisis temático", quantitative_component: null, integration_strategy: null, pending_user_decisions: [] };
@@ -47,6 +50,20 @@ async function main() {
   const scopeChanged = { ...alternativeV2, scope_effect: "narrows" as const, scope_changes: [{ requirement_id: "scope", proposed_change: "Otra población", reason: "Fixture" }] };
   assert.equal(selectAutonomousCandidate({ ...decision, alternatives: [scopeChanged] }, critique), undefined, "A material scope change cannot be auto-approved");
   assert.equal(selectAutonomousCandidate(decision, rejectedCritique), undefined, "A blocking scientific finding cannot be auto-approved");
+  assert.equal(classifyPendingDecision("¿Cuál es la población?", "PRESERVED"), "SCOPE_BLOCKING");
+  assert.equal(classifyPendingDecision("¿Se dispone de datos?", "PRESERVED"), "FACT_TO_VERIFY_DURING_RESEARCH");
+  assert.equal(classifyPendingDecision("¿Qué software usar?", "PRESERVED"), "METHOD_DEFAULTABLE");
+  assert.equal(inScopeAlternatives(decision, rejectedCritique).length, 1, "A repairable in-scope alternative remains available");
+  assert.equal(inScopeAlternatives({ ...decision, alternatives: [scopeChanged] }, rejectedCritique).length, 0);
+  assert.ok(JSON.stringify(compactAlternativeForRepair(alternativeV2)).length < JSON.stringify(alternativeV2).length);
+  assert.ok(mandatoryCompositionReservationFloor({ decision, intent, evidence_pack: pack } as any, alternativeV2.id).length === 8);
+  assert.equal(wholeJobCostEquation({ knownSpent: 0.4, unknownReserved: 0.9, nextStageReservation: 0.2,
+    minimumRemainingMandatoryReservation: 0.4, safetyReserve: 0.25, hardCap: 2 }).allowed, false);
+  assert.equal(wholeJobCostEquation({ knownSpent: 0.46472755, unknownReserved: 0.94293750,
+    nextStageReservation: 0.401575, minimumRemainingMandatoryReservation: 0.156695 + 0.7924475,
+    safetyReserve: 0.25, hardCap: 2 }).allowed, false,
+    "The historical unknown reservation cannot be silently reclaimed to make a DOCX path fit");
+  assert.equal(evidenceContextForPhase("methodology", [{ section_key: "methodology" }, { section_key: "problem_statement" }]).length, 1);
   const costs = generationCostReport({ entries: [
     { id: "evidence", purpose: "extraction", stage: "EVIDENCE", model: "fixture", actualModel: "fixture", maximum: 0.02, estimate: 0.01, status: "completed", retry: false, usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 2 } },
     { id: "mini", purpose: "DESIGN_SUPPORT_MINI_RESEARCH", stage: "DESIGN_MINI_RESEARCH_1", model: "fixture", actualModel: null, maximum: 0.03, estimate: null, status: "failed_unknown_usage", retry: false, usage: null },
@@ -140,22 +157,50 @@ async function main() {
   assert.equal(designSupportMetadataEligible({ ...sourceMetadata, observedUrl: "https://example.org/another" }), false);
   assert.equal(designSupportMetadataEligible({ ...sourceMetadata, doi: null, venue: null }), false);
   const autonomousCalls: string[] = [];
+  const nonmaterialDecision = { ...decision, alternatives: [{ ...alternativeV2,
+    pending_user_decisions: [{ question: "¿Qué software usar?", blocking: true }] }] };
+  const nonmaterialCritique = { assessments: [{ ...critique.assessments[0], decision: "REPAIR_REQUIRED" as const,
+    user_decisions_required: ["¿Qué software usar?"], repair_targets: ["pending_user_decisions"] }] };
+  const deterministic = resolveNonmaterialDecisions({ decision: nonmaterialDecision, critique: nonmaterialCritique, intent, pack });
+  assert.equal(deterministic?.alternative.pending_user_decisions.length, 0);
+  assert.equal(deterministic?.reclassified[0].classification, "METHOD_DEFAULTABLE");
+  assert.equal(resolveNonmaterialDecisions({ decision, critique: rejectedCritique, intent, pack }), null,
+    "Blocking scientific criticism still requires independent repair/review");
+  const nonmaterialBundle = { ...rejected, decision: nonmaterialDecision, critique: nonmaterialCritique };
+  const noCallResolution = await resolveAutonomousDesignBundle(nonmaterialBundle, { userId: "fixture", projectId: "fixture",
+    runId: "deterministic", provider: { generateStructuredObject: async () => { throw new Error("No paid call expected"); } } as any });
+  assert.equal(noCallResolution.alternative.pending_user_decisions.length, 0);
+  assert.equal(noCallResolution.deterministicResolution?.[0].classification, "METHOD_DEFAULTABLE");
+  const smallPatch = { alternativeId: alternativeV2.id, procedure: alternativeV2.research_design.procedure,
+    qualityCriteria: alternativeV2.research_design.quality_criteria, dataRequirements: [{ description: "Acceso al corpus por verificar", availability: "PENDING" as const, confirmation_or_action: "Verificar antes de producir datos" }],
+    assumptionsAdded: [], validationRequirementsAdded: [], limitationsAdded: ["El acceso aún no está confirmado"], rationale: "Aclaración del criterio sin ampliar alcance",
+    resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [] };
+  const smallReview = { alternativeId: alternativeV2.id, intentPreserved: true, methodCoherent: true, evidenceSupported: true,
+    blockingScientificIssue: false, blockingReason: "", limitations: ["Acceso aún por verificar"], resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [] };
+  const applied = applyAutonomousDesignPatch({ decision, critique: rejectedCritique, intent, pack, patch: smallPatch });
+  assert.deepEqual(applied.definition, alternativeV2.definition);
+  assert.deepEqual(applied.components, alternativeV2.components);
+  assert.equal(applied.scope_effect, "preserves");
+  assert.ok(applied.data_requirements.some((requirement) => requirement.availability === "PENDING"));
+  assert.throws(() => applyAutonomousDesignPatch({ decision: { ...decision, alternatives: [scopeChanged] }, critique: rejectedCritique, intent, pack, patch: smallPatch }), /OUT_OF_SCOPE/);
+  assert.throws(() => applyAutonomousDesignPatch({ decision, critique: rejectedCritique, intent, pack,
+    patch: { ...smallPatch, dataRequirements: [{ description: "Datos inventados", availability: "USER_CONFIRMED", confirmation_or_action: "No consta" }] } as any }), /invalid_value|Invalid option|USER_CONFIRMED/i);
   const resolvedBundle = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "fixture",
-    researchSupport: async () => ({ status: "LIMITED", support: [], limitations: ["No se verificó apoyo técnico adicional."], operations: [] }),
+    researchSupport: async () => { throw new Error("Mini research is not the default resolver"); },
     provider: { generateStructuredObject: async (request: any) => {
       autonomousCalls.push(request.schemaName);
-      return request.schemaName === "autonomous_design_revision_v1" ? { replacements: [structuredClone(alternativeV2)], corrected_findings: ["Criterio corregido"], unresolved_findings: [] } : critique;
+      return request.schemaName === "autonomous_design_patch_v1" ? smallPatch : smallReview;
     } } as any });
-  assert.deepEqual(autonomousCalls, ["autonomous_design_revision_v1", "autonomous_design_critic_0"]);
+  assert.deepEqual(autonomousCalls, ["autonomous_design_patch_v1", "autonomous_design_targeted_critic_v1"]);
   assert.equal(resolvedBundle.revised, true);
   assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
-  assert.ok(resolvedBundle.alternative.transfer_limits.includes("No se verificó apoyo técnico adicional."));
+  assert.ok(resolvedBundle.alternative.transfer_limits.includes("Acceso aún por verificar"));
   let unsafeCalls = 0;
   await assert.rejects(() => resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "unsafe",
     researchSupport: async () => ({ status: "NOT_NEEDED", support: [], limitations: [], operations: [] }),
     provider: { generateStructuredObject: async (request: any) => {
       unsafeCalls++;
-      return request.schemaName === "autonomous_design_revision_v1" ? { replacements: [structuredClone(alternativeV2)], corrected_findings: [], unresolved_findings: [] } : rejectedCritique;
+      return request.schemaName === "autonomous_design_patch_v1" ? smallPatch : { ...smallReview, blockingScientificIssue: true, blockingReason: "Criterio no sustentado" };
     } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
   assert.equal(unsafeCalls, 2, "A failed independent critique cannot trigger an unbounded revision debate");
   assert.ok(!alternativeIsApprovable(rejected.decision.alternatives[0], rejected.critique));
