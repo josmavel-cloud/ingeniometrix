@@ -83,7 +83,9 @@ export const designRepairSchema = z.object({ replacements: z.array(designAlterna
 export const autonomousDesignPatchSchema = z.object({
   alternativeId: text,
   procedure: list.max(12), qualityCriteria: list.max(12),
-  samplingSelection: text.optional(), analysisMethod: text.optional(), feasibility: text.optional(),
+  // Strict Responses schemas require every property. Null means this compact
+  // patch leaves the corresponding field unchanged.
+  samplingSelection: text.nullable(), analysisMethod: text.nullable(), feasibility: text.nullable(),
   dataRequirements: z.array(z.object({ description: text, availability: z.enum(["PROPOSED", "PENDING"]), confirmation_or_action: text })).max(12),
   assumptionsAdded: list.max(12), validationRequirementsAdded: list.max(12),
   limitationsAdded: list.max(12), rationale: text,

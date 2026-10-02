@@ -173,7 +173,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       const prompt = `${autonomousPatch.systemPrompt}\n\n${autonomousPatch.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable as keyof typeof variables]))}`;
       if (Buffer.byteLength(prompt) > 20000) throw new Error("AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const schema = z.toJSONSchema(autonomousDesignPatchSchema);
-      const request = { prompt, schema, schemaName: "autonomous_design_patch_v1", model: autonomousPatch.model, reasoningEffort: autonomousPatch.reasoning_effort, maxOutputTokens: autonomousPatch.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_patch", promptVersion: autonomousPatch.version, schemaName: "autonomous_design_patch_v1" } };
+      const request = { prompt, schema, schemaName: "autonomous_design_patch_v2", model: autonomousPatch.model, reasoningEffort: autonomousPatch.reasoning_effort, maxOutputTokens: autonomousPatch.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_patch", promptVersion: autonomousPatch.version, schemaName: "autonomous_design_patch_v2" } };
       const patchBound = responseCostBound({ model: request.model, reasoning: { effort: request.reasoningEffort },
         background: true, store: true, input: request.prompt, max_output_tokens: request.maxOutputTokens,
         text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema } } });

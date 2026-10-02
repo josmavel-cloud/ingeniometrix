@@ -5,8 +5,9 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, buildMethodEvidencePack, intentFromIntake, migrateLegacyCritique, migrateLegacyScopeSemantics, validateScientificDecision, validateDesignCritique, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
+import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, autonomousDesignPatchSchema, buildMethodEvidencePack, intentFromIntake, migrateLegacyCritique, migrateLegacyScopeSemantics, validateScientificDecision, validateDesignCritique, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
 import { approvedDesignForCurrentJob, critiqueScientificDecision, decisionForUser, proposeScientificDecision, resolveAutonomousDesignBundle, resolveAutonomousDesignForJob, selectAutonomousCandidate } from "@/server/mvp/scientific-decision-service";
 import { enqueueBlueprintJobForUser, resumeLatestBlueprintJobForUser, runNextBlueprintJobStage, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
@@ -184,9 +185,13 @@ async function main() {
   assert.equal(noCallResolution.alternative.pending_user_decisions.length, 0);
   assert.equal(noCallResolution.deterministicResolution?.[0].classification, "METHOD_DEFAULTABLE");
   const smallPatch = { alternativeId: alternativeV2.id, procedure: alternativeV2.research_design.procedure,
+    samplingSelection: null, analysisMethod: null, feasibility: null,
     qualityCriteria: alternativeV2.research_design.quality_criteria, dataRequirements: [{ description: "Acceso al corpus por verificar", availability: "PENDING" as const, confirmation_or_action: "Verificar antes de producir datos" }],
     assumptionsAdded: [], validationRequirementsAdded: [], limitationsAdded: ["El acceso aún no está confirmado"], rationale: "Aclaración del criterio sin ampliar alcance",
     resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [] };
+  const strictPatchSchema = z.toJSONSchema(autonomousDesignPatchSchema) as { properties: Record<string, unknown>; required: string[] };
+  assert.deepEqual(new Set(strictPatchSchema.required), new Set(Object.keys(strictPatchSchema.properties)),
+    "The background Responses schema must include every property in required");
   const smallReview = { alternativeId: alternativeV2.id, intentPreserved: true, methodCoherent: true, evidenceSupported: true,
     blockingScientificIssue: false, blockingReason: "", limitations: ["Acceso aún por verificar"], resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [] };
   const applied = applyAutonomousDesignPatch({ decision, critique: rejectedCritique, intent, pack, patch: smallPatch });
@@ -201,9 +206,9 @@ async function main() {
     researchSupport: async () => { throw new Error("Mini research is not the default resolver"); },
     provider: { generateStructuredObject: async (request: any) => {
       autonomousCalls.push(request.schemaName);
-      return request.schemaName === "autonomous_design_patch_v1" ? smallPatch : smallReview;
+      return request.schemaName === "autonomous_design_patch_v2" ? smallPatch : smallReview;
     } } as any });
-  assert.deepEqual(autonomousCalls, ["autonomous_design_patch_v1", "autonomous_design_targeted_critic_v1"]);
+  assert.deepEqual(autonomousCalls, ["autonomous_design_patch_v2", "autonomous_design_targeted_critic_v1"]);
   assert.equal(resolvedBundle.revised, true);
   assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
   assert.ok(resolvedBundle.alternative.transfer_limits.includes("Acceso aún por verificar"));
@@ -212,7 +217,7 @@ async function main() {
     researchSupport: async () => ({ status: "NOT_NEEDED", support: [], limitations: [], operations: [] }),
     provider: { generateStructuredObject: async (request: any) => {
       unsafeCalls++;
-      return request.schemaName === "autonomous_design_patch_v1" ? smallPatch : { ...smallReview, blockingScientificIssue: true, blockingReason: "Criterio no sustentado" };
+      return request.schemaName === "autonomous_design_patch_v2" ? smallPatch : { ...smallReview, blockingScientificIssue: true, blockingReason: "Criterio no sustentado" };
     } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
   assert.equal(unsafeCalls, 2, "A failed independent critique cannot trigger an unbounded revision debate");
   const oversized = structuredClone(rejected);
