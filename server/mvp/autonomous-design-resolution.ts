@@ -4,19 +4,26 @@ import type { z } from "zod";
 export type PendingDecisionClass = "SCOPE_BLOCKING" | "FACT_TO_VERIFY_DURING_RESEARCH" | "METHOD_DEFAULTABLE" | "RESOURCE_CONDITIONAL" | "NONBLOCKING_LIMITATION";
 
 export function classifyPendingDecision(question: string, scopeStatus: string): PendingDecisionClass {
-  if (scopeStatus === "PENDING_USER_DECISION" || /alcance|delimitaci[oó]n|poblaci[oó]n|unidad de estudio|scope|population/i.test(question)) return "SCOPE_BLOCKING";
+  if (/alcance|delimitaci[oó]n|poblaci[oó]n|unidad de estudio|objeto de estudio|prop[oó]sito|pa[ií]s|regi[oó]n|cobertura geogr[aá]fica|caso [uú]nico o m[uú]ltiple|scope|population/i.test(question)) return "SCOPE_BLOCKING";
   if (/acceso|dato|muestra|medici[oó]n|par[aá]metro|geometr[ií]a/i.test(question)) return "FACT_TO_VERIFY_DURING_RESEARCH";
   if (/recurso|permiso|instituci[oó]n|financiaci[oó]n/i.test(question)) return "RESOURCE_CONDITIONAL";
   if (/software|herramienta|m[eé]todo|validaci[oó]n|t[eé]cnica/i.test(question)) return "METHOD_DEFAULTABLE";
+  // Inclusive search coverage is a documented methodological assumption, not
+  // permission to narrow the user's confirmed research scope.
+  if (/idioma|ling[uü][ií]stic|periodo|temporal|formato|tipo de publicaci[oó]n|tipos de publicaciones|cobertura bibliogr[aá]fica/i.test(question)) return "NONBLOCKING_LIMITATION";
+  if (scopeStatus === "PENDING_USER_DECISION") return "SCOPE_BLOCKING";
   return "NONBLOCKING_LIMITATION";
 }
 
 export function inScopeAlternatives(decision: ScientificDecision, critique: DesignCritique) {
   return decision.alternatives.filter((alternative) => {
     const review = critique.assessments.find((item) => item.alternative_id === alternative.id);
-    return "scope_effect" in alternative && alternative.scope_effect === "preserves" && !alternative.scope_changes.length &&
-      review?.intent_preserved && ["PRESERVED", "CLARIFIED"].includes(review.scope.status) && !review.scope.confirmation_required &&
-      !alternative.pending_user_decisions.some((item) => classifyPendingDecision(item.question, review.scope.status) === "SCOPE_BLOCKING");
+    if (!("scope_effect" in alternative) || alternative.scope_effect !== "preserves" || alternative.scope_changes.length ||
+      !review?.intent_preserved || !["PRESERVED", "CLARIFIED", "PENDING_USER_DECISION"].includes(review.scope.status)) return false;
+    const questions = [...alternative.pending_user_decisions.map(item => item.question), ...review.user_decisions_required];
+    if (review.scope.status === "PENDING_USER_DECISION" && !questions.length) return false;
+    if (review.scope.confirmation_required && review.scope.status !== "PENDING_USER_DECISION") return false;
+    return questions.every(question => classifyPendingDecision(question, review.scope.status) !== "SCOPE_BLOCKING");
   });
 }
 

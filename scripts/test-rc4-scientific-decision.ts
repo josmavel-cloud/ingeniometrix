@@ -53,6 +53,18 @@ async function main() {
   assert.equal(classifyPendingDecision("¿Cuál es la población?", "PRESERVED"), "SCOPE_BLOCKING");
   assert.equal(classifyPendingDecision("¿Se dispone de datos?", "PRESERVED"), "FACT_TO_VERIFY_DURING_RESEARCH");
   assert.equal(classifyPendingDecision("¿Qué software usar?", "PRESERVED"), "METHOD_DEFAULTABLE");
+  assert.equal(classifyPendingDecision("¿Qué acceso efectivo existe a textos completos?", "PENDING_USER_DECISION"), "FACT_TO_VERIFY_DURING_RESEARCH");
+  assert.equal(classifyPendingDecision("¿Qué cobertura lingüística puede sostenerse?", "PENDING_USER_DECISION"), "NONBLOCKING_LIMITATION");
+  assert.equal(classifyPendingDecision("¿Cuál población se estudiará?", "PENDING_USER_DECISION"), "SCOPE_BLOCKING");
+  const operationalCritique = { assessments: [{ ...rejectedCritique.assessments[0],
+    scope: { ...scope, status: "PENDING_USER_DECISION" as const, confirmation_required: true },
+    user_decisions_required: ["Precisar el acceso efectivo a textos completos", "Decidir la cobertura lingüística viable"] }] };
+  const operationalDecision = { ...decision, alternatives: [{ ...alternativeV2,
+    pending_user_decisions: [{ question: "¿Qué acceso efectivo existe a textos completos?", blocking: true }] }] };
+  assert.equal(inScopeAlternatives(operationalDecision, operationalCritique).length, 1,
+    "Operational uncertainty may enter bounded repair and independent critique without scope change");
+  assert.equal(inScopeAlternatives({ ...operationalDecision, alternatives: [{ ...operationalDecision.alternatives[0],
+    pending_user_decisions: [{ question: "¿Cuál población se estudiará?", blocking: true }] }] }, operationalCritique).length, 0);
   assert.equal(inScopeAlternatives(decision, rejectedCritique).length, 1, "A repairable in-scope alternative remains available");
   assert.equal(inScopeAlternatives({ ...decision, alternatives: [scopeChanged] }, rejectedCritique).length, 0);
   assert.ok(JSON.stringify(compactAlternativeForRepair(alternativeV2)).length < JSON.stringify(alternativeV2).length);
