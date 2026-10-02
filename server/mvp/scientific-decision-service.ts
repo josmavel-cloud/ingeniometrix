@@ -171,6 +171,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       const provider = input.provider ?? getConfiguredLlmProvider();
       const variables = { intent_json: bundle.intent, alternative_json: compactAlternativeForRepair(alternative), findings_json: findings, evidence_json: relevantEvidence };
       const prompt = `${autonomousPatch.systemPrompt}\n\n${autonomousPatch.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable as keyof typeof variables]))}`;
+      if (Buffer.byteLength(prompt) > 20000) throw new Error("AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const schema = z.toJSONSchema(autonomousDesignPatchSchema);
       const request = { prompt, schema, schemaName: "autonomous_design_patch_v1", model: autonomousPatch.model, reasoningEffort: autonomousPatch.reasoning_effort, maxOutputTokens: autonomousPatch.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_patch", promptVersion: autonomousPatch.version, schemaName: "autonomous_design_patch_v1" } };
       const patchBound = responseCostBound({ model: request.model, reasoning: { effort: request.reasoningEffort },
@@ -189,6 +190,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       selected = applyAutonomousDesignPatch({ decision, critique, intent: bundle.intent, pack: bundle.evidence_pack, patch });
       const reviewVariables = { ...variables, alternative_json: compactAlternativeForRepair(selected), patch_json: patch };
       const reviewPrompt = `${targetedCritic.systemPrompt}\n\n${targetedCritic.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(reviewVariables[variable as keyof typeof reviewVariables]))}`;
+      if (Buffer.byteLength(reviewPrompt) > 20000) throw new Error("AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const reviewSchema = z.toJSONSchema(targetedAutonomousCriticSchema);
       const reviewRequest = { prompt: reviewPrompt, schema: reviewSchema, schemaName: "autonomous_design_targeted_critic_v1", model: targetedCritic.model, reasoningEffort: targetedCritic.reasoning_effort, maxOutputTokens: targetedCritic.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_targeted_critic", promptVersion: targetedCritic.version, schemaName: "autonomous_design_targeted_critic_v1" } };
       targetedReview = targetedAutonomousCriticSchema.parse(await stageCheckpoint("AUTONOMOUS_DESIGN_TARGETED_CRITIC_1", { promptHash: fingerprint(reviewPrompt), schema: reviewSchema, model: targetedCritic.model, version: targetedCritic.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()

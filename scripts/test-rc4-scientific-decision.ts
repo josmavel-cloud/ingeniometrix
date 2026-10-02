@@ -203,6 +203,14 @@ async function main() {
       return request.schemaName === "autonomous_design_patch_v1" ? smallPatch : { ...smallReview, blockingScientificIssue: true, blockingReason: "Criterio no sustentado" };
     } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
   assert.equal(unsafeCalls, 2, "A failed independent critique cannot trigger an unbounded revision debate");
+  const oversized = structuredClone(rejected);
+  const cited = alternativeV2.research_design.methodological_support[0];
+  const citedEvidence = oversized.evidence_pack.items.find((item) => item.source_id === cited.source_id && item.evidence_id === cited.evidence_id)!;
+  citedEvidence.summary = "Contexto científico intacto. ".repeat(2000);
+  let oversizedCalls = 0;
+  await assert.rejects(() => resolveAutonomousDesignBundle(oversized, { userId: "fixture", projectId: "fixture", runId: "oversized",
+    provider: { generateStructuredObject: async () => { oversizedCalls++; throw new Error("Should not dispatch"); } } as any }), /AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE/);
+  assert.equal(oversizedCalls, 0, "oversized scientific context is not silently truncated or billed");
   assert.ok(!alternativeIsApprovable(rejected.decision.alternatives[0], rejected.critique));
   const outputCalls: string[] = [];
   const restored = await proposeScientificDecision({ projectId: "fixture", runId: "fixture", intake: { topic: "Fixture" }, academicLevel: "MAESTRIA", ledger, provider: { generateStructuredObject: async (request: any) => {
