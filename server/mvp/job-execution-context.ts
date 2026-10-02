@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { jobCostPolicy } from "./execution-policy";
+import { INTERNAL_PILOT_COST_POLICY_VERSION, internalPilotJobCostPolicy, jobCostPolicy } from "./execution-policy";
 import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
 import { INTERNAL_GENERATION_POLICY, settleInternalGenerationJob } from "@/server/commercial/internal-generation";
 import { wholeJobCostEquation } from "./whole-job-cost-forecast";
@@ -28,8 +28,15 @@ async function locked<T>(execution: Execution, work: (tx: Prisma.TransactionClie
     return work(tx);
   });
 }
-type PaidEntry = { id: string; paidOperationId?: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number };
-type CostRecord = { policy: ReturnType<typeof jobCostPolicy>; entries: PaidEntry[]; terminal?: { jobStatus: "COMPLETED" | "FAILED"; at: string } };
+type PaidEntry = { id: string; paidOperationId?: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number; inputTokensReserved?: number; tokenCountProvenance?: string };
+type CostRecord = { policy: ReturnType<typeof jobCostPolicy> & { version?: string }; entries: PaidEntry[]; terminal?: { jobStatus: "COMPLETED" | "FAILED"; at: string } };
+async function initialCostRecord(tx: Prisma.TransactionClient, jobId: string): Promise<CostRecord> {
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { metadataJson: true } });
+  const metadata = job.metadataJson as { commercialPolicy?: string; costPolicyVersion?: string } | null;
+  const pilot = metadata?.commercialPolicy === INTERNAL_GENERATION_POLICY &&
+    metadata.costPolicyVersion === INTERNAL_PILOT_COST_POLICY_VERSION;
+  return { policy: pilot ? internalPilotJobCostPolicy() : jobCostPolicy(), entries: [] };
+}
 const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + (item.estimate ?? item.maximum), 0);
 
 // Call inside the SAME transaction that makes the job terminal. Uncertain/in-flight
@@ -159,7 +166,8 @@ export async function settleCurrentJobCall(id: string, estimate: number | null, 
   return settleJobCall(execution.jobId, id, estimate, usage, actualModel);
 }
 
-export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0, paidOperationId?: string) {
+export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0, paidOperationId?: string,
+  tokenCount?: { inputTokens: number; provenance: string }) {
   const execution = context.getStore();
   if (!execution) return null;
   if (execution.checkpointOnly) throw new Error(`CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN: ${purpose}`);
@@ -167,9 +175,9 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
   await locked(execution, async (tx) => {
     const commercialCap = await assertCommercialPaidAuthorization(tx, execution.jobId);
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
-    const record = row?.outputJson as unknown as CostRecord ?? { policy: jobCostPolicy(), entries: [] };
+    const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
     const policy = record.policy; // Persisted at the first call; changing env cannot reset an existing job's cap.
-    const optional = /hero|image|visual|matrix_layout|compact|deep_research/i.test(purpose);
+    const optional = /hero|image|visual|matrix_layout|editorial_compaction|deep_research/i.test(purpose);
     // Conservative remaining-work allowance, not a claim of a known future invoice.
     // Every later request is independently bounded again. Scientific work is paused,
     // never shortened, if actual context cannot fit the remaining envelope.
@@ -178,7 +186,8 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     if (commercialCap !== null && spent + maximum + mandatoryReserve > commercialCap) throw new Error("COST_LIMIT_REACHED: commercial policy snapshot");
     const deepSpent = committed(record.entries.filter((entry) => entry.category === "DEEP_RESEARCH_COST"));
     if (!Number.isFinite(maximum) || maximum <= 0 || record.entries.some((entry) => entry.estimate !== null && entry.estimate > entry.maximum) || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
-    record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve });
+    record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve,
+      ...(tokenCount ? { inputTokensReserved: tokenCount.inputTokens, tokenCountProvenance: tokenCount.provenance } : {}) });
     delete record.terminal;
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } }, create: { jobId: execution.jobId, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(record) }, update: { status: "RUNNING", completedAt: null, outputJson: json(record) } });
   });
@@ -279,7 +288,7 @@ export async function preflightWholeJobCost(input: { nextStage: string; nextStag
   if (!execution) return null;
   return locked(execution, async (tx) => {
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
-    const record = row?.outputJson as unknown as CostRecord ?? { policy: jobCostPolicy(), entries: [] };
+    const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
     const knownSpent = record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0);
     const unknownReserved = record.entries.reduce((sum, entry) => sum + (entry.estimate === null ? entry.maximum : 0), 0);
     const safetyReserve = record.policy.mandatoryReserve;

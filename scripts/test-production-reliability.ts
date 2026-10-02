@@ -104,7 +104,7 @@ async function main() {
     const job = await enqueueBlueprintJobForUser(owner.id, project.id);
     assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } }).then(row =>
       (row.metadataJson as { commercialPolicy: string }).commercialPolicy)), INTERNAL_GENERATION_POLICY);
-    assert((await prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id))) > 0);
+    assert.equal((await prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id))), 3);
     await prisma.internalGenerationCapability.update({ where: { id: grant.id }, data: { status: "REVOKED", revokedAt: new Date(), revokedBy: "isolated-test" } });
     await assert.rejects(prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id)), /CAPABILITY_REQUIRED/);
 

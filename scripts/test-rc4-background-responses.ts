@@ -44,8 +44,9 @@ async function main() {
   const createdUsers: string[] = [];
   try {
     const state = await job("restart"); createdUsers.push(state.userId);
-    let creates = 0; let retrieves = 0;
+    let creates = 0; let retrieves = 0; let counts = 0;
     const client = { responses: {
+      inputTokens: { count: async () => { counts++; return { input_tokens: 1200 }; } },
       create: async () => { creates++; return response("resp_restart", "queued"); },
       retrieve: async () => { retrieves++; return retrieves === 1 ? response("resp_restart", "in_progress") : response("resp_restart", "completed", '{"ok":true}', true); },
     } } as any;
@@ -70,7 +71,10 @@ async function main() {
     await withJobExecution({ jobId: state.jobId, startedAt: state.startedAt, stage: "offline-background" }, async () => {
       const cost = await jobCostSnapshot();
       assert.equal(cost?.calls, 1); assert.equal(cost?.entries[0].status, "completed"); assert.deepEqual(cost?.entries[0].usage, usage);
+      assert.equal(cost?.entries[0].inputTokensReserved, 1200);
+      assert.equal(cost?.entries[0].tokenCountProvenance, "EXACT_PROVIDER_COUNT");
     });
+    assert.equal(counts, 1, "identical Responses requests reuse the input token count");
     assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: state.jobId } })).attempts, 0, "polling does not alter job attempts");
 
     // A -> B -> A under one account must never reuse a different project's

@@ -47,6 +47,13 @@ export function jobCostPolicy() {
   if (target > soft || soft > hard) throw new Error("Invalid job budget ordering");
   return { target, soft, hard, deep: positive("IMX_JOB_DEEP_RESEARCH_USD", 0.50), mandatoryReserve: positive("IMX_JOB_MANDATORY_RESERVE_USD", 0.25) };
 }
+// Only newly created jobs with this explicit metadata version use the pilot
+// envelope. Existing internal jobs and customer jobs keep their saved policy.
+export const INTERNAL_PILOT_COST_POLICY_VERSION = "internal-generation-pilot.v2";
+export function internalPilotJobCostPolicy() {
+  return { ...jobCostPolicy(), target: 2.00, soft: 2.50, hard: 3.00,
+    version: INTERNAL_PILOT_COST_POLICY_VERSION };
+}
 export type LengthStatus = "WITHIN_TARGET" | "ABOVE_TARGET" | "ABOVE_SOFT_MAX" | "TEMPLATE_LIMIT_EXCEEDED" | "RENDER_SANITY_FAILURE" | "UNMEASURED";
 export type RenderSanity = { status: "PASS" | "RENDER_SANITY_FAILURE"; reasons: string[]; emergencyMaxBodyPages: number };
 

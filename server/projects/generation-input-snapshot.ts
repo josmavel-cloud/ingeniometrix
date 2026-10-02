@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { confirmedScientificDefinitionMatches } from "@/lib/conversational-intake";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { evidenceSourcePoolVersion } from "@/server/projects/evidence-set-service";
-import { jobCostPolicy, pageBudgetPolicy } from "@/server/mvp/execution-policy";
+import { INTERNAL_PILOT_COST_POLICY_VERSION, internalPilotJobCostPolicy, jobCostPolicy, pageBudgetPolicy } from "@/server/mvp/execution-policy";
 import { GENERATION_POLICY_VERSION, SCIENTIFIC_MODEL } from "@/server/mvp/generation-budgets";
 import { MVP_SOURCE_INSPECTION_KEY } from "@/server/mvp/source-inspection-service";
 import { SCIENTIFIC_DESIGN_SELECTOR_PROMPT } from "@/server/mvp/prompts/scientific-design-selector.v3";
@@ -22,8 +22,8 @@ type FrozenInput = { id: string; jobId: string; project: Record<string, any>; re
   draft: unknown; policies: unknown };
 const context = new AsyncLocalStorage<FrozenInput | null>();
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
-function scientificRuntimePolicy() {
-  return { version: GENERATION_POLICY_VERSION, cost: jobCostPolicy(), pages: pageBudgetPolicy(null), promptHash: fingerprint([SCIENTIFIC_DESIGN_SELECTOR_PROMPT, SCIENTIFIC_DESIGN_CRITIC_PROMPT, SCIENTIFIC_DESIGN_CRITIC_RECOVERY_PROMPT, SCIENTIFIC_DESIGN_REPAIR_PROMPT, SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT, APPROVED_SCIENTIFIC_PLAN_PROMPT, APPROVED_SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT, STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT, CONSISTENCY_MATRIX_PROMPT]), configuredModels: { extraction: process.env.IMX_STEP5_EXTRACTION_MODEL ?? process.env.LLM_FAST_MODEL ?? process.env.LLM_DEFAULT_MODEL ?? "gpt-5.4-mini", scientific: SCIENTIFIC_MODEL } };
+function scientificRuntimePolicy(internalPilot: boolean) {
+  return { version: GENERATION_POLICY_VERSION, cost: internalPilot ? internalPilotJobCostPolicy() : jobCostPolicy(), pages: pageBudgetPolicy(null), promptHash: fingerprint([SCIENTIFIC_DESIGN_SELECTOR_PROMPT, SCIENTIFIC_DESIGN_CRITIC_PROMPT, SCIENTIFIC_DESIGN_CRITIC_RECOVERY_PROMPT, SCIENTIFIC_DESIGN_REPAIR_PROMPT, SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT, APPROVED_SCIENTIFIC_PLAN_PROMPT, APPROVED_SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT, STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT, CONSISTENCY_MATRIX_PROMPT]), configuredModels: { extraction: process.env.IMX_STEP5_EXTRACTION_MODEL ?? process.env.LLM_FAST_MODEL ?? process.env.LLM_DEFAULT_MODEL ?? "gpt-5.4-mini", scientific: SCIENTIFIC_MODEL } };
 }
 export const currentGenerationInput = () => context.getStore();
 export function researchProjectFingerprint(project: Record<string, any>) {
@@ -83,7 +83,8 @@ export async function appendGenerationInput(tx: Prisma.TransactionClient, input:
     select: { id: true, fileName: true, mimeType: true, byteSize: true, sha256: true, metadataJson: true, createdAt: true },
     orderBy: { createdAt: "asc" },
   });
-  const policies = scientificRuntimePolicy();
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: input.jobId }, select: { metadataJson: true } });
+  const policies = scientificRuntimePolicy((job.metadataJson as { costPolicyVersion?: string } | null)?.costPolicyVersion === INTERNAL_PILOT_COST_POLICY_VERSION);
   const payload = { version: "generation-input.v3", project: researchProject, referenceCandidates,
     sourceMaterializations, uploadedDocuments, inspection,
     evidenceSet: { id: evidenceSet.id, version: evidenceSet.version, contentHash: evidenceSet.contentHash,
@@ -98,7 +99,12 @@ export async function readGenerationInput(jobId: string, snapshotId?: string | n
   if (fingerprint(row.payloadJson) !== row.contentHash) throw new Error("GENERATION_SNAPSHOT_CORRUPT");
   const payload = row.payloadJson as unknown as Omit<FrozenInput, "id" | "jobId">;
   if (payload.evidenceSet && fingerprint(payload.evidenceSet.snapshotJson) !== payload.evidenceSet.contentHash) throw new Error("EVIDENCE_SET_SNAPSHOT_CORRUPT");
-  if (fingerprint(payload.policies) !== fingerprint(scientificRuntimePolicy())) throw new Error("GENERATION_CONFIGURATION_CHANGED: requiere revisión explícita; no se regeneró ciencia.");
+  // The cost envelope is frozen in control:cost and the authorization record;
+  // changing a pilot limit must not invalidate an existing scientific snapshot.
+  const savedPolicy = payload.policies as Record<string, unknown>;
+  const { cost: _savedCost, ...savedScientificPolicy } = savedPolicy;
+  const { cost: _runtimeCost, ...runtimeScientificPolicy } = scientificRuntimePolicy(false);
+  if (fingerprint(savedScientificPolicy) !== fingerprint(runtimeScientificPolicy)) throw new Error("GENERATION_CONFIGURATION_CHANGED: requiere revisión explícita; no se regeneró ciencia.");
   if (payload.project.id !== row.job.projectId || payload.project.userId !== row.job.userId) throw new Error("GENERATION_SNAPSHOT_OWNER_MISMATCH");
   // Prisma project/intake timestamps are needed by legacy consumers; do not revive
   // arbitrary strings inside untrusted provider metadata.

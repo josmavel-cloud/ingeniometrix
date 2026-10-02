@@ -21,7 +21,7 @@ import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-serv
 import { closeJobCostControl, currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
 import { reserveCommercialJob } from "@/server/commercial/ledger";
 import { activeInternalGenerationCapability, INTERNAL_GENERATION_POLICY, reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
-import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-policy";
+import { classifyFailure, publicFailureMessage, INTERNAL_PILOT_COST_POLICY_VERSION } from "@/server/mvp/execution-policy";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
@@ -369,6 +369,7 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint,
           expectedContext: options?.expectedContext, operationId: options?.operationId } satisfies JobData),
         metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1",
+          ...(internalCapability ? { costPolicyVersion: INTERNAL_PILOT_COST_POLICY_VERSION } : {}),
           commercialPolicy: internalCapability ? INTERNAL_GENERATION_POLICY : "commercial-v1",
           scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
       },

@@ -1,7 +1,7 @@
 "use client";
 import { AccountPanel } from "@/components/commercial/account-panel";
 
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Download, FileStack, Sparkles } from "lucide-react";
 import { startProjectPlan } from "@/lib/generation-client";
@@ -158,7 +158,6 @@ export function BlueprintPanel({
   const [progress, setProgress] = useState<BlueprintProgress | null>(null);
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const recoveryAttempted = useRef<string | null>(null);
 
   const latestVersion = versions.find((version) => version.id === activeVersionId) ?? versions[0] ?? null;
   const latestBlueprintDocxUrl = latestVersion
@@ -324,18 +323,6 @@ export function BlueprintPanel({
 
         setError(null);
         setProgress(payload.progress);
-
-        // Historical RC4 jobs are resumed only by their authenticated owner
-        // revisiting Plan. The server revalidates frozen definition, selection,
-        // EvidenceSet, authorization and competing jobs before requeueing.
-        if (payload.progress.jobStatus === "WAITING_USER_DECISION" && payload.progress.jobId && recoveryAttempted.current !== payload.progress.jobId) {
-          recoveryAttempted.current = payload.progress.jobId;
-          const recovery = await fetch(`/api/projects/${projectId}/blueprints/resume`, { method: "POST" });
-          if (!recovery.ok) {
-            const body = await recovery.json().catch(() => ({})) as { error?: string };
-            if (!isCancelled) setError({ message: body.error ?? "No pudimos reanudar el plan. Tu trabajo sigue guardado." });
-          }
-        }
 
         if (payload.progress.jobId) {
           setActiveJobId(payload.progress.jobId);

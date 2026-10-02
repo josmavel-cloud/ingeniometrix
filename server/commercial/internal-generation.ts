@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { jobCostPolicy } from "@/server/mvp/execution-policy";
+import { INTERNAL_PILOT_COST_POLICY_VERSION, internalPilotJobCostPolicy, jobCostPolicy } from "@/server/mvp/execution-policy";
 import { securityAudit } from "@/server/auth/security-events";
 
 type Tx = Prisma.TransactionClient;
@@ -30,9 +30,10 @@ export async function reserveInternalGenerationJob(tx: Tx, jobId: string) {
     if (prior.status === "RESERVED") return prior;
     return tx.internalGenerationAuthorization.update({ where: { jobId }, data: { status: "RESERVED", closedAt: null } });
   }
+  const pilot = (job.metadataJson as { costPolicyVersion?: string } | null)?.costPolicyVersion === INTERNAL_PILOT_COST_POLICY_VERSION;
   const record = await tx.internalGenerationAuthorization.create({ data: { jobId, userId: job.userId, projectId: job.projectId,
     capabilityId: grant.id, policyVersion: INTERNAL_GENERATION_POLICY,
-    hardCapMicros: Math.ceil(jobCostPolicy().hard * 1_000_000) } });
+    hardCapMicros: Math.ceil((pilot ? internalPilotJobCostPolicy() : jobCostPolicy()).hard * 1_000_000) } });
   await securityAudit("INTERNAL_GENERATION_RESERVED", job.userId, { jobId, capabilityId: grant.id,
     hardCapMicros: record.hardCapMicros }, tx);
   return record;

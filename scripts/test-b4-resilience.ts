@@ -1,4 +1,5 @@
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
+import { reserveCommercialJob } from "@/server/commercial/ledger";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -78,7 +79,7 @@ async function main() {
     const afterCost = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     ok(after.attempts === failed.attempts && after.updatedAt.getTime() === failed.updatedAt.getTime(), "10-minute polling/concurrent resume cannot reset or mutate attempts");
     ok(scientificCalls === 13 && JSON.stringify(beforeCost.outputJson) === JSON.stringify(afterCost.outputJson), "polling adds zero provider calls/cost");
-    await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id), /restablecer/); checks++;
+    await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id), /requiere revisión/); checks++;
     for (const file of ["components/projects/project-list.tsx", "components/projects/blueprint-panel.tsx"]) ok(!(await readFile(file, "utf8")).includes("/blueprints/resume"), "UI polling has no resume side effect");
     for (const step of [5, 6]) ok((await readFile(`app/api/projects/[id]/mvp/step-${step}/route.ts`, "utf8")).includes('code: "PERSISTENT_JOB_REQUIRED"'), "direct HTTP generation cannot bypass job budget");
     for (const stageKey of ["checkpoint:VISUALS", "checkpoint:DOCX", "checkpoint:PDF", "checkpoint:FINAL_EXPORT"]) {
@@ -113,7 +114,8 @@ async function main() {
     const exhausted = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: staleJob.id } });
     ok(exhausted.status === "FAILED" && exhausted.attempts === 3 && evidenceCalls === 1, "last stale-lock recovery exhausts job without paying; concurrent resume cannot resurrect it");
 
-    const control = await prisma.blueprintJob.create({ data: { userId: user.id, projectId: project.id, status: "RUNNING", startedAt: new Date(), currentStage: "generating_plan", metadataJson: { executionPolicy: "b4.v1" } } });
+    const control = await prisma.blueprintJob.create({ data: { userId: user.id, projectId: project.id, status: "RUNNING", startedAt: new Date(), currentStage: "generating_plan", metadataJson: { executionPolicy: "b4.v1", commercialPolicy: "commercial-v1" } } });
+    await prisma.$transaction(tx => reserveCommercialJob(tx, control.id));
     await withJobExecution({ jobId: control.id, startedAt: control.startedAt!, stage: "SECTION_DRAFTS:test" }, async () => {
       const tickets = await Promise.allSettled([reserveJobCall("scientific", "gpt-5.4", 1.1), reserveJobCall("scientific", "gpt-5.4", 1.1)]);
       ok(tickets.filter((ticket) => ticket.status === "fulfilled").length === 1, "atomic reservations prevent concurrent overspend");

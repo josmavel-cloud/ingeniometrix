@@ -31,6 +31,7 @@ export type OpenAiProviderConfig = {
 const DEFAULT_OPENAI_TIMEOUT_MS = 120_000;
 const DEFAULT_OPENAI_RETRIES = 1;
 let reservedApiUsd = 0; // Shared by provider instances in one bounded evaluation process.
+const inputTokenCountCache = new Map<string, Promise<number | null>>();
 
 export class ProviderResponsePendingError extends Error {
   constructor(readonly responseId: string, readonly providerStatus: string) {
@@ -118,6 +119,29 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   });
   const defaultModel = config.defaultModel;
 
+  const boundForRequest = async (params: Parameters<typeof responseCostBound>[0]) => {
+    const responses = (client as OpenAI).responses;
+    if (!responses.inputTokens?.count || !params.model) return responseCostBound(params);
+    // The count request mirrors every input-affecting field. A failure only
+    // forfeits the optimization; the legacy reservation remains conservative.
+    const countParams = { model: params.model, input: params.input, instructions: params.instructions,
+      text: params.text, reasoning: params.reasoning, tools: params.tools,
+      tool_choice: params.tool_choice, parallel_tool_calls: params.parallel_tool_calls,
+      truncation: params.truncation };
+    const key = fingerprint(countParams);
+    let pending = inputTokenCountCache.get(key);
+    if (!pending) {
+      if (inputTokenCountCache.size >= 128) inputTokenCountCache.clear();
+      pending = responses.inputTokens.count(countParams as any)
+        .then(result => Number.isSafeInteger(result.input_tokens) && result.input_tokens >= 0 ? result.input_tokens : null)
+        .catch(() => null);
+      inputTokenCountCache.set(key, pending);
+    }
+    const exact = await pending;
+    if (exact === null) inputTokenCountCache.delete(key);
+    return responseCostBound(params, exact ?? undefined);
+  };
+
   const estimatedCost = (params: Parameters<typeof responseCostBound>[0], response: OpenAI.Responses.Response) => {
     if (!response.usage || !params.model) return null;
     return estimateResponseUsageCost(String(params.model), response.usage);
@@ -132,15 +156,16 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
   async function request(params: Parameters<typeof client.responses.create>[0], attribution?: LlmUsageAttribution) {
     const limit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
-    const bound = responseCostBound(params as Parameters<typeof responseCostBound>[0]);
+    const bound = await boundForRequest(params as Parameters<typeof responseCostBound>[0]);
     const rates = bound?.rates ?? null;
     const reserved = bound?.maximumUsd ?? null;
     if (limit > 0 && (reserved === null || reservedApiUsd + reserved > limit)) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
-    if (limit > 0) reservedApiUsd += reserved!;
     const startedAt = new Date().toISOString();
-    if (reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
+    if (!bound || reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
     const purpose = (params.text?.format as { name?: string } | undefined)?.name ?? "text";
-    const reservation = await reservePaidCall(purpose, String(params.model), reserved, attribution);
+    const reservation = await reservePaidCall(purpose, String(params.model), reserved, attribution,
+      { inputTokens: bound.inputTokens, provenance: bound.tokenCountProvenance });
+    if (limit > 0) reservedApiUsd += reserved;
     let response: OpenAI.Responses.Response;
     try { response = await client.responses.create(params as any) as OpenAI.Responses.Response; }
     catch (error) { await reservation?.fail(); throw error; }
@@ -199,7 +224,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       if (!currentJobExecution()) throw new Error("PERSISTENT_BACKGROUND_CONTEXT_REQUIRED");
       const model = input.model ?? defaultModel;
       const params = backgroundStructuredParams(input, model) as Parameters<typeof client.responses.create>[0];
-      const bound = responseCostBound(params as Parameters<typeof responseCostBound>[0]);
+      const bound = await boundForRequest(params as Parameters<typeof responseCostBound>[0]);
       if (!bound) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
       const expectedFingerprint = openAiBackgroundRequestFingerprint({ ...input, model });
       if (expectedFingerprint !== input.requestFingerprint) throw new Error("BACKGROUND_REQUEST_FINGERPRINT_MISMATCH");
@@ -213,8 +238,9 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         try {
           const processLimit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
           if (processLimit > 0 && reservedApiUsd + bound.maximumUsd > processLimit) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
+          reservation = await reservePaidCall(input.schemaName, model, bound.maximumUsd, input.trackingAttribution,
+            { inputTokens: bound.inputTokens, provenance: bound.tokenCountProvenance });
           if (processLimit > 0) reservedApiUsd += bound.maximumUsd;
-          reservation = await reservePaidCall(input.schemaName, model, bound.maximumUsd, input.trackingAttribution);
           record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { status: "DISPATCHING", reservationId: reservation.durableReservationId });
           response = await client.responses.create(params as any) as OpenAI.Responses.Response;
           record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { responseId: response.id, providerStatus: response.status ?? null, status: response.status === "completed" ? "PENDING" : "PENDING" });
