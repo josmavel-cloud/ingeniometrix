@@ -688,7 +688,9 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         .filter(row => row?.status !== "COMPLETED");
       if (rejectedLegacySchema || unresolvedPriorPatch) {
         if (incomplete.length !== 1 || incomplete[0]?.status !== "CREATE_UNCERTAIN" ||
-          incomplete[0]?.error !== priorError || incomplete[0]?.responseId || incomplete[0]?.providerStatus)
+          !LEGACY_PATCH_SCHEMA_REJECTION.test(incomplete[0]?.error ?? "") ||
+          (rejectedLegacySchema && incomplete[0]?.error !== priorError) ||
+          incomplete[0]?.responseId || incomplete[0]?.providerStatus)
           throw new Error("AUTONOMOUS_RECOVERY_PROVIDER_RESPONSE_PENDING");
       } else if (incomplete.length) throw new Error("AUTONOMOUS_RECOVERY_PROVIDER_RESPONSE_PENDING");
     }
