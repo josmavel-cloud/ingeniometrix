@@ -1,5 +1,6 @@
 import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { randomUUID } from "node:crypto";
+import { activeQaCampaign, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -359,6 +360,12 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
     if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint))
       throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
     const internalCapability = await activeInternalGenerationCapability(userId, tx);
+    const qaCampaign = internalCapability ? await activeQaCampaign(tx, userId) : null;
+    if (qaCampaign) {
+      await tx.$queryRaw`SELECT id FROM "QaAcceptanceCampaign" WHERE id = ${qaCampaign.id} FOR UPDATE`;
+      const jobs = await tx.blueprintJob.count({ where: { userId, metadataJson: { path: ["qaCampaignId"], equals: qaCampaign.id } } });
+      if (jobs >= qaCampaign.maxJobs) throw new Error("QA_ACCEPTANCE_JOB_LIMIT_REACHED");
+    }
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     const created = await tx.blueprintJob.create({
       data: {
@@ -375,6 +382,7 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
           expectedContext: options?.expectedContext, operationId: options?.operationId } satisfies JobData),
         metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1",
           ...(internalCapability ? { costPolicyVersion: INTERNAL_PILOT_COST_POLICY_VERSION } : {}),
+          ...(qaCampaign ? { costPolicyVersion: QA_COST_POLICY_VERSION, qaCampaignId: qaCampaign.id } : {}),
           commercialPolicy: internalCapability ? INTERNAL_GENERATION_POLICY : "commercial-v1",
           scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
       },

@@ -76,7 +76,7 @@ import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } fr
 import { ensureResearchCoverage } from "./research-fallback";
 import { SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT as SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-latam-compact.v1";
 import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce, currentJobExecution } from "./job-execution-context";
-import { approvedDesignForCurrentJob } from "./scientific-decision-service";
+import { approvedGenerationContextForCurrentJob } from "./scientific-decision-service";
 import { currentGenerationInput, frozenProject } from "@/server/projects/generation-input-snapshot";
 import { GENERATION_POLICY_VERSION } from "./generation-budgets";
 import { compactDocxWhitespace } from "./docx-layout-compaction";
@@ -3116,6 +3116,8 @@ export async function runMvpStep6BlueprintDocx(input: {
     throw new Error("INSUFFICIENT_EVIDENCE: no hay evidencia inspeccionable verificada; agregar fuentes o repetir Step 5. No se genero plan.");
   }
   warnings.push(...evidenceGate.limitations);
+  const approvedContext = await approvedGenerationContextForCurrentJob(project.intake, latestStep5.ledger);
+  latestStep5 = { ...latestStep5, ledger: approvedContext.ledger };
   let sectionPlan = scientificSectionPlan();
   const academicStyleContract = buildStyleContract(project);
   const institutionalHardMax = templateHardMaxBodyPages(project.templateKey);
@@ -3181,7 +3183,7 @@ export async function runMvpStep6BlueprintDocx(input: {
   try {
     const provider = input.providerOverride ?? tryGetProvider(warnings);
     if (!provider) throw new Error("SCIENTIFIC_GENERATION_REQUIRES_PROVIDER");
-    const approvedDesign = await approvedDesignForCurrentJob(project.intake, latestStep5.ledger);
+    const approvedDesign = approvedContext.design;
     const scientific = await withLlmUsageContext(
       { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
       () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, documentProfile: LATAM_COMPACT_PROFILE_ID, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),

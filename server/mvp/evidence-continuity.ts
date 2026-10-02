@@ -40,7 +40,7 @@ export function sourceDisposition(ledger: MvpStep5EvidenceLedger, usedSourceIds:
     const used = usedSourceIds.includes(source.source_id);
     if (used && !eligible) throw new Error(`EVIDENCE_USE_WITHOUT_SUPPORT: ${source.source_id}`);
     return {
-      source_id: source.source_id, reference_id: source.reference_id, selected: true,
+      source_id: source.source_id, reference_id: source.reference_id, selected: source.provider !== "SYSTEM_DESIGN_SUPPORT",
       extraction_status: extraction?.status ?? "NOT_RUN", evidence_level: extraction?.evidence_basis ?? "UNKNOWN",
       extracted_items: extraction?.evidence_items.length ?? 0,
       verified_items: extraction?.evidence_items.filter((item) => item.support_verified).length ?? 0,

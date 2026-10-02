@@ -98,6 +98,10 @@ export const targetedAutonomousCriticSchema = z.object({
   resolvedFindingCodes: list.max(10), unresolvedFindingCodes: list.max(10),
   deferredAsFutureRequirementCodes: list.max(10),
 });
+export const autonomousDesignEvidencePatchSchema = autonomousDesignPatchSchema.extend({
+  methodologicalSupportAdded: z.array(evidencePointerSchema).max(12),
+  applicabilityJustification: text,
+});
 export const CRITIQUE_DIMENSIONS = ["intent", "feasibility", "evidence", "coherence", "transferability", "causal_identification", "measurement", "evaluation", "theory_framework_fit", "method_integration", "mixed_methods_validity", "uncertainty", "question_objective_alignment", "complexity", "novelty"] as const;
 // Historical G1 critic payloads remain readable for deterministic migration only.
 export const legacyDesignCritiqueSchema = z.object({

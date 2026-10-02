@@ -4,13 +4,16 @@ import { DESIGN_MINI_RESEARCH_PURPOSE } from "@/server/retrieval/web-discovery-c
 import { runWebDiscoveryOperation } from "@/server/retrieval/web-discovery-operation";
 import { createOpenAiWebDiscoveryProvider } from "@/server/retrieval/web-discovery-provider";
 import { convergeWebCandidate, type ExistingScientificSource } from "@/server/retrieval/web-candidate-convergence";
-import { fetchPublicDocument } from "@/server/retrieval/safe-document-fetch";
-import { observedSourceMetadata } from "@/server/retrieval/observed-source-metadata";
+import path from "node:path";
+import { acquireSupportDocument } from "./design-support-document";
+import type { DesignSupportSource } from "./design-support-addendum";
+import { designSupportGaps, type DesignSupportGap } from "./design-support-gap";
+export { designSupportGaps } from "./design-support-gap";
 import { normalizeConcept } from "@/lib/retrieval-scientific-concepts";
 import { normalizePublicWebUrl } from "@/server/retrieval/web-discovery-validation";
 
-export const DESIGN_MINI_RESEARCH_POLICY = { version: "design-mini-research.v1", maxOperations: 2, maxToolCalls: 2, maxCandidates: 5 } as const;
-type VerifiedSupport = { gapId: string; title: string; authors: string[]; year: number; doi: string | null; abstract: string; observedUrl: string; observationIds: string[]; bodyHash: string; provenance: "COMPLETED_WEB_SEARCH_AND_OBSERVED_METADATA" };
+export const DESIGN_MINI_RESEARCH_POLICY = { version: "design-mini-research.v2", maxOperations: 2, maxToolCalls: 2, maxCandidates: 5, maxDocuments: 4 } as const;
+type VerifiedSupport = DesignSupportSource;
 
 // This is a conservative screening gate, not a claim about full-text quality.
 // The independent design critic still decides whether the source can support a
@@ -25,33 +28,13 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
   const relevant = (value: string) => [...words(value)].some(word => body.has(word));
   return relevant(input.method) && relevant(input.object);
 }
-export type DesignSupportGap = { gapId: string; question: string; whyMaterial: string;
-  requiredEvidenceType: "SCHOLARLY_METHOD_OR_STANDARD"; searchProjection: string;
-  existingEvidenceIds: string[]; scopeBoundary: string; maxCandidates: 5; status: "OPEN" };
-
-export function designSupportGaps(bundle: ScientificDecisionBundle): DesignSupportGap[] {
-  const alternative = bundle.decision.alternatives.find(item => item.id === bundle.decision.recommended_id);
-  const method = alternative && "primary_method" in alternative ? String(alternative.primary_method) : null;
-  const object = bundle.intent.unit_population_corpus || bundle.intent.scope;
-  if (!method || !object) return [];
-  return bundle.critique.assessments.filter(assessment => assessment.alternative_id === bundle.decision.recommended_id)
-    .flatMap(assessment => assessment.critical_findings)
-    .filter(finding => finding.severity === "BLOCKING" && /method|validation|theor|framework|evidence|applicab/i.test(finding.affected_field) &&
-      !/scope|data_requirements|access/i.test(finding.affected_field) && finding.required_action.length >= 24)
-    .slice(0, DESIGN_MINI_RESEARCH_POLICY.maxOperations)
-    .map((finding, index) => ({ gapId: `design-support-${index + 1}`,
-      question: `¿Qué evidencia primaria o metodología establecida permite verificar la aplicabilidad de ${method} a ${object}, respecto de ${finding.affected_field}?`,
-      whyMaterial: finding.issue, requiredEvidenceType: "SCHOLARLY_METHOD_OR_STANDARD" as const,
-      searchProjection: finding.required_action, existingEvidenceIds: bundle.evidence_pack.items.map(item => item.evidence_id),
-      scopeBoundary: bundle.intent.scope, maxCandidates: 5 as const, status: "OPEN" as const }));
-}
-
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle }) {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2 }) {
   const { bundle } = input;
-  const material = designSupportGaps(bundle);
+  const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
+  const ordinal = input.operationOrdinal ?? 1;
   const selected = bundle.decision.alternatives.find(item => item.id === bundle.decision.recommended_id);
   const method = selected && "primary_method" in selected ? String(selected.primary_method) : "";
   const object = bundle.intent.unit_population_corpus || bundle.intent.scope;
@@ -74,9 +57,9 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
     const gap = { gapId, searchIntentHash: intentHash, kind: "EVIDENCE" as const, importance: "MATERIAL" as const,
       requiredDimension: finding.question.slice(0, 700), desiredEvidenceRole: "METHODOLOGICAL" as const,
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
-    const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension]);
+    const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
     try {
-      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_${index + 1}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
+      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
         const discovery = await runWebDiscoveryOperation({ userId: input.userId, projectId: input.projectId, smoke: false,
@@ -88,27 +71,37 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
         const operation = { operationId: discovery.operationId, estimatedCostUsd: discovery.estimatedCostUsd, usage: discovery.usage, state: discovery.state };
         if (!["COMPLETED", "PARTIAL"].includes(discovery.state)) return { support: [] as VerifiedSupport[], limitation: `Miniinvestigación: ${discovery.state}`, operation };
         const accepted: VerifiedSupport[] = [];
+        let acquisitions = 0;
         for (const candidate of discovery.candidates.slice(0, DESIGN_MINI_RESEARCH_POLICY.maxCandidates)) {
           const convergence = convergeWebCandidate({ context: { operationId: discovery.operationId, projectId: input.projectId,
             searchIntentHash: intentHash, gapSetHash, discoveredSourcePoolVersion: sourcePoolVersion,
             currentSourcePoolVersion: sourcePoolVersion, allowedGapIds: [gapId] }, discovery, candidate, existing });
-          if (convergence.identityOutcome !== "NEW_SOURCE_CANDIDATE" || !convergence.semanticReviewRequired ||
-            !["PEER_REVIEWED_ARTICLE", "CONFERENCE_PAPER", "ACADEMIC_REPOSITORY"].includes(candidate.proposal.identityProposal.sourceType)) continue;
-          try {
-            const fetched = await fetchPublicDocument(candidate.proposal.observedUrl, { Accept: "text/html" }, 2 * 1024 * 1024, 15_000);
-            if (!fetched.ok || !fetched.contentType.includes("text/html")) continue;
-            const metadata = observedSourceMetadata(fetched.body.toString("utf8"), candidate.proposal.identityProposal.title);
-            if (!metadata?.abstract || !designSupportMetadataEligible({ title: metadata.title, abstract: metadata.abstract,
-              doi: metadata.doi, venue: metadata.venue, observedUrl: fetched.finalUrl,
-              requestedUrl: candidate.proposal.observedUrl, method, object })) continue;
-            accepted.push({ gapId, title: metadata.title, authors: metadata.authors, year: metadata.year!, doi: metadata.doi,
-              abstract: metadata.abstract.slice(0, 4000), observedUrl: fetched.finalUrl,
-              observationIds: convergence.discoveryObservationIds, bodyHash: metadata.bodyHash,
-              provenance: "COMPLETED_WEB_SEARCH_AND_OBSERVED_METADATA" });
-          } catch { /* A failed or ambiguous source stays excluded. */ }
+          if (convergence.identityOutcome !== "NEW_SOURCE_CANDIDATE" || !convergence.semanticReviewRequired) continue;
+          // Two acquisition slots per operation, four total; failed slots are retained.
+          if (acquisitions >= 2) break;
+          const slot = (ordinal - 1) * 2 + ++acquisitions;
+          const inspected = await stageCheckpoint(`DESIGN_SUPPORT_DOCUMENT_${slot}`, {
+            operationId: discovery.operationId, url: candidate.proposal.observedUrl, policy: DESIGN_MINI_RESEARCH_POLICY.version,
+          }, async () => {
+            try {
+              const document = await acquireSupportDocument(candidate.proposal.observedUrl, finding.question,
+                path.resolve("artifacts-local", "design-support", fingerprint([input.userId, input.projectId, input.runId])));
+              const expected = normalizeConcept(candidate.proposal.identityProposal.title);
+              const observed = normalizeConcept(document.title);
+              // Identity is checked against the acquired title. Relevance and
+              // methodological applicability remain independent critic decisions.
+              if (!expected || !observed || !(observed.includes(expected) || expected.includes(observed)) || !document.passages.length)
+                return { source: null, reason: "DOCUMENT_IDENTITY_OR_TEXT_UNVERIFIED" };
+              const source: VerifiedSupport = { sourceId: `DS-${fingerprint([input.projectId, input.runId, document.sha256]).slice(0, 20)}`,
+                gapId, title: document.title, authors: [], year: null, doi: null,
+                observationIds: convergence.discoveryObservationIds, document, provenance: "SYSTEM_DESIGN_SUPPORT" };
+              return { source, reason: null };
+            } catch { return { source: null, reason: "DOCUMENT_ACQUISITION_FAILED" }; }
+          }, value => value.source?.document.privateArtifactPath ? [value.source.document.privateArtifactPath] : []);
+          if (inspected.source && !accepted.some(source => source.document.sha256 === inspected.source!.document.sha256)) accepted.push(inspected.source);
         }
-        return { support: accepted, limitation: accepted.length ? null : "No se verificó una fuente técnica adicional con identidad y resumen observados.", operation };
-      });
+        return { support: accepted, limitation: accepted.length ? null : "No se verificó un documento adicional con identidad y pasajes inspeccionables.", operation };
+      }, value => value.support.flatMap(source => source.document.privateArtifactPath ? [source.document.privateArtifactPath] : []));
       support.push(...verified.support);
       operations.push(verified.operation);
       if (verified.limitation) limitations.push(verified.limitation);

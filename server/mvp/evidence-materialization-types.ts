@@ -43,7 +43,7 @@ export type MvpStep5ReferenceRecord = {
   };
 };
 
-export type MvpStep5EvidenceBasis = "PDF_FULLTEXT" | "PDF_SAMPLE_TEXT" | "ABSTRACT_METADATA" | "VERIFIED_METADATA_ONLY";
+export type MvpStep5EvidenceBasis = "PDF_FULLTEXT" | "PDF_SAMPLE_TEXT" | "HTML_PASSAGE" | "ABSTRACT_METADATA" | "VERIFIED_METADATA_ONLY";
 
 export type MvpStep5TextChunk = {
   chunk_id: string;

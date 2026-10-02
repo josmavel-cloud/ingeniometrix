@@ -15,7 +15,7 @@
     "build": "prisma generate && next build",
     "build:vercel": "prisma generate --schema prisma/schema.prisma && next build",
     "build:release-worker": "esbuild scripts/run-release-worker.ts --bundle --platform=node --format=cjs --outfile=dist/release-worker.cjs --packages=external --tsconfig=tsconfig.json",
-    "build:internal-provision": "esbuild scripts/provision-internal-generation.ts --bundle --platform=node --format=cjs --outfile=dist/provision-internal-generation.cjs --packages=external --tsconfig=tsconfig.json",
+    "build:internal-provision": "esbuild scripts/provision-internal-generation.ts --bundle --platform=node --format=cjs --outfile=dist/provision-internal-generation.cjs --packages=external --tsconfig=tsconfig.json && esbuild scripts/provision-scientific-qa.ts --bundle --platform=node --format=cjs --outfile=dist/provision-scientific-qa.cjs --packages=external --tsconfig=tsconfig.json",
     "start": "next start",
     "worker:release": "node dist/release-worker.cjs",
     "typecheck": "next typegen && tsc --noEmit",
@@ -151,7 +151,9 @@
     "mvp:pipeline:final2": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=final2",
     "mvp:pipeline:cleanup-validation": "tsx scripts/mvp/run-autonomous-pipeline.ts --mode=cleanup-validation",
     "test:source-sufficiency-release": "tsx scripts/test-source-sufficiency-release.ts",
-    "test:source-sufficiency-db": "tsx scripts/test-source-sufficiency-db.ts"
+    "test:source-sufficiency-db": "tsx scripts/test-source-sufficiency-db.ts",
+    "test:design-support-recovery": "tsx scripts/test-design-support-recovery.ts",
+    "test:scientific-qa-budget": "tsx scripts/test-scientific-qa-budget.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

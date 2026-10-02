@@ -6,6 +6,7 @@ import { fingerprint } from "./job-execution-context";
 import { withLlmUsageContext, type LlmUsageAttribution } from "@/server/llm-usage-registry";
 import { DESIGN_MINI_RESEARCH_PURPOSE, WEB_DISCOVERY_PURPOSE } from "@/server/retrieval/web-discovery-contract";
 import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
+import { assertQaCommitment } from "./qa-acceptance-policy";
 
 type OperationContext = { id: string; userId: string; requestId: string; revision: string; projectId?: string; draftId?: string };
 const context = new AsyncLocalStorage<OperationContext>();
@@ -21,6 +22,35 @@ function configuredMicros(name: string, fallback: number, maximum = 2) {
   return usdMicros(value);
 }
 const rollingDay = () => new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+// Same transaction as the job reservation. These are linked audit views of one
+// provider call, not two charges; the job entry carries paidOperationId.
+export async function reserveLinkedJobOperation(tx: Prisma.TransactionClient, input: {
+  id: string; jobId: string; userId: string; operationId: string; purpose: string; model: string; maximumUsd: number;
+}) {
+  const maximum = usdMicros(input.maximumUsd);
+  const operation = await tx.paidOperation.findUniqueOrThrow({ where: { id: input.operationId } });
+  const daily = await tx.paidOperation.aggregate({ where: { userId: input.userId, OR: [
+    { createdAt: { gte: rollingDay() } }, { calls: { some: { estimatedMicros: null } } } ] }, _sum: { committedMicros: true } });
+  const dailyCap = operation.purpose === WEB_DISCOVERY_PURPOSE || operation.purpose === DESIGN_MINI_RESEARCH_PURPOSE
+    ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_DAILY_CAP_USD", 1);
+  if (operation.userId !== input.userId || operation.status !== "RUNNING" || operation.boundBreached ||
+    operation.committedMicros + maximum > operation.hardCapMicros ||
+    (daily._sum.committedMicros ?? 0) + maximum > dailyCap)
+    throw new Error("PRE_JOB_COST_LIMIT");
+  await tx.paidOperationCall.create({ data: { id: input.id, operationId: input.operationId, purpose: input.purpose,
+    model: input.model, reservedMicros: maximum, attributionJson: { jobId: input.jobId, funding: "JOB_LINKED" } } });
+  await tx.paidOperation.update({ where: { id: input.operationId }, data: { committedMicros: { increment: maximum } } });
+}
+export async function settleLinkedJobOperation(tx: Prisma.TransactionClient, id: string, estimate: number | null, usage: unknown, actualModel?: string) {
+  const call = await tx.paidOperationCall.findUnique({ where: { id } });
+  if (!call || call.estimatedMicros !== null) return;
+  const micros = estimate === null ? null : usdMicros(estimate);
+  await tx.paidOperationCall.update({ where: { id }, data: { status: micros === null ? "UNKNOWN_USAGE" : "COMPLETED",
+    estimatedMicros: micros, usageJson: usage == null ? Prisma.DbNull : json(usage), actualModel, completedAt: new Date() } });
+  if (micros !== null) await tx.paidOperation.update({ where: { id: call.operationId }, data: {
+    committedMicros: { increment: micros - call.reservedMicros }, ...(micros > call.reservedMicros ? { boundBreached: true } : {}) } });
+}
 
 export async function withPaidOperation<T>(input: { userId: string; requestId: string; purpose: string; projectId?: string; draftId?: string; revision: string; inputs: unknown;
   recoverFailed?: { version: string; completedCallPurposes: string[] } }, work: () => Promise<T>): Promise<T> {
@@ -96,6 +126,7 @@ export async function reservePreJobCall(purpose: string, model: string, maximumU
   if (maximum <= 0) throw new Error("INVALID_COST");
   const call = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${operation.userId} FOR UPDATE`;
+    await assertQaCommitment(tx, operation.userId, maximumUsd);
     const record = await tx.paidOperation.findUniqueOrThrow({ where: { id: operation.id } });
     const daily = await tx.paidOperation.aggregate({ where: { userId: operation.userId, OR: [{ createdAt: { gte: rollingDay() } }, { calls: { some: { estimatedMicros: null } } }] }, _sum: { committedMicros: true } });
     const breached = await tx.paidOperation.count({ where: { userId: operation.userId, boundBreached: true } });

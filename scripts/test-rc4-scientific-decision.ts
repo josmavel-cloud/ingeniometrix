@@ -160,6 +160,7 @@ async function main() {
   assert.equal(rejected.repair_rounds, 1);
   const gapBundle = structuredClone(rejected);
   gapBundle.intent.unit_population_corpus = "Corpus sintético";
+  gapBundle.critique.assessments[0].evidence_support = "FAIL";
   gapBundle.critique.assessments[0].critical_findings[0].affected_field = "validation_strategy";
   gapBundle.critique.assessments[0].critical_findings[0].required_action = "Verificar la aplicabilidad del método con una fuente técnica primaria";
   assert.equal(designSupportGaps(gapBundle).length, 1);
@@ -212,6 +213,36 @@ async function main() {
   assert.equal(resolvedBundle.revised, true);
   assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
   assert.ok(resolvedBundle.alternative.transfer_limits.includes("Acceso aún por verificar"));
+  let supportCalls = 0, independentReviews = 0, patchCalls = 0;
+  const supplementalSource = { sourceId: "DS-test", gapId: "method-gap", title: "Norma metodológica sintética",
+    authors: [], year: null, doi: null, observationIds: ["completed-web-observation"], provenance: "SYSTEM_DESIGN_SUPPORT" as const,
+    document: { observedUrl: "https://example.org/standard", finalUrl: "https://example.org/current-standard",
+      sha256: "a".repeat(64), mediaType: "text/html" as const, title: "Norma metodológica sintética",
+      passages: [{ text: "Pasaje sintético verificable para comprobar el contrato, sin aceptación científica real.", locator: "html:block:1", page: null }] } };
+  const supported = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "late-support",
+    researchSupport: async ({ gaps }) => { supportCalls++; assert.equal(gaps?.[0].origin, "TARGETED_CRITIC");
+      return { status: "VERIFIED_SUPPORT", support: [supplementalSource], limitations: [], operations: [] }; },
+    provider: { generateStructuredObject: async (request: any) => {
+      if (request.schemaName.includes("patch")) {
+        patchCalls++;
+        return patchCalls === 1 ? smallPatch : { ...smallPatch,
+          methodologicalSupportAdded: [{ source_id: "DS-test", evidence_id: "DS-test:P1" }], applicabilityJustification: "Aplicabilidad limitada al procedimiento descrito" };
+      }
+      independentReviews++;
+      if (independentReviews === 2) assert.ok(request.prompt.includes(supplementalSource.document.passages[0].text));
+      return { ...smallReview, evidenceSupported: independentReviews === 2 };
+    } } as any });
+  assert.equal(supportCalls, 1, "Late critic evidence rejection reaches the support service");
+  assert.equal(independentReviews, 2, "New evidence gets an independent versioned evaluation");
+  assert.equal(supported.supportAddendum?.jobId, "late-support");
+  assert.ok(supported.alternative.research_design.methodological_support.some(pointer => pointer.source_id === "DS-test"));
+  assert.deepEqual(supported.alternative.definition, rejected.decision.alternatives[0].definition);
+  await assert.rejects(() => resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "still-unsupported",
+    researchSupport: async () => ({ status: "VERIFIED_SUPPORT", support: [supplementalSource], limitations: [], operations: [] }),
+    provider: { generateStructuredObject: async (request: any) => request.schemaName.includes("patch")
+      ? { ...smallPatch, methodologicalSupportAdded: [], applicabilityJustification: "Limitada" }
+      : { ...smallReview, evidenceSupported: false } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/,
+    "An acquired document never forces a positive scientific verdict");
   const accessCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
     ...rejectedCritique.assessments[0].critical_findings[0], code: "ACCESS_UNVERIFIED", affected_field: "data_requirements",
     issue: "Acceso aún no verificado", required_action: "Verificar acceso legal antes de ejecutar el estudio",

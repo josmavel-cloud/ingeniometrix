@@ -6,7 +6,6 @@ import { DESIGN_MINI_RESEARCH_PURPOSE, WEB_DISCOVERY_POLICY_VERSION, WEB_DISCOVE
   type ResearchDiscoveryContext, type WebDiscoveryInput, type WebDiscoveryProvider, type WebDiscoveryResult } from "./web-discovery-contract";
 import type { EvidenceGap } from "./evidence-gap-contract";
 import { DESIGN_MINI_WEB_RESEARCH_PROMPT } from "@/server/mvp/prompts/design-mini-web-research.v1";
-import { withStandalonePaidBudget } from "@/server/mvp/application-budget";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -59,6 +58,6 @@ export async function runWebDiscoveryOperation(input: {
     const discover = () => input.provider.discover({ operationContext: { operationId: operation.id, smoke: input.smoke, purpose: input.purpose },
       researchIntentProjection: input.researchIntentProjection, evidenceGaps: input.evidenceGaps,
       seenSourceIdentities: input.seenSourceIdentities, policy: input.policy });
-    return input.purpose === DESIGN_MINI_RESEARCH_PURPOSE ? withStandalonePaidBudget(discover) : discover();
+    return discover();
   });
 }

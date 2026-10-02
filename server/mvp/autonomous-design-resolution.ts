@@ -70,6 +70,7 @@ export function resolveNonmaterialDecisions(input: { decision: ScientificDecisio
 export function applyAutonomousDesignPatch(input: {
   decision: ScientificDecision; critique: DesignCritique; intent: ResearchIntentContract; pack: MethodEvidencePack;
   patch: z.infer<typeof autonomousDesignPatchSchema>;
+  methodologicalSupportAdded?: Array<{ source_id: string; evidence_id: string }>;
 }) {
   const patch = autonomousDesignPatchSchema.parse(input.patch);
   const alternative = inScopeAlternatives(input.decision, input.critique).find((item) => item.id === patch.alternativeId);
@@ -87,8 +88,14 @@ export function applyAutonomousDesignPatch(input: {
       !patch.dataRequirements.some((requirement) => requirement.availability === "PENDING"))))
     throw new Error("AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED");
   const previous = designAlternativeV2Schema.parse(alternative);
+  const added = input.methodologicalSupportAdded ?? [];
+  if (added.some(pointer => !input.pack.items.some(item => item.source_id === pointer.source_id &&
+    item.evidence_id === pointer.evidence_id && item.allowed_use === "theory_or_method_support")))
+    throw new Error("AUTONOMOUS_PATCH_SUPPORT_NOT_IN_CONTEXT");
   const next = designAlternativeV2Schema.parse({ ...previous,
     research_design: { ...previous.research_design,
+      methodological_support: [...previous.research_design.methodological_support, ...added.filter(pointer =>
+        !previous.research_design.methodological_support.some(item => item.source_id === pointer.source_id && item.evidence_id === pointer.evidence_id))],
       procedure: patch.procedure, quality_criteria: patch.qualityCriteria,
       sampling_selection: patch.samplingSelection ?? previous.research_design.sampling_selection,
       analysis_method: patch.analysisMethod ?? previous.research_design.analysis_method,

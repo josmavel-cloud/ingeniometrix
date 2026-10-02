@@ -7,6 +7,8 @@ import { INTERNAL_PILOT_COST_POLICY_VERSION, internalPilotJobCostPolicy, jobCost
 import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
 import { INTERNAL_GENERATION_POLICY, settleInternalGenerationJob } from "@/server/commercial/internal-generation";
 import { wholeJobCostEquation } from "./whole-job-cost-forecast";
+import { assertQaCommitment, qaJobPolicy } from "./qa-acceptance-policy";
+import { reserveLinkedJobOperation, settleLinkedJobOperation } from "./pre-job-budget";
 
 type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
 const context = new AsyncLocalStorage<Execution>();
@@ -35,7 +37,8 @@ async function initialCostRecord(tx: Prisma.TransactionClient, jobId: string): P
   const metadata = job.metadataJson as { commercialPolicy?: string; costPolicyVersion?: string } | null;
   const pilot = metadata?.commercialPolicy === INTERNAL_GENERATION_POLICY &&
     metadata.costPolicyVersion === INTERNAL_PILOT_COST_POLICY_VERSION;
-  return { policy: pilot ? internalPilotJobCostPolicy() : jobCostPolicy(), entries: [] };
+  const qa = await qaJobPolicy(tx, jobId);
+  return { policy: qa?.policy ?? (pilot ? internalPilotJobCostPolicy() : jobCostPolicy()), entries: [] };
 }
 const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + (item.estimate ?? item.maximum), 0);
 
@@ -66,6 +69,7 @@ async function settleJobCall(jobId: string, id: string, estimate: number | null,
     if (estimate !== null && (!Number.isFinite(estimate) || estimate < 0)) throw new Error("Invalid usage estimate");
     Object.assign(entry, { estimate, usage, actualModel: actualModel ?? null, status: estimate === null ? "failed_unknown_usage" : "completed", finishedAt: new Date().toISOString() });
     if (estimate === null) entry.category = "FAILED_CALL_COST";
+    if (entry.paidOperationId) await settleLinkedJobOperation(tx, id, estimate, usage, actualModel);
     await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(record) } });
   });
 }
@@ -104,6 +108,7 @@ export async function reconcileBackgroundJobUsage(input: {
     if (!["reserved", "pending_reconciliation", "failed_unknown_usage"].includes(entry.status))
       throw new Error("BACKGROUND_USAGE_STATE_INVALID");
     const previous = { status: entry.status, maximum: entry.maximum, estimate: entry.estimate };
+    if (entry.paidOperationId) await settleLinkedJobOperation(tx, entry.id, input.estimate, input.usage, input.actualModel);
     Object.assign(entry, { status: "completed", estimate: input.estimate, usage: input.usage,
       actualModel: input.actualModel, finishedAt: new Date().toISOString(),
       category: input.estimate > entry.maximum ? "BOUND_VIOLATED_COST" :
@@ -173,6 +178,8 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
   if (execution.checkpointOnly) throw new Error(`CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN: ${purpose}`);
   const id = randomUUID();
   await locked(execution, async (tx) => {
+    const owner = await tx.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, select: { userId: true } });
+    await assertQaCommitment(tx, owner.userId, maximum);
     const commercialCap = await assertCommercialPaidAuthorization(tx, execution.jobId);
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
     const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
@@ -186,6 +193,8 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     if (commercialCap !== null && spent + maximum + mandatoryReserve > commercialCap) throw new Error("COST_LIMIT_REACHED: commercial policy snapshot");
     const deepSpent = committed(record.entries.filter((entry) => entry.category === "DEEP_RESEARCH_COST"));
     if (!Number.isFinite(maximum) || maximum <= 0 || record.entries.some((entry) => entry.estimate !== null && entry.estimate > entry.maximum) || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
+    if (paidOperationId) await reserveLinkedJobOperation(tx, { id, jobId: execution.jobId, userId: owner.userId,
+      operationId: paidOperationId, purpose, model, maximumUsd: maximum });
     record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve,
       ...(tokenCount ? { inputTokensReserved: tokenCount.inputTokens, tokenCountProvenance: tokenCount.provenance } : {}) });
     delete record.terminal;

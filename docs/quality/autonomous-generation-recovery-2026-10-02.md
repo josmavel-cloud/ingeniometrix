@@ -148,3 +148,40 @@ implementation and staging acceptance. The same job has exhausted its audited
 recovery attempts; it must not be replayed blindly or have its unknown
 reservation cleared. PR #16 remains draft, `main` and production remain
 unchanged. **Staging health and offline fixtures are not a complete E2E PASS.**
+
+
+## Integrated scientific closure — current working candidate
+
+Authority: the owner authorizes an additional QA commitment of USD 10, at most
+USD 5 per technical job and two full acceptance jobs, via an explicit expiring
+campaign. Ordinary internal policy remains target 2 / soft 2.50 / hard 3.
+Historical policy snapshots and uncertain reservations are unchanged.
+
+The completed targeted critic of staging job `0fe8b5ad-4e0d-48ba-9336-15634a58abf4`
+reported `intentPreserved=true`, `methodCoherent=true`, `evidenceSupported=false`.
+The missing methodological evidence is not a transport or budget failure.
+Its five attempts are exhausted. No counter reset or owner-job continuation is authorized.
+
+Working changes are not a production fix. No live QA dispatch has been made in
+this closure task yet. The following matrix must be updated with actual evidence.
+
+| Requirement | Implemented in candidate | Offline | Provider | Browser | Published |
+| --- | --- | --- | --- | --- | --- |
+| R01 Search recovery | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R02 CORE/EXPLORATORY and bounded Astra | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R03 Selection/counts | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R04 Translation and clean HTML/JATS | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R05 Internal evidence, single CTA | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R06 No post-Sources questions | Resolver retained | Pending | Not run | Not run | No |
+| R07 Verifiable method support | In progress: gaps/addendum/resolver/composition | Partial contracts | Not run | Not run | No |
+| R08 Recovery, usage and QA bounds | In progress: linked accounting and expiring campaign | Pending DB | Not run | Not applicable | No |
+| R09 Internal capability without package | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R10 Taxonomy/ideas/chat | Existing; regression pending | Pending | Not run | Not run | Prior version only |
+| R11 Project/user isolation | Addendum identity checked | Partial contracts | Not run | Not run | No |
+| R12 Private PDF/DOCX/download | Historical PDF still needs exact file | Pending | Not run | Not run | No |
+| R13 Publication/backup/rollback | Not started | Not applicable | Not applicable | Not run | No |
+
+Acceptance requires substantive acquired support assessed independently, a real
+complete staging document and authorized download, scientific/editorial review,
+normal PR checks, backup and coordinated production promotion. A healthy HTTP
+endpoint or offline mock does not meet these gates.
