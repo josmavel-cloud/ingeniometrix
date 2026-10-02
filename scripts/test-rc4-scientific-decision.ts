@@ -374,6 +374,21 @@ async function main() {
     assert.equal(designed.job?.currentStage, "resolving_design");
     assert.equal(scienceCalls, 0);
     assert.equal((await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", expectedContext, operationId })).id, job.id);
+    // A proven transport failure may reacquire documents, but completed science
+    // and the paid web operation remain authoritative. Recovery is once/version.
+    await prisma.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } },
+      create: { jobId: job.id, stageKey: "control:cost", status: "FAILED", progress: 0, outputJson: { entries: [] } },
+      update: { outputJson: { entries: [] } } });
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:DESIGN_SUPPORT_DOCUMENT_1", status: "COMPLETED", progress: 100,
+      outputJson: { value: { source: null, reason: "DOCUMENT_ACQUISITION_FAILED" } } } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", currentStage: "resolving_design", attempts: 1,
+      errorJson: { message: "DESIGN_SUPPORT_UNAVAILABLE: fixture" } } });
+    const acquisitionRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(acquisitionRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    assert.equal(acquisitionRecoveries.filter(result => result.state === "already_scheduled").length, 1);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "DESIGN_SUPPORT_UNAVAILABLE: fixture" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval" } });
     const recovery = await resumeLatestBlueprintJobForUser(user.id, project.id);
     assert.equal(recovery.state, "autonomous_recovery_scheduled");

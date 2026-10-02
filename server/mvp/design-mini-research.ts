@@ -63,7 +63,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
     try {
-      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
+      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_ACQUISITION2_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
         const discovery = await runWebDiscoveryOperation({ userId: input.userId, projectId: input.projectId, smoke: false,
@@ -84,7 +84,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
           // Two acquisition slots per operation, four total; failed slots are retained.
           if (acquisitions >= 2) break;
           const slot = (ordinal - 1) * 2 + ++acquisitions;
-          const inspected = await stageCheckpoint(`DESIGN_SUPPORT_DOCUMENT_${slot}`, {
+          const inspected = await stageCheckpoint(`DESIGN_SUPPORT_DOCUMENT_ACQUISITION2_${slot}`, {
             operationId: discovery.operationId, url: candidate.proposal.observedUrl, policy: DESIGN_MINI_RESEARCH_POLICY.version,
           }, async () => {
             try {
@@ -100,7 +100,11 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
                 gapId, title: document.title, authors: [], year: null, doi: null,
                 observationIds: convergence.discoveryObservationIds, document, provenance: "SYSTEM_DESIGN_SUPPORT" };
               return { source, reason: null };
-            } catch { return { source: null, reason: "DOCUMENT_ACQUISITION_FAILED" }; }
+            } catch (error) {
+              const code = (error as { code?: string }).code ?? (error instanceof Error ? error.message : "");
+              return { source: null, reason: /^DOCUMENT_[A-Z_]+$|^DESIGN_SUPPORT_[A-Z_]+$|^ERR_INVALID_IP_ADDRESS$|^ETIMEDOUT$|^ECONNRESET$|^ENOTFOUND$/.test(code)
+                ? code : "DOCUMENT_ACQUISITION_FAILED" };
+            }
           }, value => value.source?.document.privateArtifactPath ? [value.source.document.privateArtifactPath] : []);
           if (inspected.source && !accepted.some(source => source.document.sha256 === inspected.source!.document.sha256)) accepted.push(inspected.source);
         }

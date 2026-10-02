@@ -1,4 +1,10 @@
 import assert from "node:assert/strict";
+import { pinnedPublicLookup } from "../server/retrieval/safe-document-fetch";
+const pinned = pinnedPublicLookup({ address: "8.8.8.8", family: 4 });
+pinned("example.org", { all: true }, (error, addresses) => { assert.equal(error, null); assert.deepEqual(addresses, [{ address: "8.8.8.8", family: 4 }]); });
+pinned("example.org", { all: false }, (error, address, family) => { assert.equal(error, null); assert.equal(address, "8.8.8.8"); assert.equal(family, 4); });
+assert.throws(() => pinnedPublicLookup({ address: "127.0.0.1", family: 4 }), /DOCUMENT_HOST_NOT_PUBLIC/);
+
 import { designSupportGaps } from "../server/mvp/design-support-gap";
 import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision-service";
 import { htmlSupportPassages, rankSupportPassages } from "../server/mvp/design-support-document";

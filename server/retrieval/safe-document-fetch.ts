@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { request as httpRequest } from "node:http";
 import { request as httpsRequest } from "node:https";
-import { BlockList, isIP } from "node:net";
+import { BlockList, isIP, type LookupFunction } from "node:net";
 
 const forbiddenV4 = new BlockList();
 const forbiddenV6 = new BlockList();
@@ -33,6 +33,13 @@ export function publicAddress(address: string, family: number) {
     family === 6 ? !forbiddenV6.check(address, "ipv6") : false;
 }
 
+export function pinnedPublicLookup(address: { address: string; family: number }): LookupFunction {
+  if (!publicAddress(address.address, address.family)) throw new Error("DOCUMENT_HOST_NOT_PUBLIC");
+  return (_host, options, callback) => options.all
+    ? callback(null, [address])
+    : callback(null, address.address, address.family);
+}
+
 type FetchedDocument = { status: number; ok: boolean; contentType: string; finalUrl: string; body: Buffer };
 
 // The resolved public address is pinned to the socket. Redirects are validated
@@ -49,7 +56,9 @@ export async function fetchPublicDocument(raw: string, headers: Record<string, s
       const driver = url.protocol === "https:" ? httpsRequest : httpRequest;
       const req = driver(url, {
         method: "GET", headers, timeout: timeoutMs,
-        lookup: (_host, _options, callback) => callback(null, address.address, address.family),
+        // Node's dual-stack connector requests all=true. Return the pinned
+        // public address in its required shape; never perform another DNS lookup.
+        lookup: pinnedPublicLookup(address),
       }, response => {
         const chunks: Buffer[] = [];
         let size = 0;
