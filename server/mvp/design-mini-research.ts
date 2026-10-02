@@ -31,7 +31,7 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2 }) {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; knownSupport?: DesignSupportSource[] }) {
   const { bundle } = input;
   const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
   const ordinal = input.operationOrdinal ?? 1;
@@ -46,8 +46,12 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
   ].filter((item): item is [string, string] => typeof item[1] === "string" && Boolean(item[1].trim()))
     .slice(0, 12).map(([field, value]) => ({ field, value: value.slice(0, 400) }));
   if (!scientificSignals.length) return { status: "NO_SAFE_CONTEXT" as const, support: [] as VerifiedSupport[], limitations: ["No se pudo formular una búsqueda técnica sin cambiar el alcance confirmado."], operations: [] as Array<{ operationId: string; estimatedCostUsd: number | null; usage: unknown; state: string }> };
-  const known = bundle.evidence_pack.selected_sources.slice(0, 30).map(source => ({ doi: source.doi ?? undefined, title: source.title }));
+  const known = [...bundle.evidence_pack.selected_sources.slice(0, 30).map(source => ({ doi: source.doi ?? undefined, title: source.title })),
+    ...(input.knownSupport ?? []).map(source => ({ doi: source.doi ?? undefined, title: source.title, url: source.document.finalUrl }))];
   const existing: ExistingScientificSource[] = bundle.evidence_pack.selected_sources.map(source => ({ id: source.source_id, title: source.title, authors: [], year: source.year, doi: source.doi, workType: null, observedUrls: [], selected: true, assessmentValid: true, doiProvenance: "PROVIDER_METADATA" }));
+  existing.push(...(input.knownSupport ?? []).map(source => ({ id: source.sourceId, title: source.title, authors: source.authors,
+    year: source.year, doi: source.doi, workType: null, observedUrls: [source.document.observedUrl, source.document.finalUrl],
+    selected: false, assessmentValid: false, doiProvenance: "VERIFIED_IDENTITY" as const })));
   const sourcePoolVersion = fingerprint(known);
   const support: VerifiedSupport[] = [];
   const limitations: string[] = [];

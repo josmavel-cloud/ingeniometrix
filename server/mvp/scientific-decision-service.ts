@@ -189,8 +189,9 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
         minimumRemainingMandatoryReservation: remaining + repair.maximumUsd + review.maximumUsd });
       supportOperations++;
       const result = await (input.researchSupport ?? researchDesignSupport)({ ...input, bundle, gaps,
-        operationOrdinal: supportOperations as 1 | 2 });
-      designSupport = result;
+        operationOrdinal: supportOperations as 1 | 2, knownSupport: addendum?.sources });
+      designSupport = { ...result, operations: [...(designSupport?.operations ?? []), ...result.operations],
+        limitations: [...(designSupport?.limitations ?? []), ...result.limitations], support: [...(designSupport?.support ?? []), ...result.support] };
       if (!result.support.length) return false;
       const sources = [...(addendum?.sources ?? []), ...result.support].filter((source, index, all) =>
         all.findIndex(item => item.document.sha256 === source.document.sha256) === index);

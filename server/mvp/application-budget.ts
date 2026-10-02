@@ -24,11 +24,7 @@ export class ApplicationBudget {
 }
 const context = new AsyncLocalStorage<ApplicationBudget>();
 const callAttempt = new AsyncLocalStorage<number>();
-const standalonePaidBudget = new AsyncLocalStorage<boolean>();
 export const withPaidCallAttempt = <T>(attempt: number, work: () => Promise<T>) => callAttempt.run(attempt, work);
-// Design-support web research is its own PaidOperation, limited by the existing
-// web daily cap. It must not consume the thesis-composition job's smaller cap.
-export const withStandalonePaidBudget = <T>(work: () => Promise<T>) => standalonePaidBudget.run(true, work);
 export const currentApplicationBudget = () => context.getStore();
 export function withApplicationBudget<T>(budget: ApplicationBudget, work: () => Promise<T>) { return context.run(budget, work); }
 
@@ -39,7 +35,7 @@ export async function reservePaidCall(purpose: string, model: string, maximumUsd
   const local = currentApplicationBudget()?.reserve(purpose, model, maximumUsd);
   let durable;
   try {
-    durable = currentJobExecution() && !standalonePaidBudget.getStore() ? await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0, currentPaidOperation()?.id, tokenCount)
+    durable = currentJobExecution() ? await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0, currentPaidOperation()?.id, tokenCount)
       : await reservePreJobCall(purpose, model, maximumUsd, attribution);
   } catch (error) { local?.cancelBeforeDispatch(); throw error; }
   return {
