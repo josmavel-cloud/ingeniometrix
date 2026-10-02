@@ -120,6 +120,17 @@ reported `evidenceSupported=false`: direct methodological support remains
 insufficient. The job therefore stopped at `resolving_design`. No composition,
 scientific review, DOCX or authorized download occurred.
 
+The current Design Mini Research integration cannot close this gap as written:
+`resolveAutonomousDesignBundle` leaves `researchSupport` unused, while
+`designSupportGaps` only selects first-critic **BLOCKING** method findings;
+the methodological-support finding here was a **WARNING** that the targeted
+critic later found unsupported. The discovery service currently verifies
+observed bibliographic metadata and abstracts, which are leads rather than
+inspectable substantive evidence. A safe repair must classify this targeted
+critic outcome, obtain/prepare genuine methodological evidence within the
+existing budget and provenance rules, and rerun the independent review from
+a versioned checkpoint. It must never promote metadata alone as proof.
+
 | Known staging job usage | Value |
 | --- | ---: |
 | Input tokens | 31,693 |
