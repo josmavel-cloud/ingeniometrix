@@ -627,7 +627,8 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   if (job.status === BlueprintJobStatus.WAITING_USER_DECISION && (job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile === "rc4") return authorizeAutonomousDesignRecoveryForUser(userId, projectId, job.id);
   if (job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
     (/^AUTONOMOUS_DESIGN_UNRESOLVED:/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
-      LEGACY_PATCH_SCHEMA_REJECTION.test((job.errorJson as { message?: string } | null)?.message ?? "")))
+      LEGACY_PATCH_SCHEMA_REJECTION.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      (job.errorJson as { message?: string } | null)?.message === "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED"))
     return authorizeAutonomousDesignRecoveryForUser(userId, projectId, job.id);
   if (job.status === BlueprintJobStatus.FAILED && (job.errorJson as { category?: string } | null)?.category === "PRESENTATION") return authorizePresentationRecoveryForUser(userId, projectId, job.id);
   // Active jobs already belong to the worker. Resume must not steal a lease, erase
@@ -652,24 +653,40 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     const priorError = (job.errorJson as { message?: string } | null)?.message ?? "";
     const rejectedLegacySchema = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
       LEGACY_PATCH_SCHEMA_REJECTION.test(priorError);
+    const unresolvedPriorPatch = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      priorError === "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED";
     const failedResolution = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
-      (/^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError) || rejectedLegacySchema);
+      (/^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError) || rejectedLegacySchema || unresolvedPriorPatch);
     if (!failedResolution && (job.status !== BlueprintJobStatus.WAITING_USER_DECISION || job.currentStage !== "awaiting_design_approval")) throw new Error("AUTONOMOUS_RECOVERY_NOT_ELIGIBLE");
     if (failedResolution) {
-      if (job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      const priorMetadata = job.metadataJson as Record<string, unknown> | null;
+      if (unresolvedPriorPatch) {
+        // One bounded continuation for the corrected v3 scientific prompt. A
+        // completed but scientifically rejected v2 patch is never accepted as
+        // valid, and the independent targeted critic still has to approve v3.
+        if (priorMetadata?.scientificPatchRecovery || job.maxAttempts !== 3 || job.attempts !== 3)
+          throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const patchStage = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_1" } } });
+        if (patchStage?.status !== BlueprintJobStageStatus.COMPLETED || !patchStage.outputJson)
+          throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_MISSING");
+      } else if (job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
       const cost = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
       const entries = (cost?.outputJson as { entries?: Array<{ stage: string; estimate: number | null; status: string }> } | null)?.entries;
       if (!entries) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
       const unknownEntries = entries.filter(entry => entry.estimate === null || entry.status !== "completed");
-      if (rejectedLegacySchema) {
+      if (rejectedLegacySchema || unresolvedPriorPatch) {
         if (unknownEntries.length !== 1 || unknownEntries[0].stage !== "AUTONOMOUS_DESIGN_PATCH_1" ||
           unknownEntries[0].status !== "failed_unknown_usage" || unknownEntries[0].estimate !== null)
           throw new Error("AUTONOMOUS_RECOVERY_LEGACY_RESERVATION_MISMATCH");
       } else if (unknownEntries.length) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
       const responses = await tx.blueprintJobStage.findMany({ where: { jobId, stageKey: { startsWith: "provider:background:" } }, select: { outputJson: true } });
-      const incomplete = responses.map(row => row.outputJson as { status?: string; error?: string; responseId?: string | null; providerStatus?: string | null } | null)
+      const responseRecords = responses.map(row => row.outputJson as { status?: string; error?: string; responseId?: string | null; providerStatus?: string | null; correlation?: { stage?: string; promptVersion?: string } } | null);
+      if (unresolvedPriorPatch && !responseRecords.some(row => row?.status === "COMPLETED" && row.correlation?.stage === "autonomous_design_patch" &&
+        row.correlation.promptVersion === "ingeniometrix-scientific-design-autonomous-patch-v2" && row.responseId))
+        throw new Error("AUTONOMOUS_RECOVERY_PRIOR_PATCH_RESPONSE_MISSING");
+      const incomplete = responseRecords
         .filter(row => row?.status !== "COMPLETED");
-      if (rejectedLegacySchema) {
+      if (rejectedLegacySchema || unresolvedPriorPatch) {
         if (incomplete.length !== 1 || incomplete[0]?.status !== "CREATE_UNCERTAIN" ||
           incomplete[0]?.error !== priorError || incomplete[0]?.responseId || incomplete[0]?.providerStatus)
           throw new Error("AUTONOMOUS_RECOVERY_PROVIDER_RESPONSE_PENDING");
@@ -691,13 +708,17 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     else if (commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
     else throw new Error("AUTONOMOUS_RECOVERY_COMMERCIAL_POLICY_UNKNOWN");
     const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null,
+      maxAttempts: unresolvedPriorPatch ? 4 : job.maxAttempts,
       completedAt: null, errorMessage: null, errorJson: Prisma.DbNull,
-      metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null), autonomousRecovery: { recoveredAt: new Date().toISOString(), from: rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema } }) } });
+      metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null),
+        ...(unresolvedPriorPatch ? { scientificPatchRecovery: { authorizedAt: new Date().toISOString(), fromPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v2", toPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", priorPatchRejectedBy: priorError } } : {}),
+        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || unresolvedPriorPatch } }) } });
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     await tx.auditLog.create({ data: { userId, projectId, actorType: "SYSTEM", eventType: "AUTONOMOUS_DESIGN_RECOVERY_SCHEDULED",
       payloadJson: toJson({ jobId, priorStatus: job.status, previousAttempts: job.attempts,
-        allPriorUsageKnown: failedResolution && !rejectedLegacySchema,
-        rejectedBeforeResponse: rejectedLegacySchema, unknownUsageReservationPreserved: rejectedLegacySchema }) } });
+        allPriorUsageKnown: failedResolution && !rejectedLegacySchema && !unresolvedPriorPatch,
+        rejectedBeforeResponse: rejectedLegacySchema, scientificPatchRecovery: unresolvedPriorPatch,
+        unknownUsageReservationPreserved: rejectedLegacySchema || unresolvedPriorPatch }) } });
     return { job: toJobSummary(updated), shouldContinue: true, state: "autonomous_recovery_scheduled" as const };
   });
 }
