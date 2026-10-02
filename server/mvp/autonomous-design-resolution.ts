@@ -79,7 +79,13 @@ export function applyAutonomousDesignPatch(input: {
   if (patch.resolvedFindingCodes.some((code) => !findingCodes.has(code)) || patch.unresolvedFindingCodes.some((code) => !findingCodes.has(code))) throw new Error("AUTONOMOUS_PATCH_FINDING_UNKNOWN");
   if (patch.procedure.length === 0 || patch.qualityCriteria.length === 0 || patch.dataRequirements.length === 0) throw new Error("AUTONOMOUS_PATCH_EXECUTION_INCOMPLETE");
   const unresolved = new Set(patch.unresolvedFindingCodes);
-  if (review.critical_findings.some((finding) => finding.severity === "BLOCKING" && unresolved.has(finding.code))) throw new Error("AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED");
+  // A thesis-plan proposal may carry an unverified future data/access task,
+  // provided an independent targeted critic explicitly accepts that deferral.
+  // Scope and methodological validity findings cannot be deferred here.
+  if (review.critical_findings.some((finding) => finding.severity === "BLOCKING" && unresolved.has(finding.code) &&
+    (!/^(data_requirements|feasibility)(\.|$)/.test(finding.affected_field) ||
+      !patch.dataRequirements.some((requirement) => requirement.availability === "PENDING"))))
+    throw new Error("AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED");
   const previous = designAlternativeV2Schema.parse(alternative);
   const next = designAlternativeV2Schema.parse({ ...previous,
     research_design: { ...previous.research_design,

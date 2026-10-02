@@ -193,7 +193,7 @@ async function main() {
   assert.deepEqual(new Set(strictPatchSchema.required), new Set(Object.keys(strictPatchSchema.properties)),
     "The background Responses schema must include every property in required");
   const smallReview = { alternativeId: alternativeV2.id, intentPreserved: true, methodCoherent: true, evidenceSupported: true,
-    blockingScientificIssue: false, blockingReason: "", limitations: ["Acceso aún por verificar"], resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [] };
+    blockingScientificIssue: false, blockingReason: "", limitations: ["Acceso aún por verificar"], resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [], deferredAsFutureRequirementCodes: [] };
   const applied = applyAutonomousDesignPatch({ decision, critique: rejectedCritique, intent, pack, patch: smallPatch });
   assert.deepEqual(applied.definition, alternativeV2.definition);
   assert.deepEqual(applied.components, alternativeV2.components);
@@ -208,10 +208,28 @@ async function main() {
       autonomousCalls.push(request.schemaName);
       return request.schemaName === "autonomous_design_patch_v2" ? smallPatch : smallReview;
     } } as any });
-  assert.deepEqual(autonomousCalls, ["autonomous_design_patch_v2", "autonomous_design_targeted_critic_v1"]);
+  assert.deepEqual(autonomousCalls, ["autonomous_design_patch_v2", "autonomous_design_targeted_critic_v2"]);
   assert.equal(resolvedBundle.revised, true);
   assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
   assert.ok(resolvedBundle.alternative.transfer_limits.includes("Acceso aún por verificar"));
+  const accessCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
+    ...rejectedCritique.assessments[0].critical_findings[0], code: "ACCESS_UNVERIFIED", affected_field: "data_requirements",
+    issue: "Acceso aún no verificado", required_action: "Verificar acceso legal antes de ejecutar el estudio",
+  }] }] };
+  const deferredPatch = { ...smallPatch, resolvedFindingCodes: [], unresolvedFindingCodes: ["ACCESS_UNVERIFIED"] };
+  assert.ok(applyAutonomousDesignPatch({ decision, critique: accessCritique, intent, pack, patch: deferredPatch }).data_requirements
+    .some((requirement) => requirement.availability === "PENDING"), "Unknown future access stays a conditional requirement");
+  const deferredBundle = await resolveAutonomousDesignBundle({ ...rejected, critique: accessCritique }, { userId: "fixture", projectId: "fixture",
+    runId: "deferred-access", provider: { generateStructuredObject: async (request: any) => request.schemaName === "autonomous_design_patch_v2"
+      ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
+  assert.equal(deferredBundle.targetedReview?.blockingScientificIssue, false);
+  assert.deepEqual(deferredBundle.targetedReview?.deferredAsFutureRequirementCodes, ["ACCESS_UNVERIFIED"]);
+  const scopeBlockingCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
+    ...rejectedCritique.assessments[0].critical_findings[0], code: "SCOPE_UNCONFIRMED", affected_field: "scope",
+  }] }] };
+  assert.throws(() => applyAutonomousDesignPatch({ decision, critique: scopeBlockingCritique, intent, pack,
+    patch: { ...deferredPatch, unresolvedFindingCodes: ["SCOPE_UNCONFIRMED"] } }), /BLOCKING_FINDING_UNRESOLVED/,
+  "A real scope conflict cannot be deferred as future data access");
   let unsafeCalls = 0;
   await assert.rejects(() => resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "unsafe",
     researchSupport: async () => ({ status: "NOT_NEEDED", support: [], limitations: [], operations: [] }),

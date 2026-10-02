@@ -192,12 +192,21 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       const reviewPrompt = `${targetedCritic.systemPrompt}\n\n${targetedCritic.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(reviewVariables[variable as keyof typeof reviewVariables]))}`;
       if (Buffer.byteLength(reviewPrompt) > 20000) throw new Error("AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const reviewSchema = z.toJSONSchema(targetedAutonomousCriticSchema);
-      const reviewRequest = { prompt: reviewPrompt, schema: reviewSchema, schemaName: "autonomous_design_targeted_critic_v1", model: targetedCritic.model, reasoningEffort: targetedCritic.reasoning_effort, maxOutputTokens: targetedCritic.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_targeted_critic", promptVersion: targetedCritic.version, schemaName: "autonomous_design_targeted_critic_v1" } };
+      const reviewRequest = { prompt: reviewPrompt, schema: reviewSchema, schemaName: "autonomous_design_targeted_critic_v2", model: targetedCritic.model, reasoningEffort: targetedCritic.reasoning_effort, maxOutputTokens: targetedCritic.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_targeted_critic", promptVersion: targetedCritic.version, schemaName: "autonomous_design_targeted_critic_v2" } };
       targetedReview = targetedAutonomousCriticSchema.parse(await stageCheckpoint("AUTONOMOUS_DESIGN_TARGETED_CRITIC_1", { promptHash: fingerprint(reviewPrompt), schema: reviewSchema, model: targetedCritic.model, version: targetedCritic.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()
         ? provider.generateBackgroundStructuredObject({ ...reviewRequest, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: "AUTONOMOUS_DESIGN_TARGETED_CRITIC_1", promptHash: fingerprint(reviewPrompt), version: targetedCritic.version }), requestFingerprint: openAiBackgroundRequestFingerprint(reviewRequest) })
         : provider.generateStructuredObject(reviewRequest)));
       const priorBlocking = new Set(findings.filter((finding) => finding.severity === "BLOCKING").map((finding) => finding.code));
-      if (targetedReview.alternativeId !== selected.id || !targetedReview.intentPreserved || !targetedReview.methodCoherent || !targetedReview.evidenceSupported || targetedReview.blockingScientificIssue || targetedReview.unresolvedFindingCodes.some((code) => priorBlocking.has(code)) || [...priorBlocking].some((code) => !targetedReview!.resolvedFindingCodes.includes(code))) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección.");
+      const deferrable = new Set(findings.filter((finding) => finding.severity === "BLOCKING" &&
+        /^(data_requirements|feasibility)(\.|$)/.test(finding.affected_field) &&
+        patch.unresolvedFindingCodes.includes(finding.code) &&
+        patch.dataRequirements.some((requirement) => requirement.availability === "PENDING")).map((finding) => finding.code));
+      const deferred = new Set(targetedReview.deferredAsFutureRequirementCodes);
+      if (targetedReview.alternativeId !== selected.id || !targetedReview.intentPreserved || !targetedReview.methodCoherent || !targetedReview.evidenceSupported || targetedReview.blockingScientificIssue ||
+        [...deferred].some((code) => !deferrable.has(code)) ||
+        targetedReview.unresolvedFindingCodes.some((code) => priorBlocking.has(code) && !deferred.has(code)) ||
+        [...priorBlocking].some((code) => !targetedReview!.resolvedFindingCodes.includes(code) && !deferred.has(code)))
+        throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección.");
       revised = true;
     }
     if (!selected) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: no existe un diseño validado dentro del alcance confirmado.");
