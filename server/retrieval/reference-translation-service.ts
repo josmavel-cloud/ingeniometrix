@@ -181,6 +181,15 @@ function detectLanguageHeuristically(value: string | null | undefined) {
   return winner && winner.score >= 2 ? winner.language : null;
 }
 
+// A provider's work language can differ from its title language. Suppress
+// redundant Spanish title paraphrases without changing bibliographic truth.
+export function spanishTitleNeedsNoTranslation(title: string) {
+  const tokens = new Set(normalizeTextForLanguageDetection(referenceDisplayText(title)).split(" "));
+  const scores = Object.entries(LANGUAGE_STOPWORDS).map(([language, terms]) => ({ language,
+    score: terms.filter(term => tokens.has(term)).length })).sort((a, b) => b.score - a.score);
+  return scores[0].language === "es" && scores[0].score >= 2 && scores[0].score > scores[1].score;
+}
+
 export function getCachedTranslation(
   rawOpenAlexJson: Prisma.JsonValue | null,
   targetLanguage: string,

@@ -63,7 +63,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
     try {
-      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_ACQUISITION2_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
+      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_ACQUISITION3_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
         const discovery = await runWebDiscoveryOperation({ userId: input.userId, projectId: input.projectId, smoke: false,
@@ -75,37 +75,39 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
         const operation = { operationId: discovery.operationId, estimatedCostUsd: discovery.estimatedCostUsd, usage: discovery.usage, state: discovery.state };
         if (!["COMPLETED", "PARTIAL"].includes(discovery.state)) return { support: [] as VerifiedSupport[], limitation: `Miniinvestigación: ${discovery.state}`, operation };
         const accepted: VerifiedSupport[] = [];
-        let acquisitions = 0;
+        let acquisitions = 0, inspectedCandidates = 0;
         for (const candidate of discovery.candidates.slice(0, DESIGN_MINI_RESEARCH_POLICY.maxCandidates)) {
           const convergence = convergeWebCandidate({ context: { operationId: discovery.operationId, projectId: input.projectId,
             searchIntentHash: intentHash, gapSetHash, discoveredSourcePoolVersion: sourcePoolVersion,
             currentSourcePoolVersion: sourcePoolVersion, allowedGapIds: [gapId] }, discovery, candidate, existing });
           if (convergence.identityOutcome !== "NEW_SOURCE_CANDIDATE" || !convergence.semanticReviewRequired) continue;
-          // Two acquisition slots per operation, four total; failed slots are retained.
+          // Inspect at most five observed candidates; acquire at most two documents
+          // per operation/four per job. An HTTP denial is not an acquired document.
           if (acquisitions >= 2) break;
-          const slot = (ordinal - 1) * 2 + ++acquisitions;
-          const inspected = await stageCheckpoint(`DESIGN_SUPPORT_DOCUMENT_ACQUISITION2_${slot}`, {
+          const slot = (ordinal - 1) * 5 + ++inspectedCandidates;
+          const inspected = await stageCheckpoint(`DESIGN_SUPPORT_DOCUMENT_ACQUISITION3_${slot}`, {
             operationId: discovery.operationId, url: candidate.proposal.observedUrl, policy: DESIGN_MINI_RESEARCH_POLICY.version,
           }, async () => {
             try {
-              const document = await acquireSupportDocument(candidate.proposal.observedUrl, finding.question,
+              const document = await acquireSupportDocument(candidate.proposal.observedUrl, `${finding.question} ${candidate.proposal.identityProposal.title}`,
                 path.resolve("artifacts-local", "design-support", fingerprint([input.userId, input.projectId, input.runId])));
               const expected = normalizeConcept(candidate.proposal.identityProposal.title);
               const observed = normalizeConcept(document.title);
               // Identity is checked against the acquired title. Relevance and
               // methodological applicability remain independent critic decisions.
               if (!expected || !observed || !(observed.includes(expected) || expected.includes(observed)) || !document.passages.length)
-                return { source: null, reason: "DOCUMENT_IDENTITY_OR_TEXT_UNVERIFIED" };
+                return { source: null, acquired: true, reason: "DOCUMENT_IDENTITY_OR_TEXT_UNVERIFIED" };
               const source: VerifiedSupport = { sourceId: `DS-${fingerprint([input.projectId, input.runId, document.sha256]).slice(0, 20)}`,
                 gapId, title: document.title, authors: [], year: null, doi: null,
                 observationIds: convergence.discoveryObservationIds, document, provenance: "SYSTEM_DESIGN_SUPPORT" };
-              return { source, reason: null };
+              return { source, acquired: true, reason: null };
             } catch (error) {
               const code = (error as { code?: string }).code ?? (error instanceof Error ? error.message : "");
-              return { source: null, reason: /^DOCUMENT_[A-Z_]+$|^DESIGN_SUPPORT_[A-Z_]+$|^ERR_INVALID_IP_ADDRESS$|^ETIMEDOUT$|^ECONNRESET$|^ENOTFOUND$/.test(code)
+              return { source: null, acquired: false, reason: /^DOCUMENT_[A-Z_]+$|^DESIGN_SUPPORT_[A-Z_]+$|^ERR_INVALID_IP_ADDRESS$|^ETIMEDOUT$|^ECONNRESET$|^ENOTFOUND$/.test(code)
                 ? code : "DOCUMENT_ACQUISITION_FAILED" };
             }
           }, value => value.source?.document.privateArtifactPath ? [value.source.document.privateArtifactPath] : []);
+          if (inspected.acquired) acquisitions++;
           if (inspected.source && !accepted.some(source => source.document.sha256 === inspected.source!.document.sha256)) accepted.push(inspected.source);
         }
         return { support: accepted, limitation: accepted.length ? null : "No se verificó un documento adicional con identidad y pasajes inspeccionables.", operation };

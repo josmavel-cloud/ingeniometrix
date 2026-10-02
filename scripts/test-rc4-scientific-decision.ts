@@ -255,6 +255,11 @@ async function main() {
       ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
   assert.equal(deferredBundle.targetedReview?.blockingScientificIssue, false);
   assert.deepEqual(deferredBundle.targetedReview?.deferredAsFutureRequirementCodes, ["ACCESS_UNVERIFIED"]);
+  const operationalScopeCaveat = { assessments: [{ ...rejectedCritique.assessments[0],
+    user_decisions_required: ["Precisar apoyo de traducción; cualquier exclusión requerirá nueva revisión del alcance."],
+    scope: { ...scope, status: "PRESERVED" as const, confirmation_required: false } }] };
+  assert.doesNotThrow(() => applyAutonomousDesignPatch({ decision, critique: operationalScopeCaveat, intent, pack, patch: smallPatch }),
+    "An operational caution mentioning scope cannot override the explicit independent PRESERVED finding");
   const scopeBlockingCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
     ...rejectedCritique.assessments[0].critical_findings[0], code: "SCOPE_UNCONFIRMED", affected_field: "scope",
   }] }] };

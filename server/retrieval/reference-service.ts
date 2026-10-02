@@ -26,6 +26,7 @@ import {
 import { extractAccessSignals } from "./reference-access";
 import {
   readReferenceDisplayTranslations,
+  spanishTitleNeedsNoTranslation,
   resolveReferenceSourceLanguage,
 } from "./reference-translation-service";
 import { getLatestProjectReferenceSearchSnapshot } from "./reference-search-v2";
@@ -683,7 +684,8 @@ export async function listProjectReferences(
         })(),
         sourceLanguage,
         displayLanguage: languageContext.activeLanguage,
-        translatedTitle: referenceDisplayText(cachedTranslation?.translatedTitle) ?? null,
+        translatedTitle: languageContext.activeLanguage === "es" && spanishTitleNeedsNoTranslation(item.reference.title)
+          ? null : referenceDisplayText(cachedTranslation?.translatedTitle) ?? null,
         translatedAbstract: referenceDisplayText(cachedTranslation?.translatedAbstract) ?? null,
         hasAutoTranslation: Boolean(
           cachedTranslation?.translatedTitle || cachedTranslation?.translatedAbstract,

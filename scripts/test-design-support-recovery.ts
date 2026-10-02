@@ -1,4 +1,10 @@
 import assert from "node:assert/strict";
+import { spanishTitleNeedsNoTranslation } from "../server/retrieval/reference-translation-service";
+assert.equal(spanishTitleNeedsNoTranslation("Retroalimentación de aprendizajes con inteligencia artificial generativa en estudiantes universitarios"), true);
+assert.equal(spanishTitleNeedsNoTranslation("Feedback in higher education in Asian countries: an approach"), false);
+assert.equal(spanishTitleNeedsNoTranslation("Étude de la méthode pour les écoles"), false);
+assert.equal(spanishTitleNeedsNoTranslation("Evidence"), false);
+
 import { pinnedPublicLookup } from "../server/retrieval/safe-document-fetch";
 const pinned = pinnedPublicLookup({ address: "8.8.8.8", family: 4 });
 pinned("example.org", { all: true }, (error, addresses) => { assert.equal(error, null); assert.deepEqual(addresses, [{ address: "8.8.8.8", family: 4 }]); });

@@ -23,6 +23,12 @@ export function inScopeAlternatives(decision: ScientificDecision, critique: Desi
     const questions = [...alternative.pending_user_decisions.map(item => item.question), ...review.user_decisions_required];
     if (review.scope.status === "PENDING_USER_DECISION" && !questions.length) return false;
     if (review.scope.confirmation_required && review.scope.status !== "PENDING_USER_DECISION") return false;
+    // The independent structured scope finding outranks a keyword mentioned in
+    // an operational question (e.g. a warning not to narrow scope by language).
+    // This only permits repair; immutable scope validation and the next critic
+    // still have to pass. Pending or genuinely conflicting scope stays excluded.
+    if (["PRESERVED", "CLARIFIED"].includes(review.scope.status) && !review.scope.confirmation_required &&
+      !review.critical_findings.some(finding => finding.severity === "BLOCKING" && /^(scope|definition\.|intent)(\.|$)/.test(finding.affected_field))) return true;
     return questions.every(question => classifyPendingDecision(question, review.scope.status) !== "SCOPE_BLOCKING");
   });
 }

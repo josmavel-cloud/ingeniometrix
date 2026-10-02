@@ -36,7 +36,9 @@ export function rankSupportPassages(passages: SupportPassage[], question: string
   const terms = new Set(question.toLowerCase().normalize("NFKC").match(/[\p{L}\p{N}]{4,}/gu) ?? []);
   // This ranks inspection context only. Matching words never certify a claim.
   const ranked = passages.map((passage, index) => ({ passage, index,
-    score: [...terms].filter(term => passage.text.toLowerCase().includes(term)).length }))
+    score: [...terms].filter(term => passage.text.toLowerCase().includes(term)).length +
+      (/\b(should|must|describe|report|state|identify|record|document|debe|describir|registrar|indicar)\b/i.test(passage.text) ? 4 : 0) +
+      (passage.text.length >= 160 ? 1 : 0) }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   let size = 0;
   return ranked.filter(({ passage }) => {
