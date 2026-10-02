@@ -62,6 +62,96 @@ async function settleJobCall(jobId: string, id: string, estimate: number | null,
   });
 }
 
+// A late provider response may establish the cost of a call previously marked
+// unknown. Its durable response record is the proof linking usage to the job;
+// an aggregate invoice or a caller-supplied amount alone is not sufficient.
+export async function reconcileBackgroundJobUsage(input: {
+  jobId: string; logicalAttemptKey: string; reservationId: string; responseId: string;
+  requestFingerprint: string; estimate: number; usage: unknown; actualModel: string;
+}) {
+  if (!Number.isFinite(input.estimate) || input.estimate < 0 || !input.responseId || !input.actualModel || !input.usage)
+    throw new Error("BACKGROUND_USAGE_EVIDENCE_INVALID");
+  return prisma.$transaction(async (tx) => {
+    const job = await tx.$queryRaw<Array<{ id: string; userId: string; projectId: string }>>`
+      SELECT id, "userId", "projectId" FROM "BlueprintJob" WHERE id = ${input.jobId} FOR UPDATE`;
+    if (job.length !== 1) throw new Error("BACKGROUND_JOB_NOT_FOUND");
+    const response = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+      jobId: input.jobId, stageKey: backgroundStageKey(input.logicalAttemptKey) } } });
+    const proof = response?.outputJson as unknown as BackgroundProviderResponseRecord | null;
+    if (!proof || proof.responseId !== input.responseId || proof.requestFingerprint !== input.requestFingerprint ||
+      proof.reservationId !== input.reservationId || proof.actualModel !== input.actualModel ||
+      !proof.usage || fingerprint(proof.usage) !== fingerprint(input.usage) ||
+      !["completed", "incomplete", "failed", "cancelled"].includes(proof.providerStatus ?? ""))
+      throw new Error("BACKGROUND_USAGE_PROVENANCE_MISMATCH");
+    const cost = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: {
+      jobId: input.jobId, stageKey: "control:cost" } } });
+    const record = cost.outputJson as unknown as CostRecord;
+    const entry = record.entries.find(item => item.id === input.reservationId);
+    if (!entry || entry.model !== proof.model) throw new Error("PAID_RESERVATION_NOT_FOUND");
+    if (entry.status === "completed") {
+      if (entry.estimate !== input.estimate || fingerprint(entry.usage ?? null) !== fingerprint(input.usage))
+        throw new Error("BACKGROUND_USAGE_CONTRADICTORY");
+      return { reconciled: false, estimate: entry.estimate };
+    }
+    if (!["reserved", "pending_reconciliation", "failed_unknown_usage"].includes(entry.status))
+      throw new Error("BACKGROUND_USAGE_STATE_INVALID");
+    const previous = { status: entry.status, maximum: entry.maximum, estimate: entry.estimate };
+    Object.assign(entry, { status: "completed", estimate: input.estimate, usage: input.usage,
+      actualModel: input.actualModel, finishedAt: new Date().toISOString(),
+      category: input.estimate > entry.maximum ? "BOUND_VIOLATED_COST" :
+        proof.providerStatus === "completed" ? "RECONCILED_PROVIDER_COST" : "FAILED_CALL_COST" });
+    await tx.blueprintJobStage.update({ where: { id: cost.id }, data: { outputJson: json(record) } });
+    await tx.auditLog.create({ data: { userId: job[0].userId, projectId: job[0].projectId,
+      actorType: "SYSTEM", eventType: "BACKGROUND_JOB_USAGE_RECONCILED",
+      payloadJson: json({ jobId: input.jobId, reservationId: input.reservationId,
+        responseId: input.responseId, requestFingerprint: input.requestFingerprint,
+        previous, estimate: input.estimate, exceededReservation: input.estimate > entry.maximum }) } });
+    return { reconciled: true, estimate: input.estimate };
+  });
+}
+
+// The provider retrieval happens before this short transaction. A closed job
+// has no execution lease, but its response identity and request fingerprint
+// remain immutable and can still receive late evidence.
+export async function recordRetrievedBackgroundResponse(input: {
+  jobId: string; logicalAttemptKey: string; responseId: string; requestFingerprint: string;
+  providerStatus: string; actualModel: string; usage: unknown; outputText?: string | null;
+}) {
+  if (!input.responseId || !input.actualModel || !["completed", "incomplete", "failed", "cancelled"].includes(input.providerStatus))
+    throw new Error("BACKGROUND_RETRIEVAL_EVIDENCE_INVALID");
+  await prisma.$transaction(async tx => {
+    const job = await tx.$queryRaw<Array<{ id: string; userId: string; projectId: string }>>`
+      SELECT id, "userId", "projectId" FROM "BlueprintJob" WHERE id = ${input.jobId} FOR UPDATE`;
+    if (job.length !== 1) throw new Error("BACKGROUND_JOB_NOT_FOUND");
+    const row = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: {
+      jobId: input.jobId, stageKey: backgroundStageKey(input.logicalAttemptKey) } } });
+    const current = row.outputJson as unknown as BackgroundProviderResponseRecord;
+    if (current.responseId !== input.responseId || current.requestFingerprint !== input.requestFingerprint)
+      throw new Error("BACKGROUND_USAGE_PROVENANCE_MISMATCH");
+    if (current.usage && fingerprint(current.usage) !== fingerprint(input.usage))
+      throw new Error("BACKGROUND_USAGE_CONTRADICTORY");
+    if (current.actualModel && current.actualModel !== input.actualModel)
+      throw new Error("BACKGROUND_MODEL_CONTRADICTORY");
+    if (current.providerStatus && !["queued", "in_progress"].includes(current.providerStatus) && current.providerStatus !== input.providerStatus)
+      throw new Error("BACKGROUND_STATUS_CONTRADICTORY");
+    if (current.outputText && input.outputText && current.outputText !== input.outputText)
+      throw new Error("BACKGROUND_OUTPUT_CONTRADICTORY");
+    const changed = current.providerStatus !== input.providerStatus || !current.usage && Boolean(input.usage) ||
+      !current.outputText && Boolean(input.outputText);
+    if (!changed) return;
+    const updated = { ...current, providerStatus: input.providerStatus, actualModel: input.actualModel,
+      usage: input.usage, outputText: input.outputText ?? current.outputText ?? null,
+      status: current.status === "COMPLETED" ? "COMPLETED" : input.providerStatus === "completed" ? "PENDING" : input.providerStatus.toUpperCase(),
+      updatedAt: new Date().toISOString() };
+    await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(updated) } });
+    await tx.auditLog.create({ data: { userId: job[0].userId, projectId: job[0].projectId,
+      actorType: "SYSTEM", eventType: "BACKGROUND_RESPONSE_RETRIEVED_LATE",
+      payloadJson: json({ jobId: input.jobId, responseId: input.responseId,
+        requestFingerprint: input.requestFingerprint, priorStatus: current.providerStatus,
+        providerStatus: input.providerStatus, usagePresent: Boolean(input.usage), outputPresent: Boolean(input.outputText) }) } });
+  });
+}
+
 export async function settleCurrentJobCall(id: string, estimate: number | null, usage: unknown, actualModel?: string) {
   const execution = context.getStore();
   if (!execution) throw new Error("PERSISTENT_PAID_CONTEXT_REQUIRED");

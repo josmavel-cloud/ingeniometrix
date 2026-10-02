@@ -26,3 +26,16 @@ export function responseCostBound(params: { model?: string | null; max_output_to
   const maximumUsd = (inputTokens * rates[0] * cacheWriteFactor * (longContext ? 2 : 1) + params.max_output_tokens * rates[1] * (longContext ? 1.5 : 1)) / 1e6;
   return { maximumUsd, rates, inputTokens, imageTokens, cacheWriteFactor };
 }
+
+export function estimateResponseUsageCost(requestedModel: string, usage: {
+  input_tokens: number; output_tokens: number; input_tokens_details?: { cached_tokens?: number } | null;
+}) {
+  const bound = responseCostBound({ model: requestedModel, max_output_tokens: 1 });
+  if (!bound?.rates || !Number.isSafeInteger(usage.input_tokens) || !Number.isSafeInteger(usage.output_tokens) ||
+    usage.input_tokens < 0 || usage.output_tokens < 0) throw new Error("PROVIDER_USAGE_INVALID");
+  const cached = usage.input_tokens_details?.cached_tokens ?? 0;
+  if (!Number.isSafeInteger(cached) || cached < 0 || cached > usage.input_tokens) throw new Error("PROVIDER_USAGE_INVALID");
+  const longContext = ["gpt-5.4", "gpt-6-astra", "gpt-5.6-sol"].includes(requestedModel) && usage.input_tokens > 272000;
+  return (((usage.input_tokens - cached) * (bound.cacheWriteFactor ?? 1) + cached / 10) * bound.rates[0] * (longContext ? 2 : 1) +
+    usage.output_tokens * bound.rates[1] * (longContext ? 1.5 : 1)) / 1e6;
+}

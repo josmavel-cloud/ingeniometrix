@@ -6,10 +6,10 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { recordLlmUsage, type LlmUsageAttribution } from "@/server/llm-usage-registry";
 import { reservePaidCall, withPaidCallAttempt } from "@/server/mvp/application-budget";
-import { claimBackgroundProviderResponse, currentJobExecution, fingerprint, settleCurrentJobCall, updateBackgroundProviderResponse } from "@/server/mvp/job-execution-context";
+import { claimBackgroundProviderResponse, currentJobExecution, fingerprint, reconcileBackgroundJobUsage, updateBackgroundProviderResponse } from "@/server/mvp/job-execution-context";
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { classifyFailure } from "@/server/mvp/execution-policy";
-import { responseCostBound } from "./openai-cost-bound";
+import { estimateResponseUsageCost, responseCostBound } from "./openai-cost-bound";
 import { IncompleteStructuredOutputError } from "../structured-output-error";
 
 import type {
@@ -119,11 +119,8 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   const defaultModel = config.defaultModel;
 
   const estimatedCost = (params: Parameters<typeof responseCostBound>[0], response: OpenAI.Responses.Response) => {
-    const bound = responseCostBound(params);
-    if (!bound?.rates || !response.usage) return null;
-    const cached = response.usage.input_tokens_details?.cached_tokens ?? 0;
-    const longContext = ["gpt-5.4", "gpt-6-astra", "gpt-5.6-sol"].includes(String(params.model)) && response.usage.input_tokens > 272000;
-    return (((response.usage.input_tokens - cached) * (bound.cacheWriteFactor ?? 1) + cached / 10) * bound.rates[0] * (longContext ? 2 : 1) + response.usage.output_tokens * bound.rates[1] * (longContext ? 1.5 : 1)) / 1e6;
+    if (!response.usage || !params.model) return null;
+    return estimateResponseUsageCost(String(params.model), response.usage);
   };
 
   const audit = async (startedAt: string, params: unknown, response: OpenAI.Responses.Response) => {
@@ -177,7 +174,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
               schema: input.schema,
             },
           },
-        }, input.trackingAttribution), input.maxRetries,
+        }, input.trackingAttribution), currentJobExecution() ? 0 : input.maxRetries,
       );
       const usage = requireUsage(response);
 
@@ -243,17 +240,23 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         if (Date.now() >= deadline) throw new ProviderResponsePendingError(responseId, response?.status ?? record.providerStatus ?? "unknown");
         await delay(Math.min(interval, Math.max(0, deadline - Date.now())));
         response = await client.responses.retrieve(responseId);
-        record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { providerStatus: response.status ?? null, status: response.status === "queued" || response.status === "in_progress" ? "PENDING" : response.status === "completed" ? "PENDING" : response.status === "cancelled" ? "CANCELLED" : response.status === "incomplete" ? "INCOMPLETE" : "FAILED" });
+        record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { providerStatus: response.status ?? null,
+          ...(response.usage ? { usage: response.usage, actualModel: response.model } : {}),
+          status: response.status === "queued" || response.status === "in_progress" ? "PENDING" : response.status === "completed" ? "PENDING" : response.status === "cancelled" ? "CANCELLED" : response.status === "incomplete" ? "INCOMPLETE" : "FAILED" });
         interval = Math.min(maxMs, Math.ceil(interval * 1.6));
       }
 
       const cost = estimatedCost(params as Parameters<typeof responseCostBound>[0], response);
       if (cost !== null && response.usage) {
         if (reservation) await reservation.complete(cost, response.usage, response.model);
-        else if (record.reservationId) await settleCurrentJobCall(record.reservationId, cost, response.usage, response.model);
+        else if (record.reservationId) await reconcileBackgroundJobUsage({ jobId: currentJobExecution()!.jobId,
+          logicalAttemptKey: input.logicalAttemptKey, reservationId: record.reservationId,
+          responseId, requestFingerprint: input.requestFingerprint, estimate: cost,
+          usage: response.usage, actualModel: response.model });
       } else {
         if (reservation) await reservation.fail();
-        else if (record.reservationId) await settleCurrentJobCall(record.reservationId, null, null, response.model);
+        // A prior unknown reservation remains reserved until attributed usage is
+        // available; retrieval without usage cannot turn it into zero cost.
       }
       if (claim.created && Number(process.env.IMX_LLM_RUN_BUDGET_USD) > 0 && cost !== null) reservedApiUsd += cost - bound.maximumUsd;
       await audit(startedAt, params, response);
