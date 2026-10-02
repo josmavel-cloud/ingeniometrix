@@ -89,3 +89,51 @@ documents temporary polling storage with `store:false` and longer retention
 when `store:true` is explicit. The pilot privacy page does not promise a fixed
 provider retention term. Review that exposure before deployment; the prepared
 branch does not silently turn it into an accepted production policy.
+
+## MVP closure attempt on PR #16 (2026-10-02)
+
+The USD 2 feasibility restriction above describes the **historical** job and
+its saved policy. PR #16 now snapshots `internal-generation-pilot.v2` for new
+internal jobs only: target USD 2, soft warning USD 2.50, hard USD 3. Customer
+packages and the historical job are unchanged. Exact Responses input-token
+counts are used when available, with explicit estimate provenance otherwise.
+
+One new staging technical project, `7daf49f2-8bd4-4c03-af74-5c11e08a4b00`,
+used normal authenticated access and an audited staging-only internal
+generation grant. Its job `0fe8b5ad-4e0d-48ba-9336-15634a58abf4` reached
+evidence extraction, selector and the first independent critic. Three selected
+CORE sources and the frozen EvidenceSet were retained across every attempt.
+Neither this project nor its job is the owner's production project.
+
+The first resolution failed because an operational coverage question was
+treated as a confirmed-scope conflict. A versioned classifier correction
+allowed a compact repair. Responses then rejected the v1 strict JSON schema
+with HTTP 400 because `samplingSelection` was optional in `required`; the
+response had no ID. Its USD 0.41215 reservation remains **unknown**. A v2
+required-nullable schema produced a saved response, but the patch still asked
+for a post-Sources user approval and left a blocking scope finding. The v3
+prompt replaced that request with conservative coverage and future validation
+requirements. The saved v3 patch resolved scope but left documentary access
+unverified. Its independent targeted critic was run once from the saved patch
+under a versioned v2 contract. It accepted the conditional access deferral but
+reported `evidenceSupported=false`: direct methodological support remains
+insufficient. The job therefore stopped at `resolving_design`. No composition,
+scientific review, DOCX or authorized download occurred.
+
+| Known staging job usage | Value |
+| --- | ---: |
+| Input tokens | 31,693 |
+| Cached input tokens (subset of input) | 3,584 |
+| Output tokens | 24,075 |
+| Reasoning tokens (subset of output) | 7,666 |
+| Estimated known cost | USD 0.82798130 |
+| Unknown reservation retained | USD 0.41215000 |
+| Known plus reserved | USD 1.24013130 |
+
+The real scientific gate remains open: targeted Design Mini Research must find
+inspectable methodological support, or the plan must state an honest limitation
+without claiming an unsupported method. That path needs a separate bounded
+implementation and staging acceptance. The same job has exhausted its audited
+recovery attempts; it must not be replayed blindly or have its unknown
+reservation cleared. PR #16 remains draft, `main` and production remain
+unchanged. **Staging health and offline fixtures are not a complete E2E PASS.**
