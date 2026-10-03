@@ -1,3 +1,4 @@
+import { acquirePreviouslyObservedSupport } from "./design-support-alternate-acquisition";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
@@ -171,6 +172,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
     let supportOperations = 0;
     let inspectedExisting = false;
     let inspectedPriorSupport = false;
+    let inspectedAlternateRoutes = false;
     const gatherSupport = async (late?: typeof targetedAutonomousCriticSchema._output) => {
       const gaps = designSupportGaps(bundle, late);
       if (!gaps.length || supportOperations >= 2) return false;
@@ -193,6 +195,19 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
             policyVersion: "design-mini-research.v2", sources: reused });
           effectivePack = augmentMethodEvidencePack(effectivePack, addendum);
           designSupport = { status: "VERIFIED_SUPPORT", support: reused, limitations: [], operations: [] };
+          return true;
+        }
+      }
+      if (supportOperations === 1 && late && !inspectedAlternateRoutes) {
+        inspectedAlternateRoutes = true;
+        const recovered = await acquirePreviouslyObservedSupport({ ...input, gaps, knownSupport: addendum?.sources ?? [] });
+        if (recovered.length) {
+          addendum = sealDesignSupport({ userId: input.userId, projectId: input.projectId,
+            jobId: currentJobExecution()!.jobId, definitionHash: bundle.contextFingerprint,
+            policyVersion: "design-mini-research.v2", sources: [...(addendum?.sources ?? []), ...recovered] });
+          effectivePack = augmentMethodEvidencePack({ ...effectivePack, items: effectivePack.items.filter(item => !item.source_id.startsWith("DS-")) }, addendum);
+          designSupport = { status: "VERIFIED_SUPPORT", support: addendum.sources,
+            limitations: designSupport?.limitations ?? [], operations: designSupport?.operations ?? [] };
           return true;
         }
       }

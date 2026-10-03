@@ -164,3 +164,15 @@ assert.throws(() => buildDesignSupportDigest({ ...digestInput, requiredPointers:
 const abstractOnly = structuredClone(digestPack); abstractOnly.items.at(-1)!.evidence_level = "ABSTRACT_METADATA";
 assert.throws(() => buildDesignSupportDigest({ ...digestInput, pack: abstractOnly }), /PASSAGE_INTEGRITY/);
 console.log("DesignSupportDigest: PASS (whole passages, procedural detail, limits, diversity, ownership, immutable store)");
+
+import { verifiedPdfIdentityTitle } from "../server/mvp/design-support-document";
+import { observedAlternateUrls } from "../server/mvp/design-support-alternate-acquisition";
+assert.equal(verifiedPdfIdentityTitle("Methods for\nthematic analysis DOI 10.1234/test\fAppendix", { title: "Methods for thematic analysis", doi: "10.1234/test" }), "Methods for thematic analysis");
+assert.equal(verifiedPdfIdentityTitle("Other article\fMethods for thematic analysis 10.1234/test", { title: "Methods for thematic analysis", doi: "10.1234/test" }), null);
+assert.equal(verifiedPdfIdentityTitle("Methods for thematic analysis 10.1234/wrong", { title: "Methods for thematic analysis", doi: "10.1234/test" }), null);
+const alternateDiscovery = { operationId: "op", responseId: "response", diagnostics: { toolLimit: { accepted: true }, response: { webSearchCalls: [{ id: "tool", status: "completed", actionType: "search" }] } },
+  observations: [{ operationId: "op", responseId: "response", toolCallId: "tool", actionType: "search", normalizedUrl: "https://example.org/verified.pdf" }] } as unknown as WebDiscoveryResult;
+const alternateCandidate = { proposal: { accessProposal: { reportedPdfUrl: "https://example.org/verified.pdf", alternateUrls: ["https://example.org/unobserved.pdf", "http://127.0.0.1/private"] } } } as WebDiscoveryResult["candidates"][number];
+assert.deepEqual(observedAlternateUrls(alternateDiscovery, alternateCandidate).map(x => x.url), ["https://example.org/verified.pdf"]);
+assert.equal(observedAlternateUrls({ ...alternateDiscovery, responseId: "foreign" }, alternateCandidate).length, 0);
+console.log("Observed alternate acquisition identity/provenance: PASS");

@@ -54,7 +54,8 @@ export function rankSupportPassages(passages: SupportPassage[], question: string
   const ranked = passages.map((passage, index) => ({ passage, index,
     score: [...terms].filter(term => passage.text.toLowerCase().includes(term)).length +
       (/\b(should|must|describe|report|state|identify|record|document|debe|describir|registrar|indicar)\b/i.test(passage.text) ? 4 : 0) +
-      (passage.text.length >= 160 ? 1 : 0) }))
+      (passage.text.length >= 160 ? 1 : 0) +
+      (/\b(quality assessment|data extraction|coding|codes|themes|pilot|valoraci[oó]n|codificaci[oó]n)\b/iu.test(passage.text) ? 4 : 0) }))
     .sort((a, b) => b.score - a.score || a.index - b.index);
   let size = 0;
   return ranked.filter(({ passage }) => {
@@ -63,7 +64,13 @@ export function rankSupportPassages(passages: SupportPassage[], question: string
   }).slice(0, 12).sort((a, b) => a.index - b.index).map(item => item.passage);
 }
 
-export async function acquireSupportDocument(url: string, question: string, privateDirectory?: string): Promise<SupportDocument> {
+export function verifiedPdfIdentityTitle(extracted: string, expected: { title: string; doi: string | null }) {
+  const firstPage = clean(extracted.split("\f")[0]).normalize("NFKC").toLowerCase();
+  return firstPage.includes(clean(expected.title).normalize("NFKC").toLowerCase()) &&
+    (!expected.doi || firstPage.includes(expected.doi.toLowerCase())) ? expected.title : null;
+}
+
+export async function acquireSupportDocument(url: string, question: string, privateDirectory?: string, expectedIdentity?: { title: string; doi: string | null }): Promise<SupportDocument> {
   const fetched = await fetchPublicDocument(url, { Accept: "application/pdf,text/html,application/xhtml+xml" }, 20 * 1024 * 1024, 20000);
   if (!fetched.ok) throw new Error("DESIGN_SUPPORT_DOCUMENT_UNAVAILABLE");
   const sha256 = createHash("sha256").update(fetched.body).digest("hex");
@@ -81,8 +88,15 @@ export async function acquireSupportDocument(url: string, question: string, priv
       title = clean(/^Title:\s*(.+)$/m.exec(stdout)?.[1] ?? "");
       await promisify(execFile)("pdftotext", ["-f", "1", "-l", "60", file, output], { timeout: 60000, maxBuffer: 65536 });
       const extracted = await readFile(output, "utf8");
+      // PDF metadata can contain a placeholder (e.g. "Author:"). Trust a
+      // proposed title only when the actual first page contains it verbatim
+      // after whitespace normalization; a supplied DOI must occur too.
+      if (expectedIdentity && verifiedPdfIdentityTitle(extracted, expectedIdentity)) {
+        title = expectedIdentity.title;
+        bibliography = { title, doi: expectedIdentity.doi, authors: [], year: null };
+      }
       if (extracted.length > 2_000_000) throw new Error("DESIGN_SUPPORT_TEXT_TOO_LARGE");
-      passages = extracted.split("\f").flatMap((page, i) => page.split(/\n\s*\n/).map((paragraph, j) => ({
+      passages = extracted.split(/\nReferences\s*\n/, 1)[0].split("\f").flatMap((page, i) => page.split(/\n\s*\n/).map((paragraph, j) => ({
         text: clean(paragraph), page: i + 1, locator: `pdf:page:${i + 1}:paragraph:${j + 1}`,
       })).filter(passage => passage.text.length >= 40));
     } finally { await rm(directory, { recursive: true, force: true }); }
