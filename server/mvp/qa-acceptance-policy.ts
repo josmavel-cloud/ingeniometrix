@@ -11,14 +11,28 @@ export async function activeQaCampaign(tx: Prisma.TransactionClient, userId: str
   return tx.qaAcceptanceCampaign.findFirst({ where: { userId, status: "ACTIVE", expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } });
 }
 export async function qaJobPolicy(tx: Prisma.TransactionClient, jobId: string) {
-  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { userId: true, metadataJson: true } });
-  const metadata = job.metadataJson as { qaCampaignId?: string; costPolicyVersion?: string; commercialPolicy?: string } | null;
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { userId: true, projectId: true, metadataJson: true } });
+  const metadata = job.metadataJson as { qaCampaignId?: string; costPolicyVersion?: string; commercialPolicy?: string; scientificContinuation?: { version: string; parentJobId: string; frozenInputFingerprint: string; grantAuditId: string } } | null;
   if (metadata?.costPolicyVersion !== QA_COST_POLICY_VERSION) return null;
   if (!metadata.qaCampaignId || metadata.commercialPolicy !== "internal-platform-v1") throw new Error("QA_AUTHORIZATION_INVALID");
   const campaign = await tx.qaAcceptanceCampaign.findUniqueOrThrow({ where: { id: metadata.qaCampaignId } });
   if (campaign.userId !== job.userId || campaign.status !== "ACTIVE" || campaign.expiresAt <= new Date() ||
     campaign.totalCapMicros > 10_000_000 || campaign.jobCapMicros > 5_000_000 || campaign.maxJobs > 2)
     throw new Error("QA_AUTHORIZATION_EXPIRED_OR_INVALID");
+  if (metadata.scientificContinuation) {
+    const continuation = metadata.scientificContinuation;
+    const grant = await tx.auditLog.findFirst({ where: { id: continuation.grantAuditId, userId: job.userId,
+      projectId: job.projectId, eventType: "SCIENTIFIC_CONTINUATION_QA_AUTHORIZED" } });
+    const authorization = grant?.payloadJson as { version?: string; parentJobId?: string; campaignId?: string;
+      frozenInputFingerprint?: string; expiresAt?: string; maxContinuations?: number } | null;
+    const revoked = await tx.auditLog.count({ where: { userId: job.userId, projectId: job.projectId,
+      eventType: "SCIENTIFIC_CONTINUATION_QA_REVOKED", payloadJson: { path: ["grantAuditId"], equals: continuation.grantAuditId } } });
+    if (continuation.version !== "method-coverage-continuation.v1" || !authorization || revoked ||
+      authorization.version !== continuation.version || authorization.parentJobId !== continuation.parentJobId ||
+      authorization.campaignId !== campaign.id || authorization.frozenInputFingerprint !== continuation.frozenInputFingerprint ||
+      authorization.maxContinuations !== 1 || !authorization.expiresAt || new Date(authorization.expiresAt) <= new Date())
+      throw new Error("SCIENTIFIC_CONTINUATION_NOT_AUTHORIZED");
+  }
   return { campaign, policy: { target: 2, soft: 2.5, hard: campaign.jobCapMicros / 1e6, deep: 0.5, mandatoryReserve: 0.25, version: QA_COST_POLICY_VERSION } };
 }
 

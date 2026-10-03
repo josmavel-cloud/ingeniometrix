@@ -1,3 +1,4 @@
+import { readScientificContinuation } from "@/server/mvp/scientific-continuation";
 import { webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
 import { DESIGN_MINI_RESEARCH_POLICY } from "@/server/mvp/design-mini-research";
 import { designSupportRemainingForecast } from "@/server/mvp/whole-job-cost-forecast";
@@ -466,6 +467,8 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
   await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.RUNNING, progress: job.progress });
 
   try {
+    // Inherited science is a verified reference, never a copied provider call or reset attempt.
+    await readScientificContinuation(jobId);
     const frozenInput = await readGenerationInput(jobId, data.inputSnapshotId);
     return await withGenerationInput(frozenInput, async () => {
     if (stage !== "preparing_sources" && data.inputFingerprint !== projectFingerprint(await loadOwnedProject(job.userId, job.projectId))) throw new Error("INPUT_CHANGED: intake o seleccion incompatible con el job autorizado.");
