@@ -240,11 +240,19 @@ async function main() {
       materialize: async () => { throw new Error("Must not repeat extraction"); },
       recommend: async () => { throw new Error("Must not repeat selector/critic"); },
       resolve: async ({ jobId, runId }) => { resolves++; assert.equal(jobId, childId); assert.notEqual(runId, continuation!.contract.parentRunId);
-        assert.equal((await readScientificContinuation(jobId))!.decision.decisionFingerprint, continuation!.decision.decisionFingerprint); },
+        assert.equal((await readScientificContinuation(jobId))!.decision.decisionFingerprint, continuation!.decision.decisionFingerprint);
+        if(resolves===1){const pending=new Error("Same durable response remains processing; no second create");pending.name="ProviderResponsePendingError";throw pending;} },
       generate: executor.generate,
     };
+    const pending = await runNextBlueprintJobStage(childId, childExecutor);
+    assert.equal(pending.state,"provider_response_pending");assert.equal(pending.job?.status,"WAITING_NEXT_STAGE");
+    assert.equal(pending.job?.attempts,3);assert.equal(pending.job?.maxAttempts,3,"Pending retrieval does not consume the corrected execution allowance");
+    const notDue=await runNextBlueprintJobStage(childId,childExecutor);assert.equal(notDue.state,"locked_or_finished");assert.equal(resolves,1);
+    // Advance only fixture scheduling time, never counters or paid response state.
+    await prisma.blueprintJob.update({where:{id:childId},data:{nextAttemptAt:new Date(Date.now()-1000)}});
     const advanced = await runNextBlueprintJobStage(childId, childExecutor);
-    assert.equal(advanced.job?.currentStage, "generating_plan"); assert.equal(resolves, 1);
+    assert.equal(advanced.job?.currentStage, "generating_plan"); assert.equal(resolves, 2);
+    assert.equal(advanced.job?.attempts,3);assert.equal(advanced.job?.maxAttempts,3);
     const exhausted=await runNextBlueprintJobStage(childId,childExecutor);
     assert.equal(exhausted.job?.status,"FAILED");assert.equal(exhausted.job?.attempts,4);assert.equal(exhausted.job?.maxAttempts,3);
     await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/NOT_ELIGIBLE/);
