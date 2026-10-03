@@ -19,8 +19,8 @@ Read-only preparation verified 24 parent checkpoints and three reusable support
 documents (33 passages: JBI 12, PRISMA-S 12, thematic synthesis 9). Existing model
 credentials passed a non-generative models read; this is not a billing-balance proof.
 QA before this cycle: known USD 3.60340895, uncertain USD 0.547868, committed
-USD 4.15127695, remaining USD 5.84872305. Initial policy remains USD 5/job and
-USD 10/campaign, expiry 2026-10-04T00:00:00Z; no limit or expiry change yet.
+USD 4.15127695, remaining USD 5.84872305. At that preparation checkpoint the policy was USD 5/job and USD 10/campaign,
+expiry 2026-10-04T00:00:00Z. The later prospective authorization is recorded below.
 
 Offline gates so far: coverage contracts (77 checks), mocked resolver, isolated
 scientific-continuation concurrency/ownership, B4, scientific decision, background
@@ -32,7 +32,98 @@ One audited batch used two calls (language detection + translation), USD 0.01514
 A→B→A, two tabs, reload/back-forward and second-user private API denial pass;
 new real DOCX download isolation remains pending until the artifact exists.
 
-### Latest verified state — 2026-10-03 15:33 UTC
+### Latest causal closure update — qa26 terminal, 2026-10-03
+
+**MVP NOT_CLOSED.** The technical child reached a completed reconstruction on
+qa26, then stopped at **16:03:45 UTC** before the third methodological discovery
+was dispatched. No independent coverage critic, composition or DOCX completed.
+This section supersedes the 15:33 status below; candidate corrections described
+here are offline verified, **not** a qa27 scientific acceptance or publication.
+
+The child is still `0c5c52df-b492-4775-b5bc-23ee82f1cfb4`; the parent and owner
+projects were not reopened or mutated. The audited prospective overlay was
+applied for this child: USD 10/job and USD 15/campaign, expiring
+2026-10-04T00:00:00Z. Saved historical USD 5 policy and ordinary pilot
+2/2.50/3 limits remain unchanged. No unknown usage was erased.
+
+| Proven issue | Existing evidence | Scoped correction / current proof |
+| --- | --- | --- |
+| The third research operation could not fit the complete remaining route | Known child USD 4.96498750, uncertain child USD 0; next web maximum 2.0748 + reconstruction 2.1248 + independent review 0.57344 + mandatory composition 0.802685 + safety 0.25 = **10.79071250 > 10** | Denial was before dispatch; it is not another paid discovery. Recover already-paid useful documents before proposing further search. No budget or ledger reset. |
+| First acquired methodology PDF rejected on title typography | The same retained 11-page PDF has the expected ordered title words/version on its first page; only comma/colon/parenthesis spacing differs from the proposal | Typography-only identity normalization retains word order, version, DOI requirement and meaningful `+`/`#`; synthetic identity regressions and exact retained-file replay PASS. Runtime provenance must be re-established from the original completed observation because the old rejection did not preserve a URL/hash manifest. |
+| A bibliographic HTML record was treated as methodological full text | Retained ERIC body contains 10 metadata passages and one real abstract, **zero procedural passages** | Structured HTML content typing; metadata/abstract remain context-only. They cannot validate a procedural pointer. New acquired/failed-document manifests retain URL, final URL, hash and private path without content in logs. |
+| PDF ranking omitted actual appraisal criteria | The old 10k/12-passage acquisition selection retained a bibliography paragraph while omitting full criterion explanations already present in the document | New PDF inspection retains all bounded paragraphs; bibliography remains metadata across pages. The derived digest chooses intact criterion sections and application limits, without altering the original bytes or issuing web research. |
+| Source-level evidence basis could promote a context-only passage again | Rebuilding a method pack from the effective ledger formerly assigned the strongest source basis to every item | Optional derived item-level `evidence_basis` is preserved through ledger/pack. Legacy ordinary extractions retain their existing fallback. Abstract/metadata cannot become HTML procedural evidence during composition. |
+| Completed research checkpoint hash failed after numeric persistence | Replacing only stored `0.36225` by original JS `0.36224999999999996` reproduces the original aggregate hash; source/document data are unchanged | The settled paid response is independently validated by owner/job/input/usage/cost/observation identity. New producer costs use settled integer micros before hashing. Old checkpoint hash and accounting are not rewritten. |
+| Method reconstruction context remained unnecessarily repetitive | Offline request projection with typed retained support + complete PDF criteria was 142,635 prompt bytes | Reversible corpus, matrix and evidence transports preserve all text, class/operation rows, IDs, locators, limits and canonical evidence fingerprints; no truncation or scientific downgrade. Runtime complete-request token/context and whole-job admission remain required. |
+
+#### Retained evidence and context integrity
+
+Read-only replay verified SHA-256, exact paragraph text and original locator/ID
+continuity. The old 33 passages comprise **27 substantive passages**:
+JBI 10 (plus 2 metadata), PRISMA-S 8 (plus 1 abstract and 3 metadata), and thematic
+synthesis 9. No old source/checkpoint was overwritten. The ERIC record contributes
+zero substantive support. This correction changes permitted use, not history.
+
+The acquired appraisal PDF has SHA-256
+`d93bd6d5d6ca9bf1ba0c0015ff76e5204f1ec440c8f005f1c50a3a49221ee828`.
+Its new inspection retains 50 whole paragraphs; four bibliography paragraphs are
+metadata. The derived digest includes eight complete passages: the class-specific
+checklist on page 3, explanations on pages 4–8, and application/transfer limits on
+page 2. Those excerpts total **16,063 characters**. This is inspectable support
+for independent evaluation, **not a code-generated scientific approval**.
+
+The integrated prospective context includes 40 complete passages: 15 selected
+source context items and 25 supplemental digest items (JBI 6, PRISMA-S 6, thematic
+synthesis 5, new appraisal PDF 8). All 30 existing required pointers are supplied.
+No scientific excerpt is paraphrased, cut mid-paragraph or silently dropped.
+The full addendum remains canonical; prompt tables are exactly reversible.
+
+Current local size replay after reversible transports: **129,761 prompt bytes**,
+**142,601 serialized envelope bytes**, schema 8,178 bytes. The intentionally
+conservative local estimate of 40,744 input tokens is **LOCAL_ESTIMATE**, not a
+provider token count; it cannot certify the 65,536-token request capacity with
+34,816 output reserved. Exact complete-request admission must run before dispatch.
+Corpus projection saves 8,606 bytes versus two full profiles; matrix saves 5,256;
+evidence transport saves 8,068 without losing any quoted text or pointer.
+Research-audit metadata in this private replay is prospective; the runtime's
+reinspected manifest and final exact count remain authoritative.
+
+#### Tests and cost, without overstating acceptance
+
+Offline PASS: typed HTML/PDF content and private-path/hash checks; stable
+legacy IDs; context-only pointer rejection; source-to-ledger-to-pack continuity;
+whole criterion-section selection; lossless matrix/evidence round trips with
+fingerprint equality and tampering rejection; immutable addendum; TypeScript.
+Existing full scientific/resilience and DB suites must still pass on the complete
+candidate. No mocked output is a scientific acceptance.
+
+Additional qa26 calls with returned usage:
+
+| Call | Input | Cached subset | Output | Reasoning subset | Known estimated USD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Method discovery 1 | 21,792 | 0 | 1,770 | 208 | 0.3909000 |
+| Method discovery 2 | 22,144 | 4,750 | 1,109 | 222 | 0.3622500 |
+| Reconstruction v3 | 30,719 | 0 | 17,578 | 3,106 | 1.2628875 |
+
+Child known total is **USD 4.96498750**, child unknown 0. Historical campaign
+unknown **USD 0.547868** remains reserved. Including other recorded campaign work,
+known additional QA is **USD 8.58354245**, committed **USD 9.13141045**. These are
+usage-based estimates, not invoices; nested job/PaidOperation accounting is not
+added twice. Reasoning and cached tokens are subsets, not extra token totals.
+
+No production publication or new production scientific smoke is claimed.
+Remaining gates: exact admitted reconstruction with the corrected inspected
+support, independent per-cell scientific critique, composition/review, real DOCX,
+authorized download and document inspection, then normal checks/merge and the
+coordinated backup/deployment/smoke. The historical exact user PDF remains
+PENDING_EXACT_FILE and the upload checkbox remains unchanged.
+
+Private replay evidence: `/tmp/imx-support-typed-live-replay.json`,
+`/tmp/imx-method-integrated-context-replay.json`; complete prospective request
+is private `/tmp/imx-method-prospective-request.json`. Source bytes and model
+outputs are not committed.
+
+### Historical checkpoint — 2026-10-03 15:33 UTC (superseded above)
 
 One normal authenticated scientific continuation was created at 15:01 UTC:
 `0c5c52df-b492-4775-b5bc-23ee82f1cfb4`. The parent remains **8/8 unchanged**.
