@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
+import { generateStructuredObjectWithTextFallback } from "@/server/retrieval/retrieval-llm-json";
+import { classifyFailure } from "@/server/mvp/execution-policy";
 import { randomUUID } from "node:crypto";
 
 import { prisma } from "@/lib/prisma";
 import { createOpenAiProvider, openAiBackgroundRequestFingerprint, ProviderResponsePendingError } from "@/llm/providers/openai";
 import { ApplicationBudget, withApplicationBudget } from "@/server/mvp/application-budget";
 import { closeJobCostControl, jobCostSnapshot, preflightWholeJobCost, reconcileBackgroundJobUsage, recordRetrievedBackgroundResponse, settleCurrentJobCall, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
-import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
+import { IncompleteStructuredOutputError, KnownUsageStructuredParseError } from "@/llm/structured-output-error";
 import { INTERNAL_GENERATION_POLICY, reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
 
 const usage = { input_tokens: 1200, input_tokens_details: { cached_tokens: 200 }, output_tokens: 300, output_tokens_details: { reasoning_tokens: 100 }, total_tokens: 1500 };
@@ -19,7 +21,7 @@ const response = (id: string, status: string, outputText = "", withUsage = false
   output_text: outputText,
   usage: withUsage ? usage : null,
   incomplete_details: status === "incomplete" ? { reason: "max_output_tokens" } : null,
-  error: status === "failed" ? { code: "provider_failure", message: "fixture" } : null,
+  error: status === "failed" ? { code: "credit_balance_exhausted", message: "fixture" } : null,
 }) as any;
 
 const request = (logicalAttemptKey: string, totalWaitSeconds: number) => {
@@ -41,6 +43,14 @@ async function job(label: string) {
 
 async function main() {
   if (!process.env.DATABASE_URL?.includes("127.0.0.1:55440/imx_b4_validation_rc4")) throw new Error("RC4 isolated DB required");
+  let fallbackCalls = 0;
+  const fallback = (error: Error) => generateStructuredObjectWithTextFallback({ prompt: "offline", schemaName: "fixture", schema: {},
+    provider: { generateStructuredObject: async () => { throw error; }, generateText: async () => { fallbackCalls++; return '{"ok":true}'; } } as any });
+  for (const error of [new Error("credit_balance_exhausted"), new Error("timeout"), new SyntaxError("unattributed parse"), new Error("invalid_json_schema")])
+    await assert.rejects(() => fallback(error), error);
+  assert.equal(fallbackCalls, 0, "Unknown/provider/schema failures cannot enter a second paid output mode");
+  assert.deepEqual(await fallback(new KnownUsageStructuredParseError()), { ok: true });
+  assert.equal(fallbackCalls, 1);
   const createdUsers: string[] = [];
   try {
     const state = await job("restart"); createdUsers.push(state.userId);
@@ -155,6 +165,10 @@ async function main() {
     assert.equal((foregroundCost.outputJson as any).entries.length, 1);
     assert.equal((foregroundCost.outputJson as any).entries[0].status, "failed_unknown_usage");
 
+    await withJobExecution({ jobId: foreground.jobId, startedAt: foreground.startedAt, stage: "offline-text" }, () =>
+      assert.rejects(() => foregroundProvider.generateText({ prompt: "fixture", model: "gpt-6-astra", maxOutputTokens: 1024 }), /Request timed out/));
+    assert.equal(foregroundDispatches, 2, "A separately authorized text call also dispatches once despite transient timeout classification");
+
     const malformed = await job("malformed-output"); createdUsers.push(malformed.userId);
     let malformedCreates = 0;
     const malformedProvider = createOpenAiProvider({ apiKey: "offline", defaultModel: "gpt-6-astra", responseClient: {
@@ -201,6 +215,13 @@ async function main() {
       else if (terminal === "incomplete") await assert.rejects(run, IncompleteStructuredOutputError);
       else await assert.rejects(run, new RegExp(`OPENAI_BACKGROUND_${terminal.toUpperCase()}`));
       assert.equal(terminalCreates, 1);
+      if (terminal === "failed") {
+        const row = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: terminalState.jobId, stageKey: "provider:background:terminal-failed" } } });
+        assert.equal((row.outputJson as any).error, "OPENAI_BACKGROUND_FAILED:CREDIT_BALANCE_EXHAUSTED");
+        assert.deepEqual(classifyFailure(new Error((row.outputJson as any).error)), { category: "PROVIDER_NONRETRYABLE", autoRetry: false });
+        await assert.rejects(run, /CREDIT_BALANCE_EXHAUSTED/);
+        assert.equal(terminalCreates, 1, "Provider funding failure cannot trigger another create");
+      }
     }
 
     // An unknown-usage reservation remains committed at its maximum; it is never released as zero.

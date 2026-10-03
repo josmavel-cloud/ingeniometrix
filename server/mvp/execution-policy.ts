@@ -17,6 +17,7 @@ export function classifyFailure(error: unknown): { category: FailureClass; autoR
   const e = error as { message?: string; status?: number; code?: string; name?: string };
   const text = `${e?.name ?? ""} ${e?.message ?? error} ${e?.code ?? ""}`;
   if (/DECLARATIVE_DIAGRAM|PDF_|DOCX|VISUAL_|SECTION_COMPACTION|RENDER_SANITY_FAILURE/.test(text)) return { category: "PRESENTATION", autoRetry: false };
+  if (/CREDIT_BALANCE_EXHAUSTED|INSUFFICIENT_QUOTA/i.test(text)) return { category: "PROVIDER_NONRETRYABLE", autoRetry: false };
   if (/BUDGET|COST_LIMIT/.test(text)) return { category: "COST_LIMIT", autoRetry: false };
   if (/EVIDENCE|SCIENTIFIC_REVIEW_BLOCKED|UNKNOWN_EVIDENCE_POINTER/.test(text)) return { category: "SCIENTIFIC_INSUFFICIENCY", autoRetry: false };
   if (/IMAGE_/.test(text)) return { category: "PRESENTATION", autoRetry: false };

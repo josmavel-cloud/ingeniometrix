@@ -10,7 +10,7 @@ import { claimBackgroundProviderResponse, currentJobExecution, fingerprint, reco
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { classifyFailure } from "@/server/mvp/execution-policy";
 import { estimateResponseUsageCost, responseCostBound } from "./openai-cost-bound";
-import { IncompleteStructuredOutputError } from "../structured-output-error";
+import { IncompleteStructuredOutputError, KnownUsageStructuredParseError } from "../structured-output-error";
 
 import type {
   LlmProvider,
@@ -98,7 +98,7 @@ async function runWithTimeoutAndRetry<T>(work: () => Promise<T>, retryOverride?:
     } catch (error) {
       lastError = error;
 
-      if (attempt === maxRetries || !classifyFailure(error).autoRetry) {
+      if (attempt === maxRetries || (error as { usageUncertain?: boolean })?.usageUncertain || !classifyFailure(error).autoRetry) {
         throw error;
       }
 
@@ -168,7 +168,14 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
     if (limit > 0) reservedApiUsd += reserved;
     let response: OpenAI.Responses.Response;
     try { response = await client.responses.create(params as any) as OpenAI.Responses.Response; }
-    catch (error) { await reservation?.fail(); throw error; }
+    catch (error) {
+      await reservation?.fail();
+      const original = error as { message?: string; name?: string; status?: number; code?: string };
+      const uncertain = Object.assign(new Error(original?.message ?? "PROVIDER_USAGE_UNKNOWN", { cause: error }), {
+        name: original?.name ?? "ProviderCallUsageUnknownError", status: original?.status, code: original?.code, usageUncertain: true,
+      });
+      throw uncertain;
+    }
     let estimatedUsd: number | null = null;
     if (reservation && rates && response.usage) {
       estimatedUsd = estimatedCost(params as Parameters<typeof responseCostBound>[0], response);
@@ -218,7 +225,8 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         throw new Error("OpenAI no devolvio contenido estructurado.");
       }
 
-      return JSON.parse(response.output_text) as T;
+      try { return JSON.parse(response.output_text) as T; }
+      catch { throw new KnownUsageStructuredParseError(); }
     },
     async generateBackgroundStructuredObject<T>(input: BackgroundStructuredObjectInput) {
       if (!currentJobExecution()) throw new Error("PERSISTENT_BACKGROUND_CONTEXT_REQUIRED");
@@ -230,6 +238,10 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       if (expectedFingerprint !== input.requestFingerprint) throw new Error("BACKGROUND_REQUEST_FINGERPRINT_MISMATCH");
       const claim = await claimBackgroundProviderResponse({ provider: "openai", model, logicalAttemptKey: input.logicalAttemptKey, requestFingerprint: input.requestFingerprint, reservedCost: bound.maximumUsd, correlation: input.trackingAttribution ?? null });
       let record = claim.record;
+      // Normal execution cannot turn a terminal provider failure into polling
+      // or another create. Late accounting uses the explicit reconciler.
+      if (["FAILED", "CANCELLED"].includes(record.status))
+        throw new Error(record.error ?? `OPENAI_BACKGROUND_${record.status}`);
       let reservation: Awaited<ReturnType<typeof reservePaidCall>> | null = null;
       let response: OpenAI.Responses.Response | null = null;
       const startedAt = record.createdAt;
@@ -296,8 +308,11 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       }
       if (response.status !== "completed") {
         const status = response.status === "cancelled" ? "CANCELLED" : "FAILED";
-        await updateBackgroundProviderResponse(input.logicalAttemptKey, { status, providerStatus: response.status ?? null, usage: response.usage ?? null, actualModel: response.model, error: `OPENAI_BACKGROUND_${String(response.status).toUpperCase()}` });
-        throw new Error(`OPENAI_BACKGROUND_${String(response.status).toUpperCase()}`);
+        const providerCode = response.error?.code;
+        const safeCode = typeof providerCode === "string" && /^[a-z0-9_]{1,80}$/i.test(providerCode) ? `:${providerCode.toUpperCase()}` : "";
+        const causalError = `OPENAI_BACKGROUND_${String(response.status).toUpperCase()}${safeCode}`;
+        await updateBackgroundProviderResponse(input.logicalAttemptKey, { status, providerStatus: response.status ?? null, usage: response.usage ?? null, actualModel: response.model, error: causalError });
+        throw new Error(causalError);
       }
       if (!response.output_text) throw new Error("OpenAI no devolvio contenido estructurado.");
       await updateBackgroundProviderResponse(input.logicalAttemptKey, { status: "COMPLETED", providerStatus: response.status, outputText: response.output_text, usage: response.usage ?? null, actualModel: response.model, error: null });
