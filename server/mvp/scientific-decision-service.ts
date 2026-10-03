@@ -19,7 +19,7 @@ import { SCIENTIFIC_DESIGN_REPAIR_PROMPT as repair } from "./prompts/scientific-
 import { SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT as outputRepair } from "./prompts/scientific-design-output-repair.v1";
 import { SCIENTIFIC_DESIGN_AUTONOMOUS_PATCH_PROMPT as autonomousPatch } from "./prompts/scientific-design-autonomous-patch.v1";
 import { SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT as targetedCritic } from "./prompts/scientific-design-autonomous-targeted-critic.v1";
-import { applyAutonomousDesignPatch, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "./autonomous-design-resolution";
+import { applyAutonomousDesignPatch, compactAlternativeForRepair, compactCriticEvidence, compactPatchReview, inScopeAlternatives, resolveNonmaterialDecisions } from "./autonomous-design-resolution";
 import { mandatoryCompositionReservationFloor } from "./whole-job-cost-forecast";
 import { designSupportGaps, isFutureRequirementFinding } from "./design-support-gap";
 import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
@@ -266,7 +266,8 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
         ? provider.generateBackgroundStructuredObject({ ...request, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: patchKey, promptHash: fingerprint(prompt), version: autonomousPatch.version }), requestFingerprint: openAiBackgroundRequestFingerprint(request) })
         : provider.generateStructuredObject(request)));
       selected = applyAutonomousDesignPatch({ decision, critique, intent: bundle.intent, pack: effectivePack, patch, methodologicalSupportAdded: "methodologicalSupportAdded" in patch ? patch.methodologicalSupportAdded as Array<{ source_id: string; evidence_id: string }> : [] });
-      const reviewVariables = { ...variables, alternative_json: compactAlternativeForRepair(selected), patch_json: patch };
+      const reviewVariables = { ...variables, alternative_json: compactAlternativeForRepair(selected), patch_json: compactPatchReview(patch),
+        evidence_json: compactCriticEvidence(evidenceWithIdentity) };
       const reviewPrompt = `${targetedCritic.systemPrompt}\n\n${targetedCritic.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(reviewVariables[variable as keyof typeof reviewVariables]))}`;
       if (Buffer.byteLength(reviewPrompt) > 40000) throw new Error("AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const reviewSchema = z.toJSONSchema(targetedAutonomousCriticSchema);

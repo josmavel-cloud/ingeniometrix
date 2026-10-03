@@ -25,7 +25,7 @@ import { generationContextForUser } from "@/server/projects/generation-context-s
 import { designSupportGaps, designSupportMetadataEligible } from "@/server/mvp/design-mini-research";
 import { fingerprint } from "@/server/mvp/job-execution-context";
 import { generationCostReport } from "@/server/mvp/generation-cost-report";
-import { applyAutonomousDesignPatch, classifyPendingDecision, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "@/server/mvp/autonomous-design-resolution";
+import { applyAutonomousDesignPatch, compactCriticEvidence, compactPatchReview, classifyPendingDecision, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "@/server/mvp/autonomous-design-resolution";
 import { mandatoryCompositionReservationFloor, wholeJobCostEquation } from "@/server/mvp/whole-job-cost-forecast";
 import { evidenceContextForPhase } from "@/server/mvp/generation-budgets";
 
@@ -266,6 +266,14 @@ async function main() {
     runId: "compound-access", provider: { generateStructuredObject: async (request: any) => request.schemaName === "autonomous_design_patch_v2"
       ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
   assert.equal(compoundDeferred.targetedReview?.blockingScientificIssue, false, "Compound future requirements still require independent acceptance");
+  const repeatedIdentity = { title: "Guía", observedUrl: "https://example.org/guide", documentHash: "a".repeat(64) };
+  const fullPassages = Array.from({ length: 12 }, (_, index) => ({ source_id: "S1", evidence_id: `P${index}`, excerpt: "Pasaje original completo", source_identity: repeatedIdentity }));
+  const compactEvidence = compactCriticEvidence(fullPassages);
+  assert.equal(compactEvidence.sources.length, 1);
+  assert.equal(compactEvidence.passages.length, 12);
+  assert.deepEqual(compactEvidence.passages.map(item => item.excerpt), fullPassages.map(item => item.excerpt));
+  assert.deepEqual(compactPatchReview(deferredPatch).unresolvedFindingCodes, deferredPatch.unresolvedFindingCodes);
+  assert.ok(!("procedure" in compactPatchReview(deferredPatch)), "Procedure is already present in the repaired alternative, not duplicated");
   const operationalScopeCaveat = { assessments: [{ ...rejectedCritique.assessments[0],
     user_decisions_required: ["Precisar apoyo de traducción; cualquier exclusión requerirá nueva revisión del alcance."],
     scope: { ...scope, status: "PRESERVED" as const, confirmation_required: false } }] };
@@ -419,6 +427,13 @@ async function main() {
     const compoundRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     assert.equal(compoundRecovered.attempts, 1); assert.equal(compoundRecovered.maxAttempts, 3);
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 2,
+      errorJson: { message: "AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: fixture" } } });
+    const contextRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(contextRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).maxAttempts, 3);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: fixture" } } });
     await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
     await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
     await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });

@@ -365,11 +365,28 @@ export function resolveReferenceTranslationForLanguage(input: {
   };
 }
 
+// The provider's strict contract requires even nullable properties in required.
+// Detect a deterministic request defect before reserving or dispatching a call.
+export function validateTranslationSchemaContract(schema: unknown): void {
+  if (!schema || typeof schema !== "object") return;
+  if (Array.isArray(schema)) { schema.forEach(validateTranslationSchemaContract); return; }
+  const node = schema as Record<string, unknown>;
+  if (node.type === "object") {
+    const properties = Object.keys((node.properties ?? {}) as object);
+    const required = Array.isArray(node.required) ? node.required : [];
+    if (node.additionalProperties !== false || properties.some(key => !required.includes(key)) || required.length !== properties.length)
+      throw new Error("REFERENCE_DISPLAY_SCHEMA_INVALID");
+  }
+  Object.values(node).forEach(validateTranslationSchemaContract);
+}
+
 export async function ensureReferenceTranslationsForLanguage(input: {
   references: ReferenceRecordLike[];
   targetLanguage: string;
   strict?: boolean;
 }) {
+  validateTranslationSchemaContract(referenceLanguageDetectionBatchSchemaJson);
+  validateTranslationSchemaContract(referenceTranslationBatchSchemaJson);
   const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? APP_DEFAULT_LANGUAGE;
   const sourceLanguages = new Map<string, string | null>();
   const output = await readReferenceDisplayTranslations(input.references, targetLanguage);

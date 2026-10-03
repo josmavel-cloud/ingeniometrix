@@ -121,3 +121,22 @@ export function applyAutonomousDesignPatch(input: {
   validateScientificDecision({ ...input.decision, alternatives: [next], recommended_id: next.id }, input.intent, input.pack);
   return next;
 }
+
+/** Preserve every passage and source field while storing repeated identity once. */
+export function compactCriticEvidence<T extends { source_id: string; source_identity?: unknown }>(items: T[]) {
+  const sources = new Map<string, unknown>();
+  const passages = items.map(({ source_identity, ...item }) => {
+    if (source_identity) sources.set(item.source_id, source_identity);
+    return item;
+  });
+  return { sources: [...sources].map(([source_id, identity]) => ({ source_id, identity })), passages };
+}
+export function compactPatchReview(patch: z.infer<typeof autonomousDesignPatchSchema> & {
+  methodologicalSupportAdded?: Array<{ source_id: string; evidence_id: string }>; applicabilityJustification?: string }) {
+  // Procedure, data, assumptions and limitations are present in the repaired
+  // alternative. Here the critic needs only the claimed delta and its rationale.
+  return { version: "autonomous-patch-review.v1", alternativeId: patch.alternativeId,
+    resolvedFindingCodes: patch.resolvedFindingCodes, unresolvedFindingCodes: patch.unresolvedFindingCodes,
+    rationale: patch.rationale, methodologicalSupportAdded: patch.methodologicalSupportAdded ?? [],
+    applicabilityJustification: patch.applicabilityJustification ?? null };
+}
