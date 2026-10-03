@@ -25,7 +25,32 @@ USD 10/campaign, expiry 2026-10-04T00:00:00Z; no limit or expiry change yet.
 Offline gates so far: coverage contracts (77 checks), mocked resolver, isolated
 scientific-continuation concurrency/ownership, B4, scientific decision, background
 recovery and QA accounting PASS. Fixtures do not certify scientific acceptance.
-The live continuation, translation completion, DOCX and release remain pending.
+Fresh translation live acceptance now PASS on the mounted card: original English
+primary, Spanish secondary, real Spanish abstract, no reload or selection loss.
+One audited batch used two calls (language detection + translation), USD 0.015146,
+1,078 input / 830 output tokens, no uncertain usage. Technical project B only.
+A→B→A, two tabs, reload/back-forward and second-user private API denial pass;
+new real DOCX download isolation remains pending until the artifact exists.
+
+Candidate scientific code is `683a072` (PR16), staging qa24 runtime digest
+`sha256:a05b38f17b3dd74ff64fddee46cc2bb486b5759366caa26791aa63ae3f77760a`.
+One normal authenticated scientific continuation was created at 15:01 UTC:
+`0c5c52df-b492-4775-b5bc-23ee82f1cfb4`. Parent 8/8 is unchanged. The initial
+assessment has a persisted response ID, exact 15,504 input tokens, maximum
+reservation USD 0.6034 and mandatory remaining floor USD 0.802685. This is
+in-progress telemetry, not a scientific PASS.
+
+The new context uses complete request token admission, including schemas, and
+persists admission for background recovery without counting a reservation twice.
+Acquisition counts include rejected documents after bytes were received.
+Legacy composition prompt fingerprints remain exact; new coverage-aware prompts
+are separately versioned. The owner's existing snapshot passes read-only
+compatibility checks and has not been resumed.
+
+Production has not changed. The canonical backup remote currently requires normal
+Google OAuth reauthorization (`invalid_grant`); the owner has been notified of the
+single required reconnect action. No alternate backup repository or auth bypass
+has been used. DOCX, full scientific acceptance and release remain pending.
 The R01–R13 matrix below is the inherited baseline until this cycle's live evidence
 updates it. The prior terminal report is historical, not a stop instruction.
 
