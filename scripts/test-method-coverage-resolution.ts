@@ -51,6 +51,16 @@ const reconstructed = {
   dataRequirements: original.data_requirements, limitations: ["La cobertura observada no representa el corpus final."],
   rationale: "Métodos adecuados por clase, sin alterar alcance ni preguntas.", coverageProposal: matrixProposal(data.matrix),
 };
+// A composite primary display label must remain intact while its graph alias is
+// resolved; this is structural normalization, not a scientific approval.
+const descriptivePrimary=structuredClone(reconstructed);
+descriptivePrimary.primaryMethod="Síntesis documental con extracción y contraste por clase";
+const normalizedPrimary=applyMethodReconstruction(bundle,descriptivePrimary,data.pack);
+assert.equal(normalizedPrimary.primary_method,descriptivePrimary.primaryMethod);
+assert.equal(normalizedPrimary.components[0].name,descriptivePrimary.primaryMethod);
+assert.deepEqual(normalizedPrimary.components[0].support,original.components[0].support);
+assert.deepEqual(normalizedPrimary.definition,original.definition);
+assert.equal(descriptivePrimary.methodComponents[0].name,original.components[0].name);
 function reviewProposal(matrix: MethodCoverageMatrix) {
   const { version: _v, profileFingerprint: _p, effectiveEvidenceFingerprint: _e, ...value } = critiqueFor(matrix);
   value.findingAssessments.push({ code: "METHOD", category: "EVIDENCE_CLAIM_LIMITATION", methodValidityImpact: false,

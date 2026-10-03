@@ -6,6 +6,7 @@ import { annotateRetainedSupportContentKind } from "./design-support-content-kin
 import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
 import { recoverCompletedMethodResearch } from "./design-mini-research";
 import { publishMethodCoverageApproval } from "./autonomous-design-approval";
+import { normalizeDeclaredPrimaryMethod, METHOD_PRIMARY_NORMALIZATION_VERSION } from "./method-primary-normalization";
 import { normalizeDeclaredMethodHandoffs } from "./method-handoff-normalization";
 import type { LlmProvider, StructuredObjectInput } from "@/llm/provider";
 import { getConfiguredLlmProvider } from "@/llm";
@@ -56,6 +57,8 @@ export function applyMethodReconstruction(bundle: ScientificDecisionBundle, patc
   const original = designAlternativeV2Schema.parse(bundle.decision.alternatives.find(a => a.id === bundle.decision.recommended_id));
   if (![`${original.id}-R1`, "A2", "A3"].includes(patch.id)) throw new Error("METHOD_RECONSTRUCTION_ALTERNATIVE_INVALID");
   const priorConfirmed = original.data_requirements.filter(row => row.availability === "USER_CONFIRMED");
+  const primary=normalizeDeclaredPrimaryMethod(patch.primaryMethod,
+    [...original.components.filter(c=>c.kind!=="method"&&c.kind!=="technique"),...patch.methodComponents],patch.methodHandoffs);
   const next = designAlternativeV2Schema.parse({ ...original, id: patch.id, label: patch.label, primary_method: patch.primaryMethod,
     research_design: { ...original.research_design, ...patch.researchDesign,
       // Neither class handling nor a methodology choice can narrow these fields.
@@ -63,9 +66,9 @@ export function applyMethodReconstruction(bundle: ScientificDecisionBundle, patc
       constructs: original.research_design.constructs, data_material_sources: original.research_design.data_material_sources,
       pending_decisions: [], limitations: [...new Set([...original.research_design.limitations, ...patch.researchDesign.limitations, ...patch.limitations])],
     },
-    components: normalizeDeclaredMethodHandoffs([...original.components.filter(c => c.kind !== "method" && c.kind !== "technique"), ...patch.methodComponents],patch.methodHandoffs).components,
+    components: normalizeDeclaredMethodHandoffs(primary.components,primary.handoffs).components,
     qualitative_component: patch.qualitativeComponent, quantitative_component: patch.quantitativeComponent,
-    integration_strategy: patch.integrationStrategy, integration_purpose: patch.integrationPurpose, method_handoffs: patch.methodHandoffs,
+    integration_strategy: patch.integrationStrategy, integration_purpose: patch.integrationPurpose, method_handoffs: primary.handoffs,
     feasibility: patch.feasibility, data_requirements: [...priorConfirmed, ...patch.dataRequirements],
     transfer_limits: [...new Set([...original.transfer_limits, ...patch.limitations])], pending_user_decisions: [],
   });
@@ -103,7 +106,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
   const jobId = currentJobExecution()?.jobId ?? input.runId;
   const maxResearchOperations = input.maxResearchOperations ?? 2;
   const resolutionInput = { decisionFingerprint: bundle.decisionFingerprint,
-    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION, contextAdmissionVersion:METHOD_CONTEXT_ADMISSION_VERSION,
+    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, primaryNormalizationVersion:METHOD_PRIMARY_NORMALIZATION_VERSION, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION, contextAdmissionVersion:METHOD_CONTEXT_ADMISSION_VERSION,
     promptVersions:{assessment:assessmentPrompt.version,reconstruction:reconstructionPrompt.version,critic:criticPrompt.version},
     maxResearchOperations, support: input.inheritedSupport.map(s => [s.sourceId,s.document.sha256]) };
   const resolutionKey = await versionedCheckpointKey("AUTONOMOUS_DESIGN",resolutionInput);
@@ -276,10 +279,11 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
           historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:projectMethodCoverageContext(matrix), evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)), researchAudit:researchContext });
       const selected = reconstruction.alternatives.find(a=>a.id===reconstruction.selectedId);
       if (!selected || new Set(reconstruction.alternatives.map(a=>a.id)).size!==reconstruction.alternatives.length) throw new Error("METHOD_SELECTION_INVALID");
-      const graph = normalizeDeclaredMethodHandoffs([...original.components.filter(c => c.kind !== "method" && c.kind !== "technique"), ...selected.methodComponents],selected.methodHandoffs);
-      const graphInput = { reconstruction:fingerprint(selected),normalizationVersion:graph.audit.version };
+      const primary=normalizeDeclaredPrimaryMethod(selected.primaryMethod,[...original.components.filter(c=>c.kind!=="method"&&c.kind!=="technique"),...selected.methodComponents],selected.methodHandoffs);
+      const graph = normalizeDeclaredMethodHandoffs(primary.components,primary.handoffs);
+      const graphInput = { reconstruction:fingerprint(selected),normalizationVersion:graph.audit.version,primaryNormalizationVersion:primary.audit.version };
       const graphKey = await versionedCheckpointKey(`METHOD_GRAPH_NORMALIZATION_${round}`,graphInput);
-      await stageCheckpoint(graphKey,graphInput,async()=>graph.audit);
+      await stageCheckpoint(graphKey,graphInput,async()=>({...graph.audit,primary:primary.audit}));
       const alternative = applyMethodReconstruction(bundle,selected,pack);
       const roleDerivation = deriveCorpusMethodRoles(originalProfile,selected.corpusRoles);
       const roleInput = { originalProfileFingerprint:originalProfile.profileFingerprint,derivationFingerprint:roleDerivation.audit.derivationFingerprint };
