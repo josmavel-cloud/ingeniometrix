@@ -1,3 +1,4 @@
+import { readPublishedMethodCoverage } from "./autonomous-design-approval";
 import { readScientificContinuation, inheritedDesignSupport } from "./scientific-continuation";
 import { resolveMethodCoverage } from "./method-coverage-resolution";
 import { acquirePreviouslyObservedSupport } from "./design-support-alternate-acquisition";
@@ -435,34 +436,62 @@ export async function approveScientificDecision(input: { userId: string; project
   });
 }
 
-export async function approvedDesignForCurrentJob(intake: unknown, ledger: MvpStep5EvidenceLedger): Promise<DesignAlternative | undefined> {
+type ApprovedScientificValue = { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string;
+  supportAddendum?: DesignSupportAddendum; effectiveEvidenceFingerprint?: string;
+  methodCoverage?: import("./method-coverage-contracts").MethodCoverageMatrix };
+async function approvedScientificRecordForCurrentJob(intake: unknown, ledger: MvpStep5EvidenceLedger) {
   const execution = currentJobExecution();
   if (!execution) return undefined;
   const job = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, include: { project: { select: { degreeLevel: true } } } });
   if ((job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile !== "rc4") return undefined;
-  const approval = await prisma.blueprintJobStage.findFirst({ where: { jobId: job.id, stageKey: { in: [AUTONOMOUS_DESIGN_STAGE, SCIENTIFIC_APPROVAL_STAGE] }, status: "COMPLETED" }, orderBy: { completedAt: "desc" } });
-  const saved = (approval?.outputJson as { value?: { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string }; contextFingerprint?: string; alternative?: DesignAlternative; academicLevel?: string } | null)?.value ?? approval?.outputJson as { contextFingerprint: string; alternative: DesignAlternative; academicLevel: string } | null;
-  if (!saved || saved.academicLevel !== (currentGenerationInput()?.project.degreeLevel ?? job.project.degreeLevel) || saved.contextFingerprint !== decisionContextFingerprint(intake, ledger)) throw new Error("DESIGN_APPROVAL_REQUIRED_OR_STALE");
-  return saved.alternative;
+  const academicLevel = currentGenerationInput()?.project.degreeLevel ?? job.project.degreeLevel;
+  const contextFingerprint = decisionContextFingerprint(intake, ledger);
+  const publications = await prisma.blueprintJobStage.count({ where: { jobId: job.id, status: "COMPLETED",
+    stageKey: { startsWith: "checkpoint:METHOD_COVERAGE_APPROVAL" } } });
+  if (publications) {
+    const inherited = await readScientificContinuation(job.id);
+    const decision = inherited ? null : await prisma.blueprintJobStage.findUniqueOrThrow({ where: {
+      jobId_stageKey: { jobId: job.id, stageKey: SCIENTIFIC_DECISION_STAGE } } });
+    const envelope = decision?.outputJson as {value?:ScientificDecisionBundle;outputHash?:string} | null;
+    if (!inherited && (decision?.status !== "COMPLETED" || !envelope?.value || fingerprint(envelope.value) !== envelope.outputHash))
+      throw new Error("SCIENTIFIC_DECISION_CHECKPOINT_INVALID");
+    const decisionFingerprint = inherited?.decision.decisionFingerprint ?? envelope!.value!.decisionFingerprint;
+    const published = await readPublishedMethodCoverage(prisma, { jobId: job.id, userId: job.userId, projectId: job.projectId,
+      contextFingerprint, academicLevel, decisionFingerprint });
+    if (!published) throw new Error("DESIGN_APPROVAL_REQUIRED_OR_STALE");
+    return { job, row: published.row, saved: published.value as unknown as ApprovedScientificValue };
+  }
+  // Legacy immutable approvals remain readable. A failed historical fixed key
+  // cannot hide or replace a newly published versioned methodological approval.
+  const row = await prisma.blueprintJobStage.findFirst({ where: { jobId: job.id,
+    stageKey: { in: [AUTONOMOUS_DESIGN_STAGE, SCIENTIFIC_APPROVAL_STAGE] }, status: "COMPLETED" }, orderBy: { completedAt: "desc" } });
+  const envelope = row?.outputJson as { value?: ApprovedScientificValue; outputHash?: string } | null;
+  const saved = envelope?.value ?? row?.outputJson as ApprovedScientificValue | null;
+  if (row?.stageKey === AUTONOMOUS_DESIGN_STAGE && (!envelope?.value || fingerprint(envelope.value) !== envelope.outputHash))
+    throw new Error("DESIGN_APPROVAL_CHECKPOINT_INVALID");
+  if (!saved || saved.academicLevel !== academicLevel || saved.contextFingerprint !== contextFingerprint)
+    throw new Error("DESIGN_APPROVAL_REQUIRED_OR_STALE");
+  return { job, row: row!, saved };
+}
+
+export async function approvedDesignForCurrentJob(intake: unknown, ledger: MvpStep5EvidenceLedger): Promise<DesignAlternative | undefined> {
+  return (await approvedScientificRecordForCurrentJob(intake, ledger))?.saved.alternative;
 }
 
 export async function approvedGenerationContextForCurrentJob(intake: unknown, ledger: MvpStep5EvidenceLedger) {
-  const design = await approvedDesignForCurrentJob(intake, ledger);
-  const execution = currentJobExecution();
-  if (!execution || !design) return { design, ledger };
-  const job = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, select: { userId: true, projectId: true } });
-  const row = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: AUTONOMOUS_DESIGN_STAGE } } });
-  const saved = (row?.outputJson as { value?: { supportAddendum?: DesignSupportAddendum; effectiveEvidenceFingerprint?: string; methodCoverage?: import("./method-coverage-contracts").MethodCoverageMatrix } } | null)?.value;
-  if (!saved?.supportAddendum) return { design, ledger };
-  if (row?.status !== "COMPLETED" || saved.effectiveEvidenceFingerprint !== saved.supportAddendum.checksum)
+  const approved = await approvedScientificRecordForCurrentJob(intake, ledger);
+  if (!approved) return { design: undefined, ledger };
+  const {job,row,saved} = approved, design = saved.alternative;
+  if (!saved.supportAddendum) return { design, ledger };
+  if (row.status !== "COMPLETED" || saved.effectiveEvidenceFingerprint !== saved.supportAddendum.checksum)
     throw new Error("DESIGN_SUPPORT_CONTEXT_MISMATCH");
   for (const source of saved.supportAddendum.sources) {
     if (!source.document.privateArtifactPath || createHash("sha256").update(await readFile(source.document.privateArtifactPath)).digest("hex") !== source.document.sha256)
       throw new Error("DESIGN_SUPPORT_ARTIFACT_INTEGRITY");
   }
   return { design, methodCoverage: saved.methodCoverage, effectiveEvidenceFingerprint: saved.effectiveEvidenceFingerprint,
-    ledger: effectiveGenerationLedger(ledger, saved.supportAddendum, { ...job, jobId: execution.jobId,
-    definitionHash: decisionContextFingerprint(intake, ledger) }) };
+    ledger: effectiveGenerationLedger(ledger, saved.supportAddendum, { userId:job.userId,projectId:job.projectId,jobId:job.id,
+      definitionHash: decisionContextFingerprint(intake, ledger) }) };
 }
 
 // Explicit user action, never a polling/resume side effect. Preserve the same job,
