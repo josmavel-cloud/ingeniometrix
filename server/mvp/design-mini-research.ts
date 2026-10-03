@@ -14,6 +14,12 @@ import { normalizePublicWebUrl } from "@/server/retrieval/web-discovery-validati
 
 export const DESIGN_MINI_RESEARCH_POLICY = { version: "design-mini-research.v2", maxOperations: 2, maxToolCalls: 2, maxCandidates: 5, maxDocuments: 4, maxOutputTokens: 4096 } as const;
 type VerifiedSupport = DesignSupportSource;
+export type DesignMiniResearchResult = {
+  status: "NOT_NEEDED" | "NO_SAFE_CONTEXT" | "VERIFIED_SUPPORT" | "LIMITED";
+  support: VerifiedSupport[]; limitations: string[];
+  operations: Array<{ operationId: string; estimatedCostUsd: number | null; usage: unknown; state: string }>;
+  acquiredDocuments?: number;
+};
 
 // This is a conservative screening gate, not a claim about full-text quality.
 // The independent design critic still decides whether the source can support a
@@ -31,7 +37,7 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; methodCoverage?: { version: "method-coverage-reconstruction.v1"; ordinal: number; cellIds: string[]; documentAllowance: number }; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }) {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; methodCoverage?: { version: "method-coverage-reconstruction.v1"; ordinal: number; cellIds: string[]; documentAllowance: number }; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }): Promise<DesignMiniResearchResult> {
   const { bundle } = input;
   const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
   const closure = input.methodCoverage;
@@ -59,6 +65,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
   const support: VerifiedSupport[] = [];
   const limitations: string[] = [];
   const operations: Array<{ operationId: string; estimatedCostUsd: number | null; usage: unknown; state: string }> = [];
+  let acquiredDocuments = 0;
   for (const [index, finding] of material.entries()) {
     const gapId = finding.gapId;
     const gap = { gapId, searchIntentHash: intentHash, kind: "EVIDENCE" as const, importance: "MATERIAL" as const,
@@ -77,7 +84,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
             maxCandidates: DESIGN_MINI_RESEARCH_POLICY.maxCandidates, maxOutputTokens: DESIGN_MINI_RESEARCH_POLICY.maxOutputTokens },
           provider: createOpenAiWebDiscoveryProvider({ apiKey: key }) });
         const operation = { operationId: discovery.operationId, estimatedCostUsd: discovery.estimatedCostUsd, usage: discovery.usage, state: discovery.state };
-        if (!["COMPLETED", "PARTIAL"].includes(discovery.state)) return { support: [] as VerifiedSupport[], limitation: `Miniinvestigación: ${discovery.state}`, operation };
+        if (!["COMPLETED", "PARTIAL"].includes(discovery.state)) return { support: [] as VerifiedSupport[], limitation: `Miniinvestigación: ${discovery.state}`, operation, acquiredDocuments: 0 };
         const accepted: VerifiedSupport[] = [];
         let acquisitions = 0, inspectedCandidates = 0;
         for (const candidate of discovery.candidates.slice(0, DESIGN_MINI_RESEARCH_POLICY.maxCandidates)) {
@@ -108,15 +115,18 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
               return { source, acquired: true, reason: null };
             } catch (error) {
               const code = (error as { code?: string }).code ?? (error instanceof Error ? error.message : "");
-              return { source: null, acquired: false, reason: /^DOCUMENT_[A-Z_]+$|^DESIGN_SUPPORT_[A-Z_]+$|^ERR_INVALID_IP_ADDRESS$|^ETIMEDOUT$|^ECONNRESET$|^ENOTFOUND$/.test(code)
+              return { source: null, acquired: (error as { documentAcquired?: boolean })?.documentAcquired === true, reason: /^DOCUMENT_[A-Z_]+$|^DESIGN_SUPPORT_[A-Z_]+$|^ERR_INVALID_IP_ADDRESS$|^ETIMEDOUT$|^ECONNRESET$|^ENOTFOUND$/.test(code)
                 ? code : "DOCUMENT_ACQUISITION_FAILED" };
             }
           }, value => value.source?.document.privateArtifactPath ? [value.source.document.privateArtifactPath] : []);
           if (inspected.acquired) acquisitions++;
           if (inspected.source && !accepted.some(source => source.document.sha256 === inspected.source!.document.sha256)) accepted.push(inspected.source);
         }
-        return { support: accepted, limitation: accepted.length ? null : "No se verificó un documento adicional con identidad y pasajes inspeccionables.", operation };
+        return { support: accepted, limitation: accepted.length ? null : "No se verificó un documento adicional con identidad y pasajes inspeccionables.", operation, acquiredDocuments: acquisitions };
       }, value => value.support.flatMap(source => source.document.privateArtifactPath ? [source.document.privateArtifactPath] : []));
+      // Persisted count includes fetched documents later rejected by identity or
+      // extraction; the resolver's job-wide limit must not count only accepted sources.
+      acquiredDocuments += verified.acquiredDocuments ?? Math.min(2, closure?.documentAllowance ?? 2);
       support.push(...verified.support);
       operations.push(verified.operation);
       if (closure && verified.operation.estimatedCostUsd === null &&
@@ -129,5 +139,5 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       limitations.push(/COST|BUDGET|CAP|PAID_REQUEST/.test(code) ? "La miniinvestigación quedó limitada por el presupuesto o una operación pendiente de conciliación." : "La miniinvestigación técnica no produjo evidencia verificable adicional.");
     }
   }
-  return { status: support.length ? "VERIFIED_SUPPORT" as const : "LIMITED" as const, support, limitations, operations };
+  return { status: support.length ? "VERIFIED_SUPPORT" as const : "LIMITED" as const, support, limitations, operations, acquiredDocuments };
 }

@@ -159,13 +159,38 @@ async function run() {
           observedUrl: "https://example.org/method", finalUrl: "https://example.org/method", mediaType: "text/html", sha256: "a".repeat(64), title: "Guía metodológica sintética",
           passages: [{ text: "El procedimiento de extracción debe registrar los resultados, sus denominadores y las condiciones de medición, manteniendo unidades y límites de interpretación para no combinar cantidades incompatibles.", page: null, locator: "section:extraction:paragraph:1" }],
         } };
-      return { status: "VERIFIED_SUPPORT", support: [source], operations: [], limitations: [] };
+      return { status: "VERIFIED_SUPPORT", support: [source], operations: [], limitations: [], acquiredDocuments: 1 };
     } });
   assert.equal(gapSearches, 1);
+  assert.equal((supported.researchAudit[0] as { acquiredDocuments: number }).acquiredDocuments, 1);
   assert.equal(newSupport.calls.length, 3);
   assert.equal(supported.supportAddendum.sources[0].provenance, "SYSTEM_DESIGN_SUPPORT");
   assert.ok(supported.alternative.research_design.methodological_support.some(pointer => pointer.source_id === "DS-new-fixture"));
   assert.equal(JSON.stringify(bundle), before);
+
+  // Two documents can be downloaded while only one (or none) is admitted.
+  // Across operations count those bytes, not the size of the accepted-source list.
+  const rejectedSupport = providerFor("NEW_SUPPORT");
+  const originalMock = rejectedSupport.provider.generateStructuredObject.bind(rejectedSupport.provider);
+  rejectedSupport.provider.generateStructuredObject = async <T>(request: StructuredObjectInput): Promise<T> => {
+    const output = await originalMock<Record<string, any>>(request);
+    if (request.schemaName.startsWith("method_coverage_critic_")) {
+      const cell = output.cellAssessments.find((row: { cellId: string }) => row.cellId === "EMPIRICAL_QUANTITATIVE:DATA_EXTRACTION");
+      cell.coverageStatus = "UNSUPPORTED"; cell.transferSupported = false;
+      cell.reason = "Los documentos adquiridos no acreditan esta operación.";
+    }
+    return output as T;
+  };
+  let acquiredOperations = 0;
+  await assert.rejects(() => resolveMethodCoverage(bundle, { userId: "fixture-user", projectId: "fixture-project", runId: "fixture-run", inheritedSupport: [],
+    provider: rejectedSupport.provider, maxResearchOperations: 4, researchSupport: async input => {
+      acquiredOperations++;
+      assert.equal(input.methodCoverage?.documentAllowance, acquiredOperations === 1 ? 4 : 2);
+      const source = structuredClone(supported.supportAddendum.sources[0]);
+      source.gapId = input.gaps![0].gapId;
+      return { status: "VERIFIED_SUPPORT", support: acquiredOperations === 1 ? [source] : [], operations: [], limitations: [], acquiredDocuments: 2 };
+    } }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
+  assert.equal(acquiredOperations, 2, "Four acquired documents exhaust the job limit even if only one was admitted");
 
   const pending = structuredClone(reconstructed); pending.researchDesign.pending_decisions = ["Elegir metodología con el usuario."];
   const parsedPending = methodologicalReconstructionSchema.shape.alternatives.element.parse(pending);

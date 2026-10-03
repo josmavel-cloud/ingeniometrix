@@ -76,7 +76,14 @@ export function verifiedPdfIdentityTitle(extracted: string, expected: { title: s
 export async function acquireSupportDocument(url: string, question: string, privateDirectory?: string, expectedIdentity?: { title: string; doi: string | null }): Promise<SupportDocument> {
   const fetched = await fetchPublicDocument(url, { Accept: "application/pdf,text/html,application/xhtml+xml" }, 20 * 1024 * 1024, 20000);
   if (!fetched.ok) throw new Error("DESIGN_SUPPORT_DOCUMENT_UNAVAILABLE");
-  return inspectSupportDocumentBytes(fetched, url, question, privateDirectory, expectedIdentity);
+  try { return await inspectSupportDocumentBytes(fetched, url, question, privateDirectory, expectedIdentity); }
+  catch (error) {
+    // The body was acquired even when PDF parsing, identity or persistence fails.
+    // Propagate only a safe counting marker; never include document bytes/content.
+    const failure = error instanceof Error ? error : new Error("DESIGN_SUPPORT_INSPECTION_FAILED");
+    Object.assign(failure, { documentAcquired: true });
+    throw failure;
+  }
 }
 
 export async function inspectSupportDocumentBytes(fetched: { body: Buffer; contentType: string; finalUrl: string },

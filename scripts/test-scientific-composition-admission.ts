@@ -29,10 +29,14 @@ async function main() {
   const shortRequest = { ...request, prompt: "Contexto científico breve" };
   const estimated = await scientificCompositionForecast({ provider: fallback, request: shortRequest, minimumRemainingMandatoryReservation: 0 });
   assert.equal(estimated.tokenCountProvenance, "LEGACY_CONSERVATIVE_BOUND");
+  const schemaHeavy = { ...shortRequest, schema: { ...shortRequest.schema, description: "Required scientific output contract. ".repeat(2000) } };
+  const schemaBound = await scientificCompositionForecast({ provider: fallback, request: schemaHeavy, minimumRemainingMandatoryReservation: 0 });
+  assert.ok(schemaBound.inputTokens > estimated.inputTokens + 60000, "Conservative bound includes schema overhead, not only prompt bytes");
+  assert.equal(schemaBound.contextAdmissible, false);
   assert.ok(estimated.inputTokens > Buffer.byteLength(shortRequest.prompt));
   await assert.rejects(() => scientificCompositionForecast({ provider, request: { ...request, maxOutputTokens: 0 }, minimumRemainingMandatoryReservation: 0 }), /FORECAST_INVALID/);
   await assert.rejects(() => scientificCompositionForecast({ provider, request, minimumRemainingMandatoryReservation: Number.NaN }), /FORECAST_INVALID/);
   assert.equal(fullPassage, JSON.parse(request.prompt).evidence[0].excerpt, "No passage, pointer or schema is truncated");
-  console.log("Scientific composition admission: PASS (16 checks, no providers or DB; bytes diagnostic, full request tokens authoritative).");
+  console.log("Scientific composition admission: PASS (18 checks, no providers or DB; bytes diagnostic, full request tokens authoritative).");
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });
