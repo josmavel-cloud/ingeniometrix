@@ -1,3 +1,4 @@
+import { approvedScientificCompositionPrompt } from "./prompts/scientific-plan-method-coverage.v2";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -14,11 +15,11 @@ import { compactSectionToBudget } from "./section-budget";
 import { stageCheckpoint, stableJson } from "./job-execution-context";
 import { evidenceContextForPhase, generationBudget, GENERATION_POLICY_VERSION, priorSectionsForPhase, SCIENTIFIC_MODEL } from "./generation-budgets";
 import type { DesignAlternative } from "./scientific-decision-contracts";
-import { APPROVED_SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT, APPROVED_SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-approved.v1";
 import { LATAM_COMPACT_GENERATION_ORDER, latamCompactSectionPlan, validateLatamCompactDefinition } from "./document-profiles/latam-compact-v1";
 import { SCIENTIFIC_DOCUMENT_CITATION_REPAIR_PROMPT } from "./prompts/scientific-document-citation-repair.v1";
 import { claimJobControlSlot } from "./job-execution-context";
-import { scientificStructuredCall } from "./scientific-structured-call";
+import { generateAdmittedScientificComposition } from "./scientific-composition-admission";
+import { responseCostBound } from "@/llm/providers/openai-cost-bound";
 
 const paragraphSchema = z.object({ text: z.string().min(1), citations: z.array(evidencePointerSchema) });
 const narrativeSchema = z.object({ paragraphs: z.array(paragraphSchema).min(1), assumptions: z.array(z.string()), limitations: z.array(z.string()) });
@@ -80,10 +81,33 @@ export function prepareCitationLabels(ledger: MvpStep5EvidenceLedger) {
 }
 
 export async function generateScientificPlan(input: { provider: LlmProvider; projectId: string; runId: string; intake: unknown; ledger: MvpStep5EvidenceLedger; artifactDir: string; approvedDesign?: DesignAlternative; methodCoverage?: import("./method-coverage-contracts").MethodCoverageMatrix; effectiveEvidenceFingerprint?: string; documentProfile?: "legacy-release0" | "latam-compact-v1" }) {
-  const generate = <T>(request: Parameters<LlmProvider["generateStructuredObject"]>[0]) => scientificStructuredCall<T>(input.provider, request, input);
+  const generate = <T>(request: Parameters<LlmProvider["generateStructuredObject"]>[0]) => {
+    const normalOrder = ["evidence_synthesis", "problem_definition", ...input.approvedDesign ? [] : ["research_questions", "objectives_and_optional_hypotheses"],
+      "conceptual_framework", ...input.approvedDesign ? [] : ["research_design"], "methodology",
+      ...compactProfile ? [] : ["contribution_and_feasibility", "scope_limitations_and_pending_decisions"],
+      "consistency_matrix", "cross_section_review", "final_title", "executive_summary"];
+    const phase = request.schemaName.replace(/^b3_/, "");
+    const isRepair = request.schemaName === "rc4_g3_scientific_citation_repair_v1";
+    const isRepairReview = request.schemaName === "rc4_g3_cross_section_repair_review";
+    const phaseIndex = normalOrder.indexOf(isRepair || isRepairReview ? "cross_section_review" : phase);
+    if (phaseIndex < 0) throw new Error("SCIENTIFIC_COMPOSITION_STAGE_UNKNOWN");
+    const remaining = [...isRepair ? ["cross_section_review"] : [], ...normalOrder.slice(phaseIndex + 1)];
+    // Minimum unavoidable scientific context; future generated prose is not yet
+    // available. This forecast is a planning floor, never a provider invoice.
+    const minimumRemainingMandatoryReservation = remaining.reduce((sum, nextPhase) => {
+      const budget = generationBudget(nextPhase, compactProfile ? "latam-compact-v1" : "legacy-release0");
+      const model = nextPhase === "consistency_matrix" ? CONSISTENCY_MATRIX_PROMPT.model : SCIENTIFIC_MODEL;
+      const context = { intake: input.intake, definition, researchDesign: design, methodCoverage: input.methodCoverage,
+        evidence: evidenceContextForPhase(nextPhase, evidence, nextPhase === "methodology" ? methodPointers : new Set()) };
+      const bound = responseCostBound({ model, input: JSON.stringify(context), max_output_tokens: budget.max_output_tokens });
+      if (!bound) throw new Error("SCIENTIFIC_COMPOSITION_FORECAST_INVALID");
+      return sum + bound.maximumUsd;
+    }, 0);
+    return generateAdmittedScientificComposition<T>({ ...input, request, minimumRemainingMandatoryReservation });
+  };
   const compactProfile = input.documentProfile === "latam-compact-v1";
   const scientificPrompt = input.approvedDesign
-    ? compactProfile ? APPROVED_SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT : APPROVED_SCIENTIFIC_PLAN_PROMPT
+    ? approvedScientificCompositionPrompt(compactProfile, Boolean(input.methodCoverage))
     : compactProfile ? SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT : LEGACY_SCIENTIFIC_PLAN_PROMPT;
   const scientificTasks = compactProfile ? SCIENTIFIC_TASKS_LATAM_COMPACT : LEGACY_SCIENTIFIC_TASKS;
   const coverage = assessEvidenceCoverage(input.ledger);
@@ -110,12 +134,17 @@ export async function generateScientificPlan(input: { provider: LlmProvider; pro
       .map((item) => `${item.source_id}:${item.evidence_id}`));
     const phaseEvidence = compactProfile ? evidenceContextForPhase(phase, evidence,
       phase === "methodology" ? requiredMethodSupport : new Set()) : evidence;
-    if (JSON.stringify(phaseEvidence).length > sectionBudget.evidence_context_budget || JSON.stringify(upstream).length > sectionBudget.prior_context_budget) throw new Error("USER_ACTION_REQUIRED: scientific context exceeds safe profile; no evidence silently discarded");
+    // Byte sizes remain diagnostics only. The complete assembled request,
+    // including coverage and schema, is admitted by token/context + job budget.
+    const contextDiagnostics = { evidenceBytes: Buffer.byteLength(JSON.stringify(phaseEvidence)),
+      priorSectionBytes: Buffer.byteLength(JSON.stringify(upstream)),
+      priorByteGuardExceeded: JSON.stringify(phaseEvidence).length > sectionBudget.evidence_context_budget || JSON.stringify(upstream).length > sectionBudget.prior_context_budget };
     const context = { intake: input.intake, stable_definition: definition, research_design: design, method_coverage: input.methodCoverage, effective_evidence_fingerprint: input.effectiveEvidenceFingerprint, evidence: phase === "final_title" || phase === "executive_summary" ? [] : phaseEvidence, coverage, upstream_sections: upstream, word_budget: sectionBudget.target_words === null ? null : [sectionBudget.target_words, sectionBudget.max_words], section_budget: sectionBudget, document_profile: compactProfile ? "latam-compact-v1" : "legacy-release0", ...extra };
     const prompt = `${scientificPrompt.systemPrompt}\n\n${scientificPrompt.userPromptTemplate.replace("{{task}}", scientificTasks[phase]).replace("{{context_json}}", stableJson(context))}`;
     const schemaJson = z.toJSONSchema(schema);
     const maxOutputTokens = sectionBudget.max_output_tokens;
     const output = schema.parse(await stageCheckpoint(phase === "research_design" ? "RESEARCH_DESIGN" : phase === "cross_section_review" ? "SCIENTIFIC_REVIEW" : `SECTION_DRAFTS:${phase}`, { prompt, schemaJson, model: SCIENTIFIC_MODEL, maxOutputTokens, policy: GENERATION_POLICY_VERSION }, async () => schema.parse(await generate({ prompt, schema: schemaJson, schemaName: `b3_${phase}`, model: SCIENTIFIC_MODEL, maxOutputTokens, trackingAttribution: { projectId: input.projectId, runId: input.runId, promptVersion: scientificPrompt.version, schemaName: `b3_${phase}`, stage: "blueprint_generation" } }))));
+    await writeFile(path.join(input.artifactDir, `${phase}-context-diagnostics.json`), JSON.stringify(contextDiagnostics, null, 2));
     const budget = sectionBudget.max_words === null ? null : [sectionBudget.target_words ?? sectionBudget.max_words, sectionBudget.max_words] as const;
     if (budget && output && typeof output === "object" && "paragraphs" in output) {
       const original = narrativeSchema.parse(output);
