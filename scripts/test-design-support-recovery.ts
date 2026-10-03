@@ -23,6 +23,9 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { WebDiscoveryResult } from "../server/retrieval/web-discovery-contract";
+import { scientificStructuredCall } from "../server/mvp/scientific-structured-call";
+import { withJobExecution } from "../server/mvp/job-execution-context";
+import type { LlmProvider, BackgroundStructuredObjectInput } from "../llm/provider";
 
 // Sanitized equivalent of the completed staging critic. No private topic or IDs.
 const bundle = {
@@ -76,6 +79,16 @@ assert.throws(() => validateDesignSupport(tampered, identity), /CONTEXT_MISMATCH
 console.log("Design support regression: PASS (gaps, safe text, immutable context, job ownership, bibliography; offline only)");
 
 async function reuseTests() {
+  const requests: BackgroundStructuredObjectInput[] = [];
+  const provider = { generateStructuredObject: async () => { throw new Error("Unexpected foreground scientific dispatch"); },
+    generateBackgroundStructuredObject: async (request: BackgroundStructuredObjectInput) => { requests.push(request); return { offline: true }; } } as unknown as LlmProvider;
+  const request = { prompt: "Synthetic scientific review", model: "gpt-5.4", schemaName: "review", maxOutputTokens: 100,
+    schema: { type: "object", properties: {}, required: [], additionalProperties: false } };
+  for (const jobId of ["job-a", "job-a", "job-b"]) await withJobExecution({ jobId, startedAt: new Date(), stage: "SCIENTIFIC_REVIEW" },
+    () => scientificStructuredCall(provider, request, { projectId: jobId === "job-a" ? "project-a" : "project-b", runId: jobId }));
+  assert.equal(requests[0].logicalAttemptKey, requests[1].logicalAttemptKey);
+  assert.notEqual(requests[0].logicalAttemptKey, requests[2].logicalAttemptKey);
+  assert.equal(requests[0].maxRetries, 0);
   const owner = { projectId: "project-a", userId: "user-a" };
   const evidence = { projectId: owner.projectId, definitionHash: "science-a", searchIntentHash: "intent-a", selectionHash: "selection-a" };
   const snapshot = { project: { id: owner.projectId, userId: owner.userId },
