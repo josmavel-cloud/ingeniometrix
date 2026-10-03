@@ -106,7 +106,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
   const jobId = currentJobExecution()?.jobId ?? input.runId;
   const maxResearchOperations = input.maxResearchOperations ?? 2;
   const resolutionInput = { decisionFingerprint: bundle.decisionFingerprint,
-    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, primaryNormalizationVersion:METHOD_PRIMARY_NORMALIZATION_VERSION, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION, contextAdmissionVersion:METHOD_CONTEXT_ADMISSION_VERSION,
+    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, recoveryVersion:"rejected-independent-critic.v1", primaryNormalizationVersion:METHOD_PRIMARY_NORMALIZATION_VERSION, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION, contextAdmissionVersion:METHOD_CONTEXT_ADMISSION_VERSION,
     promptVersions:{assessment:assessmentPrompt.version,reconstruction:reconstructionPrompt.version,critic:criticPrompt.version},
     maxResearchOperations, support: input.inheritedSupport.map(s => [s.sourceId,s.document.sha256]) };
   const resolutionKey = await versionedCheckpointKey("AUTONOMOUS_DESIGN",resolutionInput);
@@ -264,7 +264,50 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
     }
 
     let questions = assessment.researchQuestions;
-    for (let round=1;round<=maxResearchOperations+1;round++) {
+    // A completed independent rejection is scientific feedback, not an approval.
+    // When every discovery operation has already been spent, recover that exact
+    // feedback and try one different in-scope method without replaying round one
+    // or paying again for the same four searches. The original excerpts and
+    // source identities must still match the current, re-inspected addendum.
+    let priorIndependentRejection: z.infer<typeof methodCoverageCritiqueProposalSchema> | null = null;
+    let firstRound = 1;
+    if (researchOperations >= maxResearchOperations && currentJobExecution()) {
+      const rows = await prisma.blueprintJobStage.findMany({where:{jobId,stageKey:{in:[
+        "checkpoint:METHOD_COVERAGE_DIGEST_2", "checkpoint:METHOD_RECONSTRUCTION_V1_2", "checkpoint:METHOD_COVERAGE_CRITIC_V1_2",
+      ]}},select:{stageKey:true,status:true,outputJson:true}});
+      const verified = (key:string) => {
+        const row=rows.find(item=>item.stageKey===`checkpoint:${key}`);
+        const saved=row?.outputJson as {value?:unknown;outputHash?:string;files?:unknown[]} | null;
+        return row?.status==="COMPLETED" && saved && saved.value && saved.outputHash===fingerprint(saved.value) &&
+          Array.isArray(saved.files) && saved.files.length===0 ? saved.value : null;
+      };
+      const oldDigest=verified("METHOD_COVERAGE_DIGEST_2") as ReturnType<typeof digest> | null;
+      const oldReconstruction=verified("METHOD_RECONSTRUCTION_V1_2");
+      const oldCritic=verified("METHOD_COVERAGE_CRITIC_V1_2");
+      if (oldDigest && oldReconstruction && oldCritic) {
+        const currentDigest=digest(oldDigest.passages.map(p=>({source_id:p.source_id,evidence_id:p.evidence_id})));
+        const identity=(value:typeof currentDigest)=>fingerprint({sources:value.sources,
+          passages:value.passages.map(p=>({source_id:p.source_id,evidence_id:p.evidence_id,excerpt:p.excerpt,locator:p.locator}))});
+        if (identity(oldDigest)===identity(currentDigest)) {
+          const reconstruction=methodologicalReconstructionSchema.parse(oldReconstruction);
+          const critique=methodCoverageCritiqueProposalSchema.parse(oldCritic);
+          const selected=reconstruction.alternatives.find(item=>item.id===reconstruction.selectedId);
+          if (selected && critique.alternativeId===selected.id && critique.intentPreserved && critique.blockingScientificIssue) {
+            // Rebuild under today's verified evidence identity. These saved
+            // outputs are used solely as a rejected alternative and feedback.
+            applyMethodReconstruction(bundle,selected,pack);
+            const roleDerivation=deriveCorpusMethodRoles(originalProfile,selected.corpusRoles);
+            const previousMatrix=buildMethodCoverageMatrix({proposal:selected.coverageProposal,
+              profile:roleDerivation.profile,pack,effectiveEvidenceFingerprint:addendum.checksum});
+            profile=roleDerivation.profile;
+            matrix=previousMatrix;
+            priorIndependentRejection=critique;
+            firstRound=3;
+          }
+        }
+      }
+    }
+    for (let round=firstRound;round<=maxResearchOperations+1;round++) {
       if (methodCoverageGaps(matrix).length && !inspectRecoveredBeforeDiscovery) await fillGaps(matrix,questions);
       inspectRecoveredBeforeDiscovery=false;
       const contextDigest = digest(methodCoverageCells(matrix).flatMap(c=>c.supportPointers));
@@ -276,7 +319,12 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
         async()=>({audit:researchAudit,scientificProjection:researchContext}));
       const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchema, reconstructionPrompt,
         { frozenIntent:bundle.intent, ...compactMethodAuthorityContext(original),
-          historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:projectMethodCoverageContext(matrix), evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)), researchAudit:researchContext });
+          historicalFindings:findings, priorIndependentRejection: priorIndependentRejection ? {
+            rejectedAlternativeId:priorIndependentRejection.alternativeId,blockingReason:priorIndependentRejection.blockingReason,
+            cellAssessments:priorIndependentRejection.cellAssessments.filter(c=>c.coverageStatus==="UNSUPPORTED" || !c.transferSupported),
+            findingAssessments:priorIndependentRejection.findingAssessments.filter(f=>f.methodValidityImpact),
+          }:null,
+          corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:projectMethodCoverageContext(matrix), evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)), researchAudit:researchContext });
       const selected = reconstruction.alternatives.find(a=>a.id===reconstruction.selectedId);
       if (!selected || new Set(reconstruction.alternatives.map(a=>a.id)).size!==reconstruction.alternatives.length) throw new Error("METHOD_SELECTION_INVALID");
       const primary=normalizeDeclaredPrimaryMethod(selected.primaryMethod,[...original.components.filter(c=>c.kind!=="method"&&c.kind!=="technique"),...selected.methodComponents],selected.methodHandoffs);
