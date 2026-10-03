@@ -8,7 +8,7 @@ import type { ScientificDecisionBundle } from "./scientific-decision-service";
 import { designAlternativeV2Schema, validateScientificDecision, type MethodEvidencePack } from "./scientific-decision-contracts";
 import { researchDesignSchema, evidencePointerSchema } from "./research-plan-contracts";
 import { buildCorpusMethodProfile, buildMethodCoverageMatrix, bindMethodCoverageCritique, validateMethodCoverageCritique,
-  corpusMethodProfileProposalSchema, methodCoverageMatrixProposalSchema, methodCoverageCritiqueProposalSchema,
+  methodCoverageAssessmentSchema, methodCoverageMatrixProposalSchema, methodCoverageCritiqueProposalSchema,
   methodCoverageCells, methodCoverageGaps, type MethodCoverageMatrix, type CorpusMethodProfile } from "./method-coverage-contracts";
 import { augmentMethodEvidencePack, sealDesignSupport, type DesignSupportSource, type DesignSupportAddendum } from "./design-support-addendum";
 import { buildDesignSupportDigest, digestPromptContext } from "./design-support-digest";
@@ -21,12 +21,7 @@ import { METHOD_COVERAGE_ASSESSMENT_PROMPT as assessmentPrompt, METHOD_RECONSTRU
 
 export const METHOD_COVERAGE_RESOLUTION_POLICY = "method-coverage-reconstruction.v1";
 const text = z.string().min(1), texts = z.array(text);
-const researchQuestionSchema = z.object({ cellIds: texts.min(1), question: text, rationale: text }).strict();
-export const methodCoverageAssessmentSchema = z.object({
-  corpusProposal: corpusMethodProfileProposalSchema,
-  coverageProposal: methodCoverageMatrixProposalSchema,
-  researchQuestions: z.array(researchQuestionSchema).max(4),
-}).strict();
+export { methodCoverageAssessmentSchema } from "./method-coverage-contracts";
 // Scientific definition is deliberately absent. It is copied from the frozen
 // selector, not rewritten by the methodological reconstruction model.
 export const methodologicalReconstructionSchema = z.object({
@@ -123,7 +118,9 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
     const initialDigest = digest(original.research_design.methodological_support);
     const assessment = await call("METHOD_COVERAGE_ASSESSMENT_V1", methodCoverageAssessmentSchema, assessmentPrompt,
       { frozenIntent: bundle.intent, historicalAlternative: original, historicalFindings: findings,
-        existingEvidence: digestPromptContext(initialDigest), classPresenceRule: "Observed primary design, components and contingent admissibility are separate; never count a class inferred only from a critic." });
+        userSelectedSourceIds: bundle.evidence_pack.selected_sources.map(source => source.source_id),
+        systemDesignSupportSourceIds: sources.map(source => source.sourceId),
+        existingEvidence: digestPromptContext(initialDigest), classPresenceRule: "OBSERVED requires at least one primary sourceAssignment of that class. Secondary components do not create another observed work. A future admissible class with no primary selected work is CONTINGENT, justified by frozen intent. SYSTEM_DESIGN_SUPPORT never enters sourceAssignments or classification basis; it may support method coverage." });
     const profile = buildCorpusMethodProfile({ intent: bundle.intent, pack: bundle.evidence_pack,
       frozenInputFingerprint: bundle.contextFingerprint, proposal: assessment.corpusProposal });
     let matrix = buildMethodCoverageMatrix({ proposal: assessment.coverageProposal, profile, pack, effectiveEvidenceFingerprint: addendum.checksum });
@@ -132,7 +129,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
     await stageCheckpoint("CORPUS_METHOD_PROFILE_V1", { source: fingerprint(assessment), context: bundle.contextFingerprint }, async () => profile);
     await stageCheckpoint("METHOD_COVERAGE_BEFORE_V1", { profile: profile.profileFingerprint, evidence: addendum.checksum }, async () => matrix);
 
-    async function fillGaps(current: MethodCoverageMatrix, questions: z.infer<typeof researchQuestionSchema>[]) {
+    async function fillGaps(current: MethodCoverageMatrix, questions: z.infer<typeof methodCoverageAssessmentSchema>["researchQuestions"]) {
       const unresolved = methodCoverageGaps(current);
       for (const question of questions) {
         if (researchOperations >= maxResearchOperations || acquiredDocuments >= 4) break;

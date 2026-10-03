@@ -75,6 +75,10 @@ function providerFor(mode: "PASS" | "CONDITIONAL" | "REJECT_CLASSIFICATION" | "N
       calls.push(request);
       const context = JSON.parse(request.prompt.split("CONTEXTO VERIFICABLE:\n")[1]);
       if (request.schemaName === "method_coverage_assessment_v1") {
+        assert.deepEqual(context.userSelectedSourceIds, data.pack.selected_sources.map(source => source.source_id));
+        assert.ok(Array.isArray(context.systemDesignSupportSourceIds));
+        assert.ok(context.systemDesignSupportSourceIds.every((id: string) => !context.userSelectedSourceIds.includes(id)));
+        assert.equal(request.trackingAttribution?.promptVersion, "method-coverage-assessment.v2");
         const matrix = structuredClone(data.matrix);
         if (mode === "NEW_SUPPORT") {
           matrix.corpusClasses[0].operations[0].coverageStatus = "UNSUPPORTED";
@@ -167,6 +171,12 @@ async function run() {
   assert.equal(supported.supportAddendum.sources[0].provenance, "SYSTEM_DESIGN_SUPPORT");
   assert.ok(supported.alternative.research_design.methodological_support.some(pointer => pointer.source_id === "DS-new-fixture"));
   assert.equal(JSON.stringify(bundle), before);
+  const inherited = providerFor("PASS");
+  await resolveMethodCoverage(bundle, { userId: "fixture-user", projectId: "fixture-project", runId: "fixture-inherited",
+    inheritedSupport: supported.supportAddendum.sources, provider: inherited.provider, researchSupport: forbidSearch });
+  const inheritedContext = JSON.parse(inherited.calls[0].prompt.split("CONTEXTO VERIFICABLE:\n")[1]);
+  assert.deepEqual(inheritedContext.systemDesignSupportSourceIds, ["DS-new-fixture"]);
+  assert.ok(!inheritedContext.userSelectedSourceIds.includes("DS-new-fixture"), "Inherited methodology never becomes selected corpus");
 
   // Two documents can be downloaded while only one (or none) is admitted.
   // Across operations count those bytes, not the size of the accepted-source list.

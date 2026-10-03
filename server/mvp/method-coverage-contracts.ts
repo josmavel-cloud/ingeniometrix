@@ -144,6 +144,12 @@ export const methodCoverageMatrixProposalSchema = methodCoverageMatrixSchema.omi
   version: true, profileFingerprint: true, effectiveEvidenceFingerprint: true, overallCoverageStatus: true,
 });
 export type MethodCoverageMatrixProposal = z.infer<typeof methodCoverageMatrixProposalSchema>;
+/** Strict initial classification/coverage output; no model-generated identities. */
+export const methodCoverageAssessmentSchema = z.object({
+  corpusProposal: corpusMethodProfileProposalSchema,
+  coverageProposal: methodCoverageMatrixProposalSchema,
+  researchQuestions: z.array(z.object({cellIds: texts.min(1), question: text, rationale: text}).strict()).max(4),
+}).strict();
 export function buildMethodCoverageMatrix(input: {
   proposal: MethodCoverageMatrixProposal; profile: CorpusMethodProfile; pack: MethodEvidencePack;
   effectiveEvidenceFingerprint: string;
