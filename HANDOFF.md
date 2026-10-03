@@ -1,5 +1,12 @@
 # Ingeniometrix MVP Handoff
 
+> Current PR #16 handoff (2026-10-03 UTC): **NOT_CLOSED**, provider balance exhausted
+> during real technical staging acceptance. Main/production unchanged. Continue
+> from [the canonical recovery report](docs/quality/autonomous-generation-recovery-2026-10-02.md),
+> including the QA cap/expiry, retained unknown usage and remaining DOCX gate.
+> Earlier branch/release instructions below are historical for this worktree.
+
+
 ## Acceso GitHub
 
 - Repo GitHub URL: `https://github.com/josmavel-cloud/ingeniometrix`
