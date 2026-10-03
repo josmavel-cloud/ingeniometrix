@@ -78,15 +78,20 @@ synthesis 5, new appraisal PDF 8). All 30 existing required pointers are supplie
 No scientific excerpt is paraphrased, cut mid-paragraph or silently dropped.
 The full addendum remains canonical; prompt tables are exactly reversible.
 
-Current local size replay after reversible transports: **129,761 prompt bytes**,
-**142,601 serialized envelope bytes**, schema 8,178 bytes. The intentionally
-conservative local estimate of 40,744 input tokens is **LOCAL_ESTIMATE**, not a
-provider token count; it cannot certify the 65,536-token request capacity with
-34,816 output reserved. Exact complete-request admission must run before dispatch.
-Corpus projection saves 8,606 bytes versus two full profiles; matrix saves 5,256;
-evidence transport saves 8,068 without losing any quoted text or pointer.
+The first compact request still counted **30,848 exact input tokens + 34,816
+reserved output = 65,664**, exceeding the 65,536 guard by 128. The correction
+removed only exact duplicated definition and unchanged roles, with explicit
+inheritance and round-trip equality tests. The final prospective request is
+**126,273 prompt bytes**, schema 8,178 bytes, and **30,106 provider-counted input
+tokens + 34,816 output = 64,922**, leaving 614 context tokens. Its maximum cost
+bound is USD 2.117125. This was a non-generative count, not a scientific call.
+Matrix and evidence transports preserve every original excerpt and pointer.
+Corpus roles absent from the delta inherit their complete original values;
+`historicalAlternative.definition` inherits the one immutable definition exactly.
 Research-audit metadata in this private replay is prospective; the runtime's
-reinspected manifest and final exact count remain authoritative.
+reinspected manifest and actual complete request must be counted again before
+dispatch. This result does not promise that a later, larger critic request fits.
+The existing context and whole-job guards remain authoritative.
 
 #### Tests and cost, without overstating acceptance
 
