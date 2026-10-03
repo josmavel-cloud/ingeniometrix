@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { fetchPublicDocument } from "@/server/retrieval/safe-document-fetch";
 
-export type SupportPassage = { text: string; locator: string; page: number | null };
+export type SupportPassage = { text: string; locator: string; page: number | null;
+  contentKind?: "METADATA" | "ABSTRACT" | "FULL_TEXT_PASSAGE"; contentKindBasis?: string };
 export type SupportDocument = {
   observedUrl: string; finalUrl: string; sha256: string; mediaType: "text/html" | "application/pdf";
   title: string; passages: SupportPassage[];
@@ -34,18 +35,79 @@ export function supportBibliographyFromHtml(html: string): NonNullable<SupportDo
 // htmlparser2 decodes text entities once, never executes scripts or XML entities.
 // Passage IDs refer to reading-order blocks, not invented page numbers.
 export function htmlSupportPassages(html: string) {
-  const passages: SupportPassage[] = [];
-  let text = "", title = "", inTitle = false, ignored = 0;
-  const hidden = new Set(["script", "style", "noscript", "template", "nav", "footer", "header", "svg"]);
+  type Kind = NonNullable<SupportPassage["contentKind"]>;
+  type Frame = { tag: string; ignored: boolean; kind: Kind | null; fullBody: boolean };
+  const passages: SupportPassage[] = [], stack: Frame[] = [];
+  const metadataAbstracts = new Set<string>(), metadataDescriptions = new Set<string>();
+  let text = "", title = "", heading = "", inHeading = false, sectionKind: Kind | null = null;
+  let citationRecord = false, bodyStructure = false;
+  const hidden = new Set(["script", "style", "noscript", "template", "nav", "footer", "header", "svg", "aside"]);
   const blocks = new Set(["p", "li", "h1", "h2", "h3", "h4", "div", "section", "article", "tr", "br"]);
-  const flush = () => { const value = clean(text); text = ""; if (value.length >= 40) passages.push({ text: value, locator: `html:block:${passages.length + 1}`, page: null }); };
+  const identityText = (value: string) => clean(value).normalize("NFKC");
+  function provenance(): { kind: Kind; basis: string } {
+    if (inHeading) return {kind:"METADATA",basis:"SECTION_HEADING"};
+    const explicit = [...stack].reverse().find(frame => frame.kind);
+    if (explicit?.kind) return {kind:explicit.kind,basis:explicit.kind === "ABSTRACT" ? "ABSTRACT_CONTAINER" : "METADATA_CONTAINER"};
+    if (sectionKind) return {kind:sectionKind,basis:sectionKind === "ABSTRACT" ? "ABSTRACT_SECTION" : "SECTION_STRUCTURE"};
+    if (stack.some(frame => frame.fullBody)) return {kind:"FULL_TEXT_PASSAGE",basis:"ARTICLE_OR_CHAPTER_BODY"};
+    return {kind:"METADATA",basis:"NO_SUBSTANTIVE_BODY_PROVENANCE"};
+  }
+  const flush = () => {
+    const value = clean(text); text = "";
+    if (value.length < 40) return;
+    const {kind,basis}=provenance();
+    passages.push({text:value,locator:`html:block:${passages.length + 1}`,page:null,contentKind:kind,contentKindBasis:basis});
+  };
   const parser = new Parser({
-    onopentag(name) { if (hidden.has(name)) ignored++; if (name === "title") inTitle = true; if (!ignored && blocks.has(name)) flush(); },
-    ontext(value) { if (inTitle) title += value; else if (!ignored) text += value; },
-    onclosetag(name) { if (name === "title") inTitle = false; if (!ignored && blocks.has(name)) flush(); if (hidden.has(name)) ignored = Math.max(0, ignored - 1); },
-  }, { decodeEntities: true });
+    onopentag(name, attributes) {
+      if (blocks.has(name)) flush();
+      const marker = `${attributes.id ?? ""} ${attributes.class ?? ""} ${attributes.itemprop ?? ""}`.toLowerCase();
+      const tokens = marker.split(/[^a-z0-9]+/).filter(Boolean);
+      const ignored = !!stack.at(-1)?.ignored || hidden.has(name) || attributes.hidden !== undefined || attributes["aria-hidden"] === "true" ||
+        ["navigation","contentinfo","banner","search"].includes(attributes.role ?? "") || tokens.some(token => ["nav","navbar","footer","header","breadcrumb","breadcrumbs","toolbar","cookie","cookies","share","social","menu"].includes(token));
+      const kind: Kind | null = tokens.some(token => ["abstract","summary","resumen"].includes(token)) ? "ABSTRACT" :
+        name === "h1" || tokens.some(token => ["metadata","bibliographic","citation","record","references","bibliography","authors","affiliations"].includes(token)) ? "METADATA" : null;
+      const fullBody = !kind && (name === "article" || /(?:article|chapter|wiki|full)[-_ ]?(?:body|content|text)|articlebody/.test(marker));
+      if (fullBody) bodyStructure = true;
+      stack.push({tag:name,ignored,kind,fullBody});
+      if (/^h[1-6]$/.test(name)) { inHeading=true; heading=""; }
+      if (name === "meta") {
+        const key=(attributes.name ?? attributes.property ?? "").toLowerCase(), value=identityText(attributes.content ?? "");
+        if (key === "citation_title") citationRecord=true;
+        if (value && ["citation_abstract","dc.description.abstract","dcterms.abstract","dc.abstract"].includes(key)) metadataAbstracts.add(value);
+        if (value && ["description","og:description","dc.description","dcterms.description"].includes(key)) metadataDescriptions.add(value);
+      }
+    },
+    ontext(value) {
+      if (stack.some(frame=>frame.tag === "title")) { title+=value; return; }
+      if (stack.at(-1)?.ignored || stack.some(frame=>frame.tag === "head")) return;
+      if (inHeading) heading+=value;
+      text+=value;
+    },
+    onclosetag(name) {
+      if (blocks.has(name)) flush();
+      if (/^h[1-6]$/.test(name)) {
+        const label=clean(heading).toLowerCase().replace(/^\d+(?:\.\d+)*[.\s]*/,"");
+        if (/^(abstract|summary|resumen)\b/.test(label)) sectionKind="ABSTRACT";
+        else if (/^(references|bibliography|referencias|bibliograf[ií]a|acknowledg|author|affiliation)\b/.test(label)) sectionKind="METADATA";
+        else if (/^(introduction|background|methods?|materials|results?|discussion|conclusions?|procedures?|data extraction|critical appraisal|quality assessment|introducci[oó]n|m[eé]todo|resultado|discusi[oó]n|conclusi[oó]n|procedimiento|extracci[oó]n|valoraci[oó]n)\b/.test(label)) { sectionKind="FULL_TEXT_PASSAGE"; bodyStructure=true; }
+        else sectionKind=null;
+        inHeading=false; heading="";
+      }
+      const index=stack.map(frame=>frame.tag).lastIndexOf(name);
+      if (index>=0) stack.splice(index);
+    },
+  }, { decodeEntities:true });
   parser.end(html); flush();
-  return { title: clean(title), passages };
+  for (const passage of passages) {
+    const value=identityText(passage.text);
+    if (metadataAbstracts.has(value) || citationRecord && metadataDescriptions.has(value)) {
+      passage.contentKind="ABSTRACT"; passage.contentKindBasis="BIBLIOGRAPHIC_ABSTRACT_METADATA_MATCH";
+    } else if (!bodyStructure && passage.contentKind === "FULL_TEXT_PASSAGE") {
+      passage.contentKind="METADATA"; passage.contentKindBasis="NO_SUBSTANTIVE_BODY_PROVENANCE";
+    }
+  }
+  return {title:clean(title),passages};
 }
 
 export function rankSupportPassages(passages: SupportPassage[], question: string, maxChars = 10000) {
@@ -55,7 +117,7 @@ export function rankSupportPassages(passages: SupportPassage[], question: string
   const sectionLead = new Set(passages.flatMap((p, i) => sectionStart.test(p.text) ? [i, i + 1] : []));
   const ranked = passages.map((passage, index) => ({ passage, index,
     score: [...terms].filter(term => passage.text.toLowerCase().includes(term)).length +
-      (sectionLead.has(index) ? 20 : 0) - (/^abstract\b/iu.test(passage.text) ? 40 : 0) +
+      (sectionLead.has(index) ? 20 : 0) + (passage.contentKind === "FULL_TEXT_PASSAGE" ? 20 : passage.contentKind === "METADATA" ? -80 : passage.contentKind === "ABSTRACT" ? -40 : 0) - (/^abstract\b/iu.test(passage.text) ? 40 : 0) +
       (/\b(should|must|describe|report|state|identify|record|document|debe|describir|registrar|indicar)\b/i.test(passage.text) ? 4 : 0) +
       (passage.text.length >= 160 ? 1 : 0) +
       (/\b(quality assessment|data extraction|coding|codes|themes|pilot|valoraci[oó]n|codificaci[oó]n)\b/iu.test(passage.text) ? 4 : 0) }))
@@ -68,8 +130,9 @@ export function rankSupportPassages(passages: SupportPassage[], question: string
 }
 
 export function verifiedPdfIdentityTitle(extracted: string, expected: { title: string; doi: string | null }) {
-  const firstPage = clean(extracted.split("\f")[0]).normalize("NFKC").toLowerCase();
-  return firstPage.includes(clean(expected.title).normalize("NFKC").toLowerCase()) &&
+  const typography = (value: string) => clean(value.normalize("NFKC").replace(/[(),:;“”„«»]/g, " ")).toLowerCase();
+  const firstPage = typography(extracted.split("\f")[0]);
+  return (` ${firstPage} `).includes(` ${typography(expected.title)} `) &&
     (!expected.doi || firstPage.includes(expected.doi.toLowerCase())) ? expected.title : null;
 }
 
