@@ -1,3 +1,6 @@
+import { METHOD_CONTEXT_ADMISSION_VERSION } from "@/server/mvp/method-coverage-context";
+import { METHOD_RECONSTRUCTION_PROMPT } from "@/server/mvp/prompts/method-coverage.v1";
+import { METHOD_CONTEXT_RECOVERY_VERSION } from "@/server/mvp/method-context-recovery-contract";
 import { validateMethodAcquisitionRecovery } from "@/server/mvp/method-acquisition-recovery-contract";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -11,7 +14,7 @@ import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-con
 import { updateSelectedProjectReferences } from "@/server/retrieval/reference-service";
 import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { authorizeScientificContinuationQa, enqueueScientificContinuationForUser, readScientificContinuation, validateContinuationCheckpoint } from "@/server/mvp/scientific-continuation";
-import { recoverScientificContinuationForUser, validateMethodAssessmentRecovery, scientificContinuationAttemptLimit } from "@/server/mvp/scientific-continuation-recovery";
+import { authorizeMethodContextRecovery, recoverScientificContinuationForUser, validateMethodAssessmentRecovery, scientificContinuationAttemptLimit } from "@/server/mvp/scientific-continuation-recovery";
 import { fingerprint, stageCheckpoint } from "@/server/mvp/job-execution-context";
 import { decisionContextFingerprint } from "@/server/mvp/scientific-decision-contracts";
 import { assertQaCommitment, qaJobPolicy, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
@@ -264,6 +267,45 @@ async function main() {
     assert.equal(exhausted.job?.status,"FAILED");assert.equal(exhausted.job?.attempts,4);assert.equal(exhausted.job?.maxAttempts,3);
     await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/NOT_ELIGIBLE/);
     assert.equal((await runNextBlueprintJobStage(childId,childExecutor)).shouldContinue,false,"No second contractual execution after failure");
+    // The subsequent technical context guard stopped before any create. A new
+    // exact request admission authorizes ONE additional cycle, never a reset.
+    await prisma.blueprintJob.update({where:{id:childId},data:{status:"FAILED",currentStage:"resolving_design",errorJson:{message:"METHOD_COVERAGE_CONTEXT_UNSAFE"}}});
+    const evidenceFingerprint=fingerprint("same retained support"),digestFingerprint=fingerprint("digest same support");
+    const digestValue={effectiveEvidenceFingerprint:evidenceFingerprint,digestFingerprint};
+    await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:"checkpoint:METHOD_COVERAGE_DIGEST_1:context:"+fingerprint("corrected-context"),
+      status:"COMPLETED",progress:100,outputJson:json({value:digestValue,outputHash:fingerprint(digestValue)})}});
+    const request={prompt:`Verified ${digestFingerprint} ${evidenceFingerprint}`,schema:{type:"object",properties:{},required:[]},
+      model:METHOD_RECONSTRUCTION_PROMPT.model,maxOutputTokens:METHOD_RECONSTRUCTION_PROMPT.max_output_tokens,
+      trackingAttribution:{projectId:project.id,runId:`secure-pilot-${childId}`,promptVersion:METHOD_RECONSTRUCTION_PROMPT.version}};
+    const admission={version:METHOD_CONTEXT_ADMISSION_VERSION,requestFingerprint:fingerprint(request),schemaFingerprint:fingerprint(request.schema),
+      promptVersion:METHOD_RECONSTRUCTION_PROMPT.version,effectiveEvidenceFingerprint:evidenceFingerprint,digestFingerprint,
+      inputTokens:29984,maxOutputTokens:request.maxOutputTokens,contextLimit:65536,countProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2.1156};
+    const authorize={userId:user.id,projectId:project.id,jobId:childId,issuedBy:"isolated-test",reason:"Proved predispatch context correction",request,admission};
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/AUDITED_ADMISSION_REQUIRED/);
+    await assert.rejects(()=>authorizeMethodContextRecovery({...authorize,admission:{...admission,inputTokens:65000}}),/CORRECTED_ADMISSION_REQUIRED/);
+    await assert.rejects(()=>authorizeMethodContextRecovery({...authorize,admission:{...admission,countProvenance:"LOCAL_ESTIMATE"}}),/CORRECTED_ADMISSION_REQUIRED/);
+    const contextCost=await prisma.blueprintJobStage.findUniqueOrThrow({where:{id:childCost.id}});
+    await prisma.blueprintJobStage.update({where:{id:childCost.id},data:{outputJson:json({entries:[...(contextCost.outputJson as any).entries,{id:randomUUID(),status:"failed_unknown_usage",estimate:null}]})}});
+    await assert.rejects(()=>authorizeMethodContextRecovery(authorize),/USAGE_UNCERTAIN/);
+    await prisma.blueprintJobStage.update({where:{id:childCost.id},data:{outputJson:contextCost.outputJson as Prisma.InputJsonValue}});
+    const admissionAudit=await authorizeMethodContextRecovery(authorize);
+    assert.equal((await authorizeMethodContextRecovery(authorize)).id,admissionAudit.id,"Exact operator proof registration is idempotent");
+    const contextStages=await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}});
+    const contextResumes=await Promise.all(Array.from({length:3},()=>resumeLatestBlueprintJobForUser(user.id,project.id)));
+    assert.ok(contextResumes.every(result=>result.shouldContinue));
+    const contextChild=await prisma.blueprintJob.findUniqueOrThrow({where:{id:childId}});
+    assert.equal(contextChild.attempts,4);assert.equal(contextChild.maxAttempts,3);assert.equal(await scientificContinuationAttemptLimit(prisma,contextChild),5);
+    const contextRecovery=(contextChild.metadataJson as any).methodContextAdmissionRecovery;
+    assert.equal(contextRecovery.version,METHOD_CONTEXT_RECOVERY_VERSION);assert.equal(contextRecovery.admissionVersion,METHOD_CONTEXT_ADMISSION_VERSION);
+    assert.equal(contextRecovery.requestFingerprint,admission.requestFingerprint);assert.equal(contextRecovery.noNewProviderDispatch,true);
+    assert.equal(await prisma.auditLog.count({where:{userId:user.id,eventType:"SCIENTIFIC_CONTINUATION_CONTEXT_RECOVERY_AUTHORIZED"}}),1);
+    assert.deepEqual(await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}}),contextStages);
+    assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({where:{id:parent.id}}),beforeParent);
+    await runNextBlueprintJobStage(childId,childExecutor);
+    const contextFinal=await runNextBlueprintJobStage(childId,childExecutor);
+    assert.equal(contextFinal.job?.attempts,5);assert.equal(contextFinal.job?.maxAttempts,3);
+    await prisma.blueprintJob.update({where:{id:childId},data:{currentStage:"resolving_design",errorJson:{message:"METHOD_COVERAGE_CONTEXT_UNSAFE"}}});
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/NOT_ELIGIBLE|ALREADY_USED/);
     const ref = continuation!.contract.reusedCheckpointIds.find(row => row.stageKey === "checkpoint:SCIENTIFIC_DECISION")!;
     const original = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { id: ref.id } });
     await prisma.blueprintJobStage.update({ where: { id: ref.id }, data: { outputJson: { value: {}, outputHash: "tampered", files: [], fingerprint: "bad" } } });
