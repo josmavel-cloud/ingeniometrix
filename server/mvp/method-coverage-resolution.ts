@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { projectMethodCoverageContext, projectMethodEvidenceContext, projectMethodResearchAudit, methodContextAdmissionDiagnostic, METHOD_CONTEXT_ADMISSION_VERSION } from "./method-coverage-context";
+import { prisma } from "@/lib/prisma";
+import { projectMethodCoverageContext, projectMethodEvidenceContext, projectMethodResearchAudit, methodContextAdmissionDiagnostic, validateMethodContextRecoveryBinding, METHOD_CONTEXT_ADMISSION_VERSION } from "./method-coverage-context";
 import { reuseHistoricalMethodAssessment, revalidateHistoricalCoverage } from "./method-assessment-reuse";
 import { annotateRetainedSupportContentKind } from "./design-support-content-kind";
 import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
@@ -137,6 +138,14 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const actualKey = await versionedCheckpointKey(key, checkpointInput);
       const saved = await readCompletedCheckpoint<z.infer<S>>(actualKey, checkpointInput);
       if (saved) return schema.parse(saved);
+      if(key==="METHOD_RECONSTRUCTION_V1_1"&&currentJobExecution()) {
+        const job=await prisma.blueprintJob.findFirst({where:{id:jobId,userId:input.userId,projectId:input.projectId},select:{metadataJson:true}});
+        if(!job)throw new Error("METHOD_CONTEXT_RECOVERY_JOB_OWNERSHIP_INVALID");
+        const metadata=job.metadataJson as {methodContextAdmissionRecovery?:unknown}|null;
+        validateMethodContextRecoveryBinding({key,grant:metadata?.methodContextAdmissionRecovery,request,schema:request.schema,
+          promptVersion:record.version,effectiveEvidenceFingerprint:addendum.checksum,
+          digestFingerprint:(context as {evidence?:{digestFingerprint?:string}}).evidence?.digestFingerprint});
+      }
       const bound = provider.estimateStructuredRequest ? await provider.estimateStructuredRequest(request) : responseCostBound({ model: request.model, input: prompt,
         text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } },
         reasoning: { effort: request.reasoningEffort }, max_output_tokens: request.maxOutputTokens! });

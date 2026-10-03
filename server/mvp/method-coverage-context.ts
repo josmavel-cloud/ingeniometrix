@@ -149,3 +149,17 @@ export function methodContextAdmissionDiagnostic(request:{prompt:string;schema:u
     contextTotal:bound?bound.inputTokens+output:null,contextAllowed:!!bound&&bound.inputTokens+output<=limit,
     maximumUsd:bound?.maximumUsd??null};
 }
+
+/** A one-time context recovery authorizes the measured first reconstruction only.
+ * Completed checkpoints are reused before this check; later rounds and the
+ * independent critic receive their own normal admission and are not this grant. */
+export function validateMethodContextRecoveryBinding(input:{key:string;grant:unknown;request:unknown;
+  schema:unknown;promptVersion:string;effectiveEvidenceFingerprint:string;digestFingerprint:unknown}) {
+  if(input.key!=="METHOD_RECONSTRUCTION_V1_1"||input.grant===undefined||input.grant===null)return;
+  const grant=input.grant as Record<string,unknown>;
+  if(grant.version!=="method-context-admission-recovery.v1"||grant.admissionVersion!==METHOD_CONTEXT_ADMISSION_VERSION||
+    grant.requestFingerprint!==fingerprint(input.request)||grant.schemaFingerprint!==fingerprint(input.schema)||
+    grant.promptVersion!==input.promptVersion||grant.effectiveEvidenceFingerprint!==input.effectiveEvidenceFingerprint||
+    grant.digestFingerprint!==input.digestFingerprint)
+    throw new Error("METHOD_CONTEXT_RECOVERY_REQUEST_MISMATCH");
+}

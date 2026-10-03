@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {fixture}from"./test-method-coverage";
 import {fingerprint}from"../server/mvp/job-execution-context";
-import {projectMethodCoverageContext,reconstructMethodCoverageContext,projectMethodEvidenceContext,reconstructMethodEvidenceContext,projectMethodResearchAudit,methodContextAdmissionDiagnostic}from"../server/mvp/method-coverage-context";
+import {projectMethodCoverageContext,reconstructMethodCoverageContext,projectMethodEvidenceContext,reconstructMethodEvidenceContext,projectMethodResearchAudit,methodContextAdmissionDiagnostic,validateMethodContextRecoveryBinding,METHOD_CONTEXT_ADMISSION_VERSION}from"../server/mvp/method-coverage-context";
 const data=fixture(["EMPIRICAL_QUALITATIVE","EMPIRICAL_QUANTITATIVE","EMPIRICAL_MIXED_METHODS","THEORETICAL_CONCEPTUAL","SYSTEMATIC_OR_SCOPING_REVIEW","OTHER_REVIEW_SYNTHESIS","POLICY_STANDARD_GUIDANCE","OTHER"]);
 const matrix=structuredClone(data.matrix);const original=JSON.stringify(matrix);const context=projectMethodCoverageContext(matrix);
 assert.equal(fingerprint(reconstructMethodCoverageContext(context)),fingerprint(matrix));assert.equal(JSON.stringify(matrix),original);
@@ -30,3 +30,14 @@ const rejected=methodContextAdmissionDiagnostic(request,{inputTokens:30837,token
 assert.equal(methodContextAdmissionDiagnostic(request,null).countProvenance,"UNAVAILABLE");
 assert.equal(methodContextAdmissionDiagnostic(request,{inputTokens:29000,tokenCountProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2}).contextAllowed,true);
 console.log("Method audit/admission PASS: scientific fields preserved, private operational details excluded, rejected exact count recorded safely.");
+
+const binding={key:"METHOD_RECONSTRUCTION_V1_1",request,schema:request.schema,promptVersion:"method-coverage-reconstruction.v5",effectiveEvidenceFingerprint:"frozen-effective",digestFingerprint:"verified-digest"};
+const grant={version:"method-context-admission-recovery.v1",admissionVersion:METHOD_CONTEXT_ADMISSION_VERSION,requestFingerprint:fingerprint(request),schemaFingerprint:fingerprint(request.schema),promptVersion:binding.promptVersion,effectiveEvidenceFingerprint:binding.effectiveEvidenceFingerprint,digestFingerprint:binding.digestFingerprint};
+validateMethodContextRecoveryBinding({...binding,grant});
+validateMethodContextRecoveryBinding({...binding,grant:undefined});
+for(const field of ["version","admissionVersion","requestFingerprint","schemaFingerprint","promptVersion","effectiveEvidenceFingerprint","digestFingerprint"])
+  assert.throws(()=>validateMethodContextRecoveryBinding({...binding,grant:{...grant,[field]:"tampered"}}),/RECOVERY_REQUEST_MISMATCH/);
+assert.throws(()=>validateMethodContextRecoveryBinding({...binding,grant,request:{...request,prompt:"Changed context"}}),/RECOVERY_REQUEST_MISMATCH/);
+validateMethodContextRecoveryBinding({...binding,key:"METHOD_RECONSTRUCTION_V1_2",grant:{...grant,requestFingerprint:"first-request-only"}});
+validateMethodContextRecoveryBinding({...binding,key:"METHOD_COVERAGE_CRITIC_V1_1",grant:{...grant,requestFingerprint:"first-request-only"}});
+console.log("Method recovery binding PASS: first corrected request identity enforced, later rounds and critic unaffected.");
