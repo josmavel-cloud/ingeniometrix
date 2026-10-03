@@ -1,6 +1,35 @@
 # Autonomous generation: staging recovery and budget audit (2026-10-02)
 
-## Current handoff — 2026-10-03 12:35 UTC: bounded digest acceptance finished
+## Active closure cycle — 2026-10-03: heterogeneous method coverage
+
+**IN_PROGRESS; no production approval implied.** Owner attachment dated this task
+supersedes the previous three-iteration boundary and explicitly authorizes a new
+versioned scientific continuation. The old technical job remains failed at 8/8;
+its outputs and costs remain historical, not reopened or overwritten.
+
+Current implementation adds CorpusMethodProfile.v1 and MethodCoverageMatrix.v1,
+separate operations by class, and independent per-cell critique. Corpus classes
+are attributed to actual frozen excerpts; contingent future classes are not counted
+as observed works. The same effective evidence identity reaches reconstruction,
+critic, composition, consistency matrix and final review. Ordinary mini research
+remains at two operations; the explicitly granted QA continuation permits up to
+four, stopping when coverage is sufficient. No user questions after Sources.
+
+Read-only preparation verified 24 parent checkpoints and three reusable support
+documents (33 passages: JBI 12, PRISMA-S 12, thematic synthesis 9). Existing model
+credentials passed a non-generative models read; this is not a billing-balance proof.
+QA before this cycle: known USD 3.60340895, uncertain USD 0.547868, committed
+USD 4.15127695, remaining USD 5.84872305. Initial policy remains USD 5/job and
+USD 10/campaign, expiry 2026-10-04T00:00:00Z; no limit or expiry change yet.
+
+Offline gates so far: coverage contracts (77 checks), mocked resolver, isolated
+scientific-continuation concurrency/ownership, B4, scientific decision, background
+recovery and QA accounting PASS. Fixtures do not certify scientific acceptance.
+The live continuation, translation completion, DOCX and release remain pending.
+The R01–R13 matrix below is the inherited baseline until this cycle's live evidence
+updates it. The prior terminal report is historical, not a stop instruction.
+
+## Historical handoff — 2026-10-03 12:35 UTC: bounded digest acceptance finished
 
 **STATUS = BLOCKED_WITH_EVIDENCE. MVP_STATUS = NOT_CLOSED. PR16 remains draft.**
 **No merge or production publication.** The 40,000-byte implementation blocker is
