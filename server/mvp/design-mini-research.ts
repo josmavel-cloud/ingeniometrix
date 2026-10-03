@@ -31,7 +31,7 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; knownSupport?: DesignSupportSource[]; beforeDiscovery?: () => Promise<void> }) {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }) {
   const { bundle } = input;
   const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
   const ordinal = input.operationOrdinal ?? 1;
@@ -59,7 +59,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
   for (const [index, finding] of material.entries()) {
     const gapId = finding.gapId;
     const gap = { gapId, searchIntentHash: intentHash, kind: "EVIDENCE" as const, importance: "MATERIAL" as const,
-      requiredDimension: (ordinal === 1 ? finding.question : `${finding.question} Brecha restante del dictamen independiente: ${finding.searchProjection}`).slice(0, 2400), desiredEvidenceRole: "METHODOLOGICAL" as const,
+      requiredDimension: ordinal === 1 ? finding.question.slice(0, 700) : `${finding.question} Brecha restante del dictamen independiente: ${input.focusedQuestion ?? finding.searchProjection}`, desiredEvidenceRole: "METHODOLOGICAL" as const,
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
     try {

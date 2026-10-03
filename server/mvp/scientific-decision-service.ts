@@ -201,6 +201,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       supportOperations++;
       const result = await (input.researchSupport ?? researchDesignSupport)({ ...input, bundle, gaps,
         operationOrdinal: supportOperations as 1 | 2, knownSupport: addendum?.sources,
+        focusedQuestion: supportOperations === 2 ? late?.limitations.join("\n") : undefined,
         beforeDiscovery: () => preflightWholeJobCost({ nextStage: "design_support_discovery", nextStageReservation: discoveryBound.maximumUsd,
           minimumRemainingMandatoryReservation: designSupportRemainingForecast(bundle, gaps[0].alternativeId, digestPatch, digestCritic) }).then(() => undefined) });
       designSupport = { ...result, operations: [...(designSupport?.operations ?? []), ...result.operations],
