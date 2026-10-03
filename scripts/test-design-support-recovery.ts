@@ -151,6 +151,7 @@ const digestInput = { pack: digestPack, addendum: detailed, identity,
 const digestBefore = JSON.stringify(digestInput);
 const digest = buildDesignSupportDigest(digestInput);
 assert.equal(JSON.stringify(digestInput), digestBefore, "Canonical evidence is not rewritten by compaction");
+assert.equal(digest.effectiveEvidenceFingerprint, detailed.checksum, "Patch, critic and final ledger share the sealed context identity");
 assert.equal(digest.sources.length, 2, "Two gap-linked sources remain available without forced citation");
 assert.equal(digest.passages.length, 6, "Headings/duplicate text omitted, detailed methods and contrary limits retained");
 assert.ok(digest.passages.some(p => p.excerpt?.includes("coding decision")), "Overview cannot displace procedural detail");

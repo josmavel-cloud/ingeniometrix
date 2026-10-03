@@ -100,8 +100,11 @@ export function buildDesignSupportDigest(input: {
       transferLimits: "La extracción y el vínculo con la brecha no certifican aplicabilidad; evaluar los pasajes y sus condiciones." }
       : input.pack.selected_sources.find(item => item.source_id === sourceId) ?? { source_id: sourceId };
   });
-  const effectiveEvidenceFingerprint = fingerprint({ identity: input.identity, pack: input.pack, addendum: input.addendum?.checksum ?? null });
-  const value = { version: DESIGN_SUPPORT_DIGEST_VERSION, effectiveEvidenceFingerprint,
+  // Reuse the pipeline's canonical effective identity: the sealed addendum
+  // includes owner/project/job and the full frozen definition/evidence hash.
+  // The digest additionally fingerprints its inspected pack and selected text.
+  const effectiveEvidenceFingerprint = input.addendum?.checksum ?? input.identity.definitionHash;
+  const value = { version: DESIGN_SUPPORT_DIGEST_VERSION, effectiveEvidenceFingerprint, inspectedPackFingerprint: fingerprint(input.pack),
     supportAssessment: "INSPECTION_CANDIDATES_NOT_SCIENTIFIC_APPROVAL",
     claimsToSupport: input.gaps.map(gap => ({ gapId: gap.gapId, findingCodes: gap.findingCodes, claim: gap.affectedClaim, requirement: gap.whyMaterial })),
     sources, passages };
