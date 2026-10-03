@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { fixture } from "./test-method-coverage";
-import { compactMethodCorpusContext } from "../server/mvp/method-coverage-resolution";
+import { compactMethodCorpusContext, compactMethodAuthorityContext } from "../server/mvp/method-coverage-resolution";
 import { fingerprint, stableJson } from "../server/mvp/job-execution-context";
 const {profile}=fixture(["EMPIRICAL_QUANTITATIVE","EMPIRICAL_QUALITATIVE","EMPIRICAL_MIXED_METHODS"]);
 const current=structuredClone(profile);
@@ -17,3 +17,11 @@ assert.throws(()=>compactMethodCorpusContext(profile,bad),/CONTEXT_IDENTITY_CHAN
 const badCount=structuredClone(current);badCount.observedClassCounts["EMPIRICAL_QUANTITATIVE"]=99;
 assert.throws(()=>compactMethodCorpusContext(profile,badCount),/CONTEXT_IDENTITY_CHANGED/);
 console.log("method corpus context PASS: lossless reconstruction, smaller payload, immutable originals, identity/count tampering rejected");
+
+assert.equal(compact.currentCorpus.roles.length,1);
+assert.equal(compactMethodCorpusContext(profile,profile).currentCorpus.roles.length,0);
+assert.equal(compactMethodCorpusContext(profile,profile).currentCorpus.unchangedRolesInheritOriginal,true);
+const authority={id:"A1",definition:{problem:"Exact frozen problem",questions:[{id:"Q1",text:"Exact frozen question"}],objectives:[{id:"O1",text:"Exact frozen objective"}]},research_design:{scope:"Unchanged scope"}};
+const projected=compactMethodAuthorityContext(authority);
+assert.deepEqual(projected.historicalAlternative.definition,{inheritsExactValueFrom:"immutableDefinition"});
+assert.equal(fingerprint({...projected.historicalAlternative,definition:projected.immutableDefinition}),fingerprint(authority));

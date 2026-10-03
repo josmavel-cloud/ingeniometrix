@@ -1,3 +1,4 @@
+import { reconstructMethodEvidenceContext, reconstructMethodCoverageContext } from "../server/mvp/method-coverage-context";
 import assert from "node:assert/strict";
 import { z } from "zod";
 import { applyMethodReconstruction, resolveMethodCoverage, methodCoverageAssessmentSchema, methodologicalReconstructionSchema } from "../server/mvp/method-coverage-resolution";
@@ -77,6 +78,8 @@ function providerFor(mode: "PASS" | "CONDITIONAL" | "REJECT_CLASSIFICATION" | "N
       strictSchema(request.schema);
       calls.push(request);
       const context = JSON.parse(request.prompt.split("CONTEXTO VERIFICABLE:\n")[1]);
+      if(context.evidence?.version === "method-evidence-context.v1") context.evidence = reconstructMethodEvidenceContext(context.evidence);
+      if(context.previousCoverage?.version === "method-coverage-context.v1") context.previousCoverage = reconstructMethodCoverageContext(context.previousCoverage);
       if (request.schemaName === "method_coverage_assessment_v1") {
         assert.deepEqual(context.userSelectedSourceIds, data.pack.selected_sources.map(source => source.source_id));
         assert.ok(Array.isArray(context.systemDesignSupportSourceIds));

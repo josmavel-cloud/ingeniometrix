@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { projectMethodCoverageContext, projectMethodEvidenceContext } from "./method-coverage-context";
 import { reuseHistoricalMethodAssessment, revalidateHistoricalCoverage } from "./method-assessment-reuse";
 import { annotateRetainedSupportContentKind } from "./design-support-content-kind";
 import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
@@ -82,10 +83,18 @@ export function compactMethodCorpusContext(original:CorpusMethodProfile,current:
       appraisalNeeded:_a,synthesisNeeded:_s,integrationNeeded:_i,...row})=>row)};
   };
   if(fingerprint(frozen(original))!==fingerprint(frozen(current)))throw new Error("METHOD_CORPUS_CONTEXT_IDENTITY_CHANGED");
-  return {version:"method-corpus-context.v1",originalCorpus:original,
+  const role = ({classId,roleInResearch,claimsExpectedFromClass,appraisalNeeded,synthesisNeeded,integrationNeeded}:CorpusMethodProfile["corpusClasses"][number])=>
+    ({classId,roleInResearch,claimsExpectedFromClass,appraisalNeeded,synthesisNeeded,integrationNeeded});
+  return {version:"method-corpus-context.v2",originalCorpus:original,
     currentCorpus:{profileFingerprint:current.profileFingerprint,inheritsFrozenClassificationFrom:original.profileFingerprint,
-      roles:current.corpusClasses.map(({classId,roleInResearch,claimsExpectedFromClass,appraisalNeeded,synthesisNeeded,integrationNeeded})=>
-        ({classId,roleInResearch,claimsExpectedFromClass,appraisalNeeded,synthesisNeeded,integrationNeeded}))}};
+      unchangedRolesInheritOriginal:true,
+      roles:current.corpusClasses.filter(row=>fingerprint(role(row))!==fingerprint(role(original.corpusClasses.find(old=>old.classId===row.classId)!))).map(role)}};
+}
+
+/** One exact definition shared with the historical alternative; no authority edit. */
+export function compactMethodAuthorityContext<T extends {definition:unknown}>(original:T) {
+  const {definition,...historical}=original;
+  return {immutableDefinition:definition,historicalAlternative:{...historical,definition:{inheritsExactValueFrom:"immutableDefinition"}}};
 }
 
 type Input = { researchSupport?: typeof researchDesignSupport; maxResearchOperations?: 2 | 4; userId: string; projectId: string; runId: string; provider?: LlmProvider; inheritedSupport: DesignSupportSource[] };
@@ -248,8 +257,8 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const digestInput={fingerprint:contextDigest.digestFingerprint};
       await stageCheckpoint(await versionedCheckpointKey(`METHOD_COVERAGE_DIGEST_${round}`,digestInput),digestInput,async()=>contextDigest);
       const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchema, reconstructionPrompt,
-        { frozenIntent:bundle.intent, immutableDefinition:original.definition, historicalAlternative:original,
-          historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:matrix, evidence:digestPromptContext(contextDigest), researchAudit });
+        { frozenIntent:bundle.intent, ...compactMethodAuthorityContext(original),
+          historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:projectMethodCoverageContext(matrix), evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)), researchAudit });
       const selected = reconstruction.alternatives.find(a=>a.id===reconstruction.selectedId);
       if (!selected || new Set(reconstruction.alternatives.map(a=>a.id)).size!==reconstruction.alternatives.length) throw new Error("METHOD_SELECTION_INVALID");
       const graph = normalizeDeclaredMethodHandoffs([...original.components.filter(c => c.kind !== "method" && c.kind !== "technique"), ...selected.methodComponents],selected.methodHandoffs);
@@ -278,7 +287,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const critiqueProposal = await call(`METHOD_COVERAGE_CRITIC_V1_${round}`, methodCoverageCritiqueProposalSchema, criticPrompt,
         { frozenIntent:bundle.intent, immutableDefinition:original.definition, originalCorpus:originalProfile, corpus:profile,
           roleRefinement:roleDerivation.audit,coverageMatrix:matrix,
-          alternative, historicalFindings:findings, evidence:digestPromptContext(contextDigest) });
+          alternative, historicalFindings:findings, evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)) });
       const critique = bindMethodCoverageCritique(critiqueProposal,matrix);
       const result = validateMethodCoverageCritique(critique,{matrix,profile,pack,effectiveEvidenceFingerprint:addendum.checksum,
         alternativeId:alternative.id,findingCodes:findings.map(f=>f.code)});
