@@ -131,6 +131,12 @@ export function reconstructMethodEvidenceContext(context:MethodEvidenceContext):
 }
 
 export const METHOD_CONTEXT_ADMISSION_VERSION = "method-context-admission.v2";
+// The 65,536-token pilot envelope predates GPT-6 Astra. Keep a much smaller
+// application ceiling than the provider's 1,050,000-token model context while
+// admitting complete, exactly counted scientific evidence for this model.
+export function methodCoverageContextLimit(model: string) {
+  return model === "gpt-6-astra" ? 131072 : 65536;
+}
 /** Scientific history for model input. Full operational audit remains private. */
 export function projectMethodResearchAudit(audit:unknown[]) {
   return {version:"method-research-context.v1",privateAuditFingerprint:fingerprint(audit),operations:audit.map(value=>{

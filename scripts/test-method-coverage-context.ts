@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {fixture}from"./test-method-coverage";
 import {fingerprint}from"../server/mvp/job-execution-context";
-import {projectMethodCoverageContext,reconstructMethodCoverageContext,projectMethodEvidenceContext,reconstructMethodEvidenceContext,projectMethodResearchAudit,methodContextAdmissionDiagnostic,validateMethodContextRecoveryBinding,METHOD_CONTEXT_ADMISSION_VERSION}from"../server/mvp/method-coverage-context";
+import {projectMethodCoverageContext,reconstructMethodCoverageContext,projectMethodEvidenceContext,reconstructMethodEvidenceContext,projectMethodResearchAudit,methodContextAdmissionDiagnostic,methodCoverageContextLimit,validateMethodContextRecoveryBinding,METHOD_CONTEXT_ADMISSION_VERSION}from"../server/mvp/method-coverage-context";
 const data=fixture(["EMPIRICAL_QUALITATIVE","EMPIRICAL_QUANTITATIVE","EMPIRICAL_MIXED_METHODS","THEORETICAL_CONCEPTUAL","SYSTEMATIC_OR_SCOPING_REVIEW","OTHER_REVIEW_SYNTHESIS","POLICY_STANDARD_GUIDANCE","OTHER"]);
 const matrix=structuredClone(data.matrix);const original=JSON.stringify(matrix);const context=projectMethodCoverageContext(matrix);
 assert.equal(fingerprint(reconstructMethodCoverageContext(context)),fingerprint(matrix));assert.equal(JSON.stringify(matrix),original);
@@ -29,6 +29,12 @@ const request={prompt:"Private scientific material not appropriate for logs",sch
 const rejected=methodContextAdmissionDiagnostic(request,{inputTokens:30837,tokenCountProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2});assert.equal(rejected.contextAllowed,false);assert.equal(rejected.contextTotal,65653);assert.ok(!JSON.stringify(rejected).includes(request.prompt));
 assert.equal(methodContextAdmissionDiagnostic(request,null).countProvenance,"UNAVAILABLE");
 assert.equal(methodContextAdmissionDiagnostic(request,{inputTokens:29000,tokenCountProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2}).contextAllowed,true);
+assert.equal(methodCoverageContextLimit("gpt-6-astra"),131072);
+assert.equal(methodCoverageContextLimit("unverified-model"),65536);
+const measured={inputTokens:31179,tokenCountProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2.1};
+assert.equal(methodContextAdmissionDiagnostic({...request,model:"gpt-6-astra"},measured,methodCoverageContextLimit("gpt-6-astra")).contextAllowed,true);
+assert.equal(methodContextAdmissionDiagnostic({...request,model:"unverified-model"},measured,methodCoverageContextLimit("unverified-model")).contextAllowed,false);
+assert.equal(methodContextAdmissionDiagnostic({...request,model:"gpt-6-astra"},{...measured,inputTokens:96257},methodCoverageContextLimit("gpt-6-astra")).contextAllowed,false);
 console.log("Method audit/admission PASS: scientific fields preserved, private operational details excluded, rejected exact count recorded safely.");
 
 const binding={key:"METHOD_RECONSTRUCTION_V1_1",request,schema:request.schema,promptVersion:"method-coverage-reconstruction.v5",effectiveEvidenceFingerprint:"frozen-effective",digestFingerprint:"verified-digest"};

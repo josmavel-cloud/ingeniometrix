@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { projectMethodCoverageContext, projectMethodEvidenceContext, projectMethodResearchAudit, methodContextAdmissionDiagnostic, validateMethodContextRecoveryBinding, METHOD_CONTEXT_ADMISSION_VERSION } from "./method-coverage-context";
+import { projectMethodCoverageContext, projectMethodEvidenceContext, projectMethodResearchAudit, methodContextAdmissionDiagnostic, methodCoverageContextLimit, validateMethodContextRecoveryBinding, METHOD_CONTEXT_ADMISSION_VERSION } from "./method-coverage-context";
 import { reuseHistoricalMethodAssessment, revalidateHistoricalCoverage } from "./method-assessment-reuse";
 import { annotateRetainedSupportContentKind } from "./design-support-content-kind";
 import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
@@ -31,7 +31,7 @@ import { METHOD_COVERAGE_ASSESSMENT_PROMPT as assessmentPrompt, METHOD_RECONSTRU
 export const METHOD_COVERAGE_RESOLUTION_POLICY = "method-coverage-reconstruction.v1";
 const text = z.string().min(1), texts = z.array(text);
 function contextCapacityCostBound(record: typeof reconstructionPrompt | typeof criticPrompt) {
-  const value = responseCostBound({model:record.model,max_output_tokens:record.max_output_tokens},65536-record.max_output_tokens);
+  const value = responseCostBound({model:record.model,max_output_tokens:record.max_output_tokens},methodCoverageContextLimit(record.model)-record.max_output_tokens);
   if (!value) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
   return value.maximumUsd;
 }
@@ -152,7 +152,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const bound = provider.estimateStructuredRequest ? await provider.estimateStructuredRequest(request) : responseCostBound({ model: request.model, input: prompt,
         text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } },
         reasoning: { effort: request.reasoningEffort }, max_output_tokens: request.maxOutputTokens! });
-      const admission = methodContextAdmissionDiagnostic(request,bound);
+      const admission = methodContextAdmissionDiagnostic(request,bound,methodCoverageContextLimit(request.model));
       // Record safe sizes/count provenance before rejecting. No private prompt,
       // source text, URLs, paths or provider credentials are written to this record.
       await stageCheckpoint(`${actualKey}_FORECAST`, { requestHash: fingerprint(request) }, async () => ({
