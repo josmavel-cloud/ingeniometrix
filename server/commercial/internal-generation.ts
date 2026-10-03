@@ -42,14 +42,16 @@ export async function reserveInternalGenerationJob(tx: Tx, jobId: string) {
 }
 
 export async function assertInternalGenerationAuthorization(tx: Tx, jobId: string) {
-  await qaJobPolicy(tx, jobId);
+  const qa = await qaJobPolicy(tx, jobId);
   const record = await tx.internalGenerationAuthorization.findUnique({ where: { jobId }, include: { capability: true, job: true } });
   if (!record || record.policyVersion !== INTERNAL_GENERATION_POLICY || record.status !== "RESERVED" ||
     record.job.userId !== record.userId || record.job.projectId !== record.projectId ||
     record.capability.userId !== record.userId || record.capability.status !== "ACTIVE" ||
     record.capability.expiresAt && record.capability.expiresAt <= new Date())
     throw new Error("INTERNAL_GENERATION_CAPABILITY_REQUIRED");
-  return record.hardCapMicros / 1_000_000;
+  // A prospective, exact-job QA grant may fund new work. Never rewrite the
+  // original internal authorization or saved cost policy to simulate a new cap.
+  return qa?.overage ? qa.policy.hard : record.hardCapMicros / 1_000_000;
 }
 
 export async function settleInternalGenerationJob(tx: Tx, jobId: string, outcome: "COMPLETED" | "FAILED") {

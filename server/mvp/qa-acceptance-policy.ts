@@ -1,6 +1,30 @@
 import type { Prisma } from "@prisma/client";
 
 export const QA_COST_POLICY_VERSION = "scientific-closure-qa.v1";
+export const QA_OVERAGE_POLICY_VERSION = "scientific-closure-overage.v1";
+export const QA_OVERAGE_AUTHORIZED_EVENT = "SCIENTIFIC_QA_OVERAGE_AUTHORIZED";
+export type QaOverage = { grantId: string; jobHardUsd: number; campaignCapUsd: number; expiresAt: string };
+
+async function qaOverageForJob(tx: Prisma.TransactionClient, job: { id: string; userId: string; projectId: string },
+  campaignId: string, frozenInputFingerprint?: string): Promise<QaOverage | null> {
+  const grant = await tx.auditLog.findFirst({ where: { userId: job.userId, projectId: job.projectId,
+    eventType: QA_OVERAGE_AUTHORIZED_EVENT, payloadJson: { path: ["jobId"], equals: job.id } }, orderBy: { createdAt: "desc" } });
+  if (!grant) return null;
+  const value = grant.payloadJson as { version?: string; campaignId?: string; jobId?: string; projectId?: string;
+    frozenInputFingerprint?: string; jobHardUsd?: number; campaignCapUsd?: number; expiresAt?: string; issuedBy?: string; reason?: string } | null;
+  if (value?.version !== QA_OVERAGE_POLICY_VERSION || value.campaignId !== campaignId || value.jobId !== job.id ||
+    value.projectId !== job.projectId || !frozenInputFingerprint || value.frozenInputFingerprint !== frozenInputFingerprint ||
+    !value.issuedBy || !value.reason || !value.expiresAt || !Number.isFinite(new Date(value.expiresAt).getTime()) ||
+    new Date(value.expiresAt).getTime() > grant.createdAt.getTime() + 48 * 3600_000 ||
+    !Number.isFinite(value.jobHardUsd) || value.jobHardUsd! <= 0 || !Number.isFinite(value.campaignCapUsd) || value.campaignCapUsd! < value.jobHardUsd!)
+    throw new Error("QA_OVERAGE_AUTHORIZATION_INVALID");
+  if (new Date(value.expiresAt) <= new Date() || await tx.auditLog.count({ where: { userId: job.userId,
+    eventType: "SCIENTIFIC_QA_OVERAGE_REVOKED", payloadJson: { path: ["grantId"], equals: grant.id } } })) return null;
+  const capability = await tx.internalGenerationCapability.findFirst({ where: { userId: job.userId, status: "ACTIVE",
+    OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { id: true } });
+  if (!capability) throw new Error("INTERNAL_GENERATION_CAPABILITY_REQUIRED");
+  return { grantId: grant.id, jobHardUsd: value.jobHardUsd!, campaignCapUsd: value.campaignCapUsd!, expiresAt: value.expiresAt };
+}
 export function allowsNewQaAcceptance(campaign: { id: string; status: string; expiresAt: Date; maxJobs: number } | null,
   priorCampaignId: unknown, explicitOperation: boolean) {
   return Boolean(campaign && campaign.status === "ACTIVE" && campaign.expiresAt > new Date() &&
@@ -11,12 +35,13 @@ export async function activeQaCampaign(tx: Prisma.TransactionClient, userId: str
   return tx.qaAcceptanceCampaign.findFirst({ where: { userId, status: "ACTIVE", expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } });
 }
 export async function qaJobPolicy(tx: Prisma.TransactionClient, jobId: string) {
-  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { userId: true, projectId: true, metadataJson: true } });
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { id: true, userId: true, projectId: true, metadataJson: true } });
   const metadata = job.metadataJson as { qaCampaignId?: string; costPolicyVersion?: string; commercialPolicy?: string; scientificContinuation?: { version: string; parentJobId: string; frozenInputFingerprint: string; grantAuditId: string } } | null;
   if (metadata?.costPolicyVersion !== QA_COST_POLICY_VERSION) return null;
   if (!metadata.qaCampaignId || metadata.commercialPolicy !== "internal-platform-v1") throw new Error("QA_AUTHORIZATION_INVALID");
   const campaign = await tx.qaAcceptanceCampaign.findUniqueOrThrow({ where: { id: metadata.qaCampaignId } });
-  if (campaign.userId !== job.userId || campaign.status !== "ACTIVE" || campaign.expiresAt <= new Date() ||
+  const overage = await qaOverageForJob(tx, job, campaign.id, metadata.scientificContinuation?.frozenInputFingerprint);
+  if (campaign.userId !== job.userId || campaign.status !== "ACTIVE" || (campaign.expiresAt <= new Date() && !overage) ||
     campaign.totalCapMicros > 10_000_000 || campaign.jobCapMicros > 5_000_000 || campaign.maxJobs > 2)
     throw new Error("QA_AUTHORIZATION_EXPIRED_OR_INVALID");
   if (metadata.scientificContinuation) {
@@ -33,25 +58,51 @@ export async function qaJobPolicy(tx: Prisma.TransactionClient, jobId: string) {
       authorization.maxContinuations !== 1 || !authorization.expiresAt || new Date(authorization.expiresAt) <= new Date())
       throw new Error("SCIENTIFIC_CONTINUATION_NOT_AUTHORIZED");
   }
-  return { campaign, policy: { target: 2, soft: 2.5, hard: campaign.jobCapMicros / 1e6, deep: 0.5, mandatoryReserve: 0.25, version: QA_COST_POLICY_VERSION } };
+  return { campaign, overage, policy: { target: 2, soft: 2.5, hard: overage?.jobHardUsd ?? campaign.jobCapMicros / 1e6,
+    deep: 0.5, mandatoryReserve: 0.25, version: QA_COST_POLICY_VERSION } };
 }
 
-export async function assertQaCommitment(tx: Prisma.TransactionClient, userId: string, additionalUsd: number) {
-  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
-  const campaign = await activeQaCampaign(tx, userId);
-  if (!campaign) return;
-  const jobs = await tx.blueprintJob.findMany({ where: { userId, metadataJson: { path: ["qaCampaignId"], equals: campaign.id } },
+export async function qaCampaignCommitment(tx: Prisma.TransactionClient, campaign: { id: string; userId: string; createdAt: Date }) {
+  const jobs = await tx.blueprintJob.findMany({ where: { userId: campaign.userId, metadataJson: { path: ["qaCampaignId"], equals: campaign.id } },
     select: { id: true, stages: { where: { stageKey: "control:cost" }, select: { outputJson: true } } } });
   const linked = new Set<string>();
-  let committed = 0;
-  for (const job of jobs) for (const stage of job.stages) {
-    const entries = (stage.outputJson as { entries?: Array<{ paidOperationId?: string; estimate: number | null; maximum: number }> } | null)?.entries ?? [];
-    for (const entry of entries) { committed += entry.estimate ?? entry.maximum; if (entry.paidOperationId) linked.add(entry.paidOperationId); }
+  let known = 0, unknown = 0;
+  const jobCommitments: Array<{ jobId: string; known: number; unknown: number }> = [];
+  for (const job of jobs) {
+    let jobKnown = 0, jobUnknown = 0;
+    for (const stage of job.stages) {
+      const entries = (stage.outputJson as { entries?: Array<{ paidOperationId?: string; estimate: number | null; maximum: number }> } | null)?.entries ?? [];
+      for (const entry of entries) {
+        if (!Number.isFinite(entry.maximum) || entry.maximum < 0 || entry.estimate !== null && (!Number.isFinite(entry.estimate) || entry.estimate < 0))
+          throw new Error("QA_COST_RECORD_INVALID");
+        if (entry.estimate === null) jobUnknown += entry.maximum; else jobKnown += entry.estimate;
+        if (entry.paidOperationId) linked.add(entry.paidOperationId);
+      }
+    }
+    known += jobKnown; unknown += jobUnknown;
+    jobCommitments.push({ jobId: job.id, known: jobKnown, unknown: jobUnknown });
   }
-  // A linked provider call appears in two audit views, but is counted once.
-  const operations = await tx.paidOperation.findMany({ where: { userId, createdAt: { gte: campaign.createdAt } }, select: { id: true, committedMicros: true } });
-  committed += operations.filter(operation => !linked.has(operation.id)).reduce((sum, operation) => sum + operation.committedMicros / 1e6, 0);
-  if (!Number.isFinite(additionalUsd) || additionalUsd < 0 || committed + additionalUsd > campaign.totalCapMicros / 1e6)
+  // Linked job entries and PaidOperation are two audit views of one charge.
+  const operations = await tx.paidOperation.findMany({ where: { userId: campaign.userId, createdAt: { gte: campaign.createdAt } },
+    select: { id: true, committedMicros: true, calls: { select: { estimatedMicros: true, reservedMicros: true } } } });
+  for (const operation of operations.filter(item => !linked.has(item.id))) {
+    const pending = operation.calls.reduce((sum, call) => sum + (call.estimatedMicros === null ? call.reservedMicros : 0), 0);
+    if (pending > operation.committedMicros || operation.committedMicros < 0) throw new Error("QA_COST_RECORD_INVALID");
+    unknown += pending / 1e6; known += (operation.committedMicros - pending) / 1e6;
+  }
+  return { committed: known + unknown, known, unknown, jobCommitments };
+}
+
+export async function assertQaCommitment(tx: Prisma.TransactionClient, userId: string, additionalUsd: number, jobId?: string) {
+  await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+  const qa = jobId ? await qaJobPolicy(tx, jobId) : null;
+  if (qa && qa.campaign.userId !== userId) throw new Error("QA_AUTHORIZATION_INVALID");
+  const campaign = qa?.campaign ?? await activeQaCampaign(tx, userId);
+  if (!campaign) return;
+  const totals = await qaCampaignCommitment(tx, campaign);
+  const ceiling = qa?.overage?.campaignCapUsd ?? campaign.totalCapMicros / 1e6;
+  if (!Number.isFinite(additionalUsd) || additionalUsd < 0 || totals.committed + additionalUsd > ceiling)
     throw new Error("QA_COMMITMENT_LIMIT_REACHED");
-  return { campaignId: campaign.id, committedBefore: committed, additionalUsd, ceiling: campaign.totalCapMicros / 1e6 };
+  return { campaignId: campaign.id, committedBefore: totals.committed, knownBefore: totals.known, unknownBefore: totals.unknown,
+    additionalUsd, ceiling, overageGrantId: qa?.overage?.grantId ?? null };
 }
