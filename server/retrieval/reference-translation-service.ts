@@ -181,6 +181,15 @@ function detectLanguageHeuristically(value: string | null | undefined) {
   return winner && winner.score >= 2 ? winner.language : null;
 }
 
+// A provider's work language can differ from its title language. Suppress
+// redundant Spanish title paraphrases without changing bibliographic truth.
+export function spanishTitleNeedsNoTranslation(title: string) {
+  const tokens = new Set(normalizeTextForLanguageDetection(referenceDisplayText(title)).split(" "));
+  const scores = Object.entries(LANGUAGE_STOPWORDS).map(([language, terms]) => ({ language,
+    score: terms.filter(term => tokens.has(term)).length })).sort((a, b) => b.score - a.score);
+  return scores[0].language === "es" && scores[0].score >= 2 && scores[0].score > scores[1].score;
+}
+
 export function getCachedTranslation(
   rawOpenAlexJson: Prisma.JsonValue | null,
   targetLanguage: string,
@@ -356,11 +365,28 @@ export function resolveReferenceTranslationForLanguage(input: {
   };
 }
 
+// The provider's strict contract requires even nullable properties in required.
+// Detect a deterministic request defect before reserving or dispatching a call.
+export function validateTranslationSchemaContract(schema: unknown): void {
+  if (!schema || typeof schema !== "object") return;
+  if (Array.isArray(schema)) { schema.forEach(validateTranslationSchemaContract); return; }
+  const node = schema as Record<string, unknown>;
+  if (node.type === "object") {
+    const properties = Object.keys((node.properties ?? {}) as object);
+    const required = Array.isArray(node.required) ? node.required : [];
+    if (node.additionalProperties !== false || properties.some(key => !required.includes(key)) || required.length !== properties.length)
+      throw new Error("REFERENCE_DISPLAY_SCHEMA_INVALID");
+  }
+  Object.values(node).forEach(validateTranslationSchemaContract);
+}
+
 export async function ensureReferenceTranslationsForLanguage(input: {
   references: ReferenceRecordLike[];
   targetLanguage: string;
   strict?: boolean;
 }) {
+  validateTranslationSchemaContract(referenceLanguageDetectionBatchSchemaJson);
+  validateTranslationSchemaContract(referenceTranslationBatchSchemaJson);
   const targetLanguage = normalizeLanguageCode(input.targetLanguage) ?? APP_DEFAULT_LANGUAGE;
   const sourceLanguages = new Map<string, string | null>();
   const output = await readReferenceDisplayTranslations(input.references, targetLanguage);

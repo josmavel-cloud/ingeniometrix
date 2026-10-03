@@ -6,11 +6,11 @@ import { setTimeout as delay } from "node:timers/promises";
 
 import { recordLlmUsage, type LlmUsageAttribution } from "@/server/llm-usage-registry";
 import { reservePaidCall, withPaidCallAttempt } from "@/server/mvp/application-budget";
-import { claimBackgroundProviderResponse, currentJobExecution, fingerprint, settleCurrentJobCall, updateBackgroundProviderResponse } from "@/server/mvp/job-execution-context";
+import { claimBackgroundProviderResponse, currentJobExecution, fingerprint, reconcileBackgroundJobUsage, updateBackgroundProviderResponse } from "@/server/mvp/job-execution-context";
 import { currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { classifyFailure } from "@/server/mvp/execution-policy";
-import { responseCostBound } from "./openai-cost-bound";
-import { IncompleteStructuredOutputError } from "../structured-output-error";
+import { estimateResponseUsageCost, responseCostBound } from "./openai-cost-bound";
+import { IncompleteStructuredOutputError, KnownUsageStructuredParseError } from "../structured-output-error";
 
 import type {
   LlmProvider,
@@ -31,6 +31,7 @@ export type OpenAiProviderConfig = {
 const DEFAULT_OPENAI_TIMEOUT_MS = 120_000;
 const DEFAULT_OPENAI_RETRIES = 1;
 let reservedApiUsd = 0; // Shared by provider instances in one bounded evaluation process.
+const inputTokenCountCache = new Map<string, Promise<number | null>>();
 
 export class ProviderResponsePendingError extends Error {
   constructor(readonly responseId: string, readonly providerStatus: string) {
@@ -97,7 +98,7 @@ async function runWithTimeoutAndRetry<T>(work: () => Promise<T>, retryOverride?:
     } catch (error) {
       lastError = error;
 
-      if (attempt === maxRetries || !classifyFailure(error).autoRetry) {
+      if (attempt === maxRetries || (error as { usageUncertain?: boolean })?.usageUncertain || !classifyFailure(error).autoRetry) {
         throw error;
       }
 
@@ -118,12 +119,32 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   });
   const defaultModel = config.defaultModel;
 
+  const boundForRequest = async (params: Parameters<typeof responseCostBound>[0]) => {
+    const responses = (client as OpenAI).responses;
+    if (!responses.inputTokens?.count || !params.model) return responseCostBound(params);
+    // The count request mirrors every input-affecting field. A failure only
+    // forfeits the optimization; the legacy reservation remains conservative.
+    const countParams = { model: params.model, input: params.input, instructions: params.instructions,
+      text: params.text, reasoning: params.reasoning, tools: params.tools,
+      tool_choice: params.tool_choice, parallel_tool_calls: params.parallel_tool_calls,
+      truncation: params.truncation };
+    const key = fingerprint(countParams);
+    let pending = inputTokenCountCache.get(key);
+    if (!pending) {
+      if (inputTokenCountCache.size >= 128) inputTokenCountCache.clear();
+      pending = responses.inputTokens.count(countParams as any)
+        .then(result => Number.isSafeInteger(result.input_tokens) && result.input_tokens >= 0 ? result.input_tokens : null)
+        .catch(() => null);
+      inputTokenCountCache.set(key, pending);
+    }
+    const exact = await pending;
+    if (exact === null) inputTokenCountCache.delete(key);
+    return responseCostBound(params, exact ?? undefined);
+  };
+
   const estimatedCost = (params: Parameters<typeof responseCostBound>[0], response: OpenAI.Responses.Response) => {
-    const bound = responseCostBound(params);
-    if (!bound?.rates || !response.usage) return null;
-    const cached = response.usage.input_tokens_details?.cached_tokens ?? 0;
-    const longContext = ["gpt-5.4", "gpt-6-astra", "gpt-5.6-sol"].includes(String(params.model)) && response.usage.input_tokens > 272000;
-    return (((response.usage.input_tokens - cached) * (bound.cacheWriteFactor ?? 1) + cached / 10) * bound.rates[0] * (longContext ? 2 : 1) + response.usage.output_tokens * bound.rates[1] * (longContext ? 1.5 : 1)) / 1e6;
+    if (!response.usage || !params.model) return null;
+    return estimateResponseUsageCost(String(params.model), response.usage);
   };
 
   const audit = async (startedAt: string, params: unknown, response: OpenAI.Responses.Response) => {
@@ -135,18 +156,26 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
 
   async function request(params: Parameters<typeof client.responses.create>[0], attribution?: LlmUsageAttribution) {
     const limit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
-    const bound = responseCostBound(params as Parameters<typeof responseCostBound>[0]);
+    const bound = await boundForRequest(params as Parameters<typeof responseCostBound>[0]);
     const rates = bound?.rates ?? null;
     const reserved = bound?.maximumUsd ?? null;
     if (limit > 0 && (reserved === null || reservedApiUsd + reserved > limit)) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
-    if (limit > 0) reservedApiUsd += reserved!;
     const startedAt = new Date().toISOString();
-    if (reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
+    if (!bound || reserved === null) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
     const purpose = (params.text?.format as { name?: string } | undefined)?.name ?? "text";
-    const reservation = await reservePaidCall(purpose, String(params.model), reserved, attribution);
+    const reservation = await reservePaidCall(purpose, String(params.model), reserved, attribution,
+      { inputTokens: bound.inputTokens, provenance: bound.tokenCountProvenance });
+    if (limit > 0) reservedApiUsd += reserved;
     let response: OpenAI.Responses.Response;
     try { response = await client.responses.create(params as any) as OpenAI.Responses.Response; }
-    catch (error) { await reservation?.fail(); throw error; }
+    catch (error) {
+      await reservation?.fail();
+      const original = error as { message?: string; name?: string; status?: number; code?: string };
+      const uncertain = Object.assign(new Error(original?.message ?? "PROVIDER_USAGE_UNKNOWN", { cause: error }), {
+        name: original?.name ?? "ProviderCallUsageUnknownError", status: original?.status, code: original?.code, usageUncertain: true,
+      });
+      throw uncertain;
+    }
     let estimatedUsd: number | null = null;
     if (reservation && rates && response.usage) {
       estimatedUsd = estimatedCost(params as Parameters<typeof responseCostBound>[0], response);
@@ -159,6 +188,11 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   }
 
   return {
+    async estimateStructuredRequest(input: StructuredObjectInput) {
+      const bound = await boundForRequest(backgroundStructuredParams(input, input.model ?? defaultModel));
+      if (!bound) throw new Error("LLM_BUDGET_BLOCKED: modelo sin tarifa verificable.");
+      return bound;
+    },
     name: "openai",
     async generateStructuredObject<T>(input: StructuredObjectInput) {
       const model = input.model ?? defaultModel;
@@ -177,7 +211,7 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
               schema: input.schema,
             },
           },
-        }, input.trackingAttribution), input.maxRetries,
+        }, input.trackingAttribution), currentJobExecution() ? 0 : input.maxRetries,
       );
       const usage = requireUsage(response);
 
@@ -196,18 +230,23 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         throw new Error("OpenAI no devolvio contenido estructurado.");
       }
 
-      return JSON.parse(response.output_text) as T;
+      try { return JSON.parse(response.output_text) as T; }
+      catch { throw new KnownUsageStructuredParseError(); }
     },
     async generateBackgroundStructuredObject<T>(input: BackgroundStructuredObjectInput) {
       if (!currentJobExecution()) throw new Error("PERSISTENT_BACKGROUND_CONTEXT_REQUIRED");
       const model = input.model ?? defaultModel;
       const params = backgroundStructuredParams(input, model) as Parameters<typeof client.responses.create>[0];
-      const bound = responseCostBound(params as Parameters<typeof responseCostBound>[0]);
+      const bound = await boundForRequest(params as Parameters<typeof responseCostBound>[0]);
       if (!bound) throw new Error("LLM_BUDGET_BLOCKED: modelo o limite sin tarifa verificable.");
       const expectedFingerprint = openAiBackgroundRequestFingerprint({ ...input, model });
       if (expectedFingerprint !== input.requestFingerprint) throw new Error("BACKGROUND_REQUEST_FINGERPRINT_MISMATCH");
       const claim = await claimBackgroundProviderResponse({ provider: "openai", model, logicalAttemptKey: input.logicalAttemptKey, requestFingerprint: input.requestFingerprint, reservedCost: bound.maximumUsd, correlation: input.trackingAttribution ?? null });
       let record = claim.record;
+      // Normal execution cannot turn a terminal provider failure into polling
+      // or another create. Late accounting uses the explicit reconciler.
+      if (["FAILED", "CANCELLED"].includes(record.status))
+        throw new Error(record.error ?? `OPENAI_BACKGROUND_${record.status}`);
       let reservation: Awaited<ReturnType<typeof reservePaidCall>> | null = null;
       let response: OpenAI.Responses.Response | null = null;
       const startedAt = record.createdAt;
@@ -216,8 +255,9 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         try {
           const processLimit = Number(process.env.IMX_LLM_RUN_BUDGET_USD);
           if (processLimit > 0 && reservedApiUsd + bound.maximumUsd > processLimit) throw new Error("LLM_BUDGET_BLOCKED: llamada no autorizada por el limite preventivo.");
+          reservation = await reservePaidCall(input.schemaName, model, bound.maximumUsd, input.trackingAttribution,
+            { inputTokens: bound.inputTokens, provenance: bound.tokenCountProvenance });
           if (processLimit > 0) reservedApiUsd += bound.maximumUsd;
-          reservation = await reservePaidCall(input.schemaName, model, bound.maximumUsd, input.trackingAttribution);
           record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { status: "DISPATCHING", reservationId: reservation.durableReservationId });
           response = await client.responses.create(params as any) as OpenAI.Responses.Response;
           record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { responseId: response.id, providerStatus: response.status ?? null, status: response.status === "completed" ? "PENDING" : "PENDING" });
@@ -243,17 +283,23 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
         if (Date.now() >= deadline) throw new ProviderResponsePendingError(responseId, response?.status ?? record.providerStatus ?? "unknown");
         await delay(Math.min(interval, Math.max(0, deadline - Date.now())));
         response = await client.responses.retrieve(responseId);
-        record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { providerStatus: response.status ?? null, status: response.status === "queued" || response.status === "in_progress" ? "PENDING" : response.status === "completed" ? "PENDING" : response.status === "cancelled" ? "CANCELLED" : response.status === "incomplete" ? "INCOMPLETE" : "FAILED" });
+        record = await updateBackgroundProviderResponse(input.logicalAttemptKey, { providerStatus: response.status ?? null,
+          ...(response.usage ? { usage: response.usage, actualModel: response.model } : {}),
+          status: response.status === "queued" || response.status === "in_progress" ? "PENDING" : response.status === "completed" ? "PENDING" : response.status === "cancelled" ? "CANCELLED" : response.status === "incomplete" ? "INCOMPLETE" : "FAILED" });
         interval = Math.min(maxMs, Math.ceil(interval * 1.6));
       }
 
       const cost = estimatedCost(params as Parameters<typeof responseCostBound>[0], response);
       if (cost !== null && response.usage) {
         if (reservation) await reservation.complete(cost, response.usage, response.model);
-        else if (record.reservationId) await settleCurrentJobCall(record.reservationId, cost, response.usage, response.model);
+        else if (record.reservationId) await reconcileBackgroundJobUsage({ jobId: currentJobExecution()!.jobId,
+          logicalAttemptKey: input.logicalAttemptKey, reservationId: record.reservationId,
+          responseId, requestFingerprint: input.requestFingerprint, estimate: cost,
+          usage: response.usage, actualModel: response.model });
       } else {
         if (reservation) await reservation.fail();
-        else if (record.reservationId) await settleCurrentJobCall(record.reservationId, null, null, response.model);
+        // A prior unknown reservation remains reserved until attributed usage is
+        // available; retrieval without usage cannot turn it into zero cost.
       }
       if (claim.created && Number(process.env.IMX_LLM_RUN_BUDGET_USD) > 0 && cost !== null) reservedApiUsd += cost - bound.maximumUsd;
       await audit(startedAt, params, response);
@@ -267,8 +313,11 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
       }
       if (response.status !== "completed") {
         const status = response.status === "cancelled" ? "CANCELLED" : "FAILED";
-        await updateBackgroundProviderResponse(input.logicalAttemptKey, { status, providerStatus: response.status ?? null, usage: response.usage ?? null, actualModel: response.model, error: `OPENAI_BACKGROUND_${String(response.status).toUpperCase()}` });
-        throw new Error(`OPENAI_BACKGROUND_${String(response.status).toUpperCase()}`);
+        const providerCode = response.error?.code;
+        const safeCode = typeof providerCode === "string" && /^[a-z0-9_]{1,80}$/i.test(providerCode) ? `:${providerCode.toUpperCase()}` : "";
+        const causalError = `OPENAI_BACKGROUND_${String(response.status).toUpperCase()}${safeCode}`;
+        await updateBackgroundProviderResponse(input.logicalAttemptKey, { status, providerStatus: response.status ?? null, usage: response.usage ?? null, actualModel: response.model, error: causalError });
+        throw new Error(causalError);
       }
       if (!response.output_text) throw new Error("OpenAI no devolvio contenido estructurado.");
       await updateBackgroundProviderResponse(input.logicalAttemptKey, { status: "COMPLETED", providerStatus: response.status, outputText: response.output_text, usage: response.usage ?? null, actualModel: response.model, error: null });

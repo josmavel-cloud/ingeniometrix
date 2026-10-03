@@ -1,7 +1,9 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["detections"],
+  "required": [
+    "detections"
+  ],
   "properties": {
     "detections": {
       "type": "array",
@@ -9,7 +11,12 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["reference_id", "detected_language", "confidence"],
+        "required": [
+          "reference_id",
+          "detected_language",
+          "confidence",
+          "rationale"
+        ],
         "properties": {
           "reference_id": {
             "type": "string",
@@ -17,14 +24,29 @@
           },
           "detected_language": {
             "type": "string",
-            "enum": ["es", "en", "pt", "fr", "de", "it", "other"]
+            "enum": [
+              "es",
+              "en",
+              "pt",
+              "fr",
+              "de",
+              "it",
+              "other"
+            ]
           },
           "confidence": {
             "type": "string",
-            "enum": ["high", "medium", "low"]
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
           },
           "rationale": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 280
           }
         }

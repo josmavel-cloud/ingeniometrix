@@ -1,5 +1,6 @@
 import { RETRIEVAL_LLM_JSON_1_PROMPT } from "@/server/mvp/prompts/retrieval-llm-json.v1";
 import { renderVersionedPrompt } from "@/server/mvp/prompts/render-versioned-prompt";
+import { KnownUsageStructuredParseError } from "@/llm/structured-output-error";
 import type { LlmProvider } from "@/llm/provider";
 import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
 
@@ -60,6 +61,9 @@ export async function generateStructuredObjectWithTextFallback<T>(params: {
       trackingAttribution: params.trackingAttribution,
     });
   } catch (structuredError) {
+    // A different output format cannot repair transport, funding, an unknown
+    // response or a schema request rejection. Never pay again for those errors.
+    if (!(structuredError instanceof KnownUsageStructuredParseError)) throw structuredError;
     const structuredReason = describeError(structuredError);
 
     try {

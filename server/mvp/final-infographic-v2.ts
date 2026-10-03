@@ -5,7 +5,7 @@ import sharp from "sharp";
 import type { LlmProvider } from "@/llm/provider";
 import type { LlmUsageAttribution } from "@/server/llm-usage-registry";
 
-import { currentApplicationBudget, reservePaidCall } from "./application-budget";
+import { hasPaidBudgetContext, reservePaidCall } from "./application-budget";
 import { deterministicInfographic, HERO_OUTPUT_TOKEN_BOUND } from "./final-infographic";
 import { HERO_INFOGRAPHIC_PROMPT_V2 } from "./prompts/hero-infographic.v2";
 import { VISUAL_QA_PROMPT } from "./prompts/visual-qa.v1";
@@ -59,8 +59,7 @@ export async function requestGeneratedImage(input: {
   purpose: string; model: string; prompt: string; outputPath: string;
   size: "1024x1024" | "1536x1024" | "1024x1536"; quality: "high";
 }) {
-  const budget = currentApplicationBudget();
-  if (!budget) throw new Error("IMAGE_BUDGET_REQUIRED");
+  if (!hasPaidBudgetContext()) throw new Error("IMAGE_BUDGET_REQUIRED");
   const outputBound = input.size === "1024x1024" ? HERO_OUTPUT_TOKEN_BOUND : Math.ceil(HERO_OUTPUT_TOKEN_BOUND * 1.5);
   const reservation = await reservePaidCall(input.purpose, input.model, ((Buffer.byteLength(input.prompt) + 2048) * 5 + outputBound * 30) / 1e6);
   const started = Date.now();

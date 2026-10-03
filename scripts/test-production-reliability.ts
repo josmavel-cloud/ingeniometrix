@@ -1,3 +1,6 @@
+import detectionSchema from "@/ai/schemas/reference-language-detection-batch.schema.json";
+import translationSchema from "@/ai/schemas/reference-translation-batch.schema.json";
+import { validateTranslationSchemaContract } from "@/server/retrieval/reference-translation-service";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { emptyDefinition, searchIntent, userValue, type DefinitionField } from "@/lib/conversational-intake";
@@ -37,6 +40,12 @@ async function main() {
     assert(selected.pack.plannedQueries?.length, `fallback must retain an executable query for ${topic}`);
     assert.equal(input.signals.find(signal => signal.sourceField === "object")?.value, object);
   }
+  validateTranslationSchemaContract(detectionSchema);
+  validateTranslationSchemaContract(translationSchema);
+  const invalidDetection = structuredClone(detectionSchema);
+  invalidDetection.properties.detections.items.required = invalidDetection.properties.detections.items.required.filter(key => key !== "rationale");
+  assert.throws(() => validateTranslationSchemaContract(invalidDetection), /REFERENCE_DISPLAY_SCHEMA_INVALID/,
+    "The previous language-detection schema fails locally before dispatch or reservation");
   assert.equal(referenceDisplayText("Water &amp; soil"), "Water & soil");
   assert.equal(referenceDisplayText("<jats:p>Alpha &amp; beta <jats:italic>x</jats:italic></jats:p>"), "Alpha & beta x");
   assert.equal(referenceDisplayText("&lt;jats:p&gt;Alpha &amp;amp; beta&lt;/jats:p&gt;"), "Alpha & beta");
@@ -104,7 +113,7 @@ async function main() {
     const job = await enqueueBlueprintJobForUser(owner.id, project.id);
     assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } }).then(row =>
       (row.metadataJson as { commercialPolicy: string }).commercialPolicy)), INTERNAL_GENERATION_POLICY);
-    assert((await prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id))) > 0);
+    assert.equal((await prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id))), 3);
     await prisma.internalGenerationCapability.update({ where: { id: grant.id }, data: { status: "REVOKED", revokedAt: new Date(), revokedBy: "isolated-test" } });
     await assert.rejects(prisma.$transaction(tx => assertInternalGenerationAuthorization(tx, job.id)), /CAPABILITY_REQUIRED/);
 

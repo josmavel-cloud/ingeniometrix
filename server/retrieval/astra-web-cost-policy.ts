@@ -21,6 +21,13 @@ export function webDiscoveryCostBound(input: { requestBytes: number; maxOutputTo
         tool: policy.webSearchUsdPerCall, search: policy.searchContextTokenBound }).some(v => !Number.isFinite(v) || v <= 0)) return null;
   // UTF-8 bytes plus allowance upper-bounds locally serialized text/schema tokens.
   if (input.requestBytes + 2048 > policy.modelInputTokenBound) return null;
+  return webDiscoveryPolicyCostBound(input, policy);
+}
+
+/** The exact configured reservation bound, distinct from the policy ceiling. */
+export function webDiscoveryPolicyCostBound(input: { maxOutputTokens: number; maxToolCalls: number },
+  policy: typeof ASTRA_WEB_COST_POLICY = ASTRA_WEB_COST_POLICY) {
+  if (![input.maxOutputTokens, input.maxToolCalls].every(value => Number.isSafeInteger(value) && value > 0)) return null;
   const maximumUsd = ((policy.modelInputTokenBound + policy.searchContextTokenBound) * policy.inputUsdPerMillion *
     policy.cacheWriteFactor + input.maxOutputTokens * policy.outputUsdPerMillion) / 1_000_000 +
     input.maxToolCalls * policy.webSearchUsdPerCall;

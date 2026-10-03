@@ -40,7 +40,7 @@ export function sourceDisposition(ledger: MvpStep5EvidenceLedger, usedSourceIds:
     const used = usedSourceIds.includes(source.source_id);
     if (used && !eligible) throw new Error(`EVIDENCE_USE_WITHOUT_SUPPORT: ${source.source_id}`);
     return {
-      source_id: source.source_id, reference_id: source.reference_id, selected: true,
+      source_id: source.source_id, reference_id: source.reference_id, selected: source.provider !== "SYSTEM_DESIGN_SUPPORT",
       extraction_status: extraction?.status ?? "NOT_RUN", evidence_level: extraction?.evidence_basis ?? "UNKNOWN",
       extracted_items: extraction?.evidence_items.length ?? 0,
       verified_items: extraction?.evidence_items.filter((item) => item.support_verified).length ?? 0,
@@ -63,7 +63,8 @@ export function assertEvidenceContinuity(ledger: MvpStep5EvidenceLedger, input: 
 export function inspectableEvidence(ledger: MvpStep5EvidenceLedger) {
   return ledger.semantic_extractions.filter((extraction) => extraction.status === "completed" && extraction.quality_decision !== "insufficient" && extraction.evidence_basis !== "VERIFIED_METADATA_ONLY")
     .flatMap((extraction) => extraction.evidence_items.filter((item) => item.allowed_use !== "gap_only" && item.traceable_summary_es.trim() && item.support_verified === true)
-      .map((item) => ({ item, basis: extraction.evidence_basis })));
+      .map((item) => ({ item, basis: item.evidence_basis ?? extraction.evidence_basis }))
+      .filter(({basis}) => basis !== "VERIFIED_METADATA_ONLY"));
 }
 
 export function evaluateEvidenceGate(ledger: MvpStep5EvidenceLedger) {

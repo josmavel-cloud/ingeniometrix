@@ -17,8 +17,9 @@ export function classifyFailure(error: unknown): { category: FailureClass; autoR
   const e = error as { message?: string; status?: number; code?: string; name?: string };
   const text = `${e?.name ?? ""} ${e?.message ?? error} ${e?.code ?? ""}`;
   if (/DECLARATIVE_DIAGRAM|PDF_|DOCX|VISUAL_|SECTION_COMPACTION|RENDER_SANITY_FAILURE/.test(text)) return { category: "PRESENTATION", autoRetry: false };
+  if (/CREDIT_BALANCE_EXHAUSTED|INSUFFICIENT_QUOTA/i.test(text)) return { category: "PROVIDER_NONRETRYABLE", autoRetry: false };
   if (/BUDGET|COST_LIMIT/.test(text)) return { category: "COST_LIMIT", autoRetry: false };
-  if (/EVIDENCE|SCIENTIFIC_REVIEW_BLOCKED|UNKNOWN_EVIDENCE_POINTER/.test(text)) return { category: "SCIENTIFIC_INSUFFICIENCY", autoRetry: false };
+  if (/EVIDENCE|SCIENTIFIC_REVIEW_BLOCKED|UNKNOWN_EVIDENCE_POINTER|AUTONOMOUS_DESIGN_UNRESOLVED/.test(text)) return { category: "SCIENTIFIC_INSUFFICIENCY", autoRetry: false };
   if (/IMAGE_/.test(text)) return { category: "PRESENTATION", autoRetry: false };
   if (/TEMPLATE_PAGE_LIMIT/.test(text)) return { category: "USER_ACTION_REQUIRED", autoRetry: false };
   if (e?.status === 408 || e?.status === 429 && !/insufficient_quota/.test(text) || (e?.status ?? 0) >= 500 || /ETIMEDOUT|ECONNRESET|APIConnection|Request timed out/.test(text)) return { category: "PROVIDER_TRANSIENT", autoRetry: true };
@@ -46,6 +47,13 @@ export function jobCostPolicy() {
   const hard = positive("IMX_JOB_HARD_USD", 2.00);
   if (target > soft || soft > hard) throw new Error("Invalid job budget ordering");
   return { target, soft, hard, deep: positive("IMX_JOB_DEEP_RESEARCH_USD", 0.50), mandatoryReserve: positive("IMX_JOB_MANDATORY_RESERVE_USD", 0.25) };
+}
+// Only newly created jobs with this explicit metadata version use the pilot
+// envelope. Existing internal jobs and customer jobs keep their saved policy.
+export const INTERNAL_PILOT_COST_POLICY_VERSION = "internal-generation-pilot.v2";
+export function internalPilotJobCostPolicy() {
+  return { ...jobCostPolicy(), target: 2.00, soft: 2.50, hard: 3.00,
+    version: INTERNAL_PILOT_COST_POLICY_VERSION };
 }
 export type LengthStatus = "WITHIN_TARGET" | "ABOVE_TARGET" | "ABOVE_SOFT_MAX" | "TEMPLATE_LIMIT_EXCEEDED" | "RENDER_SANITY_FAILURE" | "UNMEASURED";
 export type RenderSanity = { status: "PASS" | "RENDER_SANITY_FAILURE"; reasons: string[]; emergencyMaxBodyPages: number };

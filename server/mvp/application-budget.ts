@@ -24,21 +24,21 @@ export class ApplicationBudget {
 }
 const context = new AsyncLocalStorage<ApplicationBudget>();
 const callAttempt = new AsyncLocalStorage<number>();
-const standalonePaidBudget = new AsyncLocalStorage<boolean>();
 export const withPaidCallAttempt = <T>(attempt: number, work: () => Promise<T>) => callAttempt.run(attempt, work);
-// Design-support web research is its own PaidOperation, limited by the existing
-// web daily cap. It must not consume the thesis-composition job's smaller cap.
-export const withStandalonePaidBudget = <T>(work: () => Promise<T>) => standalonePaidBudget.run(true, work);
 export const currentApplicationBudget = () => context.getStore();
+// A durable worker job already has a revalidated funding policy, whole-job
+// forecast and SQL ledger. Do not install an unrelated default evaluation cap.
+export const hasPaidBudgetContext = () => Boolean(currentApplicationBudget() || currentJobExecution());
 export function withApplicationBudget<T>(budget: ApplicationBudget, work: () => Promise<T>) { return context.run(budget, work); }
 
 // The SQL reservation is authoritative across workers/restarts; the process budget remains
 // an additional evaluation cap. Unknown usage retains both reservations, never zero.
-export async function reservePaidCall(purpose: string, model: string, maximumUsd: number, attribution?: LlmUsageAttribution) {
+export async function reservePaidCall(purpose: string, model: string, maximumUsd: number, attribution?: LlmUsageAttribution,
+  tokenCount?: { inputTokens: number; provenance: string }) {
   const local = currentApplicationBudget()?.reserve(purpose, model, maximumUsd);
   let durable;
   try {
-    durable = currentJobExecution() && !standalonePaidBudget.getStore() ? await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0, currentPaidOperation()?.id)
+    durable = currentJobExecution() ? await reserveJobCall(purpose, model, maximumUsd, callAttempt.getStore() ?? 0, currentPaidOperation()?.id, tokenCount)
       : await reservePreJobCall(purpose, model, maximumUsd, attribution);
   } catch (error) { local?.cancelBeforeDispatch(); throw error; }
   return {

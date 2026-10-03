@@ -1,3 +1,4 @@
+import { webDiscoveryCostBound, webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
@@ -5,8 +6,9 @@ import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, buildMethodEvidencePack, intentFromIntake, migrateLegacyCritique, migrateLegacyScopeSemantics, validateScientificDecision, validateDesignCritique, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
+import { accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, autonomousDesignPatchSchema, buildMethodEvidencePack, intentFromIntake, migrateLegacyCritique, migrateLegacyScopeSemantics, validateScientificDecision, validateDesignCritique, type DesignAlternative } from "@/server/mvp/scientific-decision-contracts";
 import { approvedDesignForCurrentJob, critiqueScientificDecision, decisionForUser, proposeScientificDecision, resolveAutonomousDesignBundle, resolveAutonomousDesignForJob, selectAutonomousCandidate } from "@/server/mvp/scientific-decision-service";
 import { enqueueBlueprintJobForUser, resumeLatestBlueprintJobForUser, runNextBlueprintJobStage, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
@@ -22,7 +24,11 @@ import { updateSelectedProjectReferences } from "@/server/retrieval/reference-se
 import { normalizeTitle } from "@/lib/text";
 import { generationContextForUser } from "@/server/projects/generation-context-service";
 import { designSupportGaps, designSupportMetadataEligible } from "@/server/mvp/design-mini-research";
+import { fingerprint } from "@/server/mvp/job-execution-context";
 import { generationCostReport } from "@/server/mvp/generation-cost-report";
+import { applyAutonomousDesignPatch, compactCriticEvidence, compactPatchReview, classifyPendingDecision, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "@/server/mvp/autonomous-design-resolution";
+import { mandatoryCompositionReservationFloor, wholeJobCostEquation } from "@/server/mvp/whole-job-cost-forecast";
+import { evidenceContextForPhase } from "@/server/mvp/generation-budgets";
 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const alternative: DesignAlternative = { id: "option-1", label: "Propuesta cualitativa sintética", scope_fulfilled: "Preserva intención de prueba", definition, research_design: design, components: [{ name: "Análisis temático", kind: "method", role: "Interpretación", inputs: ["Corpus propuesto"], outputs: ["Categorías propuestas"], dependencies: [], support: [{ source_id: "S1", evidence_id: "E3" }] }], scope_changes: [], applicability_conditions: ["Acceso por confirmar"], baselines_or_comparisons: [], transfer_limits: ["Caso único"], feasibility: "Propuesta sintética", discarded_alternative_reasons: [], qualitative_component: "Análisis temático", quantitative_component: null, integration_strategy: null, pending_user_decisions: [] };
@@ -47,6 +53,32 @@ async function main() {
   const scopeChanged = { ...alternativeV2, scope_effect: "narrows" as const, scope_changes: [{ requirement_id: "scope", proposed_change: "Otra población", reason: "Fixture" }] };
   assert.equal(selectAutonomousCandidate({ ...decision, alternatives: [scopeChanged] }, critique), undefined, "A material scope change cannot be auto-approved");
   assert.equal(selectAutonomousCandidate(decision, rejectedCritique), undefined, "A blocking scientific finding cannot be auto-approved");
+  assert.equal(classifyPendingDecision("¿Cuál es la población?", "PRESERVED"), "SCOPE_BLOCKING");
+  assert.equal(classifyPendingDecision("¿Se dispone de datos?", "PRESERVED"), "FACT_TO_VERIFY_DURING_RESEARCH");
+  assert.equal(classifyPendingDecision("¿Qué software usar?", "PRESERVED"), "METHOD_DEFAULTABLE");
+  assert.equal(classifyPendingDecision("¿Qué acceso efectivo existe a textos completos?", "PENDING_USER_DECISION"), "FACT_TO_VERIFY_DURING_RESEARCH");
+  assert.equal(classifyPendingDecision("¿Qué cobertura lingüística puede sostenerse?", "PENDING_USER_DECISION"), "NONBLOCKING_LIMITATION");
+  assert.equal(classifyPendingDecision("¿Cuál población se estudiará?", "PENDING_USER_DECISION"), "SCOPE_BLOCKING");
+  const operationalCritique = { assessments: [{ ...rejectedCritique.assessments[0],
+    scope: { ...scope, status: "PENDING_USER_DECISION" as const, confirmation_required: true },
+    user_decisions_required: ["Precisar el acceso efectivo a textos completos", "Decidir la cobertura lingüística viable"] }] };
+  const operationalDecision = { ...decision, alternatives: [{ ...alternativeV2,
+    pending_user_decisions: [{ question: "¿Qué acceso efectivo existe a textos completos?", blocking: true }] }] };
+  assert.equal(inScopeAlternatives(operationalDecision, operationalCritique).length, 1,
+    "Operational uncertainty may enter bounded repair and independent critique without scope change");
+  assert.equal(inScopeAlternatives({ ...operationalDecision, alternatives: [{ ...operationalDecision.alternatives[0],
+    pending_user_decisions: [{ question: "¿Cuál población se estudiará?", blocking: true }] }] }, operationalCritique).length, 0);
+  assert.equal(inScopeAlternatives(decision, rejectedCritique).length, 1, "A repairable in-scope alternative remains available");
+  assert.equal(inScopeAlternatives({ ...decision, alternatives: [scopeChanged] }, rejectedCritique).length, 0);
+  assert.ok(JSON.stringify(compactAlternativeForRepair(alternativeV2)).length < JSON.stringify(alternativeV2).length);
+  assert.ok(mandatoryCompositionReservationFloor({ decision, intent, evidence_pack: pack } as any, alternativeV2.id).length === 8);
+  assert.equal(wholeJobCostEquation({ knownSpent: 0.4, unknownReserved: 0.9, nextStageReservation: 0.2,
+    minimumRemainingMandatoryReservation: 0.4, safetyReserve: 0.25, hardCap: 2 }).allowed, false);
+  assert.equal(wholeJobCostEquation({ knownSpent: 0.46472755, unknownReserved: 0.94293750,
+    nextStageReservation: 0.401575, minimumRemainingMandatoryReservation: 0.156695 + 0.7924475,
+    safetyReserve: 0.25, hardCap: 2 }).allowed, false,
+    "The historical unknown reservation cannot be silently reclaimed to make a DOCX path fit");
+  assert.equal(evidenceContextForPhase("methodology", [{ section_key: "methodology" }, { section_key: "problem_statement" }]).length, 1);
   const costs = generationCostReport({ entries: [
     { id: "evidence", purpose: "extraction", stage: "EVIDENCE", model: "fixture", actualModel: "fixture", maximum: 0.02, estimate: 0.01, status: "completed", retry: false, usage: { inputTokens: 10, outputTokens: 5, reasoningTokens: 2 } },
     { id: "mini", purpose: "DESIGN_SUPPORT_MINI_RESEARCH", stage: "DESIGN_MINI_RESEARCH_1", model: "fixture", actualModel: null, maximum: 0.03, estimate: null, status: "failed_unknown_usage", retry: false, usage: null },
@@ -130,6 +162,7 @@ async function main() {
   assert.equal(rejected.repair_rounds, 1);
   const gapBundle = structuredClone(rejected);
   gapBundle.intent.unit_population_corpus = "Corpus sintético";
+  gapBundle.critique.assessments[0].evidence_support = "FAIL";
   gapBundle.critique.assessments[0].critical_findings[0].affected_field = "validation_strategy";
   gapBundle.critique.assessments[0].critical_findings[0].required_action = "Verificar la aplicabilidad del método con una fuente técnica primaria";
   assert.equal(designSupportGaps(gapBundle).length, 1);
@@ -140,24 +173,158 @@ async function main() {
   assert.equal(designSupportMetadataEligible({ ...sourceMetadata, observedUrl: "https://example.org/another" }), false);
   assert.equal(designSupportMetadataEligible({ ...sourceMetadata, doi: null, venue: null }), false);
   const autonomousCalls: string[] = [];
+  const nonmaterialDecision = { ...decision, alternatives: [{ ...alternativeV2,
+    pending_user_decisions: [{ question: "¿Qué software usar?", blocking: true }] }] };
+  const nonmaterialCritique = { assessments: [{ ...critique.assessments[0], decision: "REPAIR_REQUIRED" as const,
+    user_decisions_required: ["¿Qué software usar?"], repair_targets: ["pending_user_decisions"] }] };
+  const deterministic = resolveNonmaterialDecisions({ decision: nonmaterialDecision, critique: nonmaterialCritique, intent, pack });
+  assert.equal(deterministic?.alternative.pending_user_decisions.length, 0);
+  assert.equal(deterministic?.reclassified[0].classification, "METHOD_DEFAULTABLE");
+  assert.equal(resolveNonmaterialDecisions({ decision, critique: rejectedCritique, intent, pack }), null,
+    "Blocking scientific criticism still requires independent repair/review");
+  const nonmaterialBundle = { ...rejected, decision: nonmaterialDecision, critique: nonmaterialCritique };
+  const noCallResolution = await resolveAutonomousDesignBundle(nonmaterialBundle, { userId: "fixture", projectId: "fixture",
+    runId: "deterministic", provider: { generateStructuredObject: async () => { throw new Error("No paid call expected"); } } as any });
+  assert.equal(noCallResolution.alternative.pending_user_decisions.length, 0);
+  assert.equal(noCallResolution.deterministicResolution?.[0].classification, "METHOD_DEFAULTABLE");
+  const smallPatch = { alternativeId: alternativeV2.id, procedure: alternativeV2.research_design.procedure,
+    samplingSelection: null, analysisMethod: null, feasibility: null,
+    qualityCriteria: alternativeV2.research_design.quality_criteria, dataRequirements: [{ description: "Acceso al corpus por verificar", availability: "PENDING" as const, confirmation_or_action: "Verificar antes de producir datos" }],
+    assumptionsAdded: [], validationRequirementsAdded: [], limitationsAdded: ["El acceso aún no está confirmado"], rationale: "Aclaración del criterio sin ampliar alcance",
+    resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [] };
+  const strictPatchSchema = z.toJSONSchema(autonomousDesignPatchSchema) as { properties: Record<string, unknown>; required: string[] };
+  assert.deepEqual(new Set(strictPatchSchema.required), new Set(Object.keys(strictPatchSchema.properties)),
+    "The background Responses schema must include every property in required");
+  const smallReview = { alternativeId: alternativeV2.id, intentPreserved: true, methodCoherent: true, evidenceSupported: true,
+    blockingScientificIssue: false, blockingReason: "", limitations: ["Acceso aún por verificar"], resolvedFindingCodes: ["VALIDATION_MISSING"], unresolvedFindingCodes: [], deferredAsFutureRequirementCodes: [] };
+  const applied = applyAutonomousDesignPatch({ decision, critique: rejectedCritique, intent, pack, patch: smallPatch });
+  assert.deepEqual(applied.definition, alternativeV2.definition);
+  assert.deepEqual(applied.components, alternativeV2.components);
+  assert.equal(applied.scope_effect, "preserves");
+  assert.ok(applied.data_requirements.some((requirement) => requirement.availability === "PENDING"));
+  assert.throws(() => applyAutonomousDesignPatch({ decision: { ...decision, alternatives: [scopeChanged] }, critique: rejectedCritique, intent, pack, patch: smallPatch }), /OUT_OF_SCOPE/);
+  assert.throws(() => applyAutonomousDesignPatch({ decision, critique: rejectedCritique, intent, pack,
+    patch: { ...smallPatch, dataRequirements: [{ description: "Datos inventados", availability: "USER_CONFIRMED", confirmation_or_action: "No consta" }] } as any }), /invalid_value|Invalid option|USER_CONFIRMED/i);
   const resolvedBundle = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "fixture",
-    researchSupport: async () => ({ status: "LIMITED", support: [], limitations: ["No se verificó apoyo técnico adicional."], operations: [] }),
+    researchSupport: async () => { throw new Error("Mini research is not the default resolver"); },
     provider: { generateStructuredObject: async (request: any) => {
       autonomousCalls.push(request.schemaName);
-      return request.schemaName === "autonomous_design_revision_v1" ? { replacements: [structuredClone(alternativeV2)], corrected_findings: ["Criterio corregido"], unresolved_findings: [] } : critique;
+      return request.schemaName === "autonomous_design_patch_v2" ? smallPatch : smallReview;
     } } as any });
-  assert.deepEqual(autonomousCalls, ["autonomous_design_revision_v1", "autonomous_design_critic_0"]);
+  assert.deepEqual(autonomousCalls, ["autonomous_design_patch_v2", "autonomous_design_targeted_critic_v2"]);
   assert.equal(resolvedBundle.revised, true);
   assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
-  assert.ok(resolvedBundle.alternative.transfer_limits.includes("No se verificó apoyo técnico adicional."));
+  assert.ok(resolvedBundle.alternative.transfer_limits.includes("Acceso aún por verificar"));
+  let supportCalls = 0, independentReviews = 0, patchCalls = 0;
+  const supplementalSource = { sourceId: "DS-test", gapId: designSupportGaps(rejected, { ...smallReview, evidenceSupported: false })[0].gapId, title: "Norma metodológica sintética",
+    authors: [], year: null, doi: null, observationIds: ["completed-web-observation"], provenance: "SYSTEM_DESIGN_SUPPORT" as const,
+    document: { observedUrl: "https://example.org/standard", finalUrl: "https://example.org/current-standard",
+      sha256: "a".repeat(64), mediaType: "text/html" as const, title: "Norma metodológica sintética",
+      passages: [{ text: "Los investigadores deben registrar cada decisión de codificación, comparar observaciones contradictorias y verificar criterios de calidad durante el análisis. Pasaje sintético para el contrato, sin aceptación científica real.", locator: "html:block:1", page: null, contentKind: "FULL_TEXT_PASSAGE" as const, contentKindBasis: "SYNTHETIC_PROCEDURAL_FIXTURE" }] } };
+  const supported = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "late-support",
+    researchSupport: async ({ gaps }) => { supportCalls++; assert.equal(gaps?.[0].origin, "TARGETED_CRITIC");
+      return { status: "VERIFIED_SUPPORT", support: [supplementalSource], limitations: [], operations: [] }; },
+    provider: { generateStructuredObject: async (request: any) => {
+      if (request.schemaName.includes("patch")) {
+        patchCalls++;
+        return patchCalls === 1 ? smallPatch : { ...smallPatch,
+          methodologicalSupportAdded: [{ source_id: "DS-test", evidence_id: "DS-test:P1" }], applicabilityJustification: "Aplicabilidad limitada al procedimiento descrito" };
+      }
+      independentReviews++;
+      if (independentReviews === 2) assert.ok(request.prompt.includes(supplementalSource.document.passages[0].text));
+      return { ...smallReview, evidenceSupported: independentReviews === 2 };
+    } } as any });
+  assert.equal(supportCalls, 1, "Late critic evidence rejection reaches the support service");
+  assert.equal(independentReviews, 2, "New evidence gets an independent versioned evaluation");
+  assert.equal(supported.supportAddendum?.jobId, "late-support");
+  assert.ok(supported.alternative.research_design.methodological_support.some(pointer => pointer.source_id === "DS-test"));
+  assert.deepEqual(supported.alternative.definition, rejected.decision.alternatives[0].definition);
+  await assert.rejects(() => resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "still-unsupported",
+    researchSupport: async () => ({ status: "VERIFIED_SUPPORT", support: [supplementalSource], limitations: [], operations: [] }),
+    provider: { generateStructuredObject: async (request: any) => request.schemaName.includes("patch")
+      ? { ...smallPatch, methodologicalSupportAdded: [], applicabilityJustification: "Limitada" }
+      : { ...smallReview, evidenceSupported: false } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/,
+    "An acquired document never forces a positive scientific verdict");
+  let boundedSupportCalls = 0, boundedReviews = 0;
+  const twiceSupported = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "second-narrow-gap",
+    researchSupport: async ({ operationOrdinal, knownSupport }) => {
+      boundedSupportCalls++;
+      assert.equal(operationOrdinal, boundedSupportCalls);
+      if (operationOrdinal === 2) assert.equal(knownSupport?.length, 1);
+      return { status: "VERIFIED_SUPPORT", support: [{ ...supplementalSource,
+        sourceId: `DS-narrow-${operationOrdinal}`, document: { ...supplementalSource.document,
+          sha256: String(operationOrdinal).repeat(64) } }], limitations: [], operations: [] };
+    }, provider: { generateStructuredObject: async (request: any) => {
+      if (request.schemaName.includes("patch")) return { ...smallPatch, methodologicalSupportAdded: [], applicabilityJustification: "Respaldo sujeto a crítica independiente" };
+      boundedReviews++;
+      if (boundedReviews === 3) {
+        assert.ok(request.prompt.includes("DS-narrow-1")); assert.ok(request.prompt.includes("DS-narrow-2"));
+      }
+      return { ...smallReview, evidenceSupported: boundedReviews === 3 };
+    } } as any });
+  assert.equal(boundedSupportCalls, 2); assert.equal(boundedReviews, 3);
+  assert.equal(twiceSupported.supportAddendum?.sources.length, 2);
+  const accessCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
+    ...rejectedCritique.assessments[0].critical_findings[0], code: "ACCESS_UNVERIFIED", affected_field: "data_requirements",
+    issue: "Acceso aún no verificado", required_action: "Verificar acceso legal antes de ejecutar el estudio",
+  }] }] };
+  const deferredPatch = { ...smallPatch, resolvedFindingCodes: [], unresolvedFindingCodes: ["ACCESS_UNVERIFIED"] };
+  assert.ok(applyAutonomousDesignPatch({ decision, critique: accessCritique, intent, pack, patch: deferredPatch }).data_requirements
+    .some((requirement) => requirement.availability === "PENDING"), "Unknown future access stays a conditional requirement");
+  const deferredBundle = await resolveAutonomousDesignBundle({ ...rejected, critique: accessCritique }, { userId: "fixture", projectId: "fixture",
+    runId: "deferred-access", provider: { generateStructuredObject: async (request: any) => request.schemaName === "autonomous_design_patch_v2"
+      ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
+  assert.equal(deferredBundle.targetedReview?.blockingScientificIssue, false);
+  assert.deepEqual(deferredBundle.targetedReview?.deferredAsFutureRequirementCodes, ["ACCESS_UNVERIFIED"]);
+  const compoundAccess = structuredClone(accessCritique);
+  compoundAccess.assessments[0].critical_findings[0].affected_field = "data_requirements; pending_user_decisions; procedure";
+  assert.doesNotThrow(() => applyAutonomousDesignPatch({ decision, critique: compoundAccess, intent, pack, patch: deferredPatch }));
+  const mixedMethod = structuredClone(compoundAccess);
+  mixedMethod.assessments[0].critical_findings[0].affected_field = "data_requirements; analysis_method";
+  assert.throws(() => applyAutonomousDesignPatch({ decision, critique: mixedMethod, intent, pack, patch: deferredPatch }), /BLOCKING_FINDING_UNRESOLVED/);
+  const compoundDeferred = await resolveAutonomousDesignBundle({ ...rejected, critique: compoundAccess }, { userId: "fixture", projectId: "fixture",
+    runId: "compound-access", provider: { generateStructuredObject: async (request: any) => request.schemaName === "autonomous_design_patch_v2"
+      ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
+  assert.equal(compoundDeferred.targetedReview?.blockingScientificIssue, false, "Compound future requirements still require independent acceptance");
+  const configuredWebBound = webDiscoveryPolicyCostBound({ maxOutputTokens: 4096, maxToolCalls: 2 });
+  assert.equal(configuredWebBound?.maximumUsd, 2.0748);
+  assert.deepEqual(configuredWebBound, webDiscoveryCostBound({ requestBytes: 5000, maxOutputTokens: 4096, maxToolCalls: 2 }),
+    "Whole-job forecast uses the identical bound enforced at web dispatch, not the generic policy ceiling");
+  const repeatedIdentity = { title: "Guía", observedUrl: "https://example.org/guide", documentHash: "a".repeat(64) };
+  const fullPassages = Array.from({ length: 12 }, (_, index) => ({ source_id: "S1", evidence_id: `P${index}`, excerpt: "Pasaje original completo", source_identity: repeatedIdentity }));
+  const compactEvidence = compactCriticEvidence(fullPassages);
+  assert.equal(compactEvidence.sources.length, 1);
+  assert.equal(compactEvidence.passages.length, 12);
+  assert.deepEqual(compactEvidence.passages.map(item => item.excerpt), fullPassages.map(item => item.excerpt));
+  assert.deepEqual(compactPatchReview(deferredPatch).unresolvedFindingCodes, deferredPatch.unresolvedFindingCodes);
+  assert.ok(!("procedure" in compactPatchReview(deferredPatch)), "Procedure is already present in the repaired alternative, not duplicated");
+  const operationalScopeCaveat = { assessments: [{ ...rejectedCritique.assessments[0],
+    user_decisions_required: ["Precisar apoyo de traducción; cualquier exclusión requerirá nueva revisión del alcance."],
+    scope: { ...scope, status: "PRESERVED" as const, confirmation_required: false } }] };
+  assert.doesNotThrow(() => applyAutonomousDesignPatch({ decision, critique: operationalScopeCaveat, intent, pack, patch: smallPatch }),
+    "An operational caution mentioning scope cannot override the explicit independent PRESERVED finding");
+  const scopeBlockingCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
+    ...rejectedCritique.assessments[0].critical_findings[0], code: "SCOPE_UNCONFIRMED", affected_field: "scope",
+  }] }] };
+  assert.throws(() => applyAutonomousDesignPatch({ decision, critique: scopeBlockingCritique, intent, pack,
+    patch: { ...deferredPatch, unresolvedFindingCodes: ["SCOPE_UNCONFIRMED"] } }), /BLOCKING_FINDING_UNRESOLVED/,
+  "A real scope conflict cannot be deferred as future data access");
   let unsafeCalls = 0;
   await assert.rejects(() => resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "unsafe",
     researchSupport: async () => ({ status: "NOT_NEEDED", support: [], limitations: [], operations: [] }),
     provider: { generateStructuredObject: async (request: any) => {
       unsafeCalls++;
-      return request.schemaName === "autonomous_design_revision_v1" ? { replacements: [structuredClone(alternativeV2)], corrected_findings: [], unresolved_findings: [] } : rejectedCritique;
+      return request.schemaName === "autonomous_design_patch_v2" ? smallPatch : { ...smallReview, blockingScientificIssue: true, blockingReason: "Criterio no sustentado" };
     } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
   assert.equal(unsafeCalls, 2, "A failed independent critique cannot trigger an unbounded revision debate");
+  const oversized = structuredClone(rejected);
+  const cited = alternativeV2.research_design.methodological_support[0];
+  const citedEvidence = oversized.evidence_pack.items.find((item) => item.source_id === cited.source_id && item.evidence_id === cited.evidence_id)!;
+  citedEvidence.summary = "Contexto científico intacto. ".repeat(4000);
+  let oversizedCalls = 0;
+  await assert.rejects(() => resolveAutonomousDesignBundle(oversized, { userId: "fixture", projectId: "fixture", runId: "oversized",
+    provider: { generateStructuredObject: async () => { oversizedCalls++; throw new Error("Should not dispatch"); } } as any }), /DESIGN_DIGEST_FINDING_SPLIT_REQUIRED/);
+  assert.equal(oversizedCalls, 0, "oversized scientific context is not silently truncated or billed");
   assert.ok(!alternativeIsApprovable(rejected.decision.alternatives[0], rejected.critique));
   const outputCalls: string[] = [];
   const restored = await proposeScientificDecision({ projectId: "fixture", runId: "fixture", intake: { topic: "Fixture" }, academicLevel: "MAESTRIA", ledger, provider: { generateStructuredObject: async (request: any) => {
@@ -255,6 +422,97 @@ async function main() {
     assert.equal(designed.job?.currentStage, "resolving_design");
     assert.equal(scienceCalls, 0);
     assert.equal((await enqueueBlueprintJobForUser(user.id, project.id, { scientificProfile: "rc4", expectedContext, operationId })).id, job.id);
+    // A proven transport failure may reacquire documents, but completed science
+    // and the paid web operation remain authoritative. Recovery is once/version.
+    await prisma.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } },
+      create: { jobId: job.id, stageKey: "control:cost", status: "FAILED", progress: 0, outputJson: { entries: [] } },
+      update: { outputJson: { entries: [] } } });
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:DESIGN_SUPPORT_DOCUMENT_1", status: "COMPLETED", progress: 100,
+      outputJson: { value: { source: null, reason: "DOCUMENT_ACQUISITION_FAILED" } } } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", currentStage: "resolving_design", attempts: 1,
+      errorJson: { message: "DESIGN_SUPPORT_UNAVAILABLE: fixture" } } });
+    const acquisitionRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(acquisitionRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    assert.equal(acquisitionRecoveries.filter(result => result.state === "already_scheduled").length, 1);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "DESIGN_SUPPORT_UNAVAILABLE: fixture" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED/);
+    const originalScience = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "checkpoint:SCIENTIFIC_DECISION" } } });
+    const compoundScience = structuredClone(originalScience.outputJson) as any;
+    compoundScience.value.critique.assessments[0].critical_findings = compoundAccess.assessments[0].critical_findings;
+    compoundScience.outputHash = fingerprint(compoundScience.value);
+    await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(compoundScience) } });
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_1", status: "COMPLETED", progress: 100,
+      outputJson: json({ value: deferredPatch, outputHash: fingerprint(deferredPatch) }) } });
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "provider:background:compound-fixture", status: "COMPLETED", progress: 100,
+      outputJson: { status: "COMPLETED", responseId: "resp_fixture_compound", correlation: { stage: "autonomous_design_patch" } } } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 1, errorJson: { message: "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED" } } });
+    const compoundRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(compoundRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const compoundRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(compoundRecovered.attempts, 1); assert.equal(compoundRecovered.maxAttempts, 3);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 2,
+      errorJson: { message: "AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: fixture" } } });
+    const contextRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(contextRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).maxAttempts, 3);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: fixture" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    const rejectedEvidenceReview = { ...smallReview, evidenceSupported: false };
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_1", status: "COMPLETED", progress: 100,
+      outputJson: json({ value: rejectedEvidenceReview, outputHash: fingerprint(rejectedEvidenceReview) }) } });
+    await prisma.blueprintJobStage.update({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } },
+      data: { outputJson: { entries: [], policy: { hard: 5, mandatoryReserve: 0.25 } } } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 3,
+      errorJson: { message: "COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job." } } });
+    const forecastRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(forecastRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const forecastRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(forecastRecovered.attempts, 3, "Historical failures are not reset");
+    assert.equal(forecastRecovered.maxAttempts, 4, "One audited continuation for the corrected forecast version");
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job." } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    // Explicit digest-version recovery preserves exhausted attempts, scientific
+    // checkpoints and known charges. Concurrent normal resume grants only once.
+    const supportValue = { support: [{ sourceId: "DS-offline" }] };
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:DESIGN_MINI_RESEARCH_V2_ACQUISITION3_1", status: "COMPLETED", progress: 100,
+      outputJson: json({ value: supportValue, outputHash: fingerprint(supportValue) }) } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 4, maxAttempts: 4,
+      errorJson: { message: "AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: fixture" } } });
+    const digestRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(digestRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const digestRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(digestRecovered.attempts, 4); assert.equal(digestRecovered.maxAttempts, 5);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: fixture" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    const secondReview = { evidenceSupported: false, intentPreserved: true, methodCoherent: true };
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_2",
+      status: "COMPLETED", progress: 100, outputJson: json({ value: secondReview, outputHash: fingerprint(secondReview) }) } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 5, maxAttempts: 5,
+      errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
+    const lateRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(lateRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const lateRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(lateRecovered.attempts, 5); assert.equal(lateRecovered.maxAttempts, 6);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED",
+      errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_3",
+      status: "COMPLETED", progress: 100, outputJson: json({ value: secondReview, outputHash: fingerprint(secondReview) }) } });
+    const observedSources = [{ sourceId: "DS-observed" }];
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:DESIGN_SUPPORT_OBSERVED_ALTERNATES_V1",
+      status: "COMPLETED", progress: 100, outputJson: json({ value: observedSources, outputHash: fingerprint(observedSources) }) } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { attempts: 6, maxAttempts: 6 } });
+    const coverageRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(coverageRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const coverageRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(coverageRecovered.attempts, 6); assert.equal(coverageRecovered.maxAttempts, 7);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED",
+      errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
+    await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval" } });
     const recovery = await resumeLatestBlueprintJobForUser(user.id, project.id);
     assert.equal(recovery.state, "autonomous_recovery_scheduled");

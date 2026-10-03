@@ -72,11 +72,11 @@ import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report
 import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence, sourceDisposition } from "./evidence-continuity";
 import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
 import { exportPlanPdf } from "./pdf-export";
-import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "./application-budget";
+import { ApplicationBudget, currentApplicationBudget, hasPaidBudgetContext, withApplicationBudget } from "./application-budget";
 import { ensureResearchCoverage } from "./research-fallback";
 import { SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT as SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-latam-compact.v1";
 import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce, currentJobExecution } from "./job-execution-context";
-import { approvedDesignForCurrentJob } from "./scientific-decision-service";
+import { approvedGenerationContextForCurrentJob } from "./scientific-decision-service";
 import { currentGenerationInput, frozenProject } from "@/server/projects/generation-input-snapshot";
 import { GENERATION_POLICY_VERSION } from "./generation-budgets";
 import { compactDocxWhitespace } from "./docx-layout-compaction";
@@ -3088,7 +3088,7 @@ export async function runMvpStep6BlueprintDocx(input: {
   /** Evaluation-only reuse: identical structured design/title, same project, no second image request. */
   heroReuse?: { projectId: string; fingerprint: string; plan: MvpStep6HeroImagePlan; qualityRejectionReason?: string };
 }): Promise<MvpStep6Result> {
-  if (!currentApplicationBudget()) return withApplicationBudget(new ApplicationBudget(), () => runMvpStep6BlueprintDocx(input));
+  if (!hasPaidBudgetContext()) return withApplicationBudget(new ApplicationBudget(), () => runMvpStep6BlueprintDocx(input));
   const artifacts = buildArtifacts(input.projectId, input.runId);
   const warnings: string[] = [];
   const errors: string[] = [];
@@ -3116,6 +3116,8 @@ export async function runMvpStep6BlueprintDocx(input: {
     throw new Error("INSUFFICIENT_EVIDENCE: no hay evidencia inspeccionable verificada; agregar fuentes o repetir Step 5. No se genero plan.");
   }
   warnings.push(...evidenceGate.limitations);
+  const approvedContext = await approvedGenerationContextForCurrentJob(project.intake, latestStep5.ledger);
+  latestStep5 = { ...latestStep5, ledger: approvedContext.ledger };
   let sectionPlan = scientificSectionPlan();
   const academicStyleContract = buildStyleContract(project);
   const institutionalHardMax = templateHardMaxBodyPages(project.templateKey);
@@ -3181,10 +3183,10 @@ export async function runMvpStep6BlueprintDocx(input: {
   try {
     const provider = input.providerOverride ?? tryGetProvider(warnings);
     if (!provider) throw new Error("SCIENTIFIC_GENERATION_REQUIRES_PROVIDER");
-    const approvedDesign = await approvedDesignForCurrentJob(project.intake, latestStep5.ledger);
+    const approvedDesign = approvedContext.design;
     const scientific = await withLlmUsageContext(
       { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
-      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, documentProfile: LATAM_COMPACT_PROFILE_ID, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
+      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, methodCoverage: approvedContext.methodCoverage, effectiveEvidenceFingerprint: approvedContext.effectiveEvidenceFingerprint, documentProfile: LATAM_COMPACT_PROFILE_ID, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
     );
     sectionPlan = scientific.plan;
     const finalSectionDrafts = structuredClone(scientific.drafts);

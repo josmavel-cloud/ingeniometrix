@@ -1,5 +1,17 @@
 # Current State
 
+> Current PR #16 handoff (2026-10-03 19:35 UTC): **NOT_CLOSED**.
+> Staging qa31 safely recovered all four completed methodological discoveries and
+> the paid independent critique. That critique rejected 20 required coverage
+> cells. One new, versioned reconstruction completed with known usage, but its
+> `selectedId` violated the contract; the local validator stopped before another
+> critic or composition. The provider-contract ID enum is now hardened offline.
+> Technical child known cost USD 10.0832775, unknown USD 0; no DOCX. PR remains
+> draft; main and production are unchanged. See the canonical report below.
+> See [the canonical report and current R01–R13 matrix](docs/quality/autonomous-generation-recovery-2026-10-02.md).
+> Older provider/context-size blockers below are historical.
+
+
 STATUS: RC4 development checkpoint is in HANDOFF_RC4.md. The Release 0 freeze below
 is historical, not the current RC4 feature worktree state.
 

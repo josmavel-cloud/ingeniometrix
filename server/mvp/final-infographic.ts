@@ -2,7 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import OpenAI from "openai";
 import sharp from "sharp";
-import { currentApplicationBudget, reservePaidCall } from "./application-budget";
+import { hasPaidBudgetContext, reservePaidCall } from "./application-budget";
 import { HERO_INFOGRAPHIC_PROMPT as prompt } from "./prompts/hero-infographic.v1";
 import type { MvpStep6HeroImagePlan } from "./step6-blueprint-docx-types";
 import type { ResearchDefinition, ResearchDesign } from "./research-plan-contracts";
@@ -31,8 +31,7 @@ export async function generateFinalInfographic(context: unknown, outputPath: str
   let usage: unknown = null, estimatedCost: number | null = null;
   const started = Date.now();
   try {
-    const budget = currentApplicationBudget();
-    if (!budget) throw new Error("IMAGE_BUDGET_REQUIRED");
+    if (!hasPaidBudgetContext()) throw new Error("IMAGE_BUDGET_REQUIRED");
     // UTF-8 bytes conservatively bound input tokens; no input images, one non-streaming output.
     reservation = await reservePaidCall("hero_infographic", prompt.model, ((Buffer.byteLength(actualPrompt) + 2048) * 5 + HERO_OUTPUT_TOKEN_BOUND * 30) / 1e6);
     const response = await new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 0, timeout: 180_000 }).images.generate({ model: prompt.model, prompt: actualPrompt, quality: "high", size: "1024x1024", n: 1, output_format: "png" });

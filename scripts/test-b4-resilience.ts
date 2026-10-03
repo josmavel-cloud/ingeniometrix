@@ -1,4 +1,5 @@
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
+import { reserveCommercialJob } from "@/server/commercial/ledger";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -8,7 +9,7 @@ import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
 import { authorizePresentationRecoveryForUser, enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, getBlueprintProgressForUserV2, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { reservePaidCall } from "@/server/mvp/application-budget";
-import { claimJobControlSlot, reserveJobCall, stageCheckpoint, withJobExecution, createBlueprintVersionOnce, closeJobCostControl } from "@/server/mvp/job-execution-context";
+import { claimJobControlSlot, reserveJobCall, stageCheckpoint, versionedCheckpointKey, preflightWholeJobCost, withJobExecution, createBlueprintVersionOnce, closeJobCostControl } from "@/server/mvp/job-execution-context";
 import { assessRenderSanity, classifyFailure, maxEditorialCompressionRounds, pageBudgetPolicy } from "@/server/mvp/execution-policy";
 import { findGeneratedArtifactForUserVersion, upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
@@ -78,7 +79,7 @@ async function main() {
     const afterCost = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     ok(after.attempts === failed.attempts && after.updatedAt.getTime() === failed.updatedAt.getTime(), "10-minute polling/concurrent resume cannot reset or mutate attempts");
     ok(scientificCalls === 13 && JSON.stringify(beforeCost.outputJson) === JSON.stringify(afterCost.outputJson), "polling adds zero provider calls/cost");
-    await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id), /restablecer/); checks++;
+    await assert.rejects(() => enqueueBlueprintJobForUser(user.id, project.id), /requiere revisión/); checks++;
     for (const file of ["components/projects/project-list.tsx", "components/projects/blueprint-panel.tsx"]) ok(!(await readFile(file, "utf8")).includes("/blueprints/resume"), "UI polling has no resume side effect");
     for (const step of [5, 6]) ok((await readFile(`app/api/projects/[id]/mvp/step-${step}/route.ts`, "utf8")).includes('code: "PERSISTENT_JOB_REQUIRED"'), "direct HTTP generation cannot bypass job budget");
     for (const stageKey of ["checkpoint:VISUALS", "checkpoint:DOCX", "checkpoint:PDF", "checkpoint:FINAL_EXPORT"]) {
@@ -113,7 +114,8 @@ async function main() {
     const exhausted = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: staleJob.id } });
     ok(exhausted.status === "FAILED" && exhausted.attempts === 3 && evidenceCalls === 1, "last stale-lock recovery exhausts job without paying; concurrent resume cannot resurrect it");
 
-    const control = await prisma.blueprintJob.create({ data: { userId: user.id, projectId: project.id, status: "RUNNING", startedAt: new Date(), currentStage: "generating_plan", metadataJson: { executionPolicy: "b4.v1" } } });
+    const control = await prisma.blueprintJob.create({ data: { userId: user.id, projectId: project.id, status: "RUNNING", startedAt: new Date(), currentStage: "generating_plan", metadataJson: { executionPolicy: "b4.v1", commercialPolicy: "commercial-v1" } } });
+    await prisma.$transaction(tx => reserveCommercialJob(tx, control.id));
     await withJobExecution({ jobId: control.id, startedAt: control.startedAt!, stage: "SECTION_DRAFTS:test" }, async () => {
       const tickets = await Promise.allSettled([reserveJobCall("scientific", "gpt-5.4", 1.1), reserveJobCall("scientific", "gpt-5.4", 1.1)]);
       ok(tickets.filter((ticket) => ticket.status === "fulfilled").length === 1, "atomic reservations prevent concurrent overspend");
@@ -131,6 +133,18 @@ async function main() {
       await run(); await run(); ok(executions === 1, "checkpoint reused with matching inputs");
       await stageCheckpoint("TEST", { prompt: "v2" }, async () => { executions++; return { answer: "new" }; });
       ok(executions === 2, "changed prompt invalidates checkpoint");
+      const priorKey = await versionedCheckpointKey("SCIENTIFIC_VERSION", { evidence: "v1" });
+      await stageCheckpoint(priorKey, { evidence: "v1" }, async () => ({ verdict: "rejected" }));
+      const nextKey = await versionedCheckpointKey("SCIENTIFIC_VERSION", { evidence: "v2" });
+      ok(nextKey !== priorKey, "new evidence gets a distinct checkpoint identity");
+      await stageCheckpoint(nextKey, { evidence: "v2" }, async () => ({ verdict: "new independent review" }));
+      ok(nextKey === await versionedCheckpointKey("SCIENTIFIC_VERSION", { evidence: "v2" }), "changed-context retry reuses the same identity");
+      const preserved = await stageCheckpoint(priorKey, { evidence: "v1" }, async () => { throw new Error("must reuse"); });
+      ok((preserved as { verdict: string }).verdict === "rejected", "old completed scientific rejection is not overwritten");
+      await assert.rejects(() => preflightWholeJobCost({ nextStage: "synthetic_discovery", nextStageReservation: 9,
+        minimumRemainingMandatoryReservation: 1 }), /COST_LIMIT_REACHED/);
+      const deniedForecast = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: control.id, stageKey: "control:forecast" } } });
+      ok((deniedForecast.outputJson as { nextStage?: string })?.nextStage === "synthetic_discovery", "A denied forecast remains persisted after the guard throws");
       const publication = { projectId: project.id, versionNumber: 999, model: "offline", promptVersion: "offline", intakeSnapshotJson: {}, selectedReferencesSnapshotJson: [], blueprintJson: {}, coherenceReportJson: {} };
       const versions = await Promise.all([createBlueprintVersionOnce(publication, { science: "same" }), createBlueprintVersionOnce(publication, { science: "same" })]);
       ok(versions[0].id === versions[1].id, "publication transaction prevents duplicate versions after interrupted export");
@@ -156,6 +170,8 @@ async function main() {
     const repeatedPage = "Contenido científico repetido de manera patológica ".repeat(10);
     const runaway = assessRenderSanity({ bodyPages: 25, bodyPageTexts: [repeatedPage, repeatedPage, repeatedPage], expectedBodyPages: 15 });
     ok(runaway.status === "RENDER_SANITY_FAILURE" && !pageBudgetPolicy(25, { renderSanity: runaway }).publicationAllowed, "structural runaway render remains blockable independently from academic length");
+    ok(classifyFailure(new Error("AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección.")).category === "SCIENTIFIC_INSUFFICIENCY" &&
+      !classifyFailure(new Error("AUTONOMOUS_DESIGN_UNRESOLVED")).autoRetry, "independent scientific rejection is not an infrastructure failure or automatic paid retry");
     ok(!classifyFailure(new Error("PDF_BODY_BUDGET")).autoRetry && classifyFailure(new Error("TEMPLATE_PAGE_LIMIT")).category === "USER_ACTION_REQUIRED" && classifyFailure(new Error("RENDER_SANITY_FAILURE")).category === "PRESENTATION" && !classifyFailure(new Error("unknown failure")).autoRetry && classifyFailure({ status: 503 }).autoRetry, "central retry policy");
     const imagePath = path.join(directory, "long-spanish.png");
     await renderBoxes({ outputPath: imagePath, title: "Flujo metodológico", subtitle: "Diseño propuesto, no resultados", boxes: Array.from({ length: 5 }, () => "Priorización de pedidos urgentes y restricciones operativas explícitas, análisis de decisiones pendientes y verificación metodológica. ".repeat(20)), arrows: true });

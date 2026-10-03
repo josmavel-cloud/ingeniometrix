@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { prisma } from "@/lib/prisma";
+import { fingerprint as contractFingerprint } from "@/server/mvp/job-execution-context";
 import type { SemanticPlannerInput } from "@/lib/retrieval-semantic-plan";
 import { withPaidOperation, currentPaidOperation } from "@/server/mvp/pre-job-budget";
 import { ASTRA_WEB_COST_POLICY } from "./astra-web-cost-policy";
@@ -6,7 +8,6 @@ import { DESIGN_MINI_RESEARCH_PURPOSE, WEB_DISCOVERY_POLICY_VERSION, WEB_DISCOVE
   type ResearchDiscoveryContext, type WebDiscoveryInput, type WebDiscoveryProvider, type WebDiscoveryResult } from "./web-discovery-contract";
 import type { EvidenceGap } from "./evidence-gap-contract";
 import { DESIGN_MINI_WEB_RESEARCH_PROMPT } from "@/server/mvp/prompts/design-mini-web-research.v1";
-import { withStandalonePaidBudget } from "@/server/mvp/application-budget";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
@@ -35,7 +36,7 @@ export function webDiscoveryOperationIdentity(input: {
   return { requestId: `${purpose === DESIGN_MINI_RESEARCH_PURPOSE ? "design-web" : "web"}:${fingerprint}`, fingerprint };
 }
 
-export async function runWebDiscoveryOperation(input: {
+type DiscoveryOperationInput = {
   userId: string; projectId?: string; smoke: boolean;
   gapSetHash: string; seenSetHash: string;
   researchIntentProjection: ResearchDiscoveryContext;
@@ -44,21 +45,51 @@ export async function runWebDiscoveryOperation(input: {
   policy: WebDiscoveryInput["policy"];
   provider: WebDiscoveryProvider;
   purpose?: typeof WEB_DISCOVERY_PURPOSE | typeof DESIGN_MINI_RESEARCH_PURPOSE;
-}): Promise<WebDiscoveryResult> {
-  if (input.smoke && input.projectId) throw new Error("SMOKE_PROJECT_FORBIDDEN");
-  if (!input.smoke && !input.projectId) throw new Error("PROJECT_OWNER_CONTEXT_REQUIRED");
+};
+
+function paidDiscoveryContract(input: DiscoveryOperationInput) {
   const identity = webDiscoveryOperationIdentity({ userId: input.userId, projectId: input.projectId,
     searchIntentHash: input.researchIntentProjection.searchIntentHash,
     gapSetHash: input.gapSetHash, seenSetHash: input.seenSetHash, ...input.policy, purpose: input.purpose });
-  return withPaidOperation({ userId: input.userId, projectId: input.projectId,
-    requestId: identity.requestId, purpose: input.purpose ?? WEB_DISCOVERY_PURPOSE, revision: input.researchIntentProjection.searchIntentHash,
+  return { userId: input.userId, projectId: input.projectId, requestId: identity.requestId,
+    purpose: input.purpose ?? WEB_DISCOVERY_PURPOSE, revision: input.researchIntentProjection.searchIntentHash,
     inputs: { fingerprint: identity.fingerprint, gapPayloadHash: hash(input.evidenceGaps),
-      seenPayloadHash: hash(input.seenSourceIdentities), scientificContextHash: hash(input.researchIntentProjection), smoke: input.smoke } }, async () => {
+      seenPayloadHash: hash(input.seenSourceIdentities), scientificContextHash: hash(input.researchIntentProjection), smoke: input.smoke } };
+}
+
+/** Read-only exact-request reuse before discretionary whole-job preflight. A
+ * completed settled discovery costs nothing to inspect again. Failed/uncertain
+ * operations still take the normal guarded path; they are never regenerated here. */
+export async function readCompletedWebDiscovery(input: DiscoveryOperationInput): Promise<WebDiscoveryResult | null> {
+  const contract = paidDiscoveryContract(input);
+  if (input.projectId && !await prisma.project.findFirst({ where: { id: input.projectId, userId: input.userId }, select: { id: true } }))
+    throw new Error("PROJECT_NOT_FOUND");
+  const old = await prisma.paidOperation.findUnique({ where: { userId_requestId: { userId: input.userId, requestId: contract.requestId } }, include: { calls: true } });
+  if (!old) return null;
+  const expected = contractFingerprint({ purpose: contract.purpose, projectId: contract.projectId, revision: contract.revision, inputs: contract.inputs });
+  if (old.inputFingerprint !== expected || old.projectId !== (input.projectId ?? null)) throw new Error("PAID_REQUEST_INPUT_CONFLICT");
+  if (old.status !== "COMPLETED") {
+    if (old.calls.some(call => call.estimatedMicros === null)) throw new Error("PAID_REQUEST_USAGE_RECONCILIATION_REQUIRED");
+    return null;
+  }
+  if (!old.calls.length || old.calls.some(call => call.status !== "COMPLETED" || call.estimatedMicros === null))
+    throw new Error("PAID_REQUEST_USAGE_RECONCILIATION_REQUIRED");
+  const result = old.resultJson as WebDiscoveryResult | null;
+  if (!result || result.operationId !== old.id || !result.responseId || !["COMPLETED", "PARTIAL"].includes(result.state))
+    throw new Error("WEB_DISCOVERY_OPERATION_RESULT_INVALID");
+  return structuredClone(result);
+}
+
+export async function runWebDiscoveryOperation(input: DiscoveryOperationInput): Promise<WebDiscoveryResult> {
+  if (input.smoke && input.projectId) throw new Error("SMOKE_PROJECT_FORBIDDEN");
+  if (!input.smoke && !input.projectId) throw new Error("PROJECT_OWNER_CONTEXT_REQUIRED");
+  return withPaidOperation({ ...paidDiscoveryContract(input),
+    ...(input.purpose === DESIGN_MINI_RESEARCH_PURPOSE ? { recoverFailed: { version: "qa-linked-budget.v1", completedCallPurposes: [] } } : {}) }, async () => {
     const operation = currentPaidOperation();
     if (!operation) throw new Error("WEB_DISCOVERY_PAID_OPERATION_REQUIRED");
     const discover = () => input.provider.discover({ operationContext: { operationId: operation.id, smoke: input.smoke, purpose: input.purpose },
       researchIntentProjection: input.researchIntentProjection, evidenceGaps: input.evidenceGaps,
       seenSourceIdentities: input.seenSourceIdentities, policy: input.policy });
-    return input.purpose === DESIGN_MINI_RESEARCH_PURPOSE ? withStandalonePaidBudget(discover) : discover();
+    return discover();
   });
 }

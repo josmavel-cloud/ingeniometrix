@@ -1,7 +1,7 @@
 // Mechanically externalized without changing rendered instructions. Behavioural improvements require a new version.
 export const REFERENCE_TRANSLATION_SERVICE_1_PROMPT = {
   id: "reference-translation-service-buildLanguageDetectionPrompt",
-  version: "ingeniometrix-reference-translation-service.v1-1",
+  version: "ingeniometrix-reference-translation-service.v1-1-strict-schema.2",
   purpose: "buildLanguageDetectionPrompt (reference-translation-service)",
   model: "configured by caller; unchanged",
   output_schema_source: "server/retrieval/reference-translation-service.ts",

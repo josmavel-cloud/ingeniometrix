@@ -1,5 +1,14 @@
+import { recoverScientificContinuationForUser, scientificContinuationAttemptLimit } from "@/server/mvp/scientific-continuation-recovery";
+import { readScientificContinuation } from "@/server/mvp/scientific-continuation";
+import { webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
+import { DESIGN_MINI_RESEARCH_POLICY } from "@/server/mvp/design-mini-research";
+import { designSupportRemainingForecast } from "@/server/mvp/whole-job-cost-forecast";
+import { SCIENTIFIC_DESIGN_AUTONOMOUS_PATCH_PROMPT } from "@/server/mvp/prompts/scientific-design-autonomous-patch.v1";
+import { SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT } from "@/server/mvp/prompts/scientific-design-autonomous-targeted-critic.v1";
+import { scientificFindingFields } from "@/server/mvp/design-support-gap";
 import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { randomUUID } from "node:crypto";
+import { activeQaCampaign, qaJobPolicy, allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -21,7 +30,7 @@ import { runMvpStep6BlueprintDocx } from "@/server/mvp/step6-blueprint-docx-serv
 import { closeJobCostControl, currentJobExecution, fingerprint, stageCheckpoint, withJobExecution } from "@/server/mvp/job-execution-context";
 import { reserveCommercialJob } from "@/server/commercial/ledger";
 import { activeInternalGenerationCapability, INTERNAL_GENERATION_POLICY, reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
-import { classifyFailure, publicFailureMessage } from "@/server/mvp/execution-policy";
+import { classifyFailure, publicFailureMessage, INTERNAL_PILOT_COST_POLICY_VERSION } from "@/server/mvp/execution-policy";
 import { STEP5_SOURCE_EVIDENCE_EXTRACTION_PROMPT } from "@/server/mvp/prompts/step5-source-evidence-extraction.v3";
 import { STEP5_ASSET_VISUAL_LOCALIZATION_PROMPT } from "@/server/mvp/prompts/step5-asset-visual-localization.v1";
 import { STEP5_EQUATION_LATEX_OCR_PROMPT } from "@/server/mvp/prompts/step5-equation-latex-ocr.v1";
@@ -42,6 +51,11 @@ const INCOMPLETE_STATUSES = [...ACTIVE_STATUSES, BlueprintJobStatus.WAITING_USER
 const STALE_LOCK_MS = Math.max(60_000, Number(process.env.BLUEPRINT_STALE_LOCK_MS ?? 10 * 60 * 1000));
 const DEFAULT_MAX_ATTEMPTS = Math.min(3, Math.max(1, Number(process.env.BLUEPRINT_MAX_ATTEMPTS ?? 3) || 3));
 const HEARTBEAT_MS = Math.max(5_000, Number(process.env.BLUEPRINT_HEARTBEAT_MS ?? 30_000));
+// The v1 schema was rejected by Responses before a response ID existed. This
+// exact historical rejection can be resumed under a new versioned contract;
+// its unknown usage reservation remains committed. No other uncertain create
+// is eligible for an automatic second provider dispatch.
+const LEGACY_PATCH_SCHEMA_REJECTION = /^400 Invalid schema for response_format 'autonomous_design_patch_v1': In context=\(\), 'required' is required to be supplied and to be an array including every key in properties\. Missing 'samplingSelection'\.$/;
 
 type Step5Result = Awaited<ReturnType<typeof runMvpEvidenceMaterialization>>;
 type Step6Result = Awaited<ReturnType<typeof runMvpStep6BlueprintDocx>>;
@@ -351,9 +365,22 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
       return concurrent;
     }
     const previous = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
-    if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint))
-      throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
     const internalCapability = await activeInternalGenerationCapability(userId, tx);
+    const qaCampaign = internalCapability ? await activeQaCampaign(tx, userId) : null;
+    // A trusted, finite QA grant can authorize a NEW acceptance after a terminal
+    // job. It never resets that job, copies scientific checkpoints, or releases
+    // its unknown usage. Ordinary client retries retain the existing guard.
+    const newQaAcceptance = previous && allowsNewQaAcceptance(qaCampaign,
+      (previous.metadataJson as { qaCampaignId?: string } | null)?.qaCampaignId,
+      Boolean(options?.operationId && options.expectedContext));
+    if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint) && !newQaAcceptance)
+      throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
+    if (qaCampaign) {
+      await tx.$queryRaw`SELECT id FROM "QaAcceptanceCampaign" WHERE id = ${qaCampaign.id} FOR UPDATE`;
+      const jobs = await tx.blueprintJob.count({ where: { userId, metadataJson: { path: ["qaCampaignId"], equals: qaCampaign.id } } });
+      if (jobs >= qaCampaign.maxJobs) throw new Error("QA_ACCEPTANCE_JOB_LIMIT_REACHED");
+      await assertQaCommitment(tx, userId, qaCampaign.jobCapMicros / 1e6);
+    }
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     const created = await tx.blueprintJob.create({
       data: {
@@ -369,10 +396,18 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint,
           expectedContext: options?.expectedContext, operationId: options?.operationId } satisfies JobData),
         metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1",
+          ...(internalCapability ? { costPolicyVersion: INTERNAL_PILOT_COST_POLICY_VERSION } : {}),
+          ...(qaCampaign ? { costPolicyVersion: QA_COST_POLICY_VERSION, qaCampaignId: qaCampaign.id } : {}),
+          ...(newQaAcceptance ? { qaNewAcceptance: { previousJobId: previous!.id,
+            campaignId: qaCampaign!.id, priorUsageRetained: true } } : {}),
           commercialPolicy: internalCapability ? INTERNAL_GENERATION_POLICY : "commercial-v1",
           scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
       },
     });
+    if (newQaAcceptance) await tx.auditLog.create({ data: { userId, projectId,
+      eventType: "QA_NEW_ACCEPTANCE_AUTHORIZED", actorType: "SYSTEM", payloadJson: toJson({
+        jobId, previousJobId: previous!.id, campaignId: qaCampaign!.id, authority: qaCampaign!.issuedBy,
+        operationId: options!.operationId, priorUsageRetained: true, priorCheckpointsCopied: false }) } });
     if (options?.scientificProfile === "rc4" && !options.expectedContext) {
       const frozen = await appendGenerationInput(tx, { jobId, projectId, userId, revision: 1 });
       await tx.blueprintJob.update({ where: { id: jobId }, data: { stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint: researchProjectFingerprint(frozen.project), inputSnapshotId: frozen.snapshot.id }) } });
@@ -397,7 +432,8 @@ async function claimJob(jobId: string) {
     return null;
   }
   const attempts = current.attempts + (current.status === BlueprintJobStatus.RUNNING ? 1 : 0);
-  if (attempts >= current.maxAttempts) {
+  const executionAttemptLimit = await scientificContinuationAttemptLimit(tx, current);
+  if (attempts >= executionAttemptLimit) {
     await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", attempts, lockedAt: null, completedAt: now, errorMessage: "Recuperaciones agotadas; se requiere revision.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
     await closeJobCostControl(tx, jobId, "FAILED");
     await tx.project.update({ where: { id: current.projectId }, data: { status: "SOURCES_SELECTED" } });
@@ -407,7 +443,7 @@ async function claimJob(jobId: string) {
     where: {
       id: jobId,
       status: { in: [...ACTIVE_STATUSES] },
-      attempts: { lt: current.maxAttempts },
+      attempts: { lt: executionAttemptLimit },
       AND: [
         { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
         { OR: [{ lockedAt: null }, { lockedAt: { lt: staleBefore } }] },
@@ -433,6 +469,8 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
   await upsertStage({ jobId, stageKey: stage, status: BlueprintJobStageStatus.RUNNING, progress: job.progress });
 
   try {
+    // Inherited science is a verified reference, never a copied provider call or reset attempt.
+    await readScientificContinuation(jobId);
     const frozenInput = await readGenerationInput(jobId, data.inputSnapshotId);
     return await withGenerationInput(frozenInput, async () => {
     if (stage !== "preparing_sources" && data.inputFingerprint !== projectFingerprint(await loadOwnedProject(job.userId, job.projectId))) throw new Error("INPUT_CHANGED: intake o seleccion incompatible con el job autorizado.");
@@ -550,7 +588,7 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
     }
     const attempts = job.attempts + 1;
     const failure = classifyFailure(error);
-    const retryable = failure.autoRetry && attempts < job.maxAttempts;
+    const retryable = failure.autoRetry && attempts < await scientificContinuationAttemptLimit(prisma, job);
     const rawMessage = error instanceof Error ? error.message : String(error);
     const message = stage === "preparing_sources" ? (/^[A-Z][A-Z0-9_]*(?::|$)/.test(rawMessage)
       ? rawMessage.split(":", 1)[0] : "SOURCE_PREPARATION_FAILED") : rawMessage;
@@ -618,11 +656,24 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   const job = await prisma.blueprintJob.findFirst({ where: { userId, projectId }, orderBy: { createdAt: "desc" } });
   if (!job) throw new Error("No hay un job para reanudar.");
   if (job.status === BlueprintJobStatus.COMPLETED) return { job: toJobSummary(job), shouldContinue: false, state: "completed" as const };
+  if (job.status === BlueprintJobStatus.FAILED && (job.metadataJson as { scientificContinuation?: unknown } | null)?.scientificContinuation) {
+    const recovered = await recoverScientificContinuationForUser(userId, projectId, job.id);
+    return { job: toJobSummary(recovered.job), shouldContinue: true, state: recovered.reused ? "already_scheduled" as const : "continuation_recovery_scheduled" as const };
+  }
   if (job.status === BlueprintJobStatus.WAITING_USER_DECISION && (job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile === "rc4") return authorizeAutonomousDesignRecoveryForUser(userId, projectId, job.id);
+  if (job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+    (/^AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE:/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      /^COST_LIMIT_REACHED: el trabajo restante completo/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      /^AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE:/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      /^DESIGN_SUPPORT_UNAVAILABLE:/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      /^AUTONOMOUS_DESIGN_UNRESOLVED:/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      LEGACY_PATCH_SCHEMA_REJECTION.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
+      (job.errorJson as { message?: string } | null)?.message === "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED"))
+    return authorizeAutonomousDesignRecoveryForUser(userId, projectId, job.id);
   if (job.status === BlueprintJobStatus.FAILED && (job.errorJson as { category?: string } | null)?.category === "PRESENTATION") return authorizePresentationRecoveryForUser(userId, projectId, job.id);
   // Active jobs already belong to the worker. Resume must not steal a lease, erase
   // backoff, or resurrect a failed/exhausted job. Repeated calls are observational.
-  const retryable = job.attempts < job.maxAttempts && ACTIVE_STATUSES.some((status) => status === job.status);
+  const retryable = job.attempts < await scientificContinuationAttemptLimit(prisma, job) && ACTIVE_STATUSES.some((status) => status === job.status);
   return { job: toJobSummary(job), shouldContinue: retryable, state: retryable ? "already_scheduled" as const : "not_retryable" as const };
 }
 
@@ -639,7 +690,183 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
     const job = await tx.blueprintJob.findFirstOrThrow({ where: { id: jobId, userId, projectId } });
     if (ACTIVE_STATUSES.some((status) => status === job.status)) return { job: toJobSummary(job), shouldContinue: true, state: "already_scheduled" as const };
-    if (job.status !== BlueprintJobStatus.WAITING_USER_DECISION || job.currentStage !== "awaiting_design_approval") throw new Error("AUTONOMOUS_RECOVERY_NOT_ELIGIBLE");
+    const priorError = (job.errorJson as { message?: string } | null)?.message ?? "";
+    const rejectedLegacySchema = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      LEGACY_PATCH_SCHEMA_REJECTION.test(priorError);
+    const unresolvedPriorPatch = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      priorError === "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED";
+    const acquisitionRecovery = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      /^DESIGN_SUPPORT_UNAVAILABLE:/.test(priorError);
+    const contextSizeRecovery = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      /^AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE:/.test(priorError);
+    const digestRecovery = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      /^AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE:/.test(priorError);
+    const forecastRecovery = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      /^COST_LIMIT_REACHED: el trabajo restante completo/.test(priorError);
+    const failedResolution = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
+      (/^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError) || rejectedLegacySchema || unresolvedPriorPatch || acquisitionRecovery || contextSizeRecovery || forecastRecovery || digestRecovery);
+    const priorMetadata = job.metadataJson as Record<string, unknown> | null;
+    // One bounded continuation for a completed independent evidence rejection.
+    // It reuses both prior pairs, and may consume only the still-unused second
+    // support operation. No uncertain call or exhausted support loop is reopened.
+    const lateEvidenceReview = failedResolution && /^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError)
+      ? await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId,
+        stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_2" } } }) : null;
+    const lateEvidenceSaved = lateEvidenceReview?.outputJson as { value?: { evidenceSupported?: boolean; intentPreserved?: boolean; methodCoherent?: boolean }; outputHash?: string } | null;
+    const coverageReview = failedResolution && priorMetadata?.scientificLateEvidenceRecovery
+      ? await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId,
+        stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_3" } } }) : null;
+    const coverageSaved = coverageReview?.outputJson as { value?: { evidenceSupported?: boolean; intentPreserved?: boolean; methodCoherent?: boolean }; outputHash?: string } | null;
+    const coverageRecovery = coverageReview?.status === "COMPLETED" && coverageSaved?.value?.evidenceSupported === false &&
+      coverageSaved.value.intentPreserved === true && coverageSaved.value.methodCoherent === true && fingerprint(coverageSaved.value) === coverageSaved.outputHash;
+    if (coverageRecovery) {
+      if (priorMetadata?.scientificCoverageRecovery || job.attempts > job.maxAttempts)
+        throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      const acquired = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId,
+        stageKey: "checkpoint:DESIGN_SUPPORT_OBSERVED_ALTERNATES_V1" } } });
+      const saved = acquired?.outputJson as { value?: unknown[]; outputHash?: string } | null;
+      if (acquired?.status !== "COMPLETED" || !saved?.value?.length || fingerprint(saved.value) !== saved.outputHash)
+        throw new Error("AUTONOMOUS_RECOVERY_SUPPORT_CHECKPOINT_INVALID");
+      if (await tx.blueprintJobStage.count({ where: { jobId, stageKey: "checkpoint:DESIGN_SUPPORT_PROCEDURAL_COVERAGE_V2" } }))
+        throw new Error("AUTONOMOUS_RECOVERY_COVERAGE_ALREADY_STARTED");
+    }
+    const lateEvidenceRecovery = !coverageRecovery && lateEvidenceReview?.status === "COMPLETED" &&
+      lateEvidenceSaved?.value?.evidenceSupported === false && lateEvidenceSaved.value.intentPreserved === true &&
+      lateEvidenceSaved.value.methodCoherent === true && fingerprint(lateEvidenceSaved.value) === lateEvidenceSaved.outputHash;
+    if (lateEvidenceRecovery) {
+      if (priorMetadata?.scientificLateEvidenceRecovery || job.attempts > job.maxAttempts)
+        throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      if (await tx.blueprintJobStage.count({ where: { jobId, OR: [
+        { stageKey: { startsWith: "checkpoint:DESIGN_MINI_RESEARCH_V2_ACQUISITION3_2" } },
+        { stageKey: { startsWith: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_3" } }
+      ] } })) throw new Error("AUTONOMOUS_RECOVERY_SUPPORT_LOOP_EXHAUSTED");
+    }
+    const modernPatchStage = unresolvedPriorPatch ? await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+      jobId, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_1" } } }) : null;
+    const compoundFindingRecovery = unresolvedPriorPatch && modernPatchStage?.status === "COMPLETED";
+    if (compoundFindingRecovery) {
+      if (priorMetadata?.scientificFindingRecovery || job.attempts >= job.maxAttempts)
+        throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      const savedPatch = modernPatchStage.outputJson as { value?: unknown; outputHash?: string } | null;
+      if (!savedPatch?.value || fingerprint(savedPatch.value) !== savedPatch.outputHash)
+        throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_INVALID");
+      const savedDecision = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
+      const saved = savedDecision?.outputJson as unknown as { value?: ScientificDecisionBundle; outputHash?: string } | null;
+      if (!saved?.value || fingerprint(saved.value) !== saved.outputHash ||
+        !saved.value.critique.assessments.some(assessment => assessment.critical_findings.some(finding =>
+          scientificFindingFields(finding.affected_field).length > 1)))
+        throw new Error("AUTONOMOUS_RECOVERY_COMPOUND_FINDING_MISSING");
+    }
+    const legacyUnresolvedPatch = unresolvedPriorPatch && !compoundFindingRecovery;
+    const deniedSupportStage = failedResolution && /^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError)
+      ? await tx.blueprintJobStage.findFirst({ where: { jobId, status: "FAILED",
+        stageKey: { startsWith: "checkpoint:DESIGN_MINI_RESEARCH_" }, errorJson: { path: ["message"], equals: "PRE_JOB_COST_LIMIT" } } }) : null;
+    const linkedQaBudgetRecovery = Boolean(deniedSupportStage && await qaJobPolicy(tx, jobId));
+    const accessReviewRecovery = legacyUnresolvedPatch && Boolean(priorMetadata?.scientificPatchRecovery) &&
+      !priorMetadata?.scientificAccessReviewRecovery && job.maxAttempts === 4 && job.attempts === 4;
+    if (!failedResolution && (job.status !== BlueprintJobStatus.WAITING_USER_DECISION || job.currentStage !== "awaiting_design_approval")) throw new Error("AUTONOMOUS_RECOVERY_NOT_ELIGIBLE");
+    if (failedResolution) {
+      if (digestRecovery) {
+        if (priorMetadata?.scientificDigestRecovery || job.attempts > job.maxAttempts)
+          throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const support = await tx.blueprintJobStage.findFirst({ where: { jobId,
+          stageKey: { startsWith: "checkpoint:DESIGN_MINI_RESEARCH_" }, status: "COMPLETED" }, orderBy: { completedAt: "desc" } });
+        const savedSupport = support?.outputJson as { value?: { support?: unknown[] }; outputHash?: string } | null;
+        if (!savedSupport?.value?.support?.length || fingerprint(savedSupport.value) !== savedSupport.outputHash)
+          throw new Error("AUTONOMOUS_RECOVERY_SUPPORT_CHECKPOINT_INVALID");
+        // The old byte guard ran before the second patch. No new continuation
+        // may duplicate a dispatched/uncertain second patch.
+        if (await tx.blueprintJobStage.count({ where: { jobId,
+          stageKey: { startsWith: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_2" } } }))
+          throw new Error("AUTONOMOUS_RECOVERY_PATCH_ALREADY_STARTED");
+      }
+      if (linkedQaBudgetRecovery) {
+        if (priorMetadata?.scientificLinkedQaRecovery || job.attempts > job.maxAttempts || job.maxAttempts > 4)
+          throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const noDispatch = await tx.paidOperation.findFirst({ where: { userId, projectId, purpose: "DESIGN_SUPPORT_MINI_RESEARCH",
+          status: "FAILED", committedMicros: 0, calls: { none: {} }, createdAt: { gte: job.createdAt } } });
+        if (!noDispatch) throw new Error("AUTONOMOUS_RECOVERY_NO_DISPATCH_PROOF_MISSING");
+      }
+      if (forecastRecovery) {
+        if (priorMetadata?.scientificForecastRecovery || job.attempts > job.maxAttempts || job.maxAttempts > 3)
+          throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const review = await tx.blueprintJobStage.findFirst({ where: { jobId,
+          stageKey: { startsWith: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_" }, status: "COMPLETED" }, orderBy: { completedAt: "desc" } });
+        const savedReview = review?.outputJson as { value?: { evidenceSupported?: boolean }; outputHash?: string } | null;
+        if (savedReview?.value?.evidenceSupported !== false || fingerprint(savedReview.value) !== savedReview.outputHash)
+          throw new Error("AUTONOMOUS_RECOVERY_EVIDENCE_REVIEW_MISSING");
+        // This correction fixes a pre-dispatch forecast, never a failed paid web call.
+        if (await tx.blueprintJobStage.count({ where: { jobId, stageKey: { startsWith: "checkpoint:DESIGN_MINI_RESEARCH_" } } }))
+          throw new Error("AUTONOMOUS_RECOVERY_DISCOVERY_ALREADY_STARTED");
+      }
+      if (contextSizeRecovery) {
+        if (priorMetadata?.scientificContextRecovery) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const patch = await tx.blueprintJobStage.findFirst({ where: { jobId,
+          stageKey: { startsWith: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_" }, status: "COMPLETED" }, orderBy: { completedAt: "desc" } });
+        const saved = patch?.outputJson as { value?: unknown; outputHash?: string } | null;
+        if (!saved?.value || fingerprint(saved.value) !== saved.outputHash)
+          throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_INVALID");
+      }
+      if (acquisitionRecovery) {
+        if (priorMetadata?.scientificAcquisitionRecovery) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const acquisition = await tx.blueprintJobStage.findFirst({ where: { jobId, stageKey: { startsWith: "checkpoint:DESIGN_SUPPORT_DOCUMENT_" }, status: "COMPLETED" }, select: { outputJson: true } });
+        if ((acquisition?.outputJson as { value?: { reason?: string } } | null)?.value?.reason !== "DOCUMENT_ACQUISITION_FAILED")
+          throw new Error("AUTONOMOUS_RECOVERY_ACQUISITION_CHECKPOINT_MISSING");
+      }
+      if (legacyUnresolvedPatch) {
+        // First recover the corrected v3 patch; then, if v3 itself completed
+        // but could not classify future access, reuse that exact completed
+        // patch for one independent v2 targeted review. Neither path repeats
+        // selector, first critic, or a completed patch response.
+        if (!accessReviewRecovery && (priorMetadata?.scientificPatchRecovery || job.maxAttempts !== 3 || job.attempts !== 3))
+          throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const patchStage = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_1" } } });
+        if (patchStage?.status !== BlueprintJobStageStatus.COMPLETED || !patchStage.outputJson)
+          throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_MISSING");
+      } else if (!forecastRecovery && !linkedQaBudgetRecovery && !digestRecovery && !lateEvidenceRecovery && !coverageRecovery && job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      const cost = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
+      const entries = (cost?.outputJson as { entries?: Array<{ stage: string; estimate: number | null; status: string }> } | null)?.entries;
+      if (!entries) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
+      const unknownEntries = entries.filter(entry => entry.estimate === null || entry.status !== "completed");
+      if (rejectedLegacySchema || legacyUnresolvedPatch) {
+        if (unknownEntries.length !== 1 || unknownEntries[0].stage !== "AUTONOMOUS_DESIGN_PATCH_1" ||
+          unknownEntries[0].status !== "failed_unknown_usage" || unknownEntries[0].estimate !== null)
+          throw new Error("AUTONOMOUS_RECOVERY_LEGACY_RESERVATION_MISMATCH");
+      } else if (unknownEntries.length) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
+      if (forecastRecovery || linkedQaBudgetRecovery) {
+        const record = cost?.outputJson as { policy?: { hard: number; mandatoryReserve: number } } | null;
+        const decisionRow = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
+        const saved = decisionRow?.outputJson as unknown as { value?: ScientificDecisionBundle; outputHash?: string } | null;
+        if (!saved?.value || fingerprint(saved.value) !== saved.outputHash || !saved.value.decision.recommended_id || !record?.policy)
+          throw new Error("AUTONOMOUS_RECOVERY_FORECAST_INPUT_MISSING");
+        const bound = webDiscoveryPolicyCostBound(DESIGN_MINI_RESEARCH_POLICY);
+        const required = designSupportRemainingForecast(saved.value, saved.value.decision.recommended_id,
+          SCIENTIFIC_DESIGN_AUTONOMOUS_PATCH_PROMPT, SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT);
+        const known = entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0);
+        if (!bound || known + bound.maximumUsd + required + record.policy.mandatoryReserve > record.policy.hard)
+          throw new Error("AUTONOMOUS_RECOVERY_BUDGET_STILL_UNAVAILABLE");
+      }
+      const responses = await tx.blueprintJobStage.findMany({ where: { jobId, stageKey: { startsWith: "provider:background:" } }, select: { outputJson: true } });
+      const responseRecords = responses.map(row => row.outputJson as { status?: string; error?: string; responseId?: string | null; providerStatus?: string | null; correlation?: { stage?: string; promptVersion?: string } } | null);
+      if (legacyUnresolvedPatch && !responseRecords.some(row => row?.status === "COMPLETED" && row.correlation?.stage === "autonomous_design_patch" &&
+        row.correlation.promptVersion === "ingeniometrix-scientific-design-autonomous-patch-v2" && row.responseId))
+        throw new Error("AUTONOMOUS_RECOVERY_PRIOR_PATCH_RESPONSE_MISSING");
+      if (compoundFindingRecovery && !responseRecords.some(row => row?.status === "COMPLETED" &&
+        row.correlation?.stage === "autonomous_design_patch" && row.responseId))
+        throw new Error("AUTONOMOUS_RECOVERY_CURRENT_PATCH_RESPONSE_MISSING");
+      if (accessReviewRecovery && !responseRecords.some(row => row?.status === "COMPLETED" && row.correlation?.stage === "autonomous_design_patch" &&
+        row.correlation.promptVersion === "ingeniometrix-scientific-design-autonomous-patch-v3" && row.responseId))
+        throw new Error("AUTONOMOUS_RECOVERY_CURRENT_PATCH_RESPONSE_MISSING");
+      const incomplete = responseRecords
+        .filter(row => row?.status !== "COMPLETED");
+      if (rejectedLegacySchema || legacyUnresolvedPatch) {
+        if (incomplete.length !== 1 || incomplete[0]?.status !== "CREATE_UNCERTAIN" ||
+          !LEGACY_PATCH_SCHEMA_REJECTION.test(incomplete[0]?.error ?? "") ||
+          (rejectedLegacySchema && incomplete[0]?.error !== priorError) ||
+          incomplete[0]?.responseId || incomplete[0]?.providerStatus)
+          throw new Error("AUTONOMOUS_RECOVERY_PROVIDER_RESPONSE_PENDING");
+      } else if (incomplete.length) throw new Error("AUTONOMOUS_RECOVERY_PROVIDER_RESPONSE_PENDING");
+    }
     const competing = await tx.blueprintJob.count({ where: { projectId, id: { not: jobId }, status: { in: [...INCOMPLETE_STATUSES] } } });
     if (competing) throw new Error("AUTONOMOUS_RECOVERY_COMPETING_JOB");
     const scientific = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
@@ -655,7 +882,41 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     if (commercialPolicy === INTERNAL_GENERATION_POLICY) await reserveInternalGenerationJob(tx, jobId);
     else if (commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
     else throw new Error("AUTONOMOUS_RECOVERY_COMMERCIAL_POLICY_UNKNOWN");
-    const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null, metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null), autonomousRecovery: { recoveredAt: new Date().toISOString(), from: "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId } }) } });
+    const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null,
+      maxAttempts: (forecastRecovery || linkedQaBudgetRecovery || digestRecovery || lateEvidenceRecovery || coverageRecovery) && job.attempts === job.maxAttempts ? job.maxAttempts + 1 : accessReviewRecovery ? 5 : legacyUnresolvedPatch ? 4 : job.maxAttempts,
+      completedAt: null, errorMessage: null, errorJson: Prisma.DbNull,
+      metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null),
+        ...(coverageRecovery ? { scientificCoverageRecovery: { version: "procedural-section-coverage.v2", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, reviewHash: coverageSaved!.outputHash, previousAttempts: job.attempts,
+          previousMaxAttempts: job.maxAttempts, noNewDiscovery: true, existingDocumentHashPreserved: true } } : {}),
+        ...(lateEvidenceRecovery ? { scientificLateEvidenceRecovery: { version: "late-evidence-recovery.v1",
+          authorizedAt: new Date().toISOString(), priorFailure: priorError, reviewCheckpoint: lateEvidenceReview!.stageKey,
+          reviewHash: lateEvidenceSaved!.outputHash, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts,
+          completedPairsReused: true, maxAdditionalSupportOperations: 1 } } : {}),
+        ...(digestRecovery ? { scientificDigestRecovery: { version: "DesignSupportDigest.v1", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts,
+          existingSupportPreserved: true, previousCallsNotRepeated: true } } : {}),
+        ...(linkedQaBudgetRecovery ? { scientificLinkedQaRecovery: { version: "qa-linked-budget.v1", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, deniedStageId: deniedSupportStage!.id, previousAttempts: job.attempts,
+          previousMaxAttempts: job.maxAttempts, previousCallsNotRepeated: true } } : {}),
+        ...(forecastRecovery ? { scientificForecastRecovery: { version: "design-support-forecast.v2", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts, priorCriticPreserved: true } } : {}),
+        ...(contextSizeRecovery ? { scientificContextRecovery: { version: "targeted-critic-context.v2", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, completedPatchPreserved: true } } : {}),
+        ...(compoundFindingRecovery ? { scientificFindingRecovery: { version: "scientific-finding-fields.v1", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, priorPatchCheckpoint: modernPatchStage!.stageKey, priorAttempts: job.attempts,
+          completedSciencePreserved: true } } : {}),
+        ...(acquisitionRecovery ? { scientificAcquisitionRecovery: { authorizedAt: new Date().toISOString(), version: "pinned-dns-all.v2", priorFailure: priorError, paidDiscoveryReused: true } } : {}),
+        ...(legacyUnresolvedPatch && !accessReviewRecovery ? { scientificPatchRecovery: { authorizedAt: new Date().toISOString(), fromPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v2", toPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", priorPatchRejectedBy: priorError } } : {}),
+        ...(accessReviewRecovery ? { scientificAccessReviewRecovery: { authorizedAt: new Date().toISOString(), reusedPatchVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", targetedCriticVersion: "ingeniometrix-scientific-design-autonomous-targeted-critic-v2" } } : {}),
+        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: coverageRecovery ? "persisted_document_procedural_coverage" : lateEvidenceRecovery ? "remaining_methodological_gap" : digestRecovery ? "verified_support_digest" : linkedQaBudgetRecovery ? "qa_nested_funding_contract" : forecastRecovery ? "configured_discovery_bound" : contextSizeRecovery ? "deduplicated_critic_context" : compoundFindingRecovery ? "compound_finding_contract" : accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch } }) } });
+    await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
+    await tx.auditLog.create({ data: { userId, projectId, actorType: "SYSTEM", eventType: "AUTONOMOUS_DESIGN_RECOVERY_SCHEDULED",
+      payloadJson: toJson({ jobId, priorStatus: job.status, previousAttempts: job.attempts,
+        allPriorUsageKnown: failedResolution && !rejectedLegacySchema && !legacyUnresolvedPatch,
+        rejectedBeforeResponse: rejectedLegacySchema, scientificPatchRecovery: legacyUnresolvedPatch && !accessReviewRecovery,
+        coverageRecovery, lateEvidenceRecovery, digestRecovery, linkedQaBudgetRecovery, forecastRecovery, contextSizeRecovery, compoundFindingRecovery, completedPatchTargetedReview: accessReviewRecovery,
+        unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch }) } });
     return { job: toJobSummary(updated), shouldContinue: true, state: "autonomous_recovery_scheduled" as const };
   });
 }

@@ -1,13 +1,24 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-type Account = { balance: { available: number; total: number; reserved: number; consumed: number }; checkoutAvailable: boolean; trainingConsent: boolean;
+type Account = { internalGenerationAuthorized?: boolean; balance: { available: number; total: number; reserved: number; consumed: number }; checkoutAvailable: boolean; trainingConsent: boolean;
   offer: null | { id: string; displayName: string; priceMinor: number; currency: string; planSlots: number; termsVersion: string; privacyVersion: string };
   purchases: Array<{ id: string; status: string; createdAt: string }> };
 export const paymentLabels: Record<string, string> = { CREATED: "Preparando pago", CHECKOUT_READY: "Pendiente de pago", PENDING: "Pago pendiente de confirmación", PAID: "Pago confirmado", CANCELLED: "Pago cancelado", FAILED: "Pago no completado", EXPIRED: "Pago vencido", REFUNDED: "Pago reembolsado", CHARGEBACK: "Pago en revisión", REVIEW_REQUIRED: "Compra en revisión" };
+/** Display only: the backend revalidates capability, ownership and budget when generating. */
+export function AccountFundingSummary({ internalGenerationAuthorized, balance, compact = false }: Pick<Account, "internalGenerationAuthorized" | "balance"> & { compact?: boolean }) {
+  if (internalGenerationAuthorized === true) return <>
+    <p>Generación interna autorizada</p>
+    <p className="text-sm">No necesitas comprar un paquete. La generación sigue sujeta a los límites de uso de tu cuenta.</p>
+  </>;
+  return <>
+    <p>Planes disponibles: {balance.available} de {balance.total}{balance.reserved ? ` · ${balance.reserved} en preparación` : ""}</p>
+    {compact && <Link href="/account">Ver mi paquete</Link>}
+  </>;
+}
 export function AccountPanel({ compact = false }: { compact?: boolean }) {
   const [account, setAccount] = useState<Account | null>(null), [error, setError] = useState(""), [pending, setPending] = useState(false), [terms, setTerms] = useState(false);
-  useEffect(() => { fetch("/api/commercial", { cache: "no-store" }).then(async (r) => { if (!r.ok) throw new Error(); setAccount(await r.json()); }).catch(() => setError("No se pudo consultar tu paquete.")); }, []);
+  useEffect(() => { fetch("/api/commercial", { cache: "no-store" }).then(async (r) => { if (!r.ok) throw new Error(); setAccount(await r.json()); }).catch(() => setError("No se pudo consultar el acceso de tu cuenta.")); }, []);
   async function checkout() {
     if (!account?.offer) return;
     setPending(true); setError("");
@@ -24,11 +35,11 @@ export function AccountPanel({ compact = false }: { compact?: boolean }) {
     const r = await fetch("/api/commercial/consent", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trainingConsent: value }) });
     if (r.ok) setAccount((old) => old && { ...old, trainingConsent: value }); else setError("No se pudo guardar tu preferencia.");
   }
-  if (!account) return <p aria-live="polite">{error || "Consultando planes disponibles…"}</p>;
+  if (!account) return <p aria-live="polite">{error || "Consultando el acceso de tu cuenta…"}</p>;
   return <section className="my-4 grid gap-4 rounded-2xl border p-5">
-    <p>Planes disponibles: {account.balance.available} de {account.balance.total}{account.balance.reserved ? ` · ${account.balance.reserved} en preparación` : ""}</p>
-    {compact ? <Link href="/account">Ver mi paquete</Link> : <>
-      {account.offer && <><h2>{account.offer.displayName}</h2><p>{new Intl.NumberFormat("es-PE", { style: "currency", currency: account.offer.currency }).format(account.offer.priceMinor / 100)} · {account.offer.planSlots} publicaciones de planes · sin renovación automática</p>
+    <AccountFundingSummary internalGenerationAuthorized={account.internalGenerationAuthorized} balance={account.balance} compact={compact} />
+    {!compact && <>
+      {!account.internalGenerationAuthorized && account.offer && <><h2>{account.offer.displayName}</h2><p>{new Intl.NumberFormat("es-PE", { style: "currency", currency: account.offer.currency }).format(account.offer.priceMinor / 100)} · {account.offer.planSlots} publicaciones de planes · sin renovación automática</p>
         <p>Oferta de prueba. Precio comercial pendiente de aprobación. No se realizan cobros reales.</p>
         <label><input type="checkbox" checked={terms} onChange={(e) => setTerms(e.target.checked)} /> Acepto las <Link href="/terms">condiciones de prueba</Link> y reconozco el <Link href="/privacy">aviso de privacidad</Link>.</label>
         <button className="brand-button-primary p-3" disabled={!account.checkoutAvailable || !terms || pending} onClick={checkout}>{pending ? "Abriendo pago…" : "Probar compra de paquete"}</button>

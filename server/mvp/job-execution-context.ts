@@ -3,9 +3,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { jobCostPolicy } from "./execution-policy";
+import { INTERNAL_PILOT_COST_POLICY_VERSION, internalPilotJobCostPolicy, jobCostPolicy } from "./execution-policy";
 import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
 import { INTERNAL_GENERATION_POLICY, settleInternalGenerationJob } from "@/server/commercial/internal-generation";
+import { wholeJobCostEquation } from "./whole-job-cost-forecast";
+import { assertQaCommitment, qaJobPolicy, qaCampaignCommitment, QA_OVERAGE_POLICY_VERSION } from "./qa-acceptance-policy";
+import { reserveLinkedJobOperation, settleLinkedJobOperation } from "./pre-job-budget";
 
 type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
 const context = new AsyncLocalStorage<Execution>();
@@ -27,9 +30,57 @@ async function locked<T>(execution: Execution, work: (tx: Prisma.TransactionClie
     return work(tx);
   });
 }
-type PaidEntry = { id: string; paidOperationId?: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number };
-type CostRecord = { policy: ReturnType<typeof jobCostPolicy>; entries: PaidEntry[]; terminal?: { jobStatus: "COMPLETED" | "FAILED"; at: string } };
+type PaidEntry = { id: string; paidOperationId?: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number; inputTokensReserved?: number; tokenCountProvenance?: string; qaAuthorization?: { grantId:string; policyVersion:string; savedHardCapUsd:number; effectiveHardCapUsd:number } };
+type CostRecord = { policy: ReturnType<typeof jobCostPolicy> & { version?: string }; entries: PaidEntry[]; terminal?: { jobStatus: "COMPLETED" | "FAILED"; at: string } };
+async function initialCostRecord(tx: Prisma.TransactionClient, jobId: string): Promise<CostRecord> {
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { metadataJson: true } });
+  const metadata = job.metadataJson as { commercialPolicy?: string; costPolicyVersion?: string } | null;
+  const pilot = metadata?.commercialPolicy === INTERNAL_GENERATION_POLICY &&
+    metadata.costPolicyVersion === INTERNAL_PILOT_COST_POLICY_VERSION;
+  const qa = await qaJobPolicy(tx, jobId);
+  return { policy: qa?.policy ?? (pilot ? internalPilotJobCostPolicy() : jobCostPolicy()), entries: [] };
+}
 const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + (item.estimate ?? item.maximum), 0);
+
+// A reservation is a pre-dispatch forecast, not an invoice or a permanent ban.
+// Retain its original value and account for verified known usage exactly once.
+// Callers hold the BlueprintJob row lock, including concurrent/late settlement.
+async function auditKnownReservationOverruns(tx: Prisma.TransactionClient, jobId: string, record: CostRecord) {
+  if (record.entries.some(entry => !Number.isFinite(entry.maximum) || entry.maximum < 0 ||
+    entry.estimate !== null && (!Number.isFinite(entry.estimate) || entry.estimate < 0)))
+    throw new Error("JOB_COST_RECORD_INVALID");
+  const exceeded = record.entries.filter(entry => entry.estimate !== null && entry.estimate > entry.maximum);
+  if (!exceeded.length) return;
+  const owner = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { userId: true, projectId: true } });
+  for (const entry of exceeded) {
+    if (entry.status !== "completed" || !entry.usage) throw new Error("JOB_COST_OVERRUN_USAGE_NOT_ESTABLISHED");
+    const previous = await tx.auditLog.findFirst({ where: { userId: owner.userId, projectId: owner.projectId,
+      eventType: "JOB_CALL_RESERVATION_OVERRUN_RECORDED", payloadJson: { path: ["reservationId"], equals: entry.id } } });
+    const evidence = { jobId, reservationId: entry.id, originalMaximumUsd: entry.maximum,
+      knownUsageEstimateUsd: entry.estimate, usageFingerprint: fingerprint(entry.usage) };
+    if (previous) {
+      const prior = previous.payloadJson as Record<string, unknown>;
+      if (Object.entries(evidence).some(([key, value]) => prior[key] !== value)) throw new Error("JOB_COST_OVERRUN_EVIDENCE_CONTRADICTORY");
+      continue;
+    }
+    await tx.auditLog.create({ data: { ...owner, actorType: "SYSTEM", eventType: "JOB_CALL_RESERVATION_OVERRUN_RECORDED",
+      payloadJson: json({ version: "known-reservation-variance.v1", ...evidence,
+        differenceUsd: entry.estimate! - entry.maximum, model: entry.model, actualModel: entry.actualModel,
+        stage: entry.stage, purpose: entry.purpose, tokenCountProvenance: entry.tokenCountProvenance ?? null,
+        inputTokensReserved: entry.inputTokensReserved ?? null, accounting: "KNOWN_ESTIMATE_REPLACES_RESERVATION",
+        savedHardCapUsd: record.policy.hard }) } });
+  }
+}
+
+async function auditHistoricalReservationOverruns(jobId: string) {
+  // Separate short transaction preserves the discrepancy audit even when the
+  // subsequent reservation is correctly denied by a funding or job hard cap.
+  await prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
+    const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
+    if (row) await auditKnownReservationOverruns(tx, jobId, row.outputJson as unknown as CostRecord);
+  });
+}
 
 // Call inside the SAME transaction that makes the job terminal. Uncertain/in-flight
 // spend is not refunded: retain its full reservation until late usage reconciliation.
@@ -58,7 +109,101 @@ async function settleJobCall(jobId: string, id: string, estimate: number | null,
     if (estimate !== null && (!Number.isFinite(estimate) || estimate < 0)) throw new Error("Invalid usage estimate");
     Object.assign(entry, { estimate, usage, actualModel: actualModel ?? null, status: estimate === null ? "failed_unknown_usage" : "completed", finishedAt: new Date().toISOString() });
     if (estimate === null) entry.category = "FAILED_CALL_COST";
+    if (entry.paidOperationId) await settleLinkedJobOperation(tx, id, estimate, usage, actualModel);
+    await auditKnownReservationOverruns(tx, jobId, record);
     await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(record) } });
+  });
+}
+
+// A late provider response may establish the cost of a call previously marked
+// unknown. Its durable response record is the proof linking usage to the job;
+// an aggregate invoice or a caller-supplied amount alone is not sufficient.
+export async function reconcileBackgroundJobUsage(input: {
+  jobId: string; logicalAttemptKey: string; reservationId: string; responseId: string;
+  requestFingerprint: string; estimate: number; usage: unknown; actualModel: string;
+}) {
+  if (!Number.isFinite(input.estimate) || input.estimate < 0 || !input.responseId || !input.actualModel || !input.usage)
+    throw new Error("BACKGROUND_USAGE_EVIDENCE_INVALID");
+  return prisma.$transaction(async (tx) => {
+    const job = await tx.$queryRaw<Array<{ id: string; userId: string; projectId: string }>>`
+      SELECT id, "userId", "projectId" FROM "BlueprintJob" WHERE id = ${input.jobId} FOR UPDATE`;
+    if (job.length !== 1) throw new Error("BACKGROUND_JOB_NOT_FOUND");
+    const response = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+      jobId: input.jobId, stageKey: backgroundStageKey(input.logicalAttemptKey) } } });
+    const proof = response?.outputJson as unknown as BackgroundProviderResponseRecord | null;
+    if (!proof || proof.responseId !== input.responseId || proof.requestFingerprint !== input.requestFingerprint ||
+      proof.reservationId !== input.reservationId || proof.actualModel !== input.actualModel ||
+      !proof.usage || fingerprint(proof.usage) !== fingerprint(input.usage) ||
+      !["completed", "incomplete", "failed", "cancelled"].includes(proof.providerStatus ?? ""))
+      throw new Error("BACKGROUND_USAGE_PROVENANCE_MISMATCH");
+    const cost = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: {
+      jobId: input.jobId, stageKey: "control:cost" } } });
+    const record = cost.outputJson as unknown as CostRecord;
+    const entry = record.entries.find(item => item.id === input.reservationId);
+    if (!entry || entry.model !== proof.model) throw new Error("PAID_RESERVATION_NOT_FOUND");
+    if (entry.status === "completed") {
+      if (entry.estimate !== input.estimate || fingerprint(entry.usage ?? null) !== fingerprint(input.usage))
+        throw new Error("BACKGROUND_USAGE_CONTRADICTORY");
+      return { reconciled: false, estimate: entry.estimate };
+    }
+    if (!["reserved", "pending_reconciliation", "failed_unknown_usage"].includes(entry.status))
+      throw new Error("BACKGROUND_USAGE_STATE_INVALID");
+    const previous = { status: entry.status, maximum: entry.maximum, estimate: entry.estimate };
+    if (entry.paidOperationId) await settleLinkedJobOperation(tx, entry.id, input.estimate, input.usage, input.actualModel);
+    Object.assign(entry, { status: "completed", estimate: input.estimate, usage: input.usage,
+      actualModel: input.actualModel, finishedAt: new Date().toISOString(),
+      category: input.estimate > entry.maximum ? "BOUND_VIOLATED_COST" :
+        proof.providerStatus === "completed" ? "RECONCILED_PROVIDER_COST" : "FAILED_CALL_COST" });
+    await auditKnownReservationOverruns(tx, input.jobId, record);
+    await tx.blueprintJobStage.update({ where: { id: cost.id }, data: { outputJson: json(record) } });
+    await tx.auditLog.create({ data: { userId: job[0].userId, projectId: job[0].projectId,
+      actorType: "SYSTEM", eventType: "BACKGROUND_JOB_USAGE_RECONCILED",
+      payloadJson: json({ jobId: input.jobId, reservationId: input.reservationId,
+        responseId: input.responseId, requestFingerprint: input.requestFingerprint,
+        previous, estimate: input.estimate, exceededReservation: input.estimate > entry.maximum }) } });
+    return { reconciled: true, estimate: input.estimate };
+  });
+}
+
+// The provider retrieval happens before this short transaction. A closed job
+// has no execution lease, but its response identity and request fingerprint
+// remain immutable and can still receive late evidence.
+export async function recordRetrievedBackgroundResponse(input: {
+  jobId: string; logicalAttemptKey: string; responseId: string; requestFingerprint: string;
+  providerStatus: string; actualModel: string; usage: unknown; outputText?: string | null;
+}) {
+  if (!input.responseId || !input.actualModel || !["completed", "incomplete", "failed", "cancelled"].includes(input.providerStatus))
+    throw new Error("BACKGROUND_RETRIEVAL_EVIDENCE_INVALID");
+  await prisma.$transaction(async tx => {
+    const job = await tx.$queryRaw<Array<{ id: string; userId: string; projectId: string }>>`
+      SELECT id, "userId", "projectId" FROM "BlueprintJob" WHERE id = ${input.jobId} FOR UPDATE`;
+    if (job.length !== 1) throw new Error("BACKGROUND_JOB_NOT_FOUND");
+    const row = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: {
+      jobId: input.jobId, stageKey: backgroundStageKey(input.logicalAttemptKey) } } });
+    const current = row.outputJson as unknown as BackgroundProviderResponseRecord;
+    if (current.responseId !== input.responseId || current.requestFingerprint !== input.requestFingerprint)
+      throw new Error("BACKGROUND_USAGE_PROVENANCE_MISMATCH");
+    if (current.usage && fingerprint(current.usage) !== fingerprint(input.usage))
+      throw new Error("BACKGROUND_USAGE_CONTRADICTORY");
+    if (current.actualModel && current.actualModel !== input.actualModel)
+      throw new Error("BACKGROUND_MODEL_CONTRADICTORY");
+    if (current.providerStatus && !["queued", "in_progress"].includes(current.providerStatus) && current.providerStatus !== input.providerStatus)
+      throw new Error("BACKGROUND_STATUS_CONTRADICTORY");
+    if (current.outputText && input.outputText && current.outputText !== input.outputText)
+      throw new Error("BACKGROUND_OUTPUT_CONTRADICTORY");
+    const changed = current.providerStatus !== input.providerStatus || !current.usage && Boolean(input.usage) ||
+      !current.outputText && Boolean(input.outputText);
+    if (!changed) return;
+    const updated = { ...current, providerStatus: input.providerStatus, actualModel: input.actualModel,
+      usage: input.usage, outputText: input.outputText ?? current.outputText ?? null,
+      status: current.status === "COMPLETED" ? "COMPLETED" : input.providerStatus === "completed" ? "PENDING" : input.providerStatus.toUpperCase(),
+      updatedAt: new Date().toISOString() };
+    await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(updated) } });
+    await tx.auditLog.create({ data: { userId: job[0].userId, projectId: job[0].projectId,
+      actorType: "SYSTEM", eventType: "BACKGROUND_RESPONSE_RETRIEVED_LATE",
+      payloadJson: json({ jobId: input.jobId, responseId: input.responseId,
+        requestFingerprint: input.requestFingerprint, priorStatus: current.providerStatus,
+        providerStatus: input.providerStatus, usagePresent: Boolean(input.usage), outputPresent: Boolean(input.outputText) }) } });
   });
 }
 
@@ -68,17 +213,24 @@ export async function settleCurrentJobCall(id: string, estimate: number | null, 
   return settleJobCall(execution.jobId, id, estimate, usage, actualModel);
 }
 
-export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0, paidOperationId?: string) {
+export async function reserveJobCall(purpose: string, model: string, maximum: number, providerAttempt = 0, paidOperationId?: string,
+  tokenCount?: { inputTokens: number; provenance: string }) {
   const execution = context.getStore();
   if (!execution) return null;
   if (execution.checkpointOnly) throw new Error(`CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN: ${purpose}`);
   const id = randomUUID();
+  await auditHistoricalReservationOverruns(execution.jobId);
   await locked(execution, async (tx) => {
+    const owner = await tx.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, select: { userId: true } });
+    await assertQaCommitment(tx, owner.userId, maximum, execution.jobId);
     const commercialCap = await assertCommercialPaidAuthorization(tx, execution.jobId);
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
-    const record = row?.outputJson as unknown as CostRecord ?? { policy: jobCostPolicy(), entries: [] };
-    const policy = record.policy; // Persisted at the first call; changing env cannot reset an existing job's cap.
-    const optional = /hero|image|visual|matrix_layout|compact|deep_research/i.test(purpose);
+    const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
+    // The saved policy remains immutable. A separately audited, revocable QA
+    // grant may authorize additional FUTURE commitment for this exact job.
+    const qa = await qaJobPolicy(tx, execution.jobId);
+    const policy = qa?.overage ? { ...record.policy, hard: qa.overage.jobHardUsd } : record.policy;
+    const optional = /hero|image|visual|matrix_layout|editorial_compaction|deep_research/i.test(purpose);
     // Conservative remaining-work allowance, not a claim of a known future invoice.
     // Every later request is independently bounded again. Scientific work is paused,
     // never shortened, if actual context cannot fit the remaining envelope.
@@ -86,8 +238,12 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     const spent = committed(record.entries);
     if (commercialCap !== null && spent + maximum + mandatoryReserve > commercialCap) throw new Error("COST_LIMIT_REACHED: commercial policy snapshot");
     const deepSpent = committed(record.entries.filter((entry) => entry.category === "DEEP_RESEARCH_COST"));
-    if (!Number.isFinite(maximum) || maximum <= 0 || record.entries.some((entry) => entry.estimate !== null && entry.estimate > entry.maximum) || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
-    record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve });
+    if (!Number.isFinite(maximum) || maximum <= 0 || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
+    if (paidOperationId) await reserveLinkedJobOperation(tx, { id, jobId: execution.jobId, userId: owner.userId,
+      operationId: paidOperationId, purpose, model, maximumUsd: maximum });
+    record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve,
+      ...(tokenCount ? { inputTokensReserved: tokenCount.inputTokens, tokenCountProvenance: tokenCount.provenance } : {}),
+      ...(qa?.overage ? { qaAuthorization: { grantId:qa.overage.grantId, policyVersion:QA_OVERAGE_POLICY_VERSION, savedHardCapUsd:record.policy.hard, effectiveHardCapUsd:policy.hard } } : {}) });
     delete record.terminal;
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } }, create: { jobId: execution.jobId, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(record) }, update: { status: "RUNNING", completedAt: null, outputJson: json(record) } });
   });
@@ -180,6 +336,51 @@ export async function jobCostSnapshot() {
   return { jobId: execution.jobId, ...record, calls: record.entries.length, committed_usd: committed(record.entries), estimated_known_usd: record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0), unknown_usage_calls: record.entries.filter((entry) => entry.estimate === null).length, retry_committed_usd: committed(record.entries.filter((entry) => entry.retry)), pricing: "estimated from provider tokens; actual billed USD unknown" };
 }
 
+// Forecasts are planning records, never charges. The reservation guard still
+// checks the actual serialized request at dispatch. This gate stops a costly
+// discretionary step when even a conservative mandatory path cannot fit.
+export async function preflightWholeJobCost(input: { nextStage: string; nextStageReservation: number; minimumRemainingMandatoryReservation: number }) {
+  const execution = context.getStore();
+  if (!execution) return null;
+  const result = await locked(execution, async (tx) => {
+    const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
+    const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
+    const knownSpent = record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0);
+    const unknownReserved = record.entries.reduce((sum, entry) => sum + (entry.estimate === null ? entry.maximum : 0), 0);
+    const qa = await qaJobPolicy(tx, execution.jobId);
+    const effectiveHardCap = qa?.overage?.jobHardUsd ?? record.policy.hard;
+    const campaign = qa ? await qaCampaignCommitment(tx,qa.campaign) : null;
+    const campaignCap = qa ? qa.overage?.campaignCapUsd ?? qa.campaign.totalCapMicros/1e6 : null;
+    const safetyReserve = record.policy.mandatoryReserve;
+    const equation = wholeJobCostEquation({ knownSpent, unknownReserved,
+      nextStageReservation: input.nextStageReservation,
+      minimumRemainingMandatoryReservation: input.minimumRemainingMandatoryReservation,
+      safetyReserve, hardCap: effectiveHardCap });
+    const forecast = { version: "whole-job-preflight.v1", nextStage: input.nextStage,
+      knownSpent, unknownReserved, nextStageReservation: input.nextStageReservation,
+      minimumRemainingMandatoryReservation: input.minimumRemainingMandatoryReservation,
+      safetyReserve, hardCap: effectiveHardCap, savedHardCap:record.policy.hard,
+      qaGrantId:qa?.overage?.grantId ?? null,
+      campaignCommitted:campaign?.committed ?? null,campaignCap,
+      campaignProjectedCommitment:campaign ? campaign.committed + input.nextStageReservation + input.minimumRemainingMandatoryReservation + safetyReserve : null,
+      projectedCommitment: equation.projectedCommitment,
+      at: new Date().toISOString() };
+    if (![forecast.nextStageReservation, forecast.minimumRemainingMandatoryReservation].every((value) => Number.isFinite(value) && value >= 0)) throw new Error("WHOLE_JOB_FORECAST_INVALID");
+    const allowed = equation.allowed && (forecast.campaignProjectedCommitment === null || campaignCap !== null && forecast.campaignProjectedCommitment <= campaignCap);
+    const { at: _forecastTime, ...identity } = forecast;
+    const historyKey = `control:forecast:${fingerprint(identity)}`;
+    await tx.blueprintJobStage.upsert({ where:{jobId_stageKey:{jobId:execution.jobId,stageKey:historyKey}},
+      create:{jobId:execution.jobId,stageKey:historyKey,status:"COMPLETED",progress:100,completedAt:new Date(),outputJson:json({...forecast,allowed})},update:{} });
+    await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:forecast" } },
+      create: { jobId: execution.jobId, stageKey: "control:forecast", status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) },
+      update: { status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) } });
+    return { forecast, allowed };
+  });
+  // Persist a rejected forecast too; it is causal evidence, not a charge.
+  if (!result.allowed) throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");
+  return result.forecast;
+}
+
 export function classifyPlanSourceDisposition(input: {
   hasEvidenceCard: boolean;
   materializationStatus?: string | null;
@@ -246,6 +447,31 @@ export async function createBlueprintVersionOnce(data: Prisma.BlueprintVersionUn
 }
 
 type Checkpoint<T> = { fingerprint: string; value: T; outputHash: string; files: { path: string; hash: string }[]; completedAt: string };
+// Preserve a prior scientific result when new evidence changes its context.
+// Equal inputs retain the original key; new inputs get a deterministic version.
+export async function versionedCheckpointKey(key: string, inputs: unknown) {
+  const execution = context.getStore();
+  if (!execution) return key;
+  const hash = fingerprint({ version: "b4.v1", jobId: execution.jobId, inputs });
+  const prior = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+    jobId: execution.jobId, stageKey: `checkpoint:${key}` } }, select: { inputJson: true, outputJson: true } });
+  const previousHash = (prior?.outputJson as { fingerprint?: string } | null)?.fingerprint ??
+    (prior?.inputJson as { fingerprint?: string } | null)?.fingerprint;
+  return previousHash && previousHash !== hash ? `${key}:context:${hash}` : key;
+}
+// Read-only compatibility path: reusable results must match their original full
+// request and this job. Never adopt a latest checkpoint merely by stage name.
+export async function readCompletedCheckpoint<T>(key: string, inputs: unknown): Promise<T | null> {
+  const execution = context.getStore();
+  if (!execution) return null;
+  const row = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+    jobId: execution.jobId, stageKey: `checkpoint:${key}` } } });
+  const saved = row?.outputJson as unknown as Checkpoint<T> | null;
+  if (row?.status !== "COMPLETED" || !saved || saved.fingerprint !== fingerprint({ version: "b4.v1", jobId: execution.jobId, inputs }) ||
+    fingerprint(saved.value) !== saved.outputHash) return null;
+  for (const file of saved.files) if (fingerprint(await readFile(file.path)) !== file.hash) return null;
+  return structuredClone(saved.value);
+}
 export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () => Promise<T>, files: (value: T) => string[] = () => []): Promise<T> {
   const execution = context.getStore();
   if (!execution) return work();
@@ -260,9 +486,10 @@ export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () 
   }
   if (execution.checkpointOnly && !execution.allowedCheckpointWork?.includes(key)) throw new Error(`CHECKPOINT_ONLY_MISSING_OR_INCOMPATIBLE: ${key}`);
   const oldInput = previous?.inputJson as { fingerprint?: string; attempts?: number } | null;
-  const oldError = previous?.errorJson as { category?: string } | null;
+  const oldError = previous?.errorJson as { category?: string; message?: string } | null;
   const providerRetrievalContinuation = previous?.status === "RUNNING" && oldError?.category === "PROVIDER_RESPONSE_PENDING";
-  const attempts = oldInput?.fingerprint === hash ? providerRetrievalContinuation ? (oldInput.attempts ?? 1) : (oldInput.attempts ?? 0) + 1 : 1;
+  const budgetPreflightContinuation = previous?.status === "FAILED" && /COST_LIMIT_REACHED: el trabajo restante completo/.test(oldError?.message ?? "");
+  const attempts = oldInput?.fingerprint === hash ? providerRetrievalContinuation || budgetPreflightContinuation ? (oldInput.attempts ?? 1) : (oldInput.attempts ?? 0) + 1 : 1;
   if (attempts > (key.startsWith("EDITORIAL:") ? 1 : 3)) throw new Error(`STAGE_ATTEMPTS_EXHAUSTED: ${key}`);
   await locked(execution, (tx) => tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey } }, create: { jobId: execution.jobId, stageKey, status: "RUNNING", progress: 0, startedAt: new Date(), inputJson: json({ fingerprint: hash, attempts }) }, update: { status: "RUNNING", startedAt: new Date(), completedAt: null, inputJson: json({ fingerprint: hash, attempts }), errorJson: Prisma.DbNull } }));
   try {

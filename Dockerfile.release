@@ -54,6 +54,7 @@ COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/dist/release-worker.cjs ./dist/release-worker.cjs
 COPY --from=build /app/dist/provision-internal-generation.cjs ./dist/provision-internal-generation.cjs
+COPY --from=build /app/dist/provision-scientific-qa.cjs ./dist/provision-scientific-qa.cjs
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/scripts/mvp/python ./scripts/mvp/python
 COPY --from=build /app/scripts/seed-taxonomy-catalogs.mjs ./scripts/seed-taxonomy-catalogs.mjs

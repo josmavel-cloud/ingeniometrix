@@ -256,11 +256,29 @@ model User {
   intakeTurns        IntakeTurn[]
   referenceDisplayJobs ReferenceDisplayJob[]
   internalGenerationCapabilities InternalGenerationCapability[]
+  qaAcceptanceCampaigns QaAcceptanceCampaign[]
   internalGenerationAuthorizations InternalGenerationAuthorization[]
 }
 
 // Explicit, revocable platform funding for a named internal user. This never
 // grants project ownership, commercial credits or administrative functions.
+// Explicit, expiring QA authorization. This is not a customer entitlement.
+model QaAcceptanceCampaign {
+  id              String   @id
+  userId          String
+  issuedBy        String
+  reason          String
+  status          String   @default("ACTIVE")
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime
+  totalCapMicros  Int
+  jobCapMicros    Int
+  maxJobs         Int
+  user            User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status])
+}
+
 model InternalGenerationCapability {
   id            String    @id @default(uuid())
   userId        String
