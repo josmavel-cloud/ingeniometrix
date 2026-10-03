@@ -59,7 +59,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
   for (const [index, finding] of material.entries()) {
     const gapId = finding.gapId;
     const gap = { gapId, searchIntentHash: intentHash, kind: "EVIDENCE" as const, importance: "MATERIAL" as const,
-      requiredDimension: finding.question.slice(0, 700), desiredEvidenceRole: "METHODOLOGICAL" as const,
+      requiredDimension: (ordinal === 1 ? finding.question : `${finding.question} Brecha restante del dictamen independiente: ${finding.searchProjection}`).slice(0, 2400), desiredEvidenceRole: "METHODOLOGICAL" as const,
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
     try {

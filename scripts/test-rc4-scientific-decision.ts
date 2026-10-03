@@ -245,6 +245,25 @@ async function main() {
       ? { ...smallPatch, methodologicalSupportAdded: [], applicabilityJustification: "Limitada" }
       : { ...smallReview, evidenceSupported: false } } as any }), /AUTONOMOUS_DESIGN_UNRESOLVED/,
     "An acquired document never forces a positive scientific verdict");
+  let boundedSupportCalls = 0, boundedReviews = 0;
+  const twiceSupported = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "second-narrow-gap",
+    researchSupport: async ({ operationOrdinal, knownSupport }) => {
+      boundedSupportCalls++;
+      assert.equal(operationOrdinal, boundedSupportCalls);
+      if (operationOrdinal === 2) assert.equal(knownSupport?.length, 1);
+      return { status: "VERIFIED_SUPPORT", support: [{ ...supplementalSource,
+        sourceId: `DS-narrow-${operationOrdinal}`, document: { ...supplementalSource.document,
+          sha256: String(operationOrdinal).repeat(64) } }], limitations: [], operations: [] };
+    }, provider: { generateStructuredObject: async (request: any) => {
+      if (request.schemaName.includes("patch")) return { ...smallPatch, methodologicalSupportAdded: [], applicabilityJustification: "Respaldo sujeto a crítica independiente" };
+      boundedReviews++;
+      if (boundedReviews === 3) {
+        assert.ok(request.prompt.includes("DS-narrow-1")); assert.ok(request.prompt.includes("DS-narrow-2"));
+      }
+      return { ...smallReview, evidenceSupported: boundedReviews === 3 };
+    } } as any });
+  assert.equal(boundedSupportCalls, 2); assert.equal(boundedReviews, 3);
+  assert.equal(twiceSupported.supportAddendum?.sources.length, 2);
   const accessCritique = { assessments: [{ ...rejectedCritique.assessments[0], critical_findings: [{
     ...rejectedCritique.assessments[0].critical_findings[0], code: "ACCESS_UNVERIFIED", affected_field: "data_requirements",
     issue: "Acceso aún no verificado", required_action: "Verificar acceso legal antes de ejecutar el estudio",
@@ -466,6 +485,18 @@ async function main() {
     const digestRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
     assert.equal(digestRecovered.attempts, 4); assert.equal(digestRecovered.maxAttempts, 5);
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: fixture" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    const secondReview = { evidenceSupported: false, intentPreserved: true, methodCoherent: true };
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_2",
+      status: "COMPLETED", progress: 100, outputJson: json({ value: secondReview, outputHash: fingerprint(secondReview) }) } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 5, maxAttempts: 5,
+      errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
+    const lateRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(lateRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const lateRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(lateRecovered.attempts, 5); assert.equal(lateRecovered.maxAttempts, 6);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED",
+      errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
     await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
     await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
     await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });

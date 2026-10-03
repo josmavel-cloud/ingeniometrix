@@ -161,7 +161,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
   input: { userId: string; projectId: string; runId: string; provider?: LlmProvider;
     availableEvidencePack?: MethodEvidencePack;
     researchSupport?: typeof researchDesignSupport }) {
-  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v4", patchVersion: digestPatch.version, maxRevisionLoops: 2 }, async () => {
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v5", patchVersion: digestPatch.version, maxRevisionLoops: 3 }, async () => {
     const decision = bundle.decision;
     const critique = bundle.critique;
     let revised = false;
@@ -222,7 +222,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
     if (!selected) {
       if (designSupportGaps(bundle).length && !await gatherSupport())
         throw new Error("DESIGN_SUPPORT_UNAVAILABLE: se conserva el dictamen; no se pagó un parche sin evidencia nueva.");
-      for (let resolutionRound = 0; resolutionRound < 2; resolutionRound++) {
+      for (let resolutionRound = 0; resolutionRound < 3; resolutionRound++) {
       const candidates = inScopeAlternatives(decision, critique);
       if (!candidates.length) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: no hay alternativa dentro del alcance confirmado.");
       const alternative = candidates.find((item) => item.id === decision.recommended_id) ?? candidates[0];
@@ -335,7 +335,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
             : provider.generateStructuredObject(reviewRequest)));
         })();
       }
-      if (!targetedReview.evidenceSupported && resolutionRound === 0 && await gatherSupport(targetedReview)) {
+      if (!targetedReview.evidenceSupported && resolutionRound < 2 && await gatherSupport(targetedReview)) {
         selected = undefined;
         continue;
       }
