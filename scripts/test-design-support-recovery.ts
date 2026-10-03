@@ -14,7 +14,7 @@ assert.throws(() => pinnedPublicLookup({ address: "127.0.0.1", family: 4 }), /DO
 import { designSupportGaps, scientificFindingFields } from "../server/mvp/design-support-gap";
 import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision-service";
 import { htmlSupportPassages, rankSupportPassages, supportBibliographyFromHtml } from "../server/mvp/design-support-document";
-import { effectiveGenerationLedger, sealDesignSupport, validateDesignSupport } from "../server/mvp/design-support-addendum";
+import { augmentMethodEvidencePack, effectiveGenerationLedger, sealDesignSupport, validateDesignSupport } from "../server/mvp/design-support-addendum";
 import { ledger } from "./test-b3-scientific-contracts";
 import { supportReuseIdentity, verifyReusableSupportSource } from "../server/mvp/design-support-reuse";
 import { fingerprint } from "../server/mvp/job-execution-context";
@@ -129,3 +129,37 @@ async function reuseTests() {
   console.log("Support reuse: PASS (owner, project, definition, selection, provenance, file hash; no paid calls)");
 }
 void reuseTests().catch(error => { console.error(error); process.exitCode = 1; });
+
+// A digest selects complete distinct procedural passages, not generic facet
+// coverage that could discard the actual procedure after seeing its overview.
+import { buildDesignSupportDigest, digestPromptContext } from "../server/mvp/design-support-digest";
+import { buildMethodEvidencePack } from "../server/mvp/scientific-decision-contracts";
+const digestBase = buildMethodEvidencePack(ledger);
+const detailed = sealDesignSupport({ ...identity, policyVersion: "digest-fixture", sources: [0, 1].map(index => ({
+  ...addendum.sources[0], sourceId: `DS-synthetic-${index}`, gapId: "gap",
+  document: { ...addendum.sources[0].document, sha256: String(index + 1).repeat(64), passages: [
+    { text: "Methodological manual heading", locator: "block:1", page: null },
+    { text: "Methodological manual heading", locator: "block:2", page: null },
+    { text: "Reviewers should define eligibility, search, extract and synthesize evidence following a reproducible protocol. This overview does not replace the detailed procedure.", locator: "block:3", page: null },
+    { text: "Extracted observations should be compared in repeated analysis. The analyst should record each coding decision and retain contradictory observations before grouping categories.", locator: "block:4", page: null },
+    { text: "This reporting standard is not intended to certify execution or replace validation. The procedure may need adjustment if the available evidence cannot substantiate a comparison.", locator: "block:5", page: null },
+  ] },
+})) });
+const digestPack = augmentMethodEvidencePack(digestBase, detailed);
+const digestInput = { pack: digestPack, addendum: detailed, identity,
+  gaps: [{ ...designSupportGaps(bundle)[0], gapId: "gap" }], requiredPointers: [] };
+const digestBefore = JSON.stringify(digestInput);
+const digest = buildDesignSupportDigest(digestInput);
+assert.equal(JSON.stringify(digestInput), digestBefore, "Canonical evidence is not rewritten by compaction");
+assert.equal(digest.sources.length, 2, "Two gap-linked sources remain available without forced citation");
+assert.equal(digest.passages.length, 6, "Headings/duplicate text omitted, detailed methods and contrary limits retained");
+assert.ok(digest.passages.some(p => p.excerpt?.includes("coding decision")), "Overview cannot displace procedural detail");
+assert.ok(digest.passages.some(p => p.excerpt?.includes("not intended")), "Contrary transfer limits survive");
+for (const passage of digest.passages) assert.equal(passage.excerpt, digestPack.items.find(item => item.evidence_id === passage.evidence_id)?.excerpt);
+assert.equal(digest.digestFingerprint, buildDesignSupportDigest(digestInput).digestFingerprint);
+assert.equal(digestPromptContext(digest).effectiveEvidenceFingerprint, digest.effectiveEvidenceFingerprint);
+assert.throws(() => buildDesignSupportDigest({ ...digestInput, identity: { ...identity, jobId: "foreign" } }), /CONTEXT_MISMATCH/);
+assert.throws(() => buildDesignSupportDigest({ ...digestInput, requiredPointers: [{ source_id: "foreign", evidence_id: "E1" }] }), /POINTER_MISSING/);
+const abstractOnly = structuredClone(digestPack); abstractOnly.items.at(-1)!.evidence_level = "ABSTRACT_METADATA";
+assert.throws(() => buildDesignSupportDigest({ ...digestInput, pack: abstractOnly }), /PASSAGE_INTEGRITY/);
+console.log("DesignSupportDigest: PASS (whole passages, procedural detail, limits, diversity, ownership, immutable store)");

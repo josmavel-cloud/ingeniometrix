@@ -216,11 +216,11 @@ async function main() {
   assert.equal(resolvedBundle.alternative.pending_user_decisions.length, 0);
   assert.ok(resolvedBundle.alternative.transfer_limits.includes("Acceso aún por verificar"));
   let supportCalls = 0, independentReviews = 0, patchCalls = 0;
-  const supplementalSource = { sourceId: "DS-test", gapId: "method-gap", title: "Norma metodológica sintética",
+  const supplementalSource = { sourceId: "DS-test", gapId: designSupportGaps(rejected, { ...smallReview, evidenceSupported: false })[0].gapId, title: "Norma metodológica sintética",
     authors: [], year: null, doi: null, observationIds: ["completed-web-observation"], provenance: "SYSTEM_DESIGN_SUPPORT" as const,
     document: { observedUrl: "https://example.org/standard", finalUrl: "https://example.org/current-standard",
       sha256: "a".repeat(64), mediaType: "text/html" as const, title: "Norma metodológica sintética",
-      passages: [{ text: "Pasaje sintético verificable para comprobar el contrato, sin aceptación científica real.", locator: "html:block:1", page: null }] } };
+      passages: [{ text: "Los investigadores deben registrar cada decisión de codificación, comparar observaciones contradictorias y verificar criterios de calidad durante el análisis. Pasaje sintético para el contrato, sin aceptación científica real.", locator: "html:block:1", page: null }] } };
   const supported = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "late-support",
     researchSupport: async ({ gaps }) => { supportCalls++; assert.equal(gaps?.[0].origin, "TARGETED_CRITIC");
       return { status: "VERIFIED_SUPPORT", support: [supplementalSource], limitations: [], operations: [] }; },
@@ -301,10 +301,10 @@ async function main() {
   const oversized = structuredClone(rejected);
   const cited = alternativeV2.research_design.methodological_support[0];
   const citedEvidence = oversized.evidence_pack.items.find((item) => item.source_id === cited.source_id && item.evidence_id === cited.evidence_id)!;
-  citedEvidence.summary = "Contexto científico intacto. ".repeat(2000);
+  citedEvidence.summary = "Contexto científico intacto. ".repeat(4000);
   let oversizedCalls = 0;
   await assert.rejects(() => resolveAutonomousDesignBundle(oversized, { userId: "fixture", projectId: "fixture", runId: "oversized",
-    provider: { generateStructuredObject: async () => { oversizedCalls++; throw new Error("Should not dispatch"); } } as any }), /AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE/);
+    provider: { generateStructuredObject: async () => { oversizedCalls++; throw new Error("Should not dispatch"); } } as any }), /DESIGN_DIGEST_FINDING_SPLIT_REQUIRED/);
   assert.equal(oversizedCalls, 0, "oversized scientific context is not silently truncated or billed");
   assert.ok(!alternativeIsApprovable(rejected.decision.alternatives[0], rejected.critique));
   const outputCalls: string[] = [];
@@ -453,6 +453,19 @@ async function main() {
     assert.equal(forecastRecovered.attempts, 3, "Historical failures are not reset");
     assert.equal(forecastRecovered.maxAttempts, 4, "One audited continuation for the corrected forecast version");
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job." } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    // Explicit digest-version recovery preserves exhausted attempts, scientific
+    // checkpoints and known charges. Concurrent normal resume grants only once.
+    const supportValue = { support: [{ sourceId: "DS-offline" }] };
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:DESIGN_MINI_RESEARCH_V2_ACQUISITION3_1", status: "COMPLETED", progress: 100,
+      outputJson: json({ value: supportValue, outputHash: fingerprint(supportValue) }) } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 4, maxAttempts: 4,
+      errorJson: { message: "AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: fixture" } } });
+    const digestRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(digestRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const digestRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(digestRecovered.attempts, 4); assert.equal(digestRecovered.maxAttempts, 5);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: fixture" } } });
     await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
     await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
     await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });

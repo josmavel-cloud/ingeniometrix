@@ -52,6 +52,8 @@ export type TextGenerationResult = {
 
 export interface LlmProvider {
   readonly name: string;
+  /** Non-generative, fingerprint-cached request admission estimate. */
+  estimateStructuredRequest?(input: StructuredObjectInput): Promise<NonNullable<ReturnType<typeof import("./providers/openai-cost-bound").responseCostBound>>>;
   generateStructuredObject<T>(input: StructuredObjectInput): Promise<T>;
   generateBackgroundStructuredObject?<T>(input: BackgroundStructuredObjectInput): Promise<T>;
   generateVisionStructuredObject?<T>(input: VisionStructuredObjectInput): Promise<T>;

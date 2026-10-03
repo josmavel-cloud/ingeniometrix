@@ -400,6 +400,19 @@ export async function versionedCheckpointKey(key: string, inputs: unknown) {
     (prior?.inputJson as { fingerprint?: string } | null)?.fingerprint;
   return previousHash && previousHash !== hash ? `${key}:context:${hash}` : key;
 }
+// Read-only compatibility path: reusable results must match their original full
+// request and this job. Never adopt a latest checkpoint merely by stage name.
+export async function readCompletedCheckpoint<T>(key: string, inputs: unknown): Promise<T | null> {
+  const execution = context.getStore();
+  if (!execution) return null;
+  const row = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+    jobId: execution.jobId, stageKey: `checkpoint:${key}` } } });
+  const saved = row?.outputJson as unknown as Checkpoint<T> | null;
+  if (row?.status !== "COMPLETED" || !saved || saved.fingerprint !== fingerprint({ version: "b4.v1", jobId: execution.jobId, inputs }) ||
+    fingerprint(saved.value) !== saved.outputHash) return null;
+  for (const file of saved.files) if (fingerprint(await readFile(file.path)) !== file.hash) return null;
+  return structuredClone(saved.value);
+}
 export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () => Promise<T>, files: (value: T) => string[] = () => []): Promise<T> {
   const execution = context.getStore();
   if (!execution) return work();

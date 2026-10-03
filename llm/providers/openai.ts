@@ -188,6 +188,11 @@ export function createOpenAiProvider(config: OpenAiProviderConfig): LlmProvider 
   }
 
   return {
+    async estimateStructuredRequest(input: StructuredObjectInput) {
+      const bound = await boundForRequest(backgroundStructuredParams(input, input.model ?? defaultModel));
+      if (!bound) throw new Error("LLM_BUDGET_BLOCKED: modelo sin tarifa verificable.");
+      return bound;
+    },
     name: "openai",
     async generateStructuredObject<T>(input: StructuredObjectInput) {
       const model = input.model ?? defaultModel;

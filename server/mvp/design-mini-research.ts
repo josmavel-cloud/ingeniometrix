@@ -31,7 +31,7 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; knownSupport?: DesignSupportSource[] }) {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; knownSupport?: DesignSupportSource[]; beforeDiscovery?: () => Promise<void> }) {
   const { bundle } = input;
   const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
   const ordinal = input.operationOrdinal ?? 1;
@@ -64,6 +64,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
     try {
       const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_ACQUISITION3_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
+        await input.beforeDiscovery?.();
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
         const discovery = await runWebDiscoveryOperation({ userId: input.userId, projectId: input.projectId, smoke: false,
