@@ -102,7 +102,7 @@ export async function recoverScientificContinuationForUser(userId: string, proje
     if (researchProjectFingerprint(project) !== data.inputFingerprint) throw new Error("INPUT_CHANGED");
     if (await tx.blueprintJob.count({ where: { projectId, id: { not: jobId }, status: { in: [...activeStatuses, "WAITING_USER_DECISION"] } } }))
       throw new Error("SCIENTIFIC_CONTINUATION_COMPETING_JOB");
-    await assertQaCommitment(tx, userId, 0); // Future dispatch independently reserves complete remaining work.
+    await assertQaCommitment(tx, userId, 0, jobId); // Future dispatch independently reserves complete remaining work.
     await reserveInternalGenerationJob(tx, jobId);
     const recovery = acquisitionProof ? { ...acquisitionProof, authorizedAt: new Date().toISOString(),
       reason: "COMPLETED_DISCOVERY_REINSPECTION_UNDER_CORRECTED_ACQUISITION", priorError: job.errorJson,

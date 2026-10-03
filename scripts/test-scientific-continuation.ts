@@ -207,14 +207,21 @@ async function main() {
     await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/PROSPECTIVE_QA_REQUIRED/);
     await prisma.auditLog.create({data:{userId:user.id,projectId:project.id,actorType:"SYSTEM",eventType:"SCIENTIFIC_QA_OVERAGE_AUTHORIZED",payloadJson:{
       version:"scientific-closure-overage.v1",campaignId:campaign.id,jobId:childId,projectId:project.id,
-      frozenInputFingerprint:continuation!.contract.frozenInputFingerprint,issuedBy:"isolated-test",reason:"Bounded acquisition correction fixture",jobHardUsd:6,campaignCapUsd:10,
+      frozenInputFingerprint:continuation!.contract.frozenInputFingerprint,issuedBy:"isolated-test",reason:"Bounded acquisition correction fixture",jobHardUsd:6,campaignCapUsd:15,
       expiresAt:new Date(Date.now()+3600_000).toISOString()}}});
+    // Unrelated known account history still counts; only this explicit job's
+    // audited campaign overage can permit recovery above the original campaign10.
+    await prisma.paidOperation.create({data:{userId:user.id,projectId:project.id,revision:"fixture",requestId:randomUUID(),
+      purpose:"OTHER_KNOWN_QA_HISTORY",inputFingerprint:fingerprint("known-history"),hardCapMicros:9000000,committedMicros:9000000,status:"COMPLETED"}});
+    await assert.rejects(()=>prisma.$transaction(tx=>assertQaCommitment(tx,user.id,0)),/QA_COMMITMENT_LIMIT_REACHED/);
+    const scopedCommitment=await prisma.$transaction(tx=>assertQaCommitment(tx,user.id,0,childId));
+    assert.ok(scopedCommitment!.committedBefore>10);assert.equal(scopedCommitment!.ceiling,15);
     const beforeAcquisition=await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}});
     const acquisitionProofInput={priorMessage:"COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.",
       jobId:childId,userId:user.id,projectId:project.id,runId:`secure-pilot-${childId}`,
       responses:beforeAcquisition.filter(s=>s.stageKey.startsWith("provider:background:")).map(s=>s.outputJson) as any,
       entries:(beforeAcquisition.find(s=>s.stageKey==="control:cost")!.outputJson as any).entries,stages:beforeAcquisition,
-      operations:await prisma.paidOperation.findMany({where:{userId:user.id,projectId:project.id},include:{calls:true}}),
+      operations:await prisma.paidOperation.findMany({where:{userId:user.id,projectId:project.id,purpose:"DESIGN_SUPPORT_MINI_RESEARCH"},include:{calls:true}}),
       priorAssessmentRecovery:(resumedAgain.metadataJson as any).methodAssessmentContractRecovery,
       priorExecutionRecovery:(resumedAgain.metadataJson as any).methodCoverageExecutionRecovery};
     assert.equal(validateMethodAcquisitionRecovery(acquisitionProofInput).completedDiscoveryOperations,2);
