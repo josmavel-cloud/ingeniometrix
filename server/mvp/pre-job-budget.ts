@@ -6,6 +6,7 @@ import { fingerprint, currentJobExecution } from "./job-execution-context";
 import { withLlmUsageContext, type LlmUsageAttribution } from "@/server/llm-usage-registry";
 import { DESIGN_MINI_RESEARCH_PURPOSE, WEB_DISCOVERY_PURPOSE } from "@/server/retrieval/web-discovery-contract";
 import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
+import { referenceDisplayQaPolicy } from "@/server/retrieval/reference-display-qa";
 import { assertQaCommitment, qaJobPolicy } from "./qa-acceptance-policy";
 
 type OperationContext = { id: string; userId: string; requestId: string; revision: string; projectId?: string; draftId?: string };
@@ -141,13 +142,17 @@ export async function reservePreJobCall(purpose: string, model: string, maximumU
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${operation.userId} FOR UPDATE`;
     await assertQaCommitment(tx, operation.userId, maximumUsd);
     const record = await tx.paidOperation.findUniqueOrThrow({ where: { id: operation.id } });
+    const displayQa = await referenceDisplayQaPolicy(tx, { userId: operation.userId, projectId: operation.projectId,
+      requestId: operation.requestId, purpose: record.purpose });
     const daily = await tx.paidOperation.aggregate({ where: { userId: operation.userId, OR: [{ createdAt: { gte: rollingDay() } }, { calls: { some: { estimatedMicros: null } } }] }, _sum: { committedMicros: true } });
     const breached = await tx.paidOperation.count({ where: { userId: operation.userId, boundBreached: true } });
     const dailyCap = record.purpose === WEB_DISCOVERY_PURPOSE || record.purpose === DESIGN_MINI_RESEARCH_PURPOSE
       ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_DAILY_CAP_USD", 1);
-    if (record.status !== "RUNNING" || breached || record.committedMicros + maximum > record.hardCapMicros || (daily._sum.committedMicros ?? 0) + maximum > dailyCap) throw new Error("PRE_JOB_COST_LIMIT");
+    if (record.status !== "RUNNING" || breached || record.committedMicros + maximum > record.hardCapMicros ||
+      (displayQa && record.committedMicros + maximum > displayQa.maximumMicros) ||
+      (!displayQa && (daily._sum.committedMicros ?? 0) + maximum > dailyCap)) throw new Error("PRE_JOB_COST_LIMIT");
     await tx.paidOperation.update({ where: { id: record.id }, data: { committedMicros: { increment: maximum } } });
-    return tx.paidOperationCall.create({ data: { operationId: record.id, purpose, model, reservedMicros: maximum, attributionJson: json({ ...attribution, ...operation }) } });
+    return tx.paidOperationCall.create({ data: { operationId: record.id, purpose, model, reservedMicros: maximum, attributionJson: json({ ...attribution, ...operation, ...(displayQa ? { funding: "SCOPED_QA_TRANSLATION", qaGrantId: displayQa.grantId, qaCampaignId: displayQa.campaignId, historicalDailyCommitmentMicros: daily._sum.committedMicros ?? 0 } : {}) }) } });
   });
   const finish = async (cost: number | null, usage: unknown, actualModel?: string) => prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${operation.userId} FOR UPDATE`;

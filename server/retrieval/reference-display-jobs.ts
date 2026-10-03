@@ -1,9 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { fingerprint } from "@/server/mvp/job-execution-context";
 import { withPaidOperation } from "@/server/mvp/pre-job-budget";
 import { DISPLAY_TRANSLATION_POLICY, ensureReferenceTranslationsForLanguage,
-  readReferenceDisplayTranslations, referenceDisplayContentHash, resolveReferenceSourceLanguage } from "./reference-translation-service";
+  readReferenceDisplayTranslations, resolveReferenceSourceLanguage } from "./reference-translation-service";
+
+import { referenceDisplayBatchIdentity, matchesReferenceDisplayBatch } from "./reference-display-job-policy";
+import { referenceDisplayQaPolicy } from "./reference-display-qa";
 
 const BATCH_SIZE = 4;
 type ReferenceRow = Awaited<ReturnType<typeof loadReferences>>[number];
@@ -12,11 +14,6 @@ async function loadReferences(userId: string, projectId: string, ids?: string[])
   return prisma.projectReference.findMany({ where: { projectId, project: { userId },
     ...(ids ? { referenceId: { in: ids } } : {}) }, include: { reference: true },
     orderBy: [{ selected: "desc" }, { createdAt: "asc" }], take: ids ? Math.min(ids.length, BATCH_SIZE) : 16 });
-}
-
-function batchIdentity(projectId: string, language: string, rows: ReferenceRow[]) {
-  return `reference-display:${fingerprint([projectId, language, DISPLAY_TRANSLATION_POLICY,
-    rows.map(row => [row.referenceId, referenceDisplayContentHash(row.reference)]).sort(([a], [b]) => a.localeCompare(b))])}`;
 }
 
 /** Idempotent acquisition. A mounted card can request recovery for existing
@@ -32,15 +29,34 @@ export async function enqueueReferenceDisplayJobs(userId: string, projectId: str
     if (source === language || cached?.sourceLanguage === language) return false;
     return !cached?.translatedTitle || Boolean(row.reference.abstract && !cached.translatedAbstract);
   });
-  const jobs = [];
-  for (let index = 0; index < pending.length; index += BATCH_SIZE) {
-    const batch = pending.slice(index, index + BATCH_SIZE);
-    const requestKey = batchIdentity(projectId, language, batch);
-    jobs.push(await prisma.referenceDisplayJob.upsert({ where: { requestKey },
-      create: { userId, projectId, requestKey, targetLanguage: language,
-        referenceIdsJson: batch.map(row => row.referenceId) as Prisma.InputJsonValue }, update: {} }));
-  }
-  return jobs.map(job => ({ id: job.id, status: job.status, failureCategory: job.failureCategory }));
+  return prisma.$transaction(async tx => {
+    // Serialize regrouping/enqueue as well as double clicks. A different batch
+    // shape must not redispatch a reference already in an active/uncertain call.
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    const history = await tx.referenceDisplayJob.findMany({ where: { userId, projectId }, orderBy: { createdAt: "desc" } });
+    const held = [];
+    const protectedIds = new Set<string>();
+    for (const prior of history) {
+      const ids = Array.isArray(prior.referenceIdsJson) ? prior.referenceIdsJson.filter((id): id is string => typeof id === "string") : [];
+      if (!ids.some(id => pending.some(row => row.referenceId === id))) continue;
+      const paid = await tx.paidOperation.findUnique({ where: { userId_requestId: { userId, requestId: prior.requestKey } }, include: { calls: true } });
+      const previousDispatch = paid?.calls.some(call => call.estimatedMicros === null || call.status !== "COMPLETED") ||
+        (paid?.status === "FAILED" && paid.calls.length > 0);
+      if (["QUEUED", "RUNNING"].includes(prior.status) || previousDispatch) {
+        ids.forEach(id => protectedIds.add(id)); held.push(prior);
+      }
+    }
+    const available = pending.filter(row => !protectedIds.has(row.referenceId));
+    const jobs = [...held];
+    for (let index = 0; index < available.length; index += BATCH_SIZE) {
+      const batch = available.slice(index, index + BATCH_SIZE);
+      const requestKey = referenceDisplayBatchIdentity(projectId, language, batch);
+      jobs.push(await tx.referenceDisplayJob.upsert({ where: { requestKey },
+        create: { userId, projectId, requestKey, targetLanguage: language,
+          referenceIdsJson: batch.map(row => row.referenceId) as Prisma.InputJsonValue }, update: {} }));
+    }
+    return jobs.map(job => ({ id: job.id, status: job.status, failureCategory: job.failureCategory }));
+  });
 }
 
 export async function referenceDisplayStatus(userId: string, projectId: string) {
@@ -76,8 +92,11 @@ export async function runNextReferenceDisplayJob() {
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > BATCH_SIZE || ids.some(id => typeof id !== "string"))
       throw new Error("REFERENCE_DISPLAY_JOB_INPUT_INVALID");
     const rows = await loadReferences(job.userId, job.projectId, ids);
-    if (rows.length !== ids.length || batchIdentity(job.projectId, job.targetLanguage, rows) !== job.requestKey)
-      throw new Error("REFERENCE_DISPLAY_INPUT_CHANGED");
+    const qa = await prisma.$transaction(tx => referenceDisplayQaPolicy(tx, { userId: job.userId,
+      projectId: job.projectId, requestId: job.requestKey, purpose: "REFERENCE_DISPLAY" }));
+    const identityMatches = qa ? referenceDisplayBatchIdentity(job.projectId, job.targetLanguage, rows) === qa.sourceRequestKey
+      : matchesReferenceDisplayBatch(job.requestKey, job.projectId, job.targetLanguage, rows);
+    if (rows.length !== ids.length || !identityMatches) throw new Error("REFERENCE_DISPLAY_INPUT_CHANGED");
     await withPaidOperation({ userId: job.userId, projectId: job.projectId, requestId: job.requestKey,
       purpose: "REFERENCE_DISPLAY", revision: job.requestKey,
       inputs: { ids, policyVersion: DISPLAY_TRANSLATION_POLICY } }, async () => {
