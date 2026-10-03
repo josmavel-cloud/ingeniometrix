@@ -1,6 +1,6 @@
 import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { randomUUID } from "node:crypto";
-import { activeQaCampaign, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
+import { activeQaCampaign, allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -357,14 +357,21 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
       return concurrent;
     }
     const previous = await tx.blueprintJob.findFirst({ where: { userId, projectId, status: "FAILED" }, orderBy: { createdAt: "desc" } });
-    if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint))
-      throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
     const internalCapability = await activeInternalGenerationCapability(userId, tx);
     const qaCampaign = internalCapability ? await activeQaCampaign(tx, userId) : null;
+    // A trusted, finite QA grant can authorize a NEW acceptance after a terminal
+    // job. It never resets that job, copies scientific checkpoints, or releases
+    // its unknown usage. Ordinary client retries retain the existing guard.
+    const newQaAcceptance = previous && allowsNewQaAcceptance(qaCampaign,
+      (previous.metadataJson as { qaCampaignId?: string } | null)?.qaCampaignId,
+      Boolean(options?.operationId && options.expectedContext));
+    if (previous && (!readJobData(previous).inputFingerprint || readJobData(previous).inputFingerprint === inputFingerprint) && !newQaAcceptance)
+      throw new Error("El intento anterior requiere revisión; no se puede repetir un trabajo cobrado.");
     if (qaCampaign) {
       await tx.$queryRaw`SELECT id FROM "QaAcceptanceCampaign" WHERE id = ${qaCampaign.id} FOR UPDATE`;
       const jobs = await tx.blueprintJob.count({ where: { userId, metadataJson: { path: ["qaCampaignId"], equals: qaCampaign.id } } });
       if (jobs >= qaCampaign.maxJobs) throw new Error("QA_ACCEPTANCE_JOB_LIMIT_REACHED");
+      await assertQaCommitment(tx, userId, qaCampaign.jobCapMicros / 1e6);
     }
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     const created = await tx.blueprintJob.create({
@@ -383,10 +390,16 @@ export async function enqueueBlueprintJobForUser(userId: string, projectId: stri
         metadataJson: toJson({ engine: "canonical-mvp-step5-step6", privateArtifacts: true, executionPolicy: "b4.v1",
           ...(internalCapability ? { costPolicyVersion: INTERNAL_PILOT_COST_POLICY_VERSION } : {}),
           ...(qaCampaign ? { costPolicyVersion: QA_COST_POLICY_VERSION, qaCampaignId: qaCampaign.id } : {}),
+          ...(newQaAcceptance ? { qaNewAcceptance: { previousJobId: previous!.id,
+            campaignId: qaCampaign!.id, priorUsageRetained: true } } : {}),
           commercialPolicy: internalCapability ? INTERNAL_GENERATION_POLICY : "commercial-v1",
           scientificProfile: options?.scientificProfile ?? "rc3", operationId: options?.operationId }),
       },
     });
+    if (newQaAcceptance) await tx.auditLog.create({ data: { userId, projectId,
+      eventType: "QA_NEW_ACCEPTANCE_AUTHORIZED", actorType: "SYSTEM", payloadJson: toJson({
+        jobId, previousJobId: previous!.id, campaignId: qaCampaign!.id, authority: qaCampaign!.issuedBy,
+        operationId: options!.operationId, priorUsageRetained: true, priorCheckpointsCopied: false }) } });
     if (options?.scientificProfile === "rc4" && !options.expectedContext) {
       const frozen = await appendGenerationInput(tx, { jobId, projectId, userId, revision: 1 });
       await tx.blueprintJob.update({ where: { id: jobId }, data: { stageDataJson: toJson({ runId: `secure-pilot-${jobId}`, inputFingerprint: researchProjectFingerprint(frozen.project), inputSnapshotId: frozen.snapshot.id }) } });

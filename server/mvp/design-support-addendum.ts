@@ -7,6 +7,8 @@ export type DesignSupportSource = {
   sourceId: string; gapId: string; title: string; authors: string[]; year: number | null;
   doi: string | null; observationIds: string[]; document: SupportDocument;
   provenance: "SYSTEM_DESIGN_SUPPORT";
+  reusedFrom?: { policyVersion: string; jobId: string; checkpointId: string; checkpointHash: string;
+    originalGapId: string; scientificIdentityHash: string; discoveryOperationId: string };
 };
 export type DesignSupportAddendum = {
   version: "design-support-addendum.v1"; userId: string; projectId: string; jobId: string;

@@ -25,6 +25,7 @@ import { designSupportGaps } from "./design-support-gap";
 import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
 import { augmentMethodEvidencePack, effectiveGenerationLedger, sealDesignSupport, type DesignSupportAddendum } from "./design-support-addendum";
 import { researchDesignSupport } from "./design-mini-research";
+import { reuseProjectDesignSupport } from "./design-support-reuse";
 import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
 export const SCIENTIFIC_DECISION_STAGE = "checkpoint:SCIENTIFIC_DECISION";
@@ -159,7 +160,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
   input: { userId: string; projectId: string; runId: string; provider?: LlmProvider;
     availableEvidencePack?: MethodEvidencePack;
     researchSupport?: typeof researchDesignSupport }) {
-  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v1", patchVersion: autonomousPatch.version, maxRevisionLoops: 2 }, async () => {
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v2", patchVersion: autonomousPatch.version, maxRevisionLoops: 2 }, async () => {
     const decision = bundle.decision;
     const critique = bundle.critique;
     let revised = false;
@@ -168,6 +169,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
     let effectivePack = bundle.evidence_pack;
     let supportOperations = 0;
     let inspectedExisting = false;
+    let inspectedPriorSupport = false;
     const gatherSupport = async (late?: typeof targetedAutonomousCriticSchema._output) => {
       const gaps = designSupportGaps(bundle, late);
       if (!gaps.length || supportOperations >= 2) return false;
@@ -179,6 +181,18 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
         if (additional.length) {
           effectivePack = { ...effectivePack, items: [...effectivePack.items, ...additional] };
           return true; // New inspected context must still pass the independent critic.
+        }
+      }
+      if (!inspectedPriorSupport) {
+        inspectedPriorSupport = true;
+        const reused = await reuseProjectDesignSupport({ ...input, gaps });
+        if (reused.length) {
+          addendum = sealDesignSupport({ userId: input.userId, projectId: input.projectId,
+            jobId: currentJobExecution()!.jobId, definitionHash: bundle.contextFingerprint,
+            policyVersion: "design-mini-research.v2", sources: reused });
+          effectivePack = augmentMethodEvidencePack(effectivePack, addendum);
+          designSupport = { status: "VERIFIED_SUPPORT", support: reused, limitations: [], operations: [] };
+          return true;
         }
       }
       const remaining = mandatoryCompositionReservationFloor(bundle, gaps[0].alternativeId).reduce((sum, item) => sum + item.minimumReservationUsd, 0);

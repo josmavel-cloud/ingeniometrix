@@ -16,6 +16,13 @@ import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision
 import { htmlSupportPassages, rankSupportPassages } from "../server/mvp/design-support-document";
 import { effectiveGenerationLedger, sealDesignSupport, validateDesignSupport } from "../server/mvp/design-support-addendum";
 import { ledger } from "./test-b3-scientific-contracts";
+import { supportReuseIdentity, verifyReusableSupportSource } from "../server/mvp/design-support-reuse";
+import { fingerprint } from "../server/mvp/job-execution-context";
+import { createHash } from "node:crypto";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type { WebDiscoveryResult } from "../server/retrieval/web-discovery-contract";
 
 // Sanitized equivalent of the completed staging critic. No private topic or IDs.
 const bundle = {
@@ -64,3 +71,38 @@ assert.throws(() => validateDesignSupport(addendum, { ...identity, jobId: "job-b
 const tampered = structuredClone(addendum); tampered.sources[0].document.passages[0].text = "Invented support";
 assert.throws(() => validateDesignSupport(tampered, identity), /CONTEXT_MISMATCH/);
 console.log("Design support regression: PASS (gaps, safe text, immutable context, job ownership, bibliography; offline only)");
+
+async function reuseTests() {
+  const owner = { projectId: "project-a", userId: "user-a" };
+  const evidence = { projectId: owner.projectId, definitionHash: "science-a", searchIntentHash: "intent-a", selectionHash: "selection-a" };
+  const snapshot = { project: { id: owner.projectId, userId: owner.userId },
+    evidenceSet: { contentHash: fingerprint(evidence), snapshotJson: evidence } };
+  const identity = supportReuseIdentity(snapshot, owner);
+  assert.ok(identity);
+  assert.equal(supportReuseIdentity(snapshot, { ...owner, projectId: "project-b" }), null);
+  assert.equal(supportReuseIdentity(snapshot, { ...owner, userId: "user-b" }), null);
+  for (const field of ["definitionHash", "searchIntentHash", "selectionHash"]) {
+    const changed = { ...evidence, [field]: "changed" };
+    assert.notEqual(supportReuseIdentity({ ...snapshot, evidenceSet: { snapshotJson: changed, contentHash: fingerprint(changed) } }, owner), identity);
+  }
+  assert.equal(supportReuseIdentity({ ...snapshot, evidenceSet: { ...snapshot.evidenceSet, contentHash: "corrupt" } }, owner), null);
+  const directory = await mkdtemp(path.join(os.tmpdir(), "imx-support-reuse-"));
+  try {
+    const bytes = Buffer.from("Verified fixture document; offline scientific contracts only.");
+    const file = path.join(directory, "fixture.html"); await writeFile(file, bytes);
+    const source = structuredClone(addendum.sources[0]);
+    source.document.privateArtifactPath = file;
+    source.document.sha256 = createHash("sha256").update(bytes).digest("hex");
+    const discovery = { state: "COMPLETED", operationId: "discovery-a", responseId: "response-a",
+      observations: [{ observationId: source.observationIds[0], operationId: "discovery-a", responseId: "response-a",
+        normalizedUrl: source.document.observedUrl, actionType: "search" }] } as WebDiscoveryResult;
+    assert.equal(await verifyReusableSupportSource(source, discovery, directory), true);
+    assert.equal(await verifyReusableSupportSource(source, { ...discovery, responseId: "another-response" }, directory), false);
+    assert.equal(await verifyReusableSupportSource(source, { ...discovery, state: "INVALID_TOOL_PROVENANCE" }, directory), false);
+    assert.equal(await verifyReusableSupportSource(source, discovery, path.join(directory, "other")), false);
+    await writeFile(file, "changed document");
+    assert.equal(await verifyReusableSupportSource(source, discovery, directory), false);
+  } finally { await rm(directory, { recursive: true }); }
+  console.log("Support reuse: PASS (owner, project, definition, selection, provenance, file hash; no paid calls)");
+}
+void reuseTests().catch(error => { console.error(error); process.exitCode = 1; });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
-import { assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
+import { allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
 import { reserveJobCall, withJobExecution } from "@/server/mvp/job-execution-context";
 import { withPaidOperation } from "@/server/mvp/pre-job-budget";
 
@@ -15,6 +15,12 @@ async function main() {
     await prisma.internalGenerationCapability.create({ data: { userId: user.id, grantKey: randomUUID(), issuedBy: "isolated-test", reason: "Offline authorization fixture" } });
     const campaign = await prisma.qaAcceptanceCampaign.create({ data: { id: randomUUID(), userId: user.id, issuedBy: "isolated-test",
       reason: "Offline budget fixture", expiresAt: new Date(Date.now() + 3600000), totalCapMicros: 10000000, jobCapMicros: 5000000, maxJobs: 2 } });
+    assert.equal(allowsNewQaAcceptance(campaign, campaign.id, true), true);
+    assert.equal(allowsNewQaAcceptance(null, campaign.id, true), false);
+    assert.equal(allowsNewQaAcceptance(campaign, "another-campaign", true), false);
+    assert.equal(allowsNewQaAcceptance(campaign, campaign.id, false), false);
+    assert.equal(allowsNewQaAcceptance({ ...campaign, expiresAt: new Date(0) }, campaign.id, true), false);
+    assert.equal(allowsNewQaAcceptance({ ...campaign, status: "REVOKED" }, campaign.id, true), false);
     const job = await prisma.blueprintJob.create({ data: { userId: user.id, projectId: project.id, status: "RUNNING", startedAt: new Date(),
       metadataJson: { commercialPolicy: "internal-platform-v1", costPolicyVersion: QA_COST_POLICY_VERSION, qaCampaignId: campaign.id } } });
     const authorization = await prisma.$transaction(tx => reserveInternalGenerationJob(tx, job.id));

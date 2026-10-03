@@ -1,6 +1,11 @@
 import type { Prisma } from "@prisma/client";
 
 export const QA_COST_POLICY_VERSION = "scientific-closure-qa.v1";
+export function allowsNewQaAcceptance(campaign: { id: string; status: string; expiresAt: Date; maxJobs: number } | null,
+  priorCampaignId: unknown, explicitOperation: boolean) {
+  return Boolean(campaign && campaign.status === "ACTIVE" && campaign.expiresAt > new Date() &&
+    campaign.maxJobs <= 2 && campaign.id === priorCampaignId && explicitOperation);
+}
 export async function activeQaCampaign(tx: Prisma.TransactionClient, userId: string) {
   // Authorization is provisioned by a trusted operations command, never HTTP input.
   return tx.qaAcceptanceCampaign.findFirst({ where: { userId, status: "ACTIVE", expiresAt: { gt: new Date() } }, orderBy: { createdAt: "desc" } });
