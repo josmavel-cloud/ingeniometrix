@@ -1,6 +1,160 @@
 # Autonomous generation: staging recovery and budget audit (2026-10-02)
 
-## Current handoff — 2026-10-03 UTC, bounded acceptance finished
+## Current handoff — 2026-10-03 12:35 UTC: bounded digest acceptance finished
+
+**STATUS = BLOCKED_WITH_EVIDENCE. MVP_STATUS = NOT_CLOSED. PR16 remains draft.**
+**No merge or production publication.** The 40,000-byte implementation blocker is
+fixed and provider-backed patch/critic execution is verified. The remaining gate
+is scientific: the independent critic still rejects complete methodological
+support after three scoped live correction iterations. This is not a provider
+credit or QA-budget failure. No positive scientific result or DOCX is invented.
+All older terminal reports below are historical and superseded by this section.
+
+### Cause, corrections and actual acceptance
+
+| Problem | Proven cause | Correction and proof | Publication / limitation |
+| --- | --- | --- | --- |
+| Patch never dispatched | Full repeated context 42,796 bytes exceeded a local 40,000-byte guard | Derived DesignSupportDigest.v1 selects whole passages and preserves originals. Same 24-support case becomes 34,616 bytes, 8,048 exact request input tokens; patch and critic actually ran | Staging only; technical blocker fixed |
+| Late rejection could not progress | Resolver ended after the second evidence review | One audited continuation reuses both completed pairs, retains history and unknown reservations, and permits only unused bounded recovery | No reset or repeated completed call |
+| A relevant PDF was unavailable to the resolver | Primary URL failed; a completed search had observed an alternate PDF route; PDF title metadata was `Author:` | Alternate route passes completed-tool provenance and safe acquisition. Title and DOI verified against the actual first page; seven original passages acquired | No new Astra operation; no invented metadata |
+| Procedural evidence omitted | Generic extraction ranking omitted the appraisal section and adjacent criteria | Reinspect identical stored bytes under procedural-section-coverage.v2; whole passages from page 4 paragraphs 2, 3, 4, 6 and page 8 retained; a versioned context re-evaluated | Original extraction, responses and evidence remain auditable |
+| Scientific design still unapproved | Qualitative synthesis evidence does not substantiate appraisal/synthesis of the entire heterogeneous corpus | Final critic received the actual appraisal/coding passages and returned intentPreserved=true, methodCoherent=true, evidenceSupported=false | **Release-blocking**. Only A1 exists in frozen alternatives; no in-scope approved alternative to reuse |
+| Error misclassified as infrastructure | AUTONOMOUS_DESIGN_UNRESOLVED fell through the classifier | Explicit SCIENTIFIC_INSUFFICIENCY, no automatic retry; B4 regression passes | Staging only |
+| Historical PDF | Exact file still unavailable | Benign private upload, interrupted transfer, Retry and Remove passed in authenticated browser | Exact historical file remains PENDING_EXACT_FILE |
+
+Technical project `a0700f50-e3b5-4213-a9da-7f71243c12c1`, job
+`c3e39304-8838-4f07-b22a-99744c89fce9`, run
+`secure-pilot-c3e39304-8838-4f07-b22a-99744c89fce9`. Same job resumed normally;
+**zero new full E2E jobs**. Attempts are **8/8**, preserving the original 5/5
+history and three one-time audited continuations. No further attempt is active.
+The final error is SCIENTIFIC_INSUFFICIENCY / retryable=false, not infrastructure.
+
+Final independent review: resolved VAL-01/VAL-02; DAT-01 remains a verifiable
+future requirement; EVI-01/BUS-01/NOV-01 remain unresolved. The critic explicitly
+recognizes qualitative extraction/coding/appraisal support, but not support for
+quantitative, mixed, theoretical and review components across the entire corpus.
+`blockingScientificIssue=false` does **not** override `evidenceSupported=false`.
+Composition, cross-section review, final references, DOCX and download did not run.
+No user scientific question or WAITING_USER_DECISION occurred in this technical job.
+
+### Context, evidence and transport
+
+- Original supplementary support: 24 passages (12 JBI, 12 PRISMA-S), preserved.
+- Acquired thematic-synthesis PDF SHA-256:
+  `d0930ce68596fdf1e9215c966dd0b2c917230958946075553e01bf6ee86be6c2`.
+  Its initial seven passages and later nine-passage derived extraction both remain
+  persisted; the latter uses new source/evidence identity. No new download on reinspection.
+- Final digest: **33,344 UTF-8 bytes**. Final patch prompt: **46,961 bytes**,
+  **10,799 exact counted input tokens**; critic: **49,379 bytes**, **11,229 tokens**.
+  Both requests were admitted by token/context and saved job-budget policy, not bytes.
+  Actual provider usage differs slightly from preflight counting and is reported below.
+  Digest-only tokens were not separately counted; do not present prompt tokens as digest tokens.
+- Final shared digest fingerprint:
+  `e65d9cde3c28c9f093691bff44188c6bb971c256834a1be77a4327ef42fd163d`.
+- Final shared effective-evidence fingerprint:
+  `d9d60c654c7c538a31e133fdae4e9a05e7474d7d4177f4f60c4a8a5687b00365`.
+- Full user EvidenceSet and selected works unchanged. Supplementary sources remain
+  SYSTEM_DESIGN_SUPPORT. Independent approval was never forced.
+- Six new scientific calls: three compact patches and three independent critics.
+  All completed durably with known usage; no new unknown reservation or duplicate create.
+  Selector, first critic and prior completed pair reused with exact input/output hashes.
+- Additional Astra/mini-research operations in this task: **0**. Existing observations
+  provided the acquired PDF. No new scholarly search or new full E2E job.
+
+### Canonical R01–R13 closure matrix
+
+This table is the current matrix. Older matrices below describe historical attempts.
+
+| ID | Implemented | Offline | Provider | Authenticated browser/API | Published |
+| --- | --- | --- | --- | --- | --- |
+| R01 Search/recovery | Preserved | Existing regressions retained | Existing Sources reused | Sources accessible | Prior production only |
+| R02 CORE/EXPLORATORY/Astra | Preserved | Bounds/idempotency retained | No new search; observed support reused | Three selected sources retained | Effective production Sources/mini-research flags ON; new code NO |
+| R03 Selection/counts | Preserved | Contract regressions PASS | Not needed | 3 server / 3 UI at 360/768/1280; navigation retained | New candidate NO |
+| R04 Translation/HTML/JATS | Prior fixes retained | Schema/text/refresh contracts PASS | Fresh corrected translation batch NOT_RUN | Existing bilingual card, no markup PASS; fresh mounted-card completion unverified | New candidate NO |
+| R05 Internal evidence / one CTA | Preserved | Generation contracts PASS | Prior evidence checkpoints reused | One CTA, no preparation rows PASS | New candidate NO |
+| R06 Zero post-Sources questions | Implemented | B4/resolver PASS | Zero through terminal failure | No approval UI / obsolete minimum instruction | Complete flow unverified |
+| R07 Methodological evidence | Integrated, scientific acceptance incomplete | Gap/digest/coverage/foreign-pointer tests PASS | Actual passages reach patch/critic; final evidenceSupported=false | Not applicable | **NO — scientific gate fails** |
+| R08 Recovery/accounting | Implemented | Background/concurrency/QA PASS | Known usage, completed checkpoints reused, unknowns retained | Normal password login and explicit resume | New candidate NO |
+| R09 Internal no-package | Preserved | Authorization/ownership PASS | Design calls without package | Internal authorization shown | Settlement/publication/download incomplete |
+| R10 Taxonomy/ideas/chat | Preserved | Existing fixtures retained | No new idea generation | Refinement control present; full flow not rerun | Prior implementation only |
+| R11 Isolation | Preserved | Job/evidence owner binding PASS | Technical project only | A→B→A, two tabs, reload/back/forward, second-user private API denial PASS | DOCX-token isolation NOT_RUN: no artifact |
+| R12 PDF/DOCX | Private PDF preserved | Safety/provenance/identity PASS | Real PDF acquisition and private upload | Upload/retry/remove PASS; historical file unavailable | DOCX/download NOT_RUN |
+| R13 Release/operations | Candidate staged | Clean app/worker/frontend, boundary and diff PASS | Scientific gate fails | Staging app/worker healthy | No merge, backup, migration or production cutover this task |
+
+B4 **53 checks PASS**. RC4 scientific decision, digest/support/provenance,
+background recovery, QA budget/idempotency, TypeScript and isolated Prisma PASS.
+Clean runtime build includes app and worker. Separate generated frontend package:
+fresh npm ci + Next build, no Prisma/backend packages; **24 production traces**
+passed boundary inspection. Vercel Preview for code candidate passed. Added-line
+credential-pattern scan passed (not a claim of exhaustive third-party security audit).
+Two-user checks used a normal password-authenticated observer without internal
+capability. Foreign endpoints returned errors only (400/404/409 by route contract),
+never Intake, references, translation jobs, documents, generation context or progress.
+
+### Actual new-call telemetry (this continuation only)
+
+Reasoning is a subset of output; cached input is a subset of input. Neither is added
+again to total tokens. Provider cost is estimated from actual reported usage.
+
+| Stage | Actual configured model | Input | Cached input | Output | Reasoning subset | USD |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Patch 2 — JBI digest | gpt-6-astra | 8058 | 0 | 3722 | 2383 | 0.2868250 |
+| Critic 2 — JBI digest | gpt-5.6-sol | 8705 | 0 | 539 | 326 | 0.0543050 |
+| Patch 3 — observed PDF | gpt-6-astra | 10824 | 0 | 3817 | 2588 | 0.3261500 |
+| Critic 3 — observed PDF | gpt-5.6-sol | 11314 | 0 | 763 | 516 | 0.0718300 |
+| Patch 3/context v2 — appraisal coverage | gpt-6-astra | 10809 | 0 | 3123 | 2004 | 0.2912625 |
+| Critic 3/context v2 — appraisal coverage | gpt-5.6-sol | 11233 | 0 | 923 | 722 | 0.0746250 |
+
+Totals this task: **60,943 input + 12,887 output = 73,830 tokens**;
+cached input **0**; reasoning subset **8,539**; new known cost **USD 1.1049975**;
+new uncertain commitment **0**; new web-tool cost **0**.
+Technical job cumulative known cost **USD 2.5833039**, job unknown **0**.
+Campaign known **USD 3.60340895**, unknown **USD 0.547868**, committed
+**USD 4.15127695**, remaining **USD 5.84872305**. QA expiry remains
+2026-10-04T00:00:00Z, USD 5/job and USD 10/campaign. Historical unknowns
+(including old USD 0.94293750 and USD 0.41215 artifacts where applicable) are untouched.
+The ordinary internal target 2 / soft 2.50 / hard 3 policy is unchanged. A failed
+QA design run does not validate the economics of a complete ordinary pilot job.
+
+### Release state and exact next dependency
+
+Tested runtime code: `eca49bbfe800345c4bbd9f8780498868543bd63b`.
+Staging app/worker image `imx-rc4-method-support:qa22`, both healthy, image ID:
+`sha256:6b7f38da5257d4e9a8a6552fe666e28ddb563e020fd87a78e5dd843ad7788a0f`.
+No active staging generation remains. PR16 stays draft/open; main remains
+`a396451af8c0c1b5a3b51567db4ac990ef2517dd`.
+
+Production remains on its prior app/worker image:
+`sha256:0bd478cf31a0fdf21cc752ac423b19073e1b6e45e4e3289d41818981a738a951`.
+Public web and readiness return 200, app/worker healthy. That is an existing-runtime
+health observation, **not** acceptance or publication of this candidate.
+Effective production Sources Astra and design mini-research flags remain ON;
+Deep Research/authless workspace OFF, payment mode disabled. No production backup,
+migration, image change or Vercel production promotion was performed because the
+scientific release gate failed. Do not merge on the strength of health or build PASS.
+
+Owner historical job remains WAITING_USER_DECISION / awaiting_design_approval,
+last updated 2026-10-01T01:20:41.458Z, unchanged by this task. It was read only and
+not resumed. Its prior context-eligibility check does not prove completed recovery.
+Original RC4/G5 dirty files and worktree remain untouched.
+
+**Next dependency:** methodological support applicable to appraisal and synthesis
+of the full confirmed heterogeneous corpus, or an independently defensible design
+within that same scope. There is no alternative beyond A1 in the frozen selector
+checkpoint. Do not narrow the corpus, waive evidenceSupported, ask the owner
+methodological questions, rerun completed calls or reset the exhausted attempt
+counter to manufacture PASS. A further paid corrective cycle is outside this task's
+three executed iterations. Fresh translation acceptance and full composition/DOCX
+remain unverified; historical exact PDF is the separate noncritical file dependency.
+
+Rollback before any future cutover: retain the current production frontend and the
+prior app/worker digest above; rehearse the PR's additive QA migration after canonical
+encrypted backup/restore verification, deploy compatible app/worker first, then
+normal merge and controlled frontend promotion. None of these future release steps
+is recorded as completed.
+
+## Historical handoff — previous bounded acceptance
+
 
 **STATUS = BLOCKED_WITH_EVIDENCE. MVP_STATUS = NOT_CLOSED.**
 PR #16 remains draft. No merge or production publication. Provider credit is

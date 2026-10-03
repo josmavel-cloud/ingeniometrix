@@ -1,12 +1,13 @@
 # Current State
 
-> Current PR #16 handoff (2026-10-03 UTC): **NOT_CLOSED**, bounded authenticated
-> acceptance finished without DOCX. Provider credit is available; a second
-> evidence-aware patch is blocked before dispatch: 42,796 bytes > 40,000 guard.
-> Real JBI support is retained. Job cost USD 1.4783064 known, zero job unknown;
-> campaign unknown reserves remain held. PR stays draft; main/production unchanged.
-> See [the canonical report and R01–R13 matrix](docs/quality/autonomous-generation-recovery-2026-10-02.md).
-> Earlier release/provider-funding descriptions below are historical.
+> Current PR #16 handoff (2026-10-03 12:35 UTC): **NOT_CLOSED**.
+> Context-size blocker fixed and three scoped provider-backed correction iterations
+> completed on the same technical job. Final independent critic still returns
+> evidenceSupported=false for the complete heterogeneous corpus; no composition/DOCX.
+> New cost USD 1.1049975, no new unknown usage, zero additional Astra operations.
+> PR remains draft; main/production unchanged. Staging candidate qa22 is healthy.
+> See [the canonical report and current R01–R13 matrix](docs/quality/autonomous-generation-recovery-2026-10-02.md).
+> Older provider/context-size blockers below are historical.
 
 
 STATUS: RC4 development checkpoint is in HANDOFF_RC4.md. The Release 0 freeze below
