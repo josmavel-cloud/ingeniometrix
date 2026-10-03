@@ -1,4 +1,4 @@
-import { recoverScientificContinuationForUser } from "@/server/mvp/scientific-continuation-recovery";
+import { recoverScientificContinuationForUser, scientificContinuationAttemptLimit } from "@/server/mvp/scientific-continuation-recovery";
 import { readScientificContinuation } from "@/server/mvp/scientific-continuation";
 import { webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
 import { DESIGN_MINI_RESEARCH_POLICY } from "@/server/mvp/design-mini-research";
@@ -432,7 +432,8 @@ async function claimJob(jobId: string) {
     return null;
   }
   const attempts = current.attempts + (current.status === BlueprintJobStatus.RUNNING ? 1 : 0);
-  if (attempts >= current.maxAttempts) {
+  const executionAttemptLimit = await scientificContinuationAttemptLimit(tx, current);
+  if (attempts >= executionAttemptLimit) {
     await tx.blueprintJob.update({ where: { id: jobId }, data: { status: "FAILED", attempts, lockedAt: null, completedAt: now, errorMessage: "Recuperaciones agotadas; se requiere revision.", errorJson: { category: "USER_ACTION_REQUIRED", retryable: false } } });
     await closeJobCostControl(tx, jobId, "FAILED");
     await tx.project.update({ where: { id: current.projectId }, data: { status: "SOURCES_SELECTED" } });
@@ -442,7 +443,7 @@ async function claimJob(jobId: string) {
     where: {
       id: jobId,
       status: { in: [...ACTIVE_STATUSES] },
-      attempts: { lt: current.maxAttempts },
+      attempts: { lt: executionAttemptLimit },
       AND: [
         { OR: [{ nextAttemptAt: null }, { nextAttemptAt: { lte: now } }] },
         { OR: [{ lockedAt: null }, { lockedAt: { lt: staleBefore } }] },
@@ -587,7 +588,7 @@ export async function runNextBlueprintJobStage(jobId: string, executor: ReleaseJ
     }
     const attempts = job.attempts + 1;
     const failure = classifyFailure(error);
-    const retryable = failure.autoRetry && attempts < job.maxAttempts;
+    const retryable = failure.autoRetry && attempts < await scientificContinuationAttemptLimit(prisma, job);
     const rawMessage = error instanceof Error ? error.message : String(error);
     const message = stage === "preparing_sources" ? (/^[A-Z][A-Z0-9_]*(?::|$)/.test(rawMessage)
       ? rawMessage.split(":", 1)[0] : "SOURCE_PREPARATION_FAILED") : rawMessage;
@@ -672,7 +673,7 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   if (job.status === BlueprintJobStatus.FAILED && (job.errorJson as { category?: string } | null)?.category === "PRESENTATION") return authorizePresentationRecoveryForUser(userId, projectId, job.id);
   // Active jobs already belong to the worker. Resume must not steal a lease, erase
   // backoff, or resurrect a failed/exhausted job. Repeated calls are observational.
-  const retryable = job.attempts < job.maxAttempts && ACTIVE_STATUSES.some((status) => status === job.status);
+  const retryable = job.attempts < await scientificContinuationAttemptLimit(prisma, job) && ACTIVE_STATUSES.some((status) => status === job.status);
   return { job: toJobSummary(job), shouldContinue: retryable, state: retryable ? "already_scheduled" as const : "not_retryable" as const };
 }
 

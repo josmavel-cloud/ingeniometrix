@@ -1,3 +1,4 @@
+import { validateMethodAcquisitionRecovery } from "@/server/mvp/method-acquisition-recovery-contract";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
@@ -10,7 +11,7 @@ import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-con
 import { updateSelectedProjectReferences } from "@/server/retrieval/reference-service";
 import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { authorizeScientificContinuationQa, enqueueScientificContinuationForUser, readScientificContinuation, validateContinuationCheckpoint } from "@/server/mvp/scientific-continuation";
-import { recoverScientificContinuationForUser, validateMethodAssessmentRecovery } from "@/server/mvp/scientific-continuation-recovery";
+import { recoverScientificContinuationForUser, validateMethodAssessmentRecovery, scientificContinuationAttemptLimit } from "@/server/mvp/scientific-continuation-recovery";
 import { fingerprint, stageCheckpoint } from "@/server/mvp/job-execution-context";
 import { decisionContextFingerprint } from "@/server/mvp/scientific-decision-contracts";
 import { assertQaCommitment, qaJobPolicy, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
@@ -171,7 +172,69 @@ async function main() {
     assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({where:{id:parent.id}}),beforeParent);
     await prisma.blueprintJob.update({where:{id:childId},data:{status:"FAILED",errorJson:{message:"METHOD_HANDOFF_INVALID"}}});
     await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/ALREADY_USED/);
-    await prisma.blueprintJob.update({ where: { id: childId }, data: { status: "WAITING_NEXT_STAGE" } });
+    // Acquisition-quality correction is a separately audited execution cycle.
+    // Keep the historical 3/3 unchanged; completed discovery must not be paid twice.
+    const latestUsage = { input_tokens: 120, output_tokens: 300, total_tokens: 420 };
+    const latestReservation = randomUUID();
+    const latestResponse = { ...failedResponse, logicalAttemptKey: "reconstruction-v3", reservationId: latestReservation,
+      responseId: "resp_fixture_reconstruction_v3", requestFingerprint: "reconstruction-request-v3", status: "COMPLETED", providerStatus: "completed",
+      error: null, usage: latestUsage, outputText: "{}", correlation: { ...failedResponse.correlation, promptVersion: "method-coverage-reconstruction.v3" } };
+    await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:"provider:background:reconstruction-v3",status:"COMPLETED",progress:100,outputJson:json(latestResponse)}});
+    const scientificValue={fixture:"reconstruction-v3"};
+    await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:`checkpoint:METHOD_RECONSTRUCTION_V1_1:context:${fingerprint("v3")}`,status:"COMPLETED",progress:100,
+      outputJson:json({fingerprint:fingerprint("v3"),value:scientificValue,outputHash:fingerprint(scientificValue),files:[]})}});
+    const acquisitionEntries: unknown[] = [];
+    for(const ordinal of [1,2]) {
+      const opId=randomUUID(),callId=randomUUID();
+      const usage={inputTokens:200,outputTokens:50,cachedInputTokens:0,reasoningTokens:5,webSearchToolCalls:1};
+      const operation={operationId:opId,responseId:"resp_web_"+ordinal,state:ordinal===1?"PARTIAL":"COMPLETED",candidates:[]};
+      await prisma.paidOperation.create({data:{id:opId,userId:user.id,projectId:project.id,revision:"fixture",requestId:randomUUID(),
+        purpose:"DESIGN_SUPPORT_MINI_RESEARCH",inputFingerprint:fingerprint(operation),hardCapMicros:200000,committedMicros:100000,status:"COMPLETED",resultJson:operation,
+        calls:{create:{id:callId,purpose:"DESIGN_SUPPORT_MINI_RESEARCH",model:"gpt-6-astra",actualModel:"gpt-6-astra",reservedMicros:200000,estimatedMicros:100000,status:"COMPLETED",usageJson:usage,
+          attributionJson:{jobId:childId,funding:"JOB_LINKED"}}}}});
+      acquisitionEntries.push({...entries[0],id:callId,estimate:.1,maximum:.2,usage,paidOperationId:opId,
+        qaAuthorization:{grantId:"prior-fixture-grant",effectiveHardCapUsd:5}});
+      const value={support:[],operation:{operationId:opId,state:operation.state},limitation:ordinal===1?"No verified support":null};
+      await prisma.blueprintJobStage.update({where:{jobId_stageKey:{jobId:childId,stageKey:`checkpoint:METHOD_COVERAGE_RESEARCH_V1_${ordinal}`}},
+        data:{status:"COMPLETED",errorJson:Prisma.DbNull,outputJson:json({fingerprint:fingerprint(["research",ordinal]),value,
+          outputHash:ordinal===2?fingerprint("corrupt-derived-checkpoint"):fingerprint(value),files:[]})}});
+    }
+    await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:`checkpoint:METHOD_COVERAGE_RESEARCH_V1_3:context:${fingerprint("preflight-rejected")}`,
+      status:"FAILED",progress:0,inputJson:{fingerprint:fingerprint("preflight-rejected")},errorJson:{message:"COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job."}}});
+    await prisma.blueprintJobStage.update({where:{id:childCost.id},data:{outputJson:json({entries:[...entries,...completedEntries,
+      {...entries[0],id:latestReservation,estimate:.2,maximum:.3,usage:latestUsage},...acquisitionEntries]})}});
+    await prisma.blueprintJob.update({where:{id:childId},data:{status:"FAILED",attempts:3,errorJson:{message:"COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job."}}});
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/PROSPECTIVE_QA_REQUIRED/);
+    await prisma.auditLog.create({data:{userId:user.id,projectId:project.id,actorType:"SYSTEM",eventType:"SCIENTIFIC_QA_OVERAGE_AUTHORIZED",payloadJson:{
+      version:"scientific-closure-overage.v1",campaignId:campaign.id,jobId:childId,projectId:project.id,
+      frozenInputFingerprint:continuation!.contract.frozenInputFingerprint,issuedBy:"isolated-test",reason:"Bounded acquisition correction fixture",jobHardUsd:6,campaignCapUsd:10,
+      expiresAt:new Date(Date.now()+3600_000).toISOString()}}});
+    const beforeAcquisition=await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}});
+    const acquisitionProofInput={priorMessage:"COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.",
+      jobId:childId,userId:user.id,projectId:project.id,runId:`secure-pilot-${childId}`,
+      responses:beforeAcquisition.filter(s=>s.stageKey.startsWith("provider:background:")).map(s=>s.outputJson) as any,
+      entries:(beforeAcquisition.find(s=>s.stageKey==="control:cost")!.outputJson as any).entries,stages:beforeAcquisition,
+      operations:await prisma.paidOperation.findMany({where:{userId:user.id,projectId:project.id},include:{calls:true}}),
+      priorAssessmentRecovery:(resumedAgain.metadataJson as any).methodAssessmentContractRecovery,
+      priorExecutionRecovery:(resumedAgain.metadataJson as any).methodCoverageExecutionRecovery};
+    assert.equal(validateMethodAcquisitionRecovery(acquisitionProofInput).completedDiscoveryOperations,2);
+    assert.throws(()=>validateMethodAcquisitionRecovery({...acquisitionProofInput,entries:acquisitionProofInput.entries.map((e:any,i:number)=>i?e:{...e,estimate:null})}),/USAGE_UNCERTAIN/);
+    assert.throws(()=>validateMethodAcquisitionRecovery({...acquisitionProofInput,operations:acquisitionProofInput.operations.map(op=>({...op,projectId:"foreign-project"}))}),/OPERATION_PROOF_MISSING/);
+    assert.throws(()=>validateMethodAcquisitionRecovery({...acquisitionProofInput,stages:beforeAcquisition.map(stage=>stage.stageKey.includes("ASSESSMENT")&&stage.status==="COMPLETED"?
+      {...stage,outputJson:{...(stage.outputJson as any),outputHash:"tampered"}}:stage)}),/CHECKPOINT_INVALID/);
+    const finalRecovered=await Promise.all(Array.from({length:3},()=>resumeLatestBlueprintJobForUser(user.id,project.id)));
+    assert.ok(finalRecovered.every(result=>result.shouldContinue));
+    const finalChild=await prisma.blueprintJob.findUniqueOrThrow({where:{id:childId}});
+    assert.equal(finalChild.attempts,3);assert.equal(finalChild.maxAttempts,3,"Historical attempt allowance unchanged");
+    assert.equal(await scientificContinuationAttemptLimit(prisma,finalChild),4,"One distinct audited execution cycle");
+    const recovery=(finalChild.metadataJson as any).methodAcquisitionRecovery;
+    assert.equal(recovery.preservedInvalidCheckpoints.length,1);
+    assert.equal(recovery.newDiscoveryAuthorizedByRecovery,false);
+    assert.equal(recovery.completedDiscoveryOperations,2);
+    assert.equal(await prisma.auditLog.count({where:{userId:user.id,eventType:"SCIENTIFIC_CONTINUATION_ACQUISITION_RECOVERY_AUTHORIZED"}}),1);
+    assert.equal(await scientificContinuationAttemptLimit(prisma,{...finalChild,id:randomUUID()}),3,"Copied metadata cannot grant foreign job allowance");
+    assert.deepEqual(await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}}),beforeAcquisition,"Preserve invalid checkpoint and all paid records exactly");
+    assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({where:{id:parent.id}}),beforeParent);
     let resolves = 0;
     const childExecutor: ReleaseJobExecutor = {
       materialize: async () => { throw new Error("Must not repeat extraction"); },
@@ -182,6 +245,10 @@ async function main() {
     };
     const advanced = await runNextBlueprintJobStage(childId, childExecutor);
     assert.equal(advanced.job?.currentStage, "generating_plan"); assert.equal(resolves, 1);
+    const exhausted=await runNextBlueprintJobStage(childId,childExecutor);
+    assert.equal(exhausted.job?.status,"FAILED");assert.equal(exhausted.job?.attempts,4);assert.equal(exhausted.job?.maxAttempts,3);
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/NOT_ELIGIBLE/);
+    assert.equal((await runNextBlueprintJobStage(childId,childExecutor)).shouldContinue,false,"No second contractual execution after failure");
     const ref = continuation!.contract.reusedCheckpointIds.find(row => row.stageKey === "checkpoint:SCIENTIFIC_DECISION")!;
     const original = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { id: ref.id } });
     await prisma.blueprintJobStage.update({ where: { id: ref.id }, data: { outputJson: { value: {}, outputHash: "tampered", files: [], fingerprint: "bad" } } });
@@ -198,7 +265,7 @@ async function main() {
     await assert.rejects(() => prisma.$transaction(tx => reserveInternalGenerationJob(tx, childId)), /CAPABILITY_REQUIRED/);
     assert.throws(() => validateContinuationCheckpoint({ status: "COMPLETED", stageKey: "control:cost", outputJson: {} }), /CHECKPOINT_INVALID/);
     assert.equal(await prisma.commercialReservation.count({ where: { userId: user.id } }), 0);
-    console.log("PASS continuation: parent 8/8 preserved; concurrent child identity; no repeated science or cost; immutable inherited input; ownership; tamper; QA expiry/idempotency; same-child terminal incomplete recovery; cost/response/checkpoint preservation; revocation; worker advances without questions. Provider calls=0.");
+    console.log("PASS continuation: parent 8/8 preserved; concurrent child identity; no repeated science or cost; immutable inherited input; ownership; tamper; QA expiry/idempotency; same-child terminal incomplete recovery; acquisition correction with one audited execution allowance; historical 3/3 intact; invalid derived checkpoint preserved; known PaidOperation reused; no second execution; cost/response/checkpoint preservation; revocation; worker advances without questions. Provider calls=0.");
   } finally {
     await prisma.internalGenerationAuthorization.deleteMany({ where: { userId: user.id } });
     await prisma.internalGenerationCapability.deleteMany({ where: { userId: user.id } });

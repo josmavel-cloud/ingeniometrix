@@ -1,3 +1,5 @@
+import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
+import { METHOD_ACQUISITION_RECOVERY_EVENT, METHOD_ACQUISITION_RECOVERY_VERSION, validateMethodAcquisitionRecovery } from "./method-acquisition-recovery-contract";
 import { validateMethodExecutionRecovery } from "./method-coverage-recovery-contract";
 import { DESIGN_MINI_RESEARCH_PURPOSE } from "@/server/retrieval/web-discovery-contract";
 import { z } from "zod";
@@ -15,7 +17,7 @@ import { METHOD_COVERAGE_ASSESSMENT_PROMPT, METHOD_RECONSTRUCTION_PROMPT } from 
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 export const METHOD_CONTRACT_RECOVERY_VERSION = "method-assessment-contract-recovery.v1";
 const activeStatuses = ["QUEUED", "RUNNING", "WAITING_NEXT_STAGE"] as const;
-type CostEntry = { id: string; status: string; estimate: number | null; usage?: unknown; model?: string; actualModel?: string | null };
+type CostEntry = { id: string; status: string; estimate: number | null; usage?: unknown; model?: string; actualModel?: string | null; paidOperationId?: string; qaAuthorization?: { grantId?: string; effectiveHardCapUsd?: number } };
 
 /** Only the proved, terminal v1 assessment truncation is eligible. A failed
  * validation, unobserved dispatch, uncertain usage or unchanged contract is not. */
@@ -57,14 +59,17 @@ export async function recoverScientificContinuationForUser(userId: string, proje
     await tx.$queryRaw`SELECT id FROM "Project" WHERE id = ${projectId} FOR UPDATE`;
     await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
     const job = await tx.blueprintJob.findFirstOrThrow({ where: { id: jobId, userId, projectId } });
-    if (!await qaJobPolicy(tx, jobId)) throw new Error("SCIENTIFIC_CONTINUATION_NOT_AUTHORIZED");
+    const qa = await qaJobPolicy(tx, jobId);
+    if (!qa) throw new Error("SCIENTIFIC_CONTINUATION_NOT_AUTHORIZED");
     if (activeStatuses.some(status => status === job.status)) return { job, reused: true };
-    if (job.status !== "FAILED" || job.currentStage !== "resolving_design" || job.lockedAt || job.attempts >= job.maxAttempts)
-      throw new Error("SCIENTIFIC_CONTINUATION_RECOVERY_NOT_ELIGIBLE");
     const metadata = job.metadataJson as Record<string, unknown>;
     const priorMessage = (job.errorJson as { message?: string } | null)?.message ?? "";
+    const acquisitionRecovery = priorMessage.startsWith("COST_LIMIT_REACHED: el trabajo restante completo") && Boolean(metadata.methodCoverageExecutionRecovery);
+    if (job.status !== "FAILED" || job.currentStage !== "resolving_design" || job.lockedAt ||
+      (acquisitionRecovery ? job.attempts !== job.maxAttempts : job.attempts >= job.maxAttempts))
+      throw new Error("SCIENTIFIC_CONTINUATION_RECOVERY_NOT_ELIGIBLE");
     const executionRecovery = priorMessage === "METHOD_HANDOFF_INVALID";
-    if (executionRecovery ? metadata.methodCoverageExecutionRecovery : metadata.methodAssessmentContractRecovery)
+    if (acquisitionRecovery ? metadata.methodAcquisitionRecovery : executionRecovery ? metadata.methodCoverageExecutionRecovery : metadata.methodAssessmentContractRecovery)
       throw new Error("SCIENTIFIC_CONTINUATION_RECOVERY_ALREADY_USED");
     const cost = await tx.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
     const entries = (cost.outputJson as { entries?: CostEntry[] }).entries ?? [];
@@ -75,7 +80,19 @@ export async function recoverScientificContinuationForUser(userId: string, proje
       priorAssessmentRecovery: metadata.methodAssessmentContractRecovery as Parameters<typeof validateMethodExecutionRecovery>[0]["priorAssessmentRecovery"],
       discoveryOperationsSinceJobCreated: await tx.paidOperation.count({ where: { userId, projectId,
         purpose: DESIGN_MINI_RESEARCH_PURPOSE, createdAt: { gte: job.createdAt } } }) }) : null;
-    const response = executionRecovery ? null : validateMethodAssessmentRecovery({ priorMessage, responses, entries,
+    if (acquisitionRecovery) {
+      const previousCap = Math.max(0, ...entries.map(entry => entry.qaAuthorization?.effectiveHardCapUsd ?? 0));
+      if (METHOD_DOCUMENT_INSPECTION_VERSION !== "methodological-document-inspection.v2" || !qa.overage ||
+        qa.overage.jobHardUsd <= previousCap || entries.some(entry => entry.qaAuthorization?.grantId === qa.overage!.grantId))
+        throw new Error("METHOD_ACQUISITION_CORRECTED_CONTRACT_AND_PROSPECTIVE_QA_REQUIRED");
+    }
+    const acquisitionProof = acquisitionRecovery ? validateMethodAcquisitionRecovery({ priorMessage, jobId, userId, projectId, runId: data.runId,
+      responses, entries, stages: await tx.blueprintJobStage.findMany({ where: { jobId } }),
+      priorAssessmentRecovery: metadata.methodAssessmentContractRecovery as Parameters<typeof validateMethodAcquisitionRecovery>[0]["priorAssessmentRecovery"],
+      priorExecutionRecovery: metadata.methodCoverageExecutionRecovery as Parameters<typeof validateMethodAcquisitionRecovery>[0]["priorExecutionRecovery"],
+      operations: await tx.paidOperation.findMany({ where: { userId, projectId, purpose: DESIGN_MINI_RESEARCH_PURPOSE,
+        createdAt: { gte: job.createdAt } }, include: { calls: true } }) }) : null;
+    const response = executionRecovery || acquisitionRecovery ? null : validateMethodAssessmentRecovery({ priorMessage, responses, entries,
       targetPromptVersion: METHOD_COVERAGE_ASSESSMENT_PROMPT.version, projectId, runId: data.runId });
     const current = await generationContextForUser(userId, projectId, tx);
     assertExpectedGenerationContext(data.expectedContext, current);
@@ -87,7 +104,19 @@ export async function recoverScientificContinuationForUser(userId: string, proje
       throw new Error("SCIENTIFIC_CONTINUATION_COMPETING_JOB");
     await assertQaCommitment(tx, userId, 0); // Future dispatch independently reserves complete remaining work.
     await reserveInternalGenerationJob(tx, jobId);
-    const recovery = executionProof ? { ...executionProof, authorizedAt: new Date().toISOString(), reason: "PREDISPATCH_GATING_AND_METHOD_HANDOFF_CORRECTED", targetReconstructionPromptVersion: METHOD_RECONSTRUCTION_PROMPT.version, targetReconstructionPromptFingerprint: fingerprint(METHOD_RECONSTRUCTION_PROMPT), priorError: job.errorJson, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts, frozenInputFingerprint: continuation.contract.frozenInputFingerprint, effectiveEvidenceFingerprint: continuation.contract.effectiveEvidenceFingerprint, parentUnchanged: true, priorCostPreserved: true } : { version: METHOD_CONTRACT_RECOVERY_VERSION, authorizedAt: new Date().toISOString(),
+    const recovery = acquisitionProof ? { ...acquisitionProof, authorizedAt: new Date().toISOString(),
+      reason: "COMPLETED_DISCOVERY_REINSPECTION_UNDER_CORRECTED_ACQUISITION", priorError: job.errorJson,
+      inspectionPolicyVersion: METHOD_DOCUMENT_INSPECTION_VERSION,
+      prospectiveQaGrantId: qa.overage!.grantId, effectiveJobHardUsd: qa.overage!.jobHardUsd,
+      effectiveCampaignCapUsd: qa.overage!.campaignCapUsd,
+      jobId, projectId, parentJobId: continuation.contract.parentJobId,
+      previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts, additionalExecutionAllowance: 1,
+      frozenInputFingerprint: continuation.contract.frozenInputFingerprint,
+      effectiveEvidenceFingerprint: continuation.contract.effectiveEvidenceFingerprint,
+      parentUnchanged: true, priorCostPreserved: true, historicalAttemptLimitsUnchanged: true,
+      targetReconstructionPromptVersion: METHOD_RECONSTRUCTION_PROMPT.version,
+      targetReconstructionPromptFingerprint: fingerprint(METHOD_RECONSTRUCTION_PROMPT),
+    } : executionProof ? { ...executionProof, authorizedAt: new Date().toISOString(), reason: "PREDISPATCH_GATING_AND_METHOD_HANDOFF_CORRECTED", targetReconstructionPromptVersion: METHOD_RECONSTRUCTION_PROMPT.version, targetReconstructionPromptFingerprint: fingerprint(METHOD_RECONSTRUCTION_PROMPT), priorError: job.errorJson, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts, frozenInputFingerprint: continuation.contract.frozenInputFingerprint, effectiveEvidenceFingerprint: continuation.contract.effectiveEvidenceFingerprint, parentUnchanged: true, priorCostPreserved: true } : { version: METHOD_CONTRACT_RECOVERY_VERSION, authorizedAt: new Date().toISOString(),
       reason: "STRUCTURED_OUTPUT_CONTRACT_CORRECTED", priorError: job.errorJson,
       priorResponseId: response!.responseId, priorRequestFingerprint: response!.requestFingerprint,
       priorUsageFingerprint: fingerprint(response!.usage), fromPromptVersion: "method-coverage-assessment.v1",
@@ -99,11 +128,30 @@ export async function recoverScientificContinuationForUser(userId: string, proje
     const updated: BlueprintJob = await tx.blueprintJob.update({ where: { id: jobId }, data: {
       status: "WAITING_NEXT_STAGE", nextAttemptAt: null, completedAt: null, lockedAt: null,
       errorMessage: null, errorJson: Prisma.DbNull,
-      metadataJson: json({ ...metadata, [executionRecovery ? "methodCoverageExecutionRecovery" : "methodAssessmentContractRecovery"]: recovery }),
+      metadataJson: json({ ...metadata, [acquisitionRecovery ? "methodAcquisitionRecovery" : executionRecovery ? "methodCoverageExecutionRecovery" : "methodAssessmentContractRecovery"]: recovery }),
     } });
     await tx.project.update({ where: { id: projectId }, data: { status: "BLUEPRINT_GENERATING" } });
-    await tx.auditLog.create({ data: { userId, projectId, actorType: "USER", eventType: executionRecovery ? "SCIENTIFIC_CONTINUATION_EXECUTION_RECOVERY_AUTHORIZED" : "SCIENTIFIC_CONTINUATION_CONTRACT_RECOVERY_AUTHORIZED",
-      payloadJson: json({ jobId, parentJobId: continuation.contract.parentJobId, ...recovery }) } });
+    await tx.auditLog.create({ data: { userId, projectId, actorType: "USER", eventType: acquisitionRecovery ? METHOD_ACQUISITION_RECOVERY_EVENT : executionRecovery ? "SCIENTIFIC_CONTINUATION_EXECUTION_RECOVERY_AUTHORIZED" : "SCIENTIFIC_CONTINUATION_CONTRACT_RECOVERY_AUTHORIZED",
+      payloadJson: json({ jobId, parentJobId: continuation.contract.parentJobId, ...recovery, recoveryFingerprint: fingerprint(recovery) }) } });
     return { job: updated, reused: false };
   });
+}
+
+/** A single explicitly audited corrected execution cycle, separate from the
+ * historical failure allowance. A browser flag or unaudited metadata has no effect. */
+export async function scientificContinuationAttemptLimit(db: Pick<Prisma.TransactionClient, "auditLog">,
+  job: Pick<BlueprintJob, "id" | "userId" | "projectId" | "maxAttempts" | "metadataJson">) {
+  const metadata = job.metadataJson as { scientificContinuation?: { parentJobId?: string; frozenInputFingerprint?: string };
+    methodAcquisitionRecovery?: { version?: string; jobId?: string; projectId?: string; parentJobId?: string;
+      previousAttempts?: number; previousMaxAttempts?: number; additionalExecutionAllowance?: number; frozenInputFingerprint?: string } } | null;
+  const recovery = metadata?.methodAcquisitionRecovery;
+  if (!recovery || recovery.version !== METHOD_ACQUISITION_RECOVERY_VERSION || recovery.jobId !== job.id ||
+    recovery.projectId !== job.projectId || recovery.previousAttempts !== job.maxAttempts ||
+    recovery.previousMaxAttempts !== job.maxAttempts || recovery.additionalExecutionAllowance !== 1 ||
+    recovery.parentJobId !== metadata?.scientificContinuation?.parentJobId ||
+    recovery.frozenInputFingerprint !== metadata?.scientificContinuation?.frozenInputFingerprint) return job.maxAttempts;
+  const audit = await db.auditLog.findFirst({ where: { userId: job.userId, projectId: job.projectId,
+    eventType: METHOD_ACQUISITION_RECOVERY_EVENT, payloadJson: { path: ["jobId"], equals: job.id } }, orderBy: { createdAt: "desc" } });
+  if ((audit?.payloadJson as { recoveryFingerprint?: string } | null)?.recoveryFingerprint !== fingerprint(recovery)) return job.maxAttempts;
+  return job.maxAttempts + recovery.additionalExecutionAllowance;
 }
