@@ -12,6 +12,10 @@ assert.equal(explicit.passages.find(p=>p.text.startsWith("Author A"))?.contentKi
 const heading=htmlSupportPassages(`<h2>Abstract</h2><p>${abstract}</p><h2>Methods</h2><p>The original source explicitly describes a sequence for extracting records and preserving traceability across reviewers.</p>`);
 assert.equal(heading.passages.find(p=>p.text===abstract)?.contentKind,"ABSTRACT");
 assert.equal(heading.passages.at(-1)?.contentKind,"FULL_TEXT_PASSAGE");
+const structuredAbstract=htmlSupportPassages(`<article><section data-title="Abstract" aria-labelledby="Abs1"><h2 id="Abs1">Abstract</h2><h3>Methods</h3><p>The abstract summarizes the method but does not provide the actual procedure or appraisal criteria for the intended operation.</p><h3>Results</h3><p>The abstract reports results without reproducing methodological instructions from the underlying full article.</p></section><section data-title="Methods"><h2>Methods</h2><p>The substantive article section supplies the actual procedure and its conditions with sufficient inspectable methodological detail.</p></section></article>`);
+assert.equal(structuredAbstract.passages.find(p=>p.text.startsWith("The abstract summarizes"))?.contentKind,"ABSTRACT");
+assert.equal(structuredAbstract.passages.find(p=>p.text.startsWith("The abstract reports"))?.contentKind,"ABSTRACT");
+assert.equal(structuredAbstract.passages.find(p=>p.text.startsWith("The substantive article"))?.contentKind,"FULL_TEXT_PASSAGE");
 const unknown=htmlSupportPassages(`<div><p>A plausible sounding paragraph without any inspectable article-body or section context is not automatically substantive evidence.</p></div>`);
 assert.equal(unknown.passages[0].contentKind,"METADATA");
 const guidance=htmlSupportPassages(`<div class="wiki-content"><p>Assess each applicable domain independently and retain the reasons for judgements instead of aggregating scores without justification.</p></div>`);
@@ -27,4 +31,4 @@ assert.equal(verifiedPdfIdentityTitle("Appraisal of C+ pathways 10.1234/valid\f"
 assert.equal(verifiedPdfIdentityTitle("A# design guide\f",{title:"A design guide",doi:null}),null);
 assert.equal(verifiedPdfIdentityTitle("A verified guide 10.1234/wrong\f",{title:"A verified guide",doi:"10.1234/right"}),null);
 assert.equal(verifiedPdfIdentityTitle("Different front matter\fA verified guide",{title:"A verified guide",doi:null}),null);
-console.log("Support content kind and title typography: PASS (20 causal/security checks; no downloads).");
+console.log("Support content kind and title typography: PASS (23 causal/security checks; no downloads).");

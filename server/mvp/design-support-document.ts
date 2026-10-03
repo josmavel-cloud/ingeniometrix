@@ -61,7 +61,7 @@ export function htmlSupportPassages(html: string) {
   const parser = new Parser({
     onopentag(name, attributes) {
       if (blocks.has(name)) flush();
-      const marker = `${attributes.id ?? ""} ${attributes.class ?? ""} ${attributes.itemprop ?? ""}`.toLowerCase();
+      const marker = `${attributes.id ?? ""} ${attributes.class ?? ""} ${attributes.itemprop ?? ""} ${attributes.role ?? ""} ${attributes["data-title"] ?? ""} ${attributes["aria-label"] ?? ""} ${attributes["aria-labelledby"] ?? ""} ${attributes["data-test"] ?? ""}`.toLowerCase();
       const tokens = marker.split(/[^a-z0-9]+/).filter(Boolean);
       const ignored = !!stack.at(-1)?.ignored || hidden.has(name) || attributes.hidden !== undefined || attributes["aria-hidden"] === "true" ||
         ["navigation","contentinfo","banner","search"].includes(attributes.role ?? "") || tokens.some(token => ["nav","navbar","footer","header","breadcrumb","breadcrumbs","toolbar","cookie","cookies","share","social","menu"].includes(token));
