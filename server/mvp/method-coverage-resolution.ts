@@ -81,6 +81,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
     let researchOperations = 0, acquiredDocuments = 0;
     const operations: Awaited<ReturnType<typeof researchDesignSupport>>["operations"] = [];
     const researchAudit: unknown[] = [];
+    const observedGaps = new Map<string, DesignSupportGap>();
     const reseal = () => sealDesignSupport({ userId: input.userId, projectId: input.projectId, jobId,
       definitionHash: bundle.contextFingerprint, policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, sources });
     let addendum = reseal(), pack = augmentMethodEvidencePack(bundle.evidence_pack, addendum);
@@ -93,19 +94,27 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const actualKey = await versionedCheckpointKey(key, checkpointInput);
       const saved = await readCompletedCheckpoint<z.infer<S>>(actualKey, checkpointInput);
       if (saved) return schema.parse(saved);
-      const bound = provider.estimateStructuredRequest ? await provider.estimateStructuredRequest(request) : responseCostBound({ model: request.model, input: prompt, max_output_tokens: request.maxOutputTokens! });
+      const bound = provider.estimateStructuredRequest ? await provider.estimateStructuredRequest(request) : responseCostBound({ model: request.model, input: prompt,
+        text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } },
+        reasoning: { effort: request.reasoningEffort }, max_output_tokens: request.maxOutputTokens! });
       if (!bound || bound.inputTokens + record.max_output_tokens > 65536) throw new Error("METHOD_COVERAGE_CONTEXT_UNSAFE");
       await stageCheckpoint(`${actualKey}_FORECAST`, { requestHash: fingerprint(request) }, async () => ({
         promptBytes: Buffer.byteLength(prompt), inputTokens: bound.inputTokens, countProvenance: bound.tokenCountProvenance,
         maximumUsd: bound.maximumUsd, minimumRemainingMandatoryReservation: mandatoryRemaining,
         effectiveEvidenceFingerprint: addendum.checksum,
       }));
-      await preflightWholeJobCost({ nextStage: key, nextStageReservation: bound.maximumUsd, minimumRemainingMandatoryReservation: mandatoryRemaining });
+      // A resumed background response already owns its reservation. Persist the
+      // original admission so retrieving it does not reserve its maximum twice.
+      await stageCheckpoint(`METHOD_CALL_ADMISSION:${fingerprint(request)}`, { requestHash: fingerprint(request),
+        minimumRemainingMandatoryReservation: mandatoryRemaining }, async () => {
+        await preflightWholeJobCost({ nextStage: key, nextStageReservation: bound.maximumUsd, minimumRemainingMandatoryReservation: mandatoryRemaining });
+        return { admitted: true, maximumUsd: bound.maximumUsd };
+      });
       return schema.parse(await stageCheckpoint(actualKey, checkpointInput, () => scientificStructuredCall(provider, request, input)));
     }
     const digest = (required: Array<{source_id:string;evidence_id:string}> = []) => {
       const baseGap = designSupportGaps(bundle)[0];
-      const gaps = [...new Set(sources.map(s=>s.gapId))].map(gapId=>({ ...baseGap, gapId }));
+      const gaps = [...new Set(sources.map(s=>s.gapId))].map(gapId=>observedGaps.get(gapId) ?? ({ ...baseGap, gapId }));
       // Corpus diagnosis needs all selected-source excerpts. Whole supplementary
       // passages remain persisted, with the existing digest ranking and audit.
       return buildDesignSupportDigest({ pack, addendum, identity: { userId:input.userId,projectId:input.projectId,jobId,definitionHash:bundle.contextFingerprint },
@@ -136,6 +145,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
           requiredEvidenceType: "SCHOLARLY_METHOD_OR_STANDARD", searchProjection: question.question,
           existingEvidenceIds: pack.items.map(i=>`${i.source_id}:${i.evidence_id}`), availableEvidence: [],
           scopeBoundary: bundle.intent.scope, maxCandidates: 5, status: "OPEN" };
+        observedGaps.set(gap.gapId, gap);
         const bound = webDiscoveryPolicyCostBound(DESIGN_MINI_RESEARCH_POLICY);
         if (!bound) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
         researchOperations++;
@@ -145,8 +155,14 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
           beforeDiscovery:()=>preflightWholeJobCost({nextStage:"method_coverage_research",nextStageReservation:bound.maximumUsd,minimumRemainingMandatoryReservation:mandatoryRemaining+0.7}).then(()=>undefined) });
         operations.push(...result.operations);
         const fresh = result.support.filter(s=>!sources.some(old=>old.document.sha256===s.document.sha256));
-        sources.push(...fresh); acquiredDocuments += fresh.length;
-        researchAudit.push({ question, status:result.status, limitations:result.limitations, addedSources:fresh.map(s=>s.sourceId), operationIds:result.operations.map(o=>o.operationId) });
+        const received = result.acquiredDocuments;
+        // Legacy cached operations did not retain rejected downloads. Count their
+        // full per-operation allowance conservatively, never just admitted works.
+        const acquiredThisOperation = received === undefined ? Math.min(2, 4 - acquiredDocuments) : received;
+        if (!Number.isInteger(acquiredThisOperation) || acquiredThisOperation < fresh.length || acquiredThisOperation > Math.min(2, 4 - acquiredDocuments))
+          throw new Error("METHOD_RESEARCH_ACQUISITION_ACCOUNTING_INVALID");
+        sources.push(...fresh); acquiredDocuments += acquiredThisOperation;
+        researchAudit.push({ question, status:result.status, limitations:result.limitations, addedSources:fresh.map(s=>s.sourceId), acquiredDocuments:acquiredThisOperation, cumulativeAcquiredDocuments:acquiredDocuments, operationIds:result.operations.map(o=>o.operationId) });
         addendum = reseal(); pack = augmentMethodEvidencePack(bundle.evidence_pack,addendum);
         // Stop the batch after useful material: reassess coverage before spending
         // on another question the same source may already answer.
