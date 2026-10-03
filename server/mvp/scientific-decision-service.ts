@@ -162,7 +162,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
   input: { userId: string; projectId: string; runId: string; provider?: LlmProvider;
     availableEvidencePack?: MethodEvidencePack;
     researchSupport?: typeof researchDesignSupport }) {
-  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v5", patchVersion: digestPatch.version, maxRevisionLoops: 3 }, async () => {
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v6", patchVersion: digestPatch.version, maxRevisionLoops: 3 }, async () => {
     const decision = bundle.decision;
     const critique = bundle.critique;
     let revised = false;

@@ -1,7 +1,9 @@
+import { readFile, realpath } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { prisma } from "@/lib/prisma";
 import { currentJobExecution, fingerprint, stageCheckpoint } from "./job-execution-context";
-import { acquireSupportDocument } from "./design-support-document";
+import { acquireSupportDocument, inspectSupportDocumentBytes } from "./design-support-document";
 import type { DesignSupportSource } from "./design-support-addendum";
 import type { DesignSupportGap } from "./design-support-gap";
 import { DESIGN_MINI_RESEARCH_PURPOSE, type WebDiscoveryResult } from "@/server/retrieval/web-discovery-contract";
@@ -36,7 +38,7 @@ export async function acquirePreviouslyObservedSupport(input: { userId: string; 
   const discovery = operation?.resultJson as unknown as WebDiscoveryResult;
   if (!discovery || discovery.operationId !== operation!.id || !["COMPLETED", "PARTIAL"].includes(discovery.state)) return [];
   const gap = input.gaps[0];
-  return stageCheckpoint("DESIGN_SUPPORT_OBSERVED_ALTERNATES_V1", { discoveryHash: fingerprint(discovery),
+  const acquiredSources = await stageCheckpoint("DESIGN_SUPPORT_OBSERVED_ALTERNATES_V1", { discoveryHash: fingerprint(discovery),
     checkpointHash: saved.outputHash, gap, knownHashes: input.knownSupport.map(s => s.document.sha256).sort() }, async () => {
     const sources: DesignSupportSource[] = [];
     let acquired = 0, inspected = 0;
@@ -76,5 +78,19 @@ export async function acquirePreviouslyObservedSupport(input: { userId: string; 
       }
     }
     return sources;
+  }, sources => sources.flatMap(source => source.document.privateArtifactPath ? [source.document.privateArtifactPath] : []));
+  return stageCheckpoint("DESIGN_SUPPORT_PROCEDURAL_COVERAGE_V2", { sourceFingerprint: fingerprint(acquiredSources), gap,
+    policy: "procedural-section-coverage.v2" }, async () => {
+    const root = await realpath(path.resolve("artifacts-local", "design-support"));
+    return Promise.all(acquiredSources.map(async source => {
+      if (!source.document.privateArtifactPath) throw new Error("DESIGN_SUPPORT_ARTIFACT_MISSING");
+      const file = await realpath(source.document.privateArtifactPath);
+      if (!file.startsWith(root + path.sep)) throw new Error("DESIGN_SUPPORT_PRIVATE_PATH_INVALID");
+      const body = await readFile(file);
+      if (createHash("sha256").update(body).digest("hex") !== source.document.sha256) throw new Error("DESIGN_SUPPORT_ARTIFACT_INTEGRITY");
+      const document = await inspectSupportDocumentBytes({ body, contentType: source.document.mediaType, finalUrl: source.document.finalUrl },
+        source.document.observedUrl, `${gap.question} ${gap.searchProjection} ${source.title}`, path.dirname(file), { title: source.title, doi: source.doi });
+      return { ...source, sourceId: `DS-${fingerprint([input.projectId, document.sha256, "procedural-section-coverage.v2"]).slice(0, 20)}`, document };
+    }));
   }, sources => sources.flatMap(source => source.document.privateArtifactPath ? [source.document.privateArtifactPath] : []));
 }

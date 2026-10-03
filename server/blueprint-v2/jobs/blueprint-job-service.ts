@@ -704,7 +704,24 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
       ? await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId,
         stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_2" } } }) : null;
     const lateEvidenceSaved = lateEvidenceReview?.outputJson as { value?: { evidenceSupported?: boolean; intentPreserved?: boolean; methodCoherent?: boolean }; outputHash?: string } | null;
-    const lateEvidenceRecovery = lateEvidenceReview?.status === "COMPLETED" &&
+    const coverageReview = failedResolution && priorMetadata?.scientificLateEvidenceRecovery
+      ? await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId,
+        stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_3" } } }) : null;
+    const coverageSaved = coverageReview?.outputJson as { value?: { evidenceSupported?: boolean; intentPreserved?: boolean; methodCoherent?: boolean }; outputHash?: string } | null;
+    const coverageRecovery = coverageReview?.status === "COMPLETED" && coverageSaved?.value?.evidenceSupported === false &&
+      coverageSaved.value.intentPreserved === true && coverageSaved.value.methodCoherent === true && fingerprint(coverageSaved.value) === coverageSaved.outputHash;
+    if (coverageRecovery) {
+      if (priorMetadata?.scientificCoverageRecovery || job.attempts > job.maxAttempts)
+        throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      const acquired = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId,
+        stageKey: "checkpoint:DESIGN_SUPPORT_OBSERVED_ALTERNATES_V1" } } });
+      const saved = acquired?.outputJson as { value?: unknown[]; outputHash?: string } | null;
+      if (acquired?.status !== "COMPLETED" || !saved?.value?.length || fingerprint(saved.value) !== saved.outputHash)
+        throw new Error("AUTONOMOUS_RECOVERY_SUPPORT_CHECKPOINT_INVALID");
+      if (await tx.blueprintJobStage.count({ where: { jobId, stageKey: "checkpoint:DESIGN_SUPPORT_PROCEDURAL_COVERAGE_V2" } }))
+        throw new Error("AUTONOMOUS_RECOVERY_COVERAGE_ALREADY_STARTED");
+    }
+    const lateEvidenceRecovery = !coverageRecovery && lateEvidenceReview?.status === "COMPLETED" &&
       lateEvidenceSaved?.value?.evidenceSupported === false && lateEvidenceSaved.value.intentPreserved === true &&
       lateEvidenceSaved.value.methodCoherent === true && fingerprint(lateEvidenceSaved.value) === lateEvidenceSaved.outputHash;
     if (lateEvidenceRecovery) {
@@ -797,7 +814,7 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         const patchStage = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_1" } } });
         if (patchStage?.status !== BlueprintJobStageStatus.COMPLETED || !patchStage.outputJson)
           throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_MISSING");
-      } else if (!forecastRecovery && !linkedQaBudgetRecovery && !digestRecovery && !lateEvidenceRecovery && job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      } else if (!forecastRecovery && !linkedQaBudgetRecovery && !digestRecovery && !lateEvidenceRecovery && !coverageRecovery && job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
       const cost = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
       const entries = (cost?.outputJson as { entries?: Array<{ stage: string; estimate: number | null; status: string }> } | null)?.entries;
       if (!entries) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
@@ -857,9 +874,12 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     else if (commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
     else throw new Error("AUTONOMOUS_RECOVERY_COMMERCIAL_POLICY_UNKNOWN");
     const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null,
-      maxAttempts: (forecastRecovery || linkedQaBudgetRecovery || digestRecovery || lateEvidenceRecovery) && job.attempts === job.maxAttempts ? job.maxAttempts + 1 : accessReviewRecovery ? 5 : legacyUnresolvedPatch ? 4 : job.maxAttempts,
+      maxAttempts: (forecastRecovery || linkedQaBudgetRecovery || digestRecovery || lateEvidenceRecovery || coverageRecovery) && job.attempts === job.maxAttempts ? job.maxAttempts + 1 : accessReviewRecovery ? 5 : legacyUnresolvedPatch ? 4 : job.maxAttempts,
       completedAt: null, errorMessage: null, errorJson: Prisma.DbNull,
       metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null),
+        ...(coverageRecovery ? { scientificCoverageRecovery: { version: "procedural-section-coverage.v2", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, reviewHash: coverageSaved!.outputHash, previousAttempts: job.attempts,
+          previousMaxAttempts: job.maxAttempts, noNewDiscovery: true, existingDocumentHashPreserved: true } } : {}),
         ...(lateEvidenceRecovery ? { scientificLateEvidenceRecovery: { version: "late-evidence-recovery.v1",
           authorizedAt: new Date().toISOString(), priorFailure: priorError, reviewCheckpoint: lateEvidenceReview!.stageKey,
           reviewHash: lateEvidenceSaved!.outputHash, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts,
@@ -880,13 +900,13 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         ...(acquisitionRecovery ? { scientificAcquisitionRecovery: { authorizedAt: new Date().toISOString(), version: "pinned-dns-all.v2", priorFailure: priorError, paidDiscoveryReused: true } } : {}),
         ...(legacyUnresolvedPatch && !accessReviewRecovery ? { scientificPatchRecovery: { authorizedAt: new Date().toISOString(), fromPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v2", toPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", priorPatchRejectedBy: priorError } } : {}),
         ...(accessReviewRecovery ? { scientificAccessReviewRecovery: { authorizedAt: new Date().toISOString(), reusedPatchVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", targetedCriticVersion: "ingeniometrix-scientific-design-autonomous-targeted-critic-v2" } } : {}),
-        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: lateEvidenceRecovery ? "remaining_methodological_gap" : digestRecovery ? "verified_support_digest" : linkedQaBudgetRecovery ? "qa_nested_funding_contract" : forecastRecovery ? "configured_discovery_bound" : contextSizeRecovery ? "deduplicated_critic_context" : compoundFindingRecovery ? "compound_finding_contract" : accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch } }) } });
+        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: coverageRecovery ? "persisted_document_procedural_coverage" : lateEvidenceRecovery ? "remaining_methodological_gap" : digestRecovery ? "verified_support_digest" : linkedQaBudgetRecovery ? "qa_nested_funding_contract" : forecastRecovery ? "configured_discovery_bound" : contextSizeRecovery ? "deduplicated_critic_context" : compoundFindingRecovery ? "compound_finding_contract" : accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch } }) } });
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     await tx.auditLog.create({ data: { userId, projectId, actorType: "SYSTEM", eventType: "AUTONOMOUS_DESIGN_RECOVERY_SCHEDULED",
       payloadJson: toJson({ jobId, priorStatus: job.status, previousAttempts: job.attempts,
         allPriorUsageKnown: failedResolution && !rejectedLegacySchema && !legacyUnresolvedPatch,
         rejectedBeforeResponse: rejectedLegacySchema, scientificPatchRecovery: legacyUnresolvedPatch && !accessReviewRecovery,
-        lateEvidenceRecovery, digestRecovery, linkedQaBudgetRecovery, forecastRecovery, contextSizeRecovery, compoundFindingRecovery, completedPatchTargetedReview: accessReviewRecovery,
+        coverageRecovery, lateEvidenceRecovery, digestRecovery, linkedQaBudgetRecovery, forecastRecovery, contextSizeRecovery, compoundFindingRecovery, completedPatchTargetedReview: accessReviewRecovery,
         unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch }) } });
     return { job: toJobSummary(updated), shouldContinue: true, state: "autonomous_recovery_scheduled" as const };
   });

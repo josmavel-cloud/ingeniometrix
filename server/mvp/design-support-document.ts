@@ -51,8 +51,11 @@ export function htmlSupportPassages(html: string) {
 export function rankSupportPassages(passages: SupportPassage[], question: string, maxChars = 10000) {
   const terms = new Set(question.toLowerCase().normalize("NFKC").match(/[\p{L}\p{N}]{4,}/gu) ?? []);
   // This ranks inspection context only. Matching words never certify a claim.
+  const sectionStart = /\b(quality assessment|critical appraisal|data extraction|extracting data from|detailed methods for|stage[s]? [0-9]|valoraci[oó]n|extracci[oó]n de datos)\b/iu;
+  const sectionLead = new Set(passages.flatMap((p, i) => sectionStart.test(p.text) ? [i, i + 1] : []));
   const ranked = passages.map((passage, index) => ({ passage, index,
     score: [...terms].filter(term => passage.text.toLowerCase().includes(term)).length +
+      (sectionLead.has(index) ? 20 : 0) - (/^abstract\b/iu.test(passage.text) ? 40 : 0) +
       (/\b(should|must|describe|report|state|identify|record|document|debe|describir|registrar|indicar)\b/i.test(passage.text) ? 4 : 0) +
       (passage.text.length >= 160 ? 1 : 0) +
       (/\b(quality assessment|data extraction|coding|codes|themes|pilot|valoraci[oó]n|codificaci[oó]n)\b/iu.test(passage.text) ? 4 : 0) }))
@@ -73,6 +76,11 @@ export function verifiedPdfIdentityTitle(extracted: string, expected: { title: s
 export async function acquireSupportDocument(url: string, question: string, privateDirectory?: string, expectedIdentity?: { title: string; doi: string | null }): Promise<SupportDocument> {
   const fetched = await fetchPublicDocument(url, { Accept: "application/pdf,text/html,application/xhtml+xml" }, 20 * 1024 * 1024, 20000);
   if (!fetched.ok) throw new Error("DESIGN_SUPPORT_DOCUMENT_UNAVAILABLE");
+  return inspectSupportDocumentBytes(fetched, url, question, privateDirectory, expectedIdentity);
+}
+
+export async function inspectSupportDocumentBytes(fetched: { body: Buffer; contentType: string; finalUrl: string },
+  url: string, question: string, privateDirectory?: string, expectedIdentity?: { title: string; doi: string | null }): Promise<SupportDocument> {
   const sha256 = createHash("sha256").update(fetched.body).digest("hex");
   let title = "", passages: SupportPassage[], mediaType: SupportDocument["mediaType"];
   let bibliography: SupportDocument["bibliography"];

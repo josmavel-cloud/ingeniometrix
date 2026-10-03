@@ -176,3 +176,11 @@ const alternateCandidate = { proposal: { accessProposal: { reportedPdfUrl: "http
 assert.deepEqual(observedAlternateUrls(alternateDiscovery, alternateCandidate).map(x => x.url), ["https://example.org/verified.pdf"]);
 assert.equal(observedAlternateUrls({ ...alternateDiscovery, responseId: "foreign" }, alternateCandidate).length, 0);
 console.log("Observed alternate acquisition identity/provenance: PASS");
+
+const coveragePassages = [
+ { text: "Abstract methodology quality coding methods. ".repeat(45), page: 1, locator: "p1" },
+ { text: "Quality assessment should record limitations without pretending that absence of reporting proves poor conduct.", page: 4, locator: "p4a" },
+ { text: "The criteria include reporting aims and context, adequacy of the data collection and analysis procedures, and traceability of interpretations.", page: 4, locator: "p4b" },
+];
+const coverage = rankSupportPassages(coveragePassages, "methodology quality coding methods", 500);
+assert.ok(coverage.some(p=>p.locator==="p4a") && coverage.some(p=>p.locator==="p4b"), "Procedural section and adjacent criteria survive a verbose abstract");

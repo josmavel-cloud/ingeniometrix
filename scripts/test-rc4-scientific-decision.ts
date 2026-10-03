@@ -498,6 +498,19 @@ async function main() {
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED",
       errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
     await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_3",
+      status: "COMPLETED", progress: 100, outputJson: json({ value: secondReview, outputHash: fingerprint(secondReview) }) } });
+    const observedSources = [{ sourceId: "DS-observed" }];
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:DESIGN_SUPPORT_OBSERVED_ALTERNATES_V1",
+      status: "COMPLETED", progress: 100, outputJson: json({ value: observedSources, outputHash: fingerprint(observedSources) }) } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { attempts: 6, maxAttempts: 6 } });
+    const coverageRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(coverageRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const coverageRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(coverageRecovered.attempts, 6); assert.equal(coverageRecovered.maxAttempts, 7);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED",
+      errorJson: { message: "AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección." } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
     await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
     await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval" } });
