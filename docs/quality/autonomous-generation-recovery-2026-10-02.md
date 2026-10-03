@@ -32,23 +32,32 @@ One audited batch used two calls (language detection + translation), USD 0.01514
 A→B→A, two tabs, reload/back-forward and second-user private API denial pass;
 new real DOCX download isolation remains pending until the artifact exists.
 
-### Latest causal closure update — qa26 terminal, 2026-10-03
+### Latest causal closure update — qa27 terminal, 2026-10-03 17:07 UTC
 
-**MVP NOT_CLOSED.** The technical child reached a completed reconstruction on
-qa26, then stopped at **16:03:45 UTC** before the third methodological discovery
-was dispatched. No independent coverage critic, composition or DOCX completed.
-This section supersedes the 15:33 status below; candidate corrections described
-here are offline verified, **not** a qa27 scientific acceptance or publication.
+**MVP NOT_CLOSED.** The same technical child stopped at **17:07:33 UTC**
+on qa27 with `METHOD_COVERAGE_CONTEXT_UNSAFE`, before reconstruction dispatch.
+No new scientific provider cost was incurred by this failure. Independent coverage
+critique, composition, scientific review and DOCX remain incomplete. Correction
+`81e7162` passes the actual-request count-only check; **qa28 is not deployed and
+its authenticated E2E is pending**. This supersedes the qa26 terminal status.
 
-The child is still `0c5c52df-b492-4775-b5bc-23ee82f1cfb4`; the parent and owner
-projects were not reopened or mutated. The audited prospective overlay was
-applied for this child: USD 10/job and USD 15/campaign, expiring
-2026-10-04T00:00:00Z. Saved historical USD 5 policy and ordinary pilot
-2/2.50/3 limits remain unchanged. No unknown usage was erased.
+The child remains `0c5c52df-b492-4775-b5bc-23ee82f1cfb4`; the parent and owner's
+projects were not reopened or mutated. The append-only prospective QA grant
+`c08665df-2eeb-4d0f-8f44-4fc17c1bc5a6` is now applied for this child:
+**USD 16/job and USD 21/campaign**, expiring 2026-10-04T00:00:00Z. It supersedes
+the earlier 10/15 grant without rewriting it. Saved historical USD 5 job/internal
+authorization and ordinary pilot 2/2.50/3 limits remain unchanged. Historical
+unknown usage remains reserved; no additional job is authorized by this grant.
+
+Current staging app/worker are qa27, revision `a6de716`, image
+`sha256:89d3a788977a132682d7710fa4ad88e7b97dbc869f47d7072efb843c8d4fb09d`.
+The corrected `81e7162` candidate has not replaced that runtime. Production has
+not received this scientific correction.
 
 | Proven issue | Existing evidence | Scoped correction / current proof |
 | --- | --- | --- |
-| The third research operation could not fit the complete remaining route | Known child USD 4.96498750, uncertain child USD 0; next web maximum 2.0748 + reconstruction 2.1248 + independent review 0.57344 + mandatory composition 0.802685 + safety 0.25 = **10.79071250 > 10** | Denial was before dispatch; it is not another paid discovery. Recover already-paid useful documents before proposing further search. No budget or ledger reset. |
+| Actual reconstruction request exceeded context after recovery | qa27 constructed 128,117 prompt bytes; **30,837 exact input + 34,816 output = 65,653 > 65,536**. The prospective replay omitted 2,117 bytes of real recovery audit | `81e7162` keeps operational recovery details private and sends a bounded derived audit projection. No scientific passage, required pointer, scope or finding is removed. Actual corrected request: **126,106 bytes; 29,984 + 34,816 = 64,800**, count-only PASS. Scientific dispatch/E2E still pending on qa28. |
+| Earlier qa26 third research operation could not fit the complete remaining route | Known child USD 4.96498750, uncertain child USD 0; next web maximum 2.0748 + reconstruction 2.1248 + independent review 0.57344 + mandatory composition 0.802685 + safety 0.25 = **10.79071250 > 10** | That earlier denial was before dispatch. The later 16/21 authorization is explicit and prospective; already-paid discoveries are recovered first. No budget or ledger reset. |
 | First acquired methodology PDF rejected on title typography | The same retained 11-page PDF has the expected ordered title words/version on its first page; only comma/colon/parenthesis spacing differs from the proposal | Typography-only identity normalization retains word order, version, DOI requirement and meaningful `+`/`#`; synthetic identity regressions and exact retained-file replay PASS. Runtime provenance must be re-established from the original completed observation because the old rejection did not preserve a URL/hash manifest. |
 | A bibliographic HTML record was treated as methodological full text | Retained ERIC body contains 10 metadata passages and one real abstract, **zero procedural passages** | Structured HTML content typing; metadata/abstract remain context-only. They cannot validate a procedural pointer. New acquired/failed-document manifests retain URL, final URL, hash and private path without content in logs. |
 | PDF ranking omitted actual appraisal criteria | The old 10k/12-passage acquisition selection retained a bibliography paragraph while omitting full criterion explanations already present in the document | New PDF inspection retains all bounded paragraphs; bibliography remains metadata across pages. The derived digest chooses intact criterion sections and application limits, without altering the original bytes or issuing web research. |
@@ -78,20 +87,22 @@ synthesis 5, new appraisal PDF 8). All 30 existing required pointers are supplie
 No scientific excerpt is paraphrased, cut mid-paragraph or silently dropped.
 The full addendum remains canonical; prompt tables are exactly reversible.
 
-The first compact request still counted **30,848 exact input tokens + 34,816
-reserved output = 65,664**, exceeding the 65,536 guard by 128. The correction
-removed only exact duplicated definition and unchanged roles, with explicit
-inheritance and round-trip equality tests. The final prospective request is
-**126,273 prompt bytes**, schema 8,178 bytes, and **30,106 provider-counted input
-tokens + 34,816 output = 64,922**, leaving 614 context tokens. Its maximum cost
-bound is USD 2.117125. This was a non-generative count, not a scientific call.
-Matrix and evidence transports preserve every original excerpt and pointer.
-Corpus roles absent from the delta inherit their complete original values;
-`historicalAlternative.definition` inherits the one immutable definition exactly.
-Research-audit metadata in this private replay is prospective; the runtime's
-reinspected manifest and actual complete request must be counted again before
-dispatch. This result does not promise that a later, larger critic request fits.
-The existing context and whole-job guards remain authoritative.
+The former prospective replay counted 30,106 input tokens but omitted the
+runtime's real recovery audit. It was not proof of the actual request's admission.
+The captured qa27 request independently reproduces the failure: **30,837 input +
+34,816 reserved output = 65,653**, 117 tokens above the unchanged 65,536 ceiling.
+No reconstruction response was created and no reservation became uncertain.
+
+Correction `81e7162` versions the reconstruction prompt to v5 and separates the
+private operational audit from its scientific projection. Original manifests,
+request identities, document hashes and historical errors remain persisted. The
+model receives the same complete scientific evidence and pointer identity.
+Provider count-only verification of the actual corrected request reports
+**126,106 prompt bytes, 29,984 input tokens + 34,816 output = 64,800**, leaving
+736 context tokens; maximum reservation **USD 2.115600**. This is a token-admission
+proof, not a generated design or independent scientific approval. Later requests
+must still pass their own context and whole-job guards. qa28 deployment and the
+complete authenticated scientific flow remain pending.
 
 #### Tests and cost, without overstating acceptance
 
@@ -99,8 +110,9 @@ Offline PASS: typed HTML/PDF content and private-path/hash checks; stable
 legacy IDs; context-only pointer rejection; source-to-ledger-to-pack continuity;
 whole criterion-section selection; lossless matrix/evidence round trips with
 fingerprint equality and tampering rejection; immutable addendum; TypeScript.
-Existing full scientific/resilience and DB suites must still pass on the complete
-candidate. No mocked output is a scientific acceptance.
+The qa27 full scientific/resilience, isolated QA/recovery and clean frontend
+gates passed; `81e7162` adds focused projection/count-only proof. Full acceptance
+on the corrected runtime remains pending. No mocked output is a scientific acceptance.
 
 Additional qa26 calls with returned usage:
 
@@ -110,7 +122,8 @@ Additional qa26 calls with returned usage:
 | Method discovery 2 | 22,144 | 4,750 | 1,109 | 222 | 0.3622500 |
 | Reconstruction v3 | 30,719 | 0 | 17,578 | 3,106 | 1.2628875 |
 
-Child known total is **USD 4.96498750**, child unknown 0. Historical campaign
+After the qa27 pre-dispatch failure, child known total is still **USD 4.96498750**,
+child unknown **0**, and new generation cost for that failed attempt is **USD 0**. Historical campaign
 unknown **USD 0.547868** remains reserved. Including other recorded campaign work,
 known additional QA is **USD 8.58354245**, committed **USD 9.13141045**. These are
 usage-based estimates, not invoices; nested job/PaidOperation accounting is not
@@ -123,10 +136,33 @@ authorized download and document inspection, then normal checks/merge and the
 coordinated backup/deployment/smoke. The historical exact user PDF remains
 PENDING_EXACT_FILE and the upload checkbox remains unchanged.
 
-Private replay evidence: `/tmp/imx-support-typed-live-replay.json`,
-`/tmp/imx-method-integrated-context-replay.json`; complete prospective request
-is private `/tmp/imx-method-prospective-request.json`. Source bytes and model
-outputs are not committed.
+Private evidence: `/tmp/imx-qa27-actual-count.json`,
+`/tmp/imx-qa27-corrected-count.json`, `/tmp/imx-qa27-full-private.json`,
+`/tmp/imx-qa27-corrected-context-private.json`; retained-support proofs remain in
+`/tmp/imx-support-typed-live-replay.json`. Source bytes, full requests and model
+outputs are private and are not committed.
+
+#### Active R01–R13 closure matrix
+
+This active matrix supersedes the historical matrices below. Implementation,
+provider execution, browser verification and production publication are distinct.
+
+| ID | Implemented | Offline | Provider | Authenticated browser/API | Published |
+| --- | --- | --- | --- | --- | --- |
+| R01 Search/recovery | Preserved | Existing regressions PASS | Existing Sources reused | Sources accessible | Prior production only |
+| R02 CORE/EXPLORATORY/Astra | Preserved, bounded identities | Bounds/reuse PASS | Two historical method discoveries reused; no new qa27 discovery | Selected works unchanged | Prior Sources fallback only; candidate NO |
+| R03 Selection/counts | Preserved | State contracts PASS | Not needed | A/B navigation and counts PASS on unchanged frontend | Candidate NO |
+| R04 Translation/HTML/JATS | Preserved | Schema/normalization/refresh PASS | Fresh batch PASS, USD 0.015146 | Mounted card translation and retained selection PASS | Candidate NO |
+| R05 Internal evidence / one CTA | Preserved | Generation contracts PASS | Existing evidence reused | One CTA, no preparation rows PASS | Candidate NO |
+| R06 Zero post-Sources questions | Implemented | B4/resolver PASS | Zero through qa27 terminal failure | No approval UI or obsolete minimum instruction | Complete flow unverified |
+| R07 Methodological evidence | Typed support and context correction implemented | Scope/pointers/content/projection tests PASS | qa27 stopped before reconstruction; corrected count-only PASS; independent critic not reached | Not applicable | **NO; scientific acceptance pending** |
+| R08 Recovery/accounting | Settled discovery reuse and durable budget implemented | Recovery/QA/currency/concurrency PASS | qa27 pre-dispatch, USD 0 new generation; old unknowns retained | Normal authenticated recovery used | Candidate NO |
+| R09 Internal no-package | Preserved; exact-job 16/21 QA overlay applied | Ownership, scoped cap and ordinary-policy regressions PASS | No purchase required for technical work | Internal funding shown | Full settlement/download incomplete |
+| R10 Taxonomy/ideas/chat | Preserved | Existing fixtures retained | No fresh idea call | Refinement control retained; full flow not rerun | Prior implementation only |
+| R11 Isolation | Preserved | Job/evidence owner binding PASS | Technical project only | A→B→A, two tabs, reload/back-forward, second-user private API denial PASS | Real DOCX-token test pending artifact |
+| R12 PDF/DOCX | Secure PDF pipeline preserved | Identity/private storage/provenance PASS | Benign PDF upload and acquired methodology verified | Upload/retry/remove PASS; historical exact file unavailable | DOCX/download NOT_RUN |
+| R13 Release/operations | qa27 deployed; qa28 correction prepared | Clean frontend build and 24 boundary traces PASS; graph equals qa26 frontend | Scientific E2E incomplete | qa27 health is not scientific acceptance | No PR merge or production cutover |
+
 
 ### Historical checkpoint — 2026-10-03 15:33 UTC (superseded above)
 
