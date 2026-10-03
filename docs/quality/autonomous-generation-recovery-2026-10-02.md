@@ -32,13 +32,50 @@ One audited batch used two calls (language detection + translation), USD 0.01514
 A→B→A, two tabs, reload/back-forward and second-user private API denial pass;
 new real DOCX download isolation remains pending until the artifact exists.
 
-Candidate scientific code is `683a072` (PR16), staging qa24 runtime digest
-`sha256:a05b38f17b3dd74ff64fddee46cc2bb486b5759366caa26791aa63ae3f77760a`.
+### Latest verified state — 2026-10-03 15:33 UTC
+
 One normal authenticated scientific continuation was created at 15:01 UTC:
-`0c5c52df-b492-4775-b5bc-23ee82f1cfb4`. Parent 8/8 is unchanged. The initial
-assessment has a persisted response ID, exact 15,504 input tokens, maximum
-reservation USD 0.6034 and mandatory remaining floor USD 0.802685. This is
-in-progress telemetry, not a scientific PASS.
+`0c5c52df-b492-4775-b5bc-23ee82f1cfb4`. The parent remains **8/8 unchanged**.
+The child is now **FAILED at attempt 2/3**, `METHOD_HANDOFF_INVALID`, before
+independent method-coverage critique. Composition and DOCX have not started.
+Do not read the earlier qa24 in-progress telemetry as a completed acceptance.
+
+| Observed defect | Causal evidence | Correction / verification | Remaining gate |
+| --- | --- | --- | --- |
+| Assessment output limit | v1 response terminal INCOMPLETE/max_output_tokens; 15,540 actual input, 8,192 output, known USD 0.60385 | v2 measured output contracts/caps; explicit same-child recovery; previous response/cost preserved | v2 assessment completed, independently validating the methodology is still pending |
+| Exact count underestimated a small envelope delta | Preflight counted 15,504 input, provider reported 15,540; original maximum 0.6034 versus actual estimate 0.60385 | Historical cost stays 0.60385; audited known-overrun handling uses actual commitment and unchanged aggregate caps | Not a permission to ignore future budget guards |
+| Four blocked research slots counted as work | Four METHOD_COVERAGE_RESEARCH_V1 checkpoints rejected by whole-job COST_LIMIT before runWebDiscoveryOperation; no design discovery PaidOperation was created | Propagate pre-dispatch denial, version research checkpoints, count actual operations; completed assessment remains reusable | Corrected execution is prepared; not yet run |
+| Reconstruction used inconsistent handoff names | v2 reconstruction response completed, then deterministic METHOD_HANDOFF_INVALID | Lossless normalization of declared handoff registry; offline regression | A registry normalization is **not** a scientific PASS |
+| Existing child could not resume a corrected execution contract | Terminal child retained complete assessment/reconstruction plus denied preflights | `method-coverage-execution-recovery.v1`, same child through authenticated resume; completed hashes, response/usage identities and no-dispatch proof audited; parent/counters/cost untouched | Requires corrected deployed candidate and prospective budget authorization before normal resume |
+
+Child calls with actual provider usage (all gpt-6-astra):
+
+| Call | Input | Cached subset | Output | Reasoning subset | Known estimated USD |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Assessment v1, incomplete | 15,540 | 0 | 8,192 | 4,142 | 0.6038500 |
+| Assessment v2, completed | 15,885 | 0 | 18,963 | 8,104 | 1.1467125 |
+| Reconstruction v2, completed | 26,951 | 0 | 17,230 | 3,410 | 1.1983875 |
+| **Child total** | **58,376** | **0** | **44,385** | **15,656** | **2.9489500** |
+
+Total input+output is 102,761; reasoning is already within output. Child unknown
+reserve is **0**. Historical unknown reservations elsewhere remain unchanged.
+The four research preflights are **NOT_DISPATCHED**, not four provider calls.
+Known complete outputs stay persisted; a changed evidence context may justify a
+new reconstruction, but unchanged completed calls must not be repeated.
+
+The next candidate prepares a prospective, explicitly audited QA overlay of
+**USD 10 for this technical job / USD 15 for the campaign**, within the new
+owner-authorized bounded QA overage. **NOT YET APPLIED at this update.** It must
+not rewrite the saved USD 5 job policy, historical reservations, ordinary pilot
+2/2.50/3 policy, or customer packages. Effective authorization and the complete
+remaining forecast must be checked again before another dispatch.
+
+Recovery commit `11fbfb4` has isolated DB regression and TypeScript PASS. Read-only
+validation of the actual staging records confirms four retained completed
+checkpoints, four retained failed preflights, three retained provider responses,
+and zero design-discovery dispatches. No scientific approval follows from those
+integrity checks. Candidate qa26 deployment, independent critique, composition,
+review, actual DOCX inspection and publication remain pending.
 
 The new context uses complete request token admission, including schemas, and
 persists admission for background recovery without counting a reservation twice.
@@ -124,10 +161,10 @@ This table is the current matrix. Older matrices below describe historical attem
 | R01 Search/recovery | Preserved | Existing regressions retained | Existing Sources reused | Sources accessible | Prior production only |
 | R02 CORE/EXPLORATORY/Astra | Preserved | Bounds/idempotency retained | No new search; observed support reused | Three selected sources retained | Effective production Sources/mini-research flags ON; new code NO |
 | R03 Selection/counts | Preserved | Contract regressions PASS | Not needed | 3 server / 3 UI at 360/768/1280; navigation retained | New candidate NO |
-| R04 Translation/HTML/JATS | Prior fixes retained | Schema/text/refresh contracts PASS | Fresh corrected translation batch NOT_RUN | Existing bilingual card, no markup PASS; fresh mounted-card completion unverified | New candidate NO |
+| R04 Translation/HTML/JATS | Prior fixes retained | Schema/text/refresh contracts PASS | Fresh corrected translation batch PASS (2026-10-03) | Mounted card receives Spanish title/real abstract without reload or selection loss; no markup PASS | New candidate NO |
 | R05 Internal evidence / one CTA | Preserved | Generation contracts PASS | Prior evidence checkpoints reused | One CTA, no preparation rows PASS | New candidate NO |
 | R06 Zero post-Sources questions | Implemented | B4/resolver PASS | Zero through terminal failure | No approval UI / obsolete minimum instruction | Complete flow unverified |
-| R07 Methodological evidence | Integrated, scientific acceptance incomplete | Gap/digest/coverage/foreign-pointer tests PASS | Actual passages reach patch/critic; final evidenceSupported=false | Not applicable | **NO — scientific gate fails** |
+| R07 Methodological evidence | Integrated, scientific acceptance incomplete | Gap/digest/coverage/foreign-pointer tests PASS | Prior parent critic rejected support; current child assessment/reconstruction completed, new independent critique not reached | Not applicable | **NO — current scientific gate remains incomplete** |
 | R08 Recovery/accounting | Implemented | Background/concurrency/QA PASS | Known usage, completed checkpoints reused, unknowns retained | Normal password login and explicit resume | New candidate NO |
 | R09 Internal no-package | Preserved | Authorization/ownership PASS | Design calls without package | Internal authorization shown | Settlement/publication/download incomplete |
 | R10 Taxonomy/ideas/chat | Preserved | Existing fixtures retained | No new idea generation | Refinement control present; full flow not rerun | Prior implementation only |
