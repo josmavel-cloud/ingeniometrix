@@ -306,6 +306,40 @@ async function main() {
     assert.equal(contextFinal.job?.attempts,5);assert.equal(contextFinal.job?.maxAttempts,3);
     await prisma.blueprintJob.update({where:{id:childId},data:{currentStage:"resolving_design",errorJson:{message:"METHOD_COVERAGE_CONTEXT_UNSAFE"}}});
     await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/NOT_ELIGIBLE|ALREADY_USED/);
+    // A completed v5 response reaches a local structural alias defect. Keep
+    // its scientific output/cost and permit only the corrected deterministic pass.
+    const aliasRaw={selectedId:"fixture",alternatives:[{id:"fixture",primaryMethod:"Revisión documental con integración",
+      methodComponents:[{name:"Revisión documental",kind:"method",role:"principal",inputs:["corpus"],outputs:["síntesis"],support:[],dependencies:[]}],methodHandoffs:[]}]};
+    const aliasUsage={input_tokens:100,output_tokens:500,total_tokens:600},aliasReservation=randomUUID();
+    const aliasResponse={...latestResponse,reservationId:aliasReservation,responseId:"resp_fixture_reconstruction_v5",
+      requestFingerprint:"provider-request-v5",logicalAttemptKey:"reconstruction-v5",usage:aliasUsage,outputText:JSON.stringify(aliasRaw),
+      correlation:{...latestResponse.correlation,promptVersion:"method-coverage-reconstruction.v5"}};
+    await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:"provider:background:reconstruction-v5",status:"COMPLETED",progress:100,outputJson:json(aliasResponse)}});
+    const aliasCheckpoint=await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:"checkpoint:METHOD_RECONSTRUCTION_V1_1:context:"+fingerprint("v5"),
+      status:"COMPLETED",progress:100,outputJson:json({fingerprint:fingerprint("v5"),value:aliasRaw,outputHash:fingerprint(aliasRaw)})}});
+    const priorAliasCost=await prisma.blueprintJobStage.findUniqueOrThrow({where:{id:childCost.id}});
+    await prisma.blueprintJobStage.update({where:{id:childCost.id},data:{outputJson:json({entries:[...(priorAliasCost.outputJson as any).entries,
+      {...entries[0],id:aliasReservation,estimate:.2,maximum:.3,usage:aliasUsage}]})}});
+    await prisma.blueprintJob.update({where:{id:childId},data:{errorJson:{message:"METHOD_PRIMARY_OR_DUPLICATE_INVALID"}}});
+    const originalAlias=aliasCheckpoint.outputJson;
+    await prisma.blueprintJobStage.update({where:{id:aliasCheckpoint.id},data:{outputJson:json({fingerprint:fingerprint("v5"),value:aliasRaw,outputHash:"corrupt"})}});
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/CHECKPOINT_INVALID|COMPLETED_CHECKPOINT_REQUIRED/);
+    await prisma.blueprintJobStage.update({where:{id:aliasCheckpoint.id},data:{outputJson:originalAlias as Prisma.InputJsonValue}});
+    const aliasStages=await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}});
+    const aliasResumes=await Promise.all(Array.from({length:3},()=>resumeLatestBlueprintJobForUser(user.id,project.id)));
+    assert.ok(aliasResumes.every(result=>result.shouldContinue));
+    const aliasChild=await prisma.blueprintJob.findUniqueOrThrow({where:{id:childId}});
+    assert.equal(aliasChild.attempts,5);assert.equal(aliasChild.maxAttempts,3);assert.equal(await scientificContinuationAttemptLimit(prisma,aliasChild),6);
+    const aliasRecovery=(aliasChild.metadataJson as any).methodPrimaryRecovery;
+    assert.equal(aliasRecovery.completedCheckpointId,aliasCheckpoint.id);assert.equal(aliasRecovery.completedReconstructionMustBeReused,true);
+    assert.equal(aliasRecovery.scientificApprovalGranted,false);assert.equal(aliasRecovery.newProviderCallsByRecovery,0);
+    assert.equal(await prisma.auditLog.count({where:{userId:user.id,eventType:"SCIENTIFIC_CONTINUATION_PRIMARY_RECOVERY_AUTHORIZED"}}),1);
+    assert.deepEqual(await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}}),aliasStages);
+    assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({where:{id:parent.id}}),beforeParent);
+    await runNextBlueprintJobStage(childId,childExecutor);
+    const aliasFinal=await runNextBlueprintJobStage(childId,childExecutor);assert.equal(aliasFinal.job?.attempts,6);assert.equal(aliasFinal.job?.maxAttempts,3);
+    await prisma.blueprintJob.update({where:{id:childId},data:{currentStage:"resolving_design",errorJson:{message:"METHOD_PRIMARY_OR_DUPLICATE_INVALID"}}});
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/NOT_ELIGIBLE|ALREADY_USED/);
     const ref = continuation!.contract.reusedCheckpointIds.find(row => row.stageKey === "checkpoint:SCIENTIFIC_DECISION")!;
     const original = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { id: ref.id } });
     await prisma.blueprintJobStage.update({ where: { id: ref.id }, data: { outputJson: { value: {}, outputHash: "tampered", files: [], fingerprint: "bad" } } });
