@@ -1,0 +1,219 @@
+import { z } from "zod";
+import type { LlmProvider, StructuredObjectInput } from "@/llm/provider";
+import { getConfiguredLlmProvider } from "@/llm";
+import { responseCostBound } from "@/llm/providers/openai-cost-bound";
+import { scientificStructuredCall } from "./scientific-structured-call";
+import { currentJobExecution, fingerprint, preflightWholeJobCost, readCompletedCheckpoint, stableJson, stageCheckpoint, versionedCheckpointKey } from "./job-execution-context";
+import type { ScientificDecisionBundle } from "./scientific-decision-service";
+import { designAlternativeV2Schema, validateScientificDecision, type MethodEvidencePack } from "./scientific-decision-contracts";
+import { researchDesignSchema, evidencePointerSchema } from "./research-plan-contracts";
+import { buildCorpusMethodProfile, buildMethodCoverageMatrix, bindMethodCoverageCritique, validateMethodCoverageCritique,
+  corpusMethodProfileProposalSchema, methodCoverageMatrixProposalSchema, methodCoverageCritiqueProposalSchema,
+  methodCoverageCells, methodCoverageGaps, type MethodCoverageMatrix, type CorpusMethodProfile } from "./method-coverage-contracts";
+import { augmentMethodEvidencePack, sealDesignSupport, type DesignSupportSource, type DesignSupportAddendum } from "./design-support-addendum";
+import { buildDesignSupportDigest, digestPromptContext } from "./design-support-digest";
+import { designSupportGaps, type DesignSupportGap } from "./design-support-gap";
+import { researchDesignSupport, DESIGN_MINI_RESEARCH_POLICY } from "./design-mini-research";
+import { webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
+import { mandatoryCompositionReservationFloor } from "./whole-job-cost-forecast";
+import { METHOD_COVERAGE_ASSESSMENT_PROMPT as assessmentPrompt, METHOD_RECONSTRUCTION_PROMPT as reconstructionPrompt,
+  METHOD_COVERAGE_CRITIC_PROMPT as criticPrompt } from "./prompts/method-coverage.v1";
+
+export const METHOD_COVERAGE_RESOLUTION_POLICY = "method-coverage-reconstruction.v1";
+const text = z.string().min(1), texts = z.array(text);
+const researchQuestionSchema = z.object({ cellIds: texts.min(1), question: text, rationale: text }).strict();
+export const methodCoverageAssessmentSchema = z.object({
+  corpusProposal: corpusMethodProfileProposalSchema,
+  coverageProposal: methodCoverageMatrixProposalSchema,
+  researchQuestions: z.array(researchQuestionSchema).max(4),
+}).strict();
+// Scientific definition is deliberately absent. It is copied from the frozen
+// selector, not rewritten by the methodological reconstruction model.
+export const methodologicalReconstructionSchema = z.object({
+  alternatives: z.array(z.object({
+    id: text, primaryMethod: text, label: text,
+    researchDesign: researchDesignSchema.omit({ unit_population_corpus: true, constructs: true, data_material_sources: true, pending_decisions: true }),
+    methodComponents: z.array(z.object({ name: text, kind: z.enum(["method", "technique"]), role: text,
+      inputs: texts, outputs: texts, dependencies: texts, support: z.array(evidencePointerSchema) }).strict()).min(1),
+    qualitativeComponent: text.nullable(), quantitativeComponent: text.nullable(), integrationStrategy: text.nullable(),
+    integrationPurpose: text.nullable(), methodHandoffs: z.array(z.object({from:text,to:text,transferred_output:text,use_by_next_method:text}).strict()),
+    feasibility: text, dataRequirements: z.array(z.object({ description: text, availability: z.enum(["PENDING", "PROPOSED"]), confirmation_or_action: text }).strict()),
+    limitations: texts, rationale: text, coverageProposal: methodCoverageMatrixProposalSchema,
+  }).strict()).min(1).max(2),
+  selectedId: text, selectionRationale: text,
+}).strict();
+
+/** Method-only changes; no model field can overwrite frozen scientific authority. */
+export function applyMethodReconstruction(bundle: ScientificDecisionBundle, patch: z.infer<typeof methodologicalReconstructionSchema>["alternatives"][number], pack: MethodEvidencePack) {
+  const original = designAlternativeV2Schema.parse(bundle.decision.alternatives.find(a => a.id === bundle.decision.recommended_id));
+  if (![`${original.id}-R1`, "A2", "A3"].includes(patch.id)) throw new Error("METHOD_RECONSTRUCTION_ALTERNATIVE_INVALID");
+  const priorConfirmed = original.data_requirements.filter(row => row.availability === "USER_CONFIRMED");
+  const next = designAlternativeV2Schema.parse({ ...original, id: patch.id, label: patch.label, primary_method: patch.primaryMethod,
+    research_design: { ...original.research_design, ...patch.researchDesign,
+      // Neither class handling nor a methodology choice can narrow these fields.
+      unit_population_corpus: original.research_design.unit_population_corpus,
+      constructs: original.research_design.constructs, data_material_sources: original.research_design.data_material_sources,
+      pending_decisions: [], limitations: [...new Set([...original.research_design.limitations, ...patch.researchDesign.limitations, ...patch.limitations])],
+    },
+    components: [...original.components.filter(c => c.kind !== "method" && c.kind !== "technique"), ...patch.methodComponents],
+    qualitative_component: patch.qualitativeComponent, quantitative_component: patch.quantitativeComponent,
+    integration_strategy: patch.integrationStrategy, integration_purpose: patch.integrationPurpose, method_handoffs: patch.methodHandoffs,
+    feasibility: patch.feasibility, data_requirements: [...priorConfirmed, ...patch.dataRequirements],
+    transfer_limits: [...new Set([...original.transfer_limits, ...patch.limitations])], pending_user_decisions: [],
+  });
+  if (fingerprint(next.definition) !== fingerprint(original.definition) || next.scope_fulfilled !== original.scope_fulfilled ||
+      next.scope_effect !== "preserves" || next.scope_changes.length) throw new Error("METHOD_RECONSTRUCTION_SCOPE_CHANGED");
+  validateScientificDecision({ ...bundle.decision, alternatives: [next], recommended_id: next.id }, bundle.intent, pack);
+  return next;
+}
+
+type Input = { researchSupport?: typeof researchDesignSupport; maxResearchOperations?: 2 | 4; userId: string; projectId: string; runId: string; provider?: LlmProvider; inheritedSupport: DesignSupportSource[] };
+export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, input: Input) {
+  const jobId = currentJobExecution()?.jobId ?? input.runId;
+  const maxResearchOperations = input.maxResearchOperations ?? 2;
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint,
+    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, maxResearchOperations, support: input.inheritedSupport.map(s => [s.sourceId,s.document.sha256]) }, async () => {
+    const provider = input.provider ?? getConfiguredLlmProvider();
+    const original = designAlternativeV2Schema.parse(bundle.decision.alternatives.find(a => a.id === bundle.decision.recommended_id));
+    const findings = bundle.critique.assessments.find(a => a.alternative_id === original.id)!.critical_findings;
+    const mandatoryRemaining = mandatoryCompositionReservationFloor(bundle, original.id).reduce((sum,p) => sum+p.minimumReservationUsd,0);
+    let sources = [...input.inheritedSupport];
+    let researchOperations = 0, acquiredDocuments = 0;
+    const operations: Awaited<ReturnType<typeof researchDesignSupport>>["operations"] = [];
+    const researchAudit: unknown[] = [];
+    const reseal = () => sealDesignSupport({ userId: input.userId, projectId: input.projectId, jobId,
+      definitionHash: bundle.contextFingerprint, policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, sources });
+    let addendum = reseal(), pack = augmentMethodEvidencePack(bundle.evidence_pack, addendum);
+    async function call<S extends z.ZodType>(key: string, schema: S, record: typeof assessmentPrompt | typeof reconstructionPrompt | typeof criticPrompt, context: unknown): Promise<z.infer<S>> {
+      const prompt = `${record.systemPrompt}\n\nCONTEXTO VERIFICABLE:\n${stableJson(context)}`;
+      const request: StructuredObjectInput & { model: string } = { prompt, schema: z.toJSONSchema(schema), schemaName: key.toLowerCase(),
+        model: record.model, reasoningEffort: record.reasoning_effort, maxOutputTokens: record.max_output_tokens, maxRetries: 0,
+        trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "method_coverage", promptVersion: record.version } };
+      const checkpointInput = { request, policy: METHOD_COVERAGE_RESOLUTION_POLICY, effectiveEvidenceFingerprint: addendum.checksum };
+      const actualKey = await versionedCheckpointKey(key, checkpointInput);
+      const saved = await readCompletedCheckpoint<z.infer<S>>(actualKey, checkpointInput);
+      if (saved) return schema.parse(saved);
+      const bound = provider.estimateStructuredRequest ? await provider.estimateStructuredRequest(request) : responseCostBound({ model: request.model, input: prompt, max_output_tokens: request.maxOutputTokens! });
+      if (!bound || bound.inputTokens + record.max_output_tokens > 65536) throw new Error("METHOD_COVERAGE_CONTEXT_UNSAFE");
+      await stageCheckpoint(`${actualKey}_FORECAST`, { requestHash: fingerprint(request) }, async () => ({
+        promptBytes: Buffer.byteLength(prompt), inputTokens: bound.inputTokens, countProvenance: bound.tokenCountProvenance,
+        maximumUsd: bound.maximumUsd, minimumRemainingMandatoryReservation: mandatoryRemaining,
+        effectiveEvidenceFingerprint: addendum.checksum,
+      }));
+      await preflightWholeJobCost({ nextStage: key, nextStageReservation: bound.maximumUsd, minimumRemainingMandatoryReservation: mandatoryRemaining });
+      return schema.parse(await stageCheckpoint(actualKey, checkpointInput, () => scientificStructuredCall(provider, request, input)));
+    }
+    const digest = (required: Array<{source_id:string;evidence_id:string}> = []) => {
+      const baseGap = designSupportGaps(bundle)[0];
+      const gaps = [...new Set(sources.map(s=>s.gapId))].map(gapId=>({ ...baseGap, gapId }));
+      // Corpus diagnosis needs all selected-source excerpts. Whole supplementary
+      // passages remain persisted, with the existing digest ranking and audit.
+      return buildDesignSupportDigest({ pack, addendum, identity: { userId:input.userId,projectId:input.projectId,jobId,definitionHash:bundle.contextFingerprint },
+        gaps, requiredPointers: [...bundle.evidence_pack.items.map(i=>({source_id:i.source_id,evidence_id:i.evidence_id})), ...required] });
+    };
+    const initialDigest = digest(original.research_design.methodological_support);
+    const assessment = await call("METHOD_COVERAGE_ASSESSMENT_V1", methodCoverageAssessmentSchema, assessmentPrompt,
+      { frozenIntent: bundle.intent, historicalAlternative: original, historicalFindings: findings,
+        existingEvidence: digestPromptContext(initialDigest), classPresenceRule: "Observed primary design, components and contingent admissibility are separate; never count a class inferred only from a critic." });
+    const profile = buildCorpusMethodProfile({ intent: bundle.intent, pack: bundle.evidence_pack,
+      frozenInputFingerprint: bundle.contextFingerprint, proposal: assessment.corpusProposal });
+    let matrix = buildMethodCoverageMatrix({ proposal: assessment.coverageProposal, profile, pack, effectiveEvidenceFingerprint: addendum.checksum });
+    const initialSupplied = new Set(initialDigest.passages.map(p=>`${p.source_id}:${p.evidence_id}`));
+    if (methodCoverageCells(matrix).flatMap(c=>c.supportPointers).some(p=>!initialSupplied.has(`${p.source_id}:${p.evidence_id}`))) throw new Error("METHOD_COVERAGE_POINTER_NOT_SUPPLIED");
+    await stageCheckpoint("CORPUS_METHOD_PROFILE_V1", { source: fingerprint(assessment), context: bundle.contextFingerprint }, async () => profile);
+    await stageCheckpoint("METHOD_COVERAGE_BEFORE_V1", { profile: profile.profileFingerprint, evidence: addendum.checksum }, async () => matrix);
+
+    async function fillGaps(current: MethodCoverageMatrix, questions: z.infer<typeof researchQuestionSchema>[]) {
+      const unresolved = methodCoverageGaps(current);
+      for (const question of questions) {
+        if (researchOperations >= maxResearchOperations || acquiredDocuments >= 4) break;
+        const cells = unresolved.filter(cell=>question.cellIds.includes(cell.cellId));
+        if (!cells.length) continue;
+        if (question.cellIds.some(id=>!unresolved.some(cell=>cell.cellId===id))) throw new Error("METHOD_RESEARCH_NON_GAP_REQUEST");
+        const gap: DesignSupportGap = { gapId: `method-cell-${fingerprint([profile.profileFingerprint,question.cellIds,question.question]).slice(0,20)}`,
+          alternativeId: original.id, findingCodes: findings.map(f=>f.code), origin: "TARGETED_CRITIC",
+          question: question.question, whyMaterial: question.rationale, affectedClaim: cells.map(c=>c.claim).join("; "),
+          requiredEvidenceType: "SCHOLARLY_METHOD_OR_STANDARD", searchProjection: question.question,
+          existingEvidenceIds: pack.items.map(i=>`${i.source_id}:${i.evidence_id}`), availableEvidence: [],
+          scopeBoundary: bundle.intent.scope, maxCandidates: 5, status: "OPEN" };
+        const bound = webDiscoveryPolicyCostBound(DESIGN_MINI_RESEARCH_POLICY);
+        if (!bound) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
+        researchOperations++;
+        const result = await (input.researchSupport ?? researchDesignSupport)({ ...input, bundle, gaps:[gap], knownSupport:sources,
+          methodCoverage: { version:METHOD_COVERAGE_RESOLUTION_POLICY, ordinal:researchOperations,cellIds:question.cellIds,documentAllowance:4-acquiredDocuments },
+          focusedQuestion: question.question,
+          beforeDiscovery:()=>preflightWholeJobCost({nextStage:"method_coverage_research",nextStageReservation:bound.maximumUsd,minimumRemainingMandatoryReservation:mandatoryRemaining+0.7}).then(()=>undefined) });
+        operations.push(...result.operations);
+        const fresh = result.support.filter(s=>!sources.some(old=>old.document.sha256===s.document.sha256));
+        sources.push(...fresh); acquiredDocuments += fresh.length;
+        researchAudit.push({ question, status:result.status, limitations:result.limitations, addedSources:fresh.map(s=>s.sourceId), operationIds:result.operations.map(o=>o.operationId) });
+        addendum = reseal(); pack = augmentMethodEvidencePack(bundle.evidence_pack,addendum);
+        // Stop the batch after useful material: reassess coverage before spending
+        // on another question the same source may already answer.
+        if (fresh.length) break;
+      }
+    }
+
+    let questions = assessment.researchQuestions;
+    for (let round=1;round<=maxResearchOperations+1;round++) {
+      if (methodCoverageGaps(matrix).length) await fillGaps(matrix,questions);
+      const contextDigest = digest(methodCoverageCells(matrix).flatMap(c=>c.supportPointers));
+      await stageCheckpoint(`METHOD_COVERAGE_DIGEST_${round}`, { fingerprint:contextDigest.digestFingerprint }, async()=>contextDigest);
+      const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchema, reconstructionPrompt,
+        { frozenIntent:bundle.intent, immutableDefinition:original.definition, historicalAlternative:original,
+          historicalFindings:findings, corpus:profile, previousCoverage:matrix, evidence:digestPromptContext(contextDigest), researchAudit });
+      const selected = reconstruction.alternatives.find(a=>a.id===reconstruction.selectedId);
+      if (!selected || new Set(reconstruction.alternatives.map(a=>a.id)).size!==reconstruction.alternatives.length) throw new Error("METHOD_SELECTION_INVALID");
+      const alternative = applyMethodReconstruction(bundle,selected,pack);
+      matrix = buildMethodCoverageMatrix({ proposal:selected.coverageProposal,profile,pack,effectiveEvidenceFingerprint:addendum.checksum });
+      // Do not pay an independent review when reconstruction itself identifies
+      // an unresolved operation. Acquire only those cells and version the input.
+      if (methodCoverageGaps(matrix).length && researchOperations < maxResearchOperations && acquiredDocuments < 4) {
+        questions = methodCoverageGaps(matrix).map(g=>({cellIds:[g.cellId],question:g.question,rationale:g.claim})).slice(0,4);
+        continue;
+      }
+      const pointers = methodCoverageCells(matrix).flatMap(c=>c.supportPointers);
+      const supplied = new Set(contextDigest.passages.map(i=>`${i.source_id}:${i.evidence_id}`));
+      if ([...pointers,...alternative.research_design.methodological_support].some(p=>!supplied.has(`${p.source_id}:${p.evidence_id}`))) throw new Error("METHOD_COVERAGE_POINTER_NOT_SUPPLIED");
+      const critiqueProposal = await call(`METHOD_COVERAGE_CRITIC_V1_${round}`, methodCoverageCritiqueProposalSchema, criticPrompt,
+        { frozenIntent:bundle.intent, immutableDefinition:original.definition, corpus:profile, coverageMatrix:matrix,
+          alternative, historicalFindings:findings, evidence:digestPromptContext(contextDigest) });
+      const critique = bindMethodCoverageCritique(critiqueProposal,matrix);
+      const result = validateMethodCoverageCritique(critique,{matrix,profile,pack,effectiveEvidenceFingerprint:addendum.checksum,
+        alternativeId:alternative.id,findingCodes:findings.map(f=>f.code)});
+      await stageCheckpoint(`METHOD_COVERAGE_REVIEW_${round}`, { critiqueHash:fingerprint(critique),matrixHash:fingerprint(matrix) },async()=>result);
+      if (result.evidenceSupported && critique.intentPreserved && critique.methodCoherent && !critique.blockingScientificIssue) {
+        const reviewedCell = (cell: typeof matrix.crossClassIntegration) => {
+          const review = critique.cellAssessments.find(c=>c.cellId===cell.cellId)!;
+          return { ...cell,coverageStatus:review.coverageStatus,
+            futureRequirements:[...new Set([...cell.futureRequirements,...review.futureRequirements])],
+            limitations:[...new Set([...cell.limitations,...review.limitations])] };
+        };
+        matrix = { ...matrix,corpusClasses:matrix.corpusClasses.map(c=>({...c,operations:c.operations.map(reviewedCell)})),
+          crossClassIntegration:reviewedCell(matrix.crossClassIntegration),overallCoverageStatus:result.overallCoverageStatus };
+        alternative.research_design.limitations.push(...methodCoverageCells(matrix).flatMap(c=>[...c.futureRequirements,...c.limitations]));
+        const required = new Set(pointers.map(p=>`${p.source_id}:${p.evidence_id}`));
+        alternative.research_design.methodological_support = [...new Map([...alternative.research_design.methodological_support,...pointers].map(p=>[`${p.source_id}:${p.evidence_id}`,p])).values()];
+        alternative.research_design.limitations = [...new Set([...alternative.research_design.limitations,...critique.limitations,...critique.findingAssessments.map(f=>f.retainedPlanTreatment)])];
+        const targetedReview = { alternativeId:alternative.id,intentPreserved:critique.intentPreserved,methodCoherent:critique.methodCoherent,
+          evidenceSupported:result.evidenceSupported,blockingScientificIssue:critique.blockingScientificIssue,blockingReason:critique.blockingReason,
+          limitations:critique.limitations,resolvedFindingCodes:[],unresolvedFindingCodes:[],deferredAsFutureRequirementCodes:[] };
+        return { supportAddendum:addendum,effectiveEvidenceFingerprint:addendum.checksum,decisionFingerprint:bundle.decisionFingerprint,
+          contextFingerprint:bundle.contextFingerprint,academicLevel:bundle.academicLevel,alternative,critique:bundle.critique,
+          deterministicResolution:null,targetedReview,revised:true,designSupport:{status:"VERIFIED_SUPPORT",support:sources,operations,limitations:[]},
+          policyVersion:METHOD_COVERAGE_RESOLUTION_POLICY,corpusProfile:profile,methodCoverage:matrix,methodCoverageCritique:critique,
+          coverageResult:result,selectedMethodEvidencePointers:[...required],researchAudit };
+      }
+      // A new versioned review can request only the precise cells it rejected.
+      // Other limitations remain in the plan and do not trigger discovery.
+      if (!critique.corpusClassificationValid) throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: clasificación del corpus rechazada; no se repite búsqueda sobre una premisa no validada.");
+      const failed = new Map(critique.cellAssessments.filter(c=>methodCoverageCells(matrix).find(cell=>cell.cellId===c.cellId)?.required && (c.coverageStatus==="UNSUPPORTED"||!c.transferSupported)).map(c=>[c.cellId,c]));
+      matrix = { ...matrix, corpusClasses:matrix.corpusClasses.map(c=>({...c,operations:c.operations.map(o=>failed.has(o.cellId)?{...o,coverageStatus:"UNSUPPORTED" as const}:o)})),
+        crossClassIntegration:failed.has(matrix.crossClassIntegration.cellId)?{...matrix.crossClassIntegration,coverageStatus:"UNSUPPORTED"}:matrix.crossClassIntegration,
+        overallCoverageStatus:"UNSUPPORTED" };
+      questions = methodCoverageGaps(matrix).map(g=>({cellIds:[g.cellId],question:g.question,rationale:failed.get(g.cellId)?.reason??g.claim})).slice(0,4);
+      if (!questions.length || researchOperations>=maxResearchOperations || acquiredDocuments>=4 || !critique.intentPreserved) break;
+    }
+    throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: la cobertura metodológica requerida no obtuvo validación independiente; se conservan los resultados y costes.");
+  });
+}

@@ -1,3 +1,5 @@
+import { readScientificContinuation, inheritedDesignSupport } from "./scientific-continuation";
+import { resolveMethodCoverage } from "./method-coverage-resolution";
 import { acquirePreviouslyObservedSupport } from "./design-support-alternate-acquisition";
 import { z } from "zod";
 import { createHash } from "node:crypto";
@@ -148,9 +150,18 @@ export function selectAutonomousCandidate(decision: ScientificDecision, critique
 // recovered job reuses both checkpoints and may pay for at most one revision and
 // its independent critique. It cannot approve a scope change on the user's behalf.
 export async function resolveAutonomousDesignForJob(input: { jobId: string; userId: string; projectId: string; runId: string }) {
+  const continuation = await readScientificContinuation(input.jobId);
+  if (continuation) return resolveMethodCoverage(continuation.decision, { ...input, inheritedSupport: await inheritedDesignSupport(input.jobId), maxResearchOperations: 4 });
   const row = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: input.jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
   const bundle = (row.outputJson as unknown as { value: ScientificDecisionBundle }).value;
   if (!bundle?.decisionFingerprint || fingerprint({ intent: bundle.intent, evidence_pack: bundle.evidence_pack, source_decisions: bundle.source_decisions, decision: bundle.decision, critique: bundle.critique, critic_completion: bundle.critic_completion, repair_rounds: bundle.repair_rounds, contextFingerprint: bundle.contextFingerprint, academicLevel: bundle.academicLevel, prompt_records: bundle.prompt_records }) !== bundle.decisionFingerprint) throw new Error("SCIENTIFIC_DECISION_CHECKPOINT_INVALID");
+  // New jobs with a genuine support finding resolve coverage before paying for
+  // another prose patch. Ordinary limits remain two targeted operations.
+  const methodGaps = designSupportGaps(bundle);
+  if (methodGaps.length && !selectAutonomousCandidate(bundle.decision,bundle.critique) &&
+      !resolveNonmaterialDecisions({decision:bundle.decision,critique:bundle.critique,intent:bundle.intent,pack:bundle.evidence_pack})) {
+    return resolveMethodCoverage(bundle,{...input,inheritedSupport:await reuseProjectDesignSupport({...input,gaps:methodGaps}),maxResearchOperations:2});
+  }
   const job = await prisma.blueprintJob.findFirstOrThrow({ where: { id: input.jobId, projectId: input.projectId, userId: input.userId }, select: { stageDataJson: true } });
   const stepRunId = (job.stageDataJson as { step5?: { stepRunId: string } } | null)?.step5?.stepRunId;
   const ledgerRow = stepRunId ? await prisma.projectEvidenceLedger.findFirst({ where: { projectId: input.projectId, stepRunId } }) : null;
@@ -441,7 +452,7 @@ export async function approvedGenerationContextForCurrentJob(intake: unknown, le
   if (!execution || !design) return { design, ledger };
   const job = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, select: { userId: true, projectId: true } });
   const row = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: AUTONOMOUS_DESIGN_STAGE } } });
-  const saved = (row?.outputJson as { value?: { supportAddendum?: DesignSupportAddendum; effectiveEvidenceFingerprint?: string } } | null)?.value;
+  const saved = (row?.outputJson as { value?: { supportAddendum?: DesignSupportAddendum; effectiveEvidenceFingerprint?: string; methodCoverage?: import("./method-coverage-contracts").MethodCoverageMatrix } } | null)?.value;
   if (!saved?.supportAddendum) return { design, ledger };
   if (row?.status !== "COMPLETED" || saved.effectiveEvidenceFingerprint !== saved.supportAddendum.checksum)
     throw new Error("DESIGN_SUPPORT_CONTEXT_MISMATCH");
@@ -449,7 +460,8 @@ export async function approvedGenerationContextForCurrentJob(intake: unknown, le
     if (!source.document.privateArtifactPath || createHash("sha256").update(await readFile(source.document.privateArtifactPath)).digest("hex") !== source.document.sha256)
       throw new Error("DESIGN_SUPPORT_ARTIFACT_INTEGRITY");
   }
-  return { design, ledger: effectiveGenerationLedger(ledger, saved.supportAddendum, { ...job, jobId: execution.jobId,
+  return { design, methodCoverage: saved.methodCoverage, effectiveEvidenceFingerprint: saved.effectiveEvidenceFingerprint,
+    ledger: effectiveGenerationLedger(ledger, saved.supportAddendum, { ...job, jobId: execution.jobId,
     definitionHash: decisionContextFingerprint(intake, ledger) }) };
 }
 

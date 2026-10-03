@@ -31,10 +31,13 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }) {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; methodCoverage?: { version: "method-coverage-reconstruction.v1"; ordinal: number; cellIds: string[]; documentAllowance: number }; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }) {
   const { bundle } = input;
   const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
-  const ordinal = input.operationOrdinal ?? 1;
+  const closure = input.methodCoverage;
+  if (closure && (closure.version !== "method-coverage-reconstruction.v1" || !Number.isInteger(closure.ordinal) || closure.ordinal < 1 || closure.ordinal > 4 || !closure.cellIds.length || closure.documentAllowance < 0 || closure.documentAllowance > 4)) throw new Error("METHOD_COVERAGE_RESEARCH_POLICY_INVALID");
+  const ordinal = closure?.ordinal ?? input.operationOrdinal ?? 1;
+  const cycle = closure ? `METHOD_COVERAGE_RESEARCH_V1_${ordinal}` : `DESIGN_MINI_RESEARCH_V2_ACQUISITION3_${ordinal}`;
   const selected = bundle.decision.alternatives.find(item => item.id === bundle.decision.recommended_id);
   const method = selected && "primary_method" in selected ? String(selected.primary_method) : "";
   const object = bundle.intent.unit_population_corpus || bundle.intent.scope;
@@ -59,11 +62,11 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
   for (const [index, finding] of material.entries()) {
     const gapId = finding.gapId;
     const gap = { gapId, searchIntentHash: intentHash, kind: "EVIDENCE" as const, importance: "MATERIAL" as const,
-      requiredDimension: ordinal === 1 ? finding.question.slice(0, 700) : `${finding.question} Brecha restante del dictamen independiente: ${input.focusedQuestion ?? finding.searchProjection}`, desiredEvidenceRole: "METHODOLOGICAL" as const,
+      requiredDimension: !closure && ordinal === 1 ? finding.question.slice(0, 700) : `${finding.question} Brecha restante del dictamen independiente: ${input.focusedQuestion ?? finding.searchProjection}`, desiredEvidenceRole: "METHODOLOGICAL" as const,
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
-    const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal]);
+    const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal, ...(closure ? [closure.version, closure.cellIds, input.runId] : [])]);
     try {
-      const verified = await stageCheckpoint(`DESIGN_MINI_RESEARCH_V2_ACQUISITION3_${ordinal}`, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
+      const verified = await stageCheckpoint(cycle, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
         await input.beforeDiscovery?.();
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
@@ -84,14 +87,15 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
           if (convergence.identityOutcome !== "NEW_SOURCE_CANDIDATE" || !convergence.semanticReviewRequired) continue;
           // Inspect at most five observed candidates; acquire at most two documents
           // per operation/four per job. An HTTP denial is not an acquired document.
-          if (acquisitions >= 2) break;
+          if (acquisitions >= Math.min(2, closure?.documentAllowance ?? 2)) break;
           const slot = (ordinal - 1) * 5 + ++inspectedCandidates;
-          const inspected = await stageCheckpoint(`DESIGN_SUPPORT_DOCUMENT_ACQUISITION3_${slot}`, {
+          const inspected = await stageCheckpoint(closure ? `METHOD_COVERAGE_DOCUMENT_V1_${slot}` : `DESIGN_SUPPORT_DOCUMENT_ACQUISITION3_${slot}`, {
             operationId: discovery.operationId, url: candidate.proposal.observedUrl, policy: DESIGN_MINI_RESEARCH_POLICY.version,
           }, async () => {
             try {
               const document = await acquireSupportDocument(candidate.proposal.observedUrl, `${finding.question} ${candidate.proposal.identityProposal.title}`,
-                path.resolve("artifacts-local", "design-support", fingerprint([input.userId, input.projectId, input.runId])));
+                path.resolve("artifacts-local", "design-support", fingerprint([input.userId, input.projectId, input.runId])),
+                { title: candidate.proposal.identityProposal.title, doi: candidate.proposal.identityProposal.doi });
               const expected = normalizeConcept(candidate.proposal.identityProposal.title);
               const observed = normalizeConcept(document.title);
               // Identity is checked against the acquired title. Relevance and
@@ -115,9 +119,13 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       }, value => value.support.flatMap(source => source.document.privateArtifactPath ? [source.document.privateArtifactPath] : []));
       support.push(...verified.support);
       operations.push(verified.operation);
+      if (closure && verified.operation.estimatedCostUsd === null &&
+          ["TIMEOUT_UNKNOWN_USAGE", "PROVIDER_UNAVAILABLE", "FAILED_RETRYABLE"].includes(verified.operation.state))
+        throw new Error("METHOD_RESEARCH_USAGE_UNCERTAIN");
       if (verified.limitation) limitations.push(verified.limitation);
     } catch (error) {
       const code = error instanceof Error ? error.message.split(":", 1)[0] : "DESIGN_MINI_RESEARCH_UNAVAILABLE";
+      if (closure && code === "METHOD_RESEARCH_USAGE_UNCERTAIN") throw error;
       limitations.push(/COST|BUDGET|CAP|PAID_REQUEST/.test(code) ? "La miniinvestigación quedó limitada por el presupuesto o una operación pendiente de conciliación." : "La miniinvestigación técnica no produjo evidencia verificable adicional.");
     }
   }

@@ -23,7 +23,7 @@ export function validateDesignSupport(addendum: DesignSupportAddendum,
   const { checksum, ...value } = addendum;
   if (fingerprint(value) !== checksum || Object.entries(identity).some(([key, val]) => value[key as keyof typeof identity] !== val))
     throw new Error("DESIGN_SUPPORT_CONTEXT_MISMATCH");
-  if (new Set(value.sources.map(source => source.sourceId)).size !== value.sources.length || value.sources.length > 4)
+  if (new Set(value.sources.map(source => source.sourceId)).size !== value.sources.length || value.sources.length > (value.policyVersion === "method-coverage-reconstruction.v1" ? 8 : 4))
     throw new Error("DESIGN_SUPPORT_SOURCE_LIMIT_OR_DUPLICATE");
   for (const source of value.sources) if (source.provenance !== "SYSTEM_DESIGN_SUPPORT" || !source.observationIds.length ||
     !/^[a-f0-9]{64}$/.test(source.document.sha256) || !source.document.passages.length)

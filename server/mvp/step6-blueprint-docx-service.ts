@@ -3186,7 +3186,7 @@ export async function runMvpStep6BlueprintDocx(input: {
     const approvedDesign = approvedContext.design;
     const scientific = await withLlmUsageContext(
       { userId: input.userId, projectId: input.projectId, runId: artifacts.runId, stage: "blueprint_generation", source: "runMvpStep6BlueprintDocx", promptVersion: MVP_STEP6_PROMPT_VERSION },
-      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, documentProfile: LATAM_COMPACT_PROFILE_ID, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
+      () => generateScientificPlan({ provider, projectId: input.projectId, runId: artifacts.runId, intake: project.intake, ledger: latestStep5.ledger, approvedDesign, methodCoverage: approvedContext.methodCoverage, effectiveEvidenceFingerprint: approvedContext.effectiveEvidenceFingerprint, documentProfile: LATAM_COMPACT_PROFILE_ID, artifactDir: path.join(artifacts.artifactDir, "scientific-plan") }),
     );
     sectionPlan = scientific.plan;
     const finalSectionDrafts = structuredClone(scientific.drafts);
