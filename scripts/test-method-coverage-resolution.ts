@@ -167,7 +167,7 @@ async function run() {
       const source: DesignSupportSource = { sourceId: "DS-new-fixture", gapId: input.gaps![0].gapId, title: "Guía metodológica sintética", authors: [], year: null, doi: null,
         provenance: "SYSTEM_DESIGN_SUPPORT", observationIds: ["completed-observation-fixture"], document: {
           observedUrl: "https://example.org/method", finalUrl: "https://example.org/method", mediaType: "text/html", sha256: "a".repeat(64), title: "Guía metodológica sintética",
-          passages: [{ text: "El procedimiento de extracción debe registrar los resultados, sus denominadores y las condiciones de medición, manteniendo unidades y límites de interpretación para no combinar cantidades incompatibles.", page: null, locator: "section:extraction:paragraph:1" }],
+          passages: [{ text: "El procedimiento de extracción debe registrar los resultados, sus denominadores y las condiciones de medición, manteniendo unidades y límites de interpretación para no combinar cantidades incompatibles.", page: null, locator: "section:extraction:paragraph:1", contentKind: "FULL_TEXT_PASSAGE", contentKindBasis: "SYNTHETIC_PROCEDURAL_FIXTURE" }],
         } };
       return { status: "VERIFIED_SUPPORT", support: [source], operations: [{operationId:"fixture-new-support",estimatedCostUsd:0,usage:{fixture:true},state:"COMPLETED"}], limitations: [], acquiredDocuments: 1 };
     } });
@@ -221,7 +221,7 @@ async function run() {
   await assert.rejects(() => researchDesignSupport({userId:"fixture-user",projectId:"fixture-project",runId:"fixture-service",bundle,
     methodCoverage:{version:"method-coverage-reconstruction.v1",ordinal:1,cellIds:["EMPIRICAL_QUANTITATIVE:QUALITY_APPRAISAL"],documentAllowance:1},
     gaps:[{gapId:"fixture-gap",alternativeId:"A1",findingCodes:["METHOD"],origin:"TARGETED_CRITIC",question:"¿Qué procedimiento de appraisal corresponde al diseño?",whyMaterial:"Falta respaldo del procedimiento",affectedClaim:"Valoración por diseño",requiredEvidenceType:"SCHOLARLY_METHOD_OR_STANDARD",searchProjection:"method appraisal guidance",existingEvidenceIds:[],availableEvidence:[],scopeBoundary:intent.scope,maxCandidates:5,status:"OPEN"}],
-    beforeDiscovery:async()=>{actualServicePreflight++;throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");}}),/COST_LIMIT_REACHED/);
+    beforeDiscovery:async()=>{actualServicePreflight++;throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");}}, {readCompleted: async()=>null}),/COST_LIMIT_REACHED/);
   assert.equal(actualServicePreflight,1,"The actual research service propagates pre-dispatch denial instead of converting it to exhausted evidence");
   const noDispatch = providerFor("NEW_SUPPORT");
   await assert.rejects(() => resolveMethodCoverage(bundle,{userId:"fixture-user",projectId:"fixture-project",runId:"fixture-no-dispatch",inheritedSupport:[],provider:noDispatch.provider,

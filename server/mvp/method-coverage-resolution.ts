@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { reuseHistoricalMethodAssessment, revalidateHistoricalCoverage } from "./method-assessment-reuse";
+import { annotateRetainedSupportContentKind } from "./design-support-content-kind";
+import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
+import { recoverCompletedMethodResearch } from "./design-mini-research";
+import { publishMethodCoverageApproval } from "./autonomous-design-approval";
 import { normalizeDeclaredMethodHandoffs } from "./method-handoff-normalization";
 import type { LlmProvider, StructuredObjectInput } from "@/llm/provider";
 import { getConfiguredLlmProvider } from "@/llm";
@@ -68,19 +73,43 @@ export function applyMethodReconstruction(bundle: ScientificDecisionBundle, patc
   return next;
 }
 
+/** Lossless context projection: classifications/quotes/assignments are immutable
+ * across role derivation. Send them once and carry only the changed role fields. */
+export function compactMethodCorpusContext(original:CorpusMethodProfile,current:CorpusMethodProfile) {
+  const frozen=(profile:CorpusMethodProfile)=>{
+    const {profileFingerprint:_hash,corpusClasses,...rest}=profile;
+    return {...rest,corpusClasses:corpusClasses.map(({roleInResearch:_r,claimsExpectedFromClass:_c,
+      appraisalNeeded:_a,synthesisNeeded:_s,integrationNeeded:_i,...row})=>row)};
+  };
+  if(fingerprint(frozen(original))!==fingerprint(frozen(current)))throw new Error("METHOD_CORPUS_CONTEXT_IDENTITY_CHANGED");
+  return {version:"method-corpus-context.v1",originalCorpus:original,
+    currentCorpus:{profileFingerprint:current.profileFingerprint,inheritsFrozenClassificationFrom:original.profileFingerprint,
+      roles:current.corpusClasses.map(({classId,roleInResearch,claimsExpectedFromClass,appraisalNeeded,synthesisNeeded,integrationNeeded})=>
+        ({classId,roleInResearch,claimsExpectedFromClass,appraisalNeeded,synthesisNeeded,integrationNeeded}))}};
+}
+
 type Input = { researchSupport?: typeof researchDesignSupport; maxResearchOperations?: 2 | 4; userId: string; projectId: string; runId: string; provider?: LlmProvider; inheritedSupport: DesignSupportSource[] };
 export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, input: Input) {
   const jobId = currentJobExecution()?.jobId ?? input.runId;
   const maxResearchOperations = input.maxResearchOperations ?? 2;
-  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint,
-    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, maxResearchOperations, support: input.inheritedSupport.map(s => [s.sourceId,s.document.sha256]) }, async () => {
+  const resolutionInput = { decisionFingerprint: bundle.decisionFingerprint,
+    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION,
+    promptVersions:{assessment:assessmentPrompt.version,reconstruction:reconstructionPrompt.version,critic:criticPrompt.version},
+    maxResearchOperations, support: input.inheritedSupport.map(s => [s.sourceId,s.document.sha256]) };
+  const resolutionKey = await versionedCheckpointKey("AUTONOMOUS_DESIGN",resolutionInput);
+  const resolved = await stageCheckpoint(resolutionKey, resolutionInput, async () => {
     const provider = input.provider ?? getConfiguredLlmProvider();
     const original = designAlternativeV2Schema.parse(bundle.decision.alternatives.find(a => a.id === bundle.decision.recommended_id));
     const findings = bundle.critique.assessments.find(a => a.alternative_id === original.id)!.critical_findings;
     const mandatoryRemaining = mandatoryCompositionReservationFloor(bundle, original.id).reduce((sum,p) => sum+p.minimumReservationUsd,0);
     const remainingMethodReview = contextCapacityCostBound(criticPrompt);
     const remainingMethodRepair = contextCapacityCostBound(reconstructionPrompt);
-    let sources = [...input.inheritedSupport];
+    const annotations = await Promise.all(input.inheritedSupport.map(async source=>source.document.passages.every(p=>p.contentKind)
+      ? {source,audit:null} : annotateRetainedSupportContentKind(source)));
+    const annotationInput = {inspection:METHOD_DOCUMENT_INSPECTION_VERSION,sources:annotations.map(row=>[row.source.sourceId,row.source.document.sha256])};
+    const annotationKey = await versionedCheckpointKey("METHOD_SUPPORT_CONTENT_REVALIDATION",annotationInput);
+    await stageCheckpoint(annotationKey,annotationInput,async()=>annotations.map(row=>row.audit).filter(Boolean));
+    let sources = annotations.map(row=>row.source);
     let researchOperations = 0, acquiredDocuments = 0;
     const operations: Awaited<ReturnType<typeof researchDesignSupport>>["operations"] = [];
     const researchAudit: unknown[] = [];
@@ -123,10 +152,13 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       // Corpus diagnosis needs all selected-source excerpts. Whole supplementary
       // passages remain persisted, with the existing digest ranking and audit.
       return buildDesignSupportDigest({ pack, addendum, identity: { userId:input.userId,projectId:input.projectId,jobId,definitionHash:bundle.contextFingerprint },
-        gaps, requiredPointers: [...bundle.evidence_pack.items.map(i=>({source_id:i.source_id,evidence_id:i.evidence_id})), ...required] });
+        gaps, contextPointers: bundle.evidence_pack.items.filter(i=>bundle.evidence_pack.selected_sources.some(source=>source.source_id===i.source_id)).map(i=>({source_id:i.source_id,evidence_id:i.evidence_id})), requiredPointers:[...bundle.evidence_pack.items.filter(i=>
+          ["PDF_FULLTEXT","PDF_SAMPLE_TEXT","HTML_PASSAGE","FULL_TEXT_PASSAGE"].includes(i.evidence_level) &&
+          ["theory_or_method_support","blueprint_planning"].includes(i.allowed_use)).map(i=>({source_id:i.source_id,evidence_id:i.evidence_id})),...required] });
     };
     const initialDigest = digest(original.research_design.methodological_support);
-    const assessment = await call("METHOD_COVERAGE_ASSESSMENT_V1", methodCoverageAssessmentSchema, assessmentPrompt,
+    const historicalAssessment = await reuseHistoricalMethodAssessment(bundle);
+    const assessment = historicalAssessment ?? await call("METHOD_COVERAGE_ASSESSMENT_V1", methodCoverageAssessmentSchema, assessmentPrompt,
       { frozenIntent: bundle.intent, historicalAlternative: original, historicalFindings: findings,
         userSelectedSourceIds: bundle.evidence_pack.selected_sources.map(source => source.source_id),
         systemDesignSupportSourceIds: sources.map(source => source.sourceId),
@@ -134,11 +166,31 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
     let profile = buildCorpusMethodProfile({ intent: bundle.intent, pack: bundle.evidence_pack,
       frozenInputFingerprint: bundle.contextFingerprint, proposal: assessment.corpusProposal });
     const originalProfile = profile;
-    let matrix = buildMethodCoverageMatrix({ proposal: assessment.coverageProposal, profile, pack, effectiveEvidenceFingerprint: addendum.checksum });
+    const coverageRevalidation = revalidateHistoricalCoverage(assessment.coverageProposal,pack);
+    let matrix = buildMethodCoverageMatrix({ proposal: coverageRevalidation.proposal, profile, pack, effectiveEvidenceFingerprint: addendum.checksum });
     const initialSupplied = new Set(initialDigest.passages.map(p=>`${p.source_id}:${p.evidence_id}`));
     if (methodCoverageCells(matrix).flatMap(c=>c.supportPointers).some(p=>!initialSupplied.has(`${p.source_id}:${p.evidence_id}`))) throw new Error("METHOD_COVERAGE_POINTER_NOT_SUPPLIED");
     await stageCheckpoint("CORPUS_METHOD_PROFILE_V1", { source: fingerprint(assessment), context: bundle.contextFingerprint }, async () => profile);
-    await stageCheckpoint("METHOD_COVERAGE_BEFORE_V1", { profile: profile.profileFingerprint, evidence: addendum.checksum }, async () => matrix);
+    const beforeInput={ profile: profile.profileFingerprint, evidence: addendum.checksum };
+    await stageCheckpoint(await versionedCheckpointKey("METHOD_COVERAGE_BEFORE_V1",beforeInput),beforeInput,async()=>matrix);
+    const coverageInput={assessment:fingerprint(assessment),pack:fingerprint(pack),inspection:METHOD_DOCUMENT_INSPECTION_VERSION};
+    await stageCheckpoint(await versionedCheckpointKey("METHOD_COVERAGE_REVALIDATION",coverageInput),coverageInput,async()=>coverageRevalidation.audit);
+
+    // Recover the already-paid discovery identities before new work. Corrected
+    // acquisition must not reset the operation count or pay for old searches.
+    const recovered = await recoverCompletedMethodResearch({...input,bundle});
+    researchOperations = recovered.researchOperations; acquiredDocuments = recovered.acquiredDocuments;
+    if(researchOperations>maxResearchOperations || acquiredDocuments>4) throw new Error("METHOD_RESEARCH_RECOVERY_LIMIT_EXCEEDED");
+    operations.push(...recovered.operations);
+    for(const row of recovered.researchAudit) {
+      const gapIds=(row as {gapIds?:string[]}).gapIds ?? [];
+      const question=assessment.researchQuestions.find(question=>gapIds.includes(`method-cell-${fingerprint([originalProfile.profileFingerprint,question.cellIds,question.question]).slice(0,20)}`));
+      researchAudit.push({...row,...(question ? {question,questionIdentityVerified:true} : {})});
+    }
+    const recoveredFresh=recovered.support.filter(source=>!sources.some(old=>old.document.sha256===source.document.sha256));
+    sources.push(...recoveredFresh); addendum=reseal(); pack=augmentMethodEvidencePack(bundle.evidence_pack,addendum);
+    matrix=buildMethodCoverageMatrix({proposal:coverageRevalidation.proposal,profile,pack,effectiveEvidenceFingerprint:addendum.checksum});
+    let inspectRecoveredBeforeDiscovery=recoveredFresh.length>0;
 
     async function fillGaps(current: MethodCoverageMatrix, questions: z.infer<typeof methodCoverageAssessmentSchema>["researchQuestions"]) {
       const unresolved = methodCoverageGaps(current);
@@ -190,12 +242,14 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
 
     let questions = assessment.researchQuestions;
     for (let round=1;round<=maxResearchOperations+1;round++) {
-      if (methodCoverageGaps(matrix).length) await fillGaps(matrix,questions);
+      if (methodCoverageGaps(matrix).length && !inspectRecoveredBeforeDiscovery) await fillGaps(matrix,questions);
+      inspectRecoveredBeforeDiscovery=false;
       const contextDigest = digest(methodCoverageCells(matrix).flatMap(c=>c.supportPointers));
-      await stageCheckpoint(`METHOD_COVERAGE_DIGEST_${round}`, { fingerprint:contextDigest.digestFingerprint }, async()=>contextDigest);
+      const digestInput={fingerprint:contextDigest.digestFingerprint};
+      await stageCheckpoint(await versionedCheckpointKey(`METHOD_COVERAGE_DIGEST_${round}`,digestInput),digestInput,async()=>contextDigest);
       const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchema, reconstructionPrompt,
         { frozenIntent:bundle.intent, immutableDefinition:original.definition, historicalAlternative:original,
-          historicalFindings:findings, originalCorpus:originalProfile, corpus:profile, previousCoverage:matrix, evidence:digestPromptContext(contextDigest), researchAudit });
+          historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:matrix, evidence:digestPromptContext(contextDigest), researchAudit });
       const selected = reconstruction.alternatives.find(a=>a.id===reconstruction.selectedId);
       if (!selected || new Set(reconstruction.alternatives.map(a=>a.id)).size!==reconstruction.alternatives.length) throw new Error("METHOD_SELECTION_INVALID");
       const graph = normalizeDeclaredMethodHandoffs([...original.components.filter(c => c.kind !== "method" && c.kind !== "technique"), ...selected.methodComponents],selected.methodHandoffs);
@@ -213,7 +267,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       // an unresolved operation. Acquire only those cells and version the input.
       if (methodCoverageGaps(matrix).length && researchOperations < maxResearchOperations && acquiredDocuments < 4) {
         const remaining = methodCoverageGaps(matrix);
-        const usedQuestions = new Set(researchAudit.map(row => (row as { question: { question: string } }).question.question));
+        const usedQuestions = new Set(researchAudit.map(row => (row as { question?: { question?: string } }).question?.question));
         questions = assessment.researchQuestions.filter(question => !usedQuestions.has(question.question) && question.cellIds.some(id => remaining.some(cell => cell.cellId === id)));
         if (!questions.length) questions = remaining.map(g=>({cellIds:[g.cellId],question:g.question,rationale:g.claim})).slice(0,4);
         continue;
@@ -228,7 +282,8 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const critique = bindMethodCoverageCritique(critiqueProposal,matrix);
       const result = validateMethodCoverageCritique(critique,{matrix,profile,pack,effectiveEvidenceFingerprint:addendum.checksum,
         alternativeId:alternative.id,findingCodes:findings.map(f=>f.code)});
-      await stageCheckpoint(`METHOD_COVERAGE_REVIEW_${round}`, { critiqueHash:fingerprint(critique),matrixHash:fingerprint(matrix) },async()=>result);
+      const reviewInput={critiqueHash:fingerprint(critique),matrixHash:fingerprint(matrix)};
+      await stageCheckpoint(await versionedCheckpointKey(`METHOD_COVERAGE_REVIEW_${round}`,reviewInput),reviewInput,async()=>result);
       if (result.evidenceSupported && critique.intentPreserved && critique.methodCoherent && !critique.blockingScientificIssue) {
         const reviewedCell = (cell: typeof matrix.crossClassIntegration) => {
           const review = critique.cellAssessments.find(c=>c.cellId===cell.cellId)!;
@@ -263,4 +318,5 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
     }
     throw new Error("AUTONOMOUS_DESIGN_UNRESOLVED: la cobertura metodológica requerida no obtuvo validación independiente; se conservan los resultados y costes.");
   });
+  return publishMethodCoverageApproval(resolutionKey,resolutionInput,resolved);
 }

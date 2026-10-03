@@ -5,7 +5,7 @@ import { fingerprint } from "../server/mvp/job-execution-context";
 import { buildCorpusMethodProfile, methodCoverageAssessmentSchema } from "../server/mvp/method-coverage-contracts";
 import { validateHistoricalMethodAssessment, revalidateHistoricalCoverage } from "../server/mvp/method-assessment-reuse";
 const data=fixture(["EMPIRICAL_QUALITATIVE","EMPIRICAL_QUANTITATIVE"]);
-const bundle={intent,evidence_pack:data.pack,contextFingerprint:"frozen-fixture"} as ScientificDecisionBundle;
+const bundle={intent,evidence_pack:data.pack,contextFingerprint:"frozen-fixture"} as unknown as ScientificDecisionBundle;
 const assessment=methodCoverageAssessmentSchema.parse({corpusProposal:data.proposal,
   coverageProposal:{corpusClasses:data.matrix.corpusClasses,crossClassIntegration:data.matrix.crossClassIntegration},researchQuestions:[]});
 const profile=buildCorpusMethodProfile({intent,pack:data.pack,frozenInputFingerprint:bundle.contextFingerprint,proposal:data.proposal});
