@@ -1,4 +1,4 @@
-import { fingerprint, stageCheckpoint } from "./job-execution-context";
+import { fingerprint, stageCheckpoint, versionedCheckpointKey } from "./job-execution-context";
 import type { ScientificDecisionBundle } from "./scientific-decision-service";
 import { DESIGN_MINI_RESEARCH_PURPOSE } from "@/server/retrieval/web-discovery-contract";
 import { runWebDiscoveryOperation } from "@/server/retrieval/web-discovery-operation";
@@ -73,7 +73,11 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal, ...(closure ? [closure.version, closure.cellIds, input.runId] : [])]);
     try {
-      const verified = await stageCheckpoint(cycle, { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion }, async () => {
+      const checkpointInput = { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion };
+      // A different scientific gap gets a content-addressed checkpoint. Failed
+      // pre-dispatch inputs remain inspectable instead of being overwritten.
+      const checkpointKey = await versionedCheckpointKey(cycle, checkpointInput);
+      const verified = await stageCheckpoint(checkpointKey, checkpointInput, async () => {
         await input.beforeDiscovery?.();
         const key = process.env.OPENAI_API_KEY;
         if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
@@ -135,7 +139,10 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       if (verified.limitation) limitations.push(verified.limitation);
     } catch (error) {
       const code = error instanceof Error ? error.message.split(":", 1)[0] : "DESIGN_MINI_RESEARCH_UNAVAILABLE";
-      if (closure && code === "METHOD_RESEARCH_USAGE_UNCERTAIN") throw error;
+      // This closure requires method support before reconstruction. A financial
+      // preflight denial is not exhausted scientific discovery and must preserve
+      // the original cause, not lead to four identical denials and a paid patch.
+      if (closure && (code === "METHOD_RESEARCH_USAGE_UNCERTAIN" || /COST|BUDGET|CAP|PAID_REQUEST|QA_/.test(code))) throw error;
       limitations.push(/COST|BUDGET|CAP|PAID_REQUEST/.test(code) ? "La miniinvestigación quedó limitada por el presupuesto o una operación pendiente de conciliación." : "La miniinvestigación técnica no produjo evidencia verificable adicional.");
     }
   }

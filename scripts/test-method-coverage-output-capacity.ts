@@ -22,7 +22,8 @@ const coverageProposal = { corpusClasses: largest.matrix.corpusClasses, crossCla
 const assessment = methodCoverageAssessmentSchema.parse({ corpusProposal: largest.proposal, coverageProposal,
   researchQuestions: largest.matrix.corpusClasses.slice(0, 4).map(row => ({ cellIds: row.operations.map(cell => cell.cellId),
     question: `¿Qué procedimientos fundamentan extracción, valoración y síntesis de ${row.classId} dentro del alcance confirmado?`, rationale: "Una pregunta metodológica acotada debe resolver operaciones relacionadas; no se supone búsqueda nueva necesaria." })) });
-const alternative = (id: string) => ({ id, primaryMethod: "Síntesis documental heterogénea", label: "Métodos por clase con integración explícita",
+const alternative = (id: string) => ({ id, corpusRoles:largest.proposal.classes.map(row=>({classId:row.classId,roleInResearch:row.roleInResearch,claimsExpectedFromClass:row.claimsExpectedFromClass,
+  appraisalNeeded:row.appraisalNeeded,synthesisNeeded:row.synthesisNeeded,integrationNeeded:row.integrationNeeded,justification:"El papel analítico corresponde al propósito y conserva la admisibilidad del corpus y sus limitaciones."})),primaryMethod: "Síntesis documental heterogénea", label: "Métodos por clase con integración explícita",
   researchDesign: { paradigm: "Pragmatismo delimitado", approach: "other", design: "Síntesis documental comparativa", sampling_selection: "Selección conforme al alcance confirmado.",
     techniques: ["Extracción por clase", "Contraste entre clases"], instruments: ["Tabla de extracción y evaluación"], procedure: ["Clasificar fuentes con trazabilidad.", "Aplicar operaciones por clase y registrar discrepancias."],
     analysis_method: "Síntesis por clase seguida de integración limitada a afirmaciones comparables.", quality_criteria: ["Evidencia verificable y discrepancias documentadas."],

@@ -7,6 +7,7 @@ import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision
 import type { LlmProvider, StructuredObjectInput } from "../llm/provider";
 import { fixture, critiqueFor, intent } from "./test-method-coverage";
 import { responseCostBound } from "../llm/providers/openai-cost-bound";
+import { researchDesignSupport } from "../server/mvp/design-mini-research";
 import type { DesignSupportSource } from "../server/mvp/design-support-addendum";
 
 const data = fixture(["EMPIRICAL_QUANTITATIVE", "EMPIRICAL_QUALITATIVE", "EMPIRICAL_MIXED_METHODS"]);
@@ -39,6 +40,8 @@ const bundle = {
 } as unknown as ScientificDecisionBundle;
 const matrixProposal = (matrix: MethodCoverageMatrix) => ({ corpusClasses: matrix.corpusClasses, crossClassIntegration: matrix.crossClassIntegration });
 const reconstructed = {
+  corpusRoles:data.proposal.classes.map(row=>({classId:row.classId,roleInResearch:row.roleInResearch,claimsExpectedFromClass:row.claimsExpectedFromClass,
+    appraisalNeeded:row.appraisalNeeded,synthesisNeeded:row.synthesisNeeded,integrationNeeded:row.integrationNeeded,justification:"El papel del fixture conserva las obligaciones analíticas originales."})),
   id: "A1-R1", primaryMethod: original.primary_method, label: "Arquitectura metodológica reconstruida",
   researchDesign: (({ unit_population_corpus: _a, constructs: _b, data_material_sources: _c, ...design }) => design)(original.research_design),
   methodComponents: original.components, qualitativeComponent: null, quantitativeComponent: null,
@@ -136,6 +139,9 @@ async function run() {
   assert.equal(patchCtx.evidence.effectiveEvidenceFingerprint, criticCtx.evidence.effectiveEvidenceFingerprint);
   assert.equal(patchCtx.evidence.digestFingerprint, criticCtx.evidence.digestFingerprint);
   assert.equal(resolved.methodCoverage.effectiveEvidenceFingerprint, resolved.supportAddendum.checksum);
+  assert.equal(criticCtx.originalCorpus.profileFingerprint,resolved.originalCorpusProfile.profileFingerprint);
+  assert.equal(criticCtx.roleRefinement.derivedProfileFingerprint,resolved.corpusProfile.profileFingerprint);
+  assert.deepEqual(criticCtx.originalCorpus.sourceAssignments,criticCtx.corpus.sourceAssignments);
   assert.ok(resolved.alternative.research_design.methodological_support.length >= original.research_design.methodological_support.length);
 
   const conditional = providerFor("CONDITIONAL");
@@ -163,7 +169,7 @@ async function run() {
           observedUrl: "https://example.org/method", finalUrl: "https://example.org/method", mediaType: "text/html", sha256: "a".repeat(64), title: "Guía metodológica sintética",
           passages: [{ text: "El procedimiento de extracción debe registrar los resultados, sus denominadores y las condiciones de medición, manteniendo unidades y límites de interpretación para no combinar cantidades incompatibles.", page: null, locator: "section:extraction:paragraph:1" }],
         } };
-      return { status: "VERIFIED_SUPPORT", support: [source], operations: [], limitations: [], acquiredDocuments: 1 };
+      return { status: "VERIFIED_SUPPORT", support: [source], operations: [{operationId:"fixture-new-support",estimatedCostUsd:0,usage:{fixture:true},state:"COMPLETED"}], limitations: [], acquiredDocuments: 1 };
     } });
   assert.equal(gapSearches, 1);
   assert.equal((supported.researchAudit[0] as { acquiredDocuments: number }).acquiredDocuments, 1);
@@ -198,9 +204,29 @@ async function run() {
       assert.equal(input.methodCoverage?.documentAllowance, acquiredOperations === 1 ? 4 : 2);
       const source = structuredClone(supported.supportAddendum.sources[0]);
       source.gapId = input.gaps![0].gapId;
-      return { status: "VERIFIED_SUPPORT", support: acquiredOperations === 1 ? [source] : [], operations: [], limitations: [], acquiredDocuments: 2 };
+      return { status: "VERIFIED_SUPPORT", support: acquiredOperations === 1 ? [source] : [], operations: [{operationId:`fixture-acquired-${acquiredOperations}`,estimatedCostUsd:0,usage:{fixture:true},state:"COMPLETED"}], limitations: [], acquiredDocuments: 2 };
     } }), /AUTONOMOUS_DESIGN_UNRESOLVED/);
   assert.equal(acquiredOperations, 2, "Four acquired documents exhaust the job limit even if only one was admitted");
+
+  for (const failure of ["COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.", "METHOD_RESEARCH_USAGE_UNCERTAIN"]) {
+    const blocked = providerFor("NEW_SUPPORT"); let dispatchAttempts = 0;
+    await assert.rejects(() => resolveMethodCoverage(bundle, { userId:"fixture-user",projectId:"fixture-project",runId:"fixture-blocked",
+      inheritedSupport:[],provider:blocked.provider,maxResearchOperations:4,researchSupport:async input => {
+        dispatchAttempts++; assert.equal(input.methodCoverage?.ordinal,1); throw new Error(failure);
+      } }), error => error instanceof Error && error.message === failure);
+    assert.equal(dispatchAttempts,1,"A pre-dispatch/uncertain failure stops without consuming four operations");
+    assert.equal(blocked.calls.length,1,"No doomed reconstruction or critic after failed research admission");
+  }
+  let actualServicePreflight = 0;
+  await assert.rejects(() => researchDesignSupport({userId:"fixture-user",projectId:"fixture-project",runId:"fixture-service",bundle,
+    methodCoverage:{version:"method-coverage-reconstruction.v1",ordinal:1,cellIds:["EMPIRICAL_QUANTITATIVE:QUALITY_APPRAISAL"],documentAllowance:1},
+    gaps:[{gapId:"fixture-gap",alternativeId:"A1",findingCodes:["METHOD"],origin:"TARGETED_CRITIC",question:"¿Qué procedimiento de appraisal corresponde al diseño?",whyMaterial:"Falta respaldo del procedimiento",affectedClaim:"Valoración por diseño",requiredEvidenceType:"SCHOLARLY_METHOD_OR_STANDARD",searchProjection:"method appraisal guidance",existingEvidenceIds:[],availableEvidence:[],scopeBoundary:intent.scope,maxCandidates:5,status:"OPEN"}],
+    beforeDiscovery:async()=>{actualServicePreflight++;throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");}}),/COST_LIMIT_REACHED/);
+  assert.equal(actualServicePreflight,1,"The actual research service propagates pre-dispatch denial instead of converting it to exhausted evidence");
+  const noDispatch = providerFor("NEW_SUPPORT");
+  await assert.rejects(() => resolveMethodCoverage(bundle,{userId:"fixture-user",projectId:"fixture-project",runId:"fixture-no-dispatch",inheritedSupport:[],provider:noDispatch.provider,
+    researchSupport:async()=>({status:"LIMITED",support:[],operations:[],limitations:["Provider unavailable"],acquiredDocuments:0})}),/METHOD_RESEARCH_NOT_DISPATCHED/);
+  assert.equal(noDispatch.calls.length,1);
 
   const pending = structuredClone(reconstructed); pending.researchDesign.pending_decisions = ["Elegir metodología con el usuario."];
   const parsedPending = methodologicalReconstructionSchema.shape.alternatives.element.parse(pending);

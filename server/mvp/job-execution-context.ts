@@ -7,7 +7,7 @@ import { INTERNAL_PILOT_COST_POLICY_VERSION, internalPilotJobCostPolicy, jobCost
 import { assertCommercialPaidAuthorization, settleCommercialJob } from "@/server/commercial/ledger";
 import { INTERNAL_GENERATION_POLICY, settleInternalGenerationJob } from "@/server/commercial/internal-generation";
 import { wholeJobCostEquation } from "./whole-job-cost-forecast";
-import { assertQaCommitment, qaJobPolicy } from "./qa-acceptance-policy";
+import { assertQaCommitment, qaJobPolicy, qaCampaignCommitment, QA_OVERAGE_POLICY_VERSION } from "./qa-acceptance-policy";
 import { reserveLinkedJobOperation, settleLinkedJobOperation } from "./pre-job-budget";
 
 type Execution = { jobId: string; startedAt: Date; stage: string; recoveryAttempt?: number; checkpointOnly?: boolean; allowedCheckpointWork?: string[] };
@@ -30,7 +30,7 @@ async function locked<T>(execution: Execution, work: (tx: Prisma.TransactionClie
     return work(tx);
   });
 }
-type PaidEntry = { id: string; paidOperationId?: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number; inputTokensReserved?: number; tokenCountProvenance?: string };
+type PaidEntry = { id: string; paidOperationId?: string; purpose: string; stage: string; model: string; actualModel: string | null; maximum: number; estimate: number | null; usage: unknown; status: string; startedAt: string; finishedAt?: string; category: string; retry: boolean; mandatoryReserve: number; inputTokensReserved?: number; tokenCountProvenance?: string; qaAuthorization?: { grantId:string; policyVersion:string; savedHardCapUsd:number; effectiveHardCapUsd:number } };
 type CostRecord = { policy: ReturnType<typeof jobCostPolicy> & { version?: string }; entries: PaidEntry[]; terminal?: { jobStatus: "COMPLETED" | "FAILED"; at: string } };
 async function initialCostRecord(tx: Prisma.TransactionClient, jobId: string): Promise<CostRecord> {
   const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { metadataJson: true } });
@@ -222,11 +222,14 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
   await auditHistoricalReservationOverruns(execution.jobId);
   await locked(execution, async (tx) => {
     const owner = await tx.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, select: { userId: true } });
-    await assertQaCommitment(tx, owner.userId, maximum);
+    await assertQaCommitment(tx, owner.userId, maximum, execution.jobId);
     const commercialCap = await assertCommercialPaidAuthorization(tx, execution.jobId);
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
     const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
-    const policy = record.policy; // Persisted at the first call; changing env cannot reset an existing job's cap.
+    // The saved policy remains immutable. A separately audited, revocable QA
+    // grant may authorize additional FUTURE commitment for this exact job.
+    const qa = await qaJobPolicy(tx, execution.jobId);
+    const policy = qa?.overage ? { ...record.policy, hard: qa.overage.jobHardUsd } : record.policy;
     const optional = /hero|image|visual|matrix_layout|editorial_compaction|deep_research/i.test(purpose);
     // Conservative remaining-work allowance, not a claim of a known future invoice.
     // Every later request is independently bounded again. Scientific work is paused,
@@ -239,7 +242,8 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     if (paidOperationId) await reserveLinkedJobOperation(tx, { id, jobId: execution.jobId, userId: owner.userId,
       operationId: paidOperationId, purpose, model, maximumUsd: maximum });
     record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve,
-      ...(tokenCount ? { inputTokensReserved: tokenCount.inputTokens, tokenCountProvenance: tokenCount.provenance } : {}) });
+      ...(tokenCount ? { inputTokensReserved: tokenCount.inputTokens, tokenCountProvenance: tokenCount.provenance } : {}),
+      ...(qa?.overage ? { qaAuthorization: { grantId:qa.overage.grantId, policyVersion:QA_OVERAGE_POLICY_VERSION, savedHardCapUsd:record.policy.hard, effectiveHardCapUsd:policy.hard } } : {}) });
     delete record.terminal;
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } }, create: { jobId: execution.jobId, stageKey: "control:cost", status: "RUNNING", progress: 0, outputJson: json(record) }, update: { status: "RUNNING", completedAt: null, outputJson: json(record) } });
   });
@@ -343,22 +347,34 @@ export async function preflightWholeJobCost(input: { nextStage: string; nextStag
     const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
     const knownSpent = record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0);
     const unknownReserved = record.entries.reduce((sum, entry) => sum + (entry.estimate === null ? entry.maximum : 0), 0);
+    const qa = await qaJobPolicy(tx, execution.jobId);
+    const effectiveHardCap = qa?.overage?.jobHardUsd ?? record.policy.hard;
+    const campaign = qa ? await qaCampaignCommitment(tx,qa.campaign) : null;
+    const campaignCap = qa ? qa.overage?.campaignCapUsd ?? qa.campaign.totalCapMicros/1e6 : null;
     const safetyReserve = record.policy.mandatoryReserve;
     const equation = wholeJobCostEquation({ knownSpent, unknownReserved,
       nextStageReservation: input.nextStageReservation,
       minimumRemainingMandatoryReservation: input.minimumRemainingMandatoryReservation,
-      safetyReserve, hardCap: record.policy.hard });
+      safetyReserve, hardCap: effectiveHardCap });
     const forecast = { version: "whole-job-preflight.v1", nextStage: input.nextStage,
       knownSpent, unknownReserved, nextStageReservation: input.nextStageReservation,
       minimumRemainingMandatoryReservation: input.minimumRemainingMandatoryReservation,
-      safetyReserve, hardCap: record.policy.hard,
+      safetyReserve, hardCap: effectiveHardCap, savedHardCap:record.policy.hard,
+      qaGrantId:qa?.overage?.grantId ?? null,
+      campaignCommitted:campaign?.committed ?? null,campaignCap,
+      campaignProjectedCommitment:campaign ? campaign.committed + input.nextStageReservation + input.minimumRemainingMandatoryReservation + safetyReserve : null,
       projectedCommitment: equation.projectedCommitment,
       at: new Date().toISOString() };
     if (![forecast.nextStageReservation, forecast.minimumRemainingMandatoryReservation].every((value) => Number.isFinite(value) && value >= 0)) throw new Error("WHOLE_JOB_FORECAST_INVALID");
+    const allowed = equation.allowed && (forecast.campaignProjectedCommitment === null || campaignCap !== null && forecast.campaignProjectedCommitment <= campaignCap);
+    const { at: _forecastTime, ...identity } = forecast;
+    const historyKey = `control:forecast:${fingerprint(identity)}`;
+    await tx.blueprintJobStage.upsert({ where:{jobId_stageKey:{jobId:execution.jobId,stageKey:historyKey}},
+      create:{jobId:execution.jobId,stageKey:historyKey,status:"COMPLETED",progress:100,completedAt:new Date(),outputJson:json({...forecast,allowed})},update:{} });
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:forecast" } },
       create: { jobId: execution.jobId, stageKey: "control:forecast", status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) },
       update: { status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) } });
-    return { forecast, allowed: equation.allowed };
+    return { forecast, allowed };
   });
   // Persist a rejected forecast too; it is causal evidence, not a charge.
   if (!result.allowed) throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");
