@@ -220,7 +220,7 @@ async function main() {
     authors: [], year: null, doi: null, observationIds: ["completed-web-observation"], provenance: "SYSTEM_DESIGN_SUPPORT" as const,
     document: { observedUrl: "https://example.org/standard", finalUrl: "https://example.org/current-standard",
       sha256: "a".repeat(64), mediaType: "text/html" as const, title: "Norma metodológica sintética",
-      passages: [{ text: "Los investigadores deben registrar cada decisión de codificación, comparar observaciones contradictorias y verificar criterios de calidad durante el análisis. Pasaje sintético para el contrato, sin aceptación científica real.", locator: "html:block:1", page: null }] } };
+      passages: [{ text: "Los investigadores deben registrar cada decisión de codificación, comparar observaciones contradictorias y verificar criterios de calidad durante el análisis. Pasaje sintético para el contrato, sin aceptación científica real.", locator: "html:block:1", page: null, contentKind: "FULL_TEXT_PASSAGE" as const, contentKindBasis: "SYNTHETIC_PROCEDURAL_FIXTURE" }] } };
   const supported = await resolveAutonomousDesignBundle(rejected, { userId: "fixture", projectId: "fixture", runId: "late-support",
     researchSupport: async ({ gaps }) => { supportCalls++; assert.equal(gaps?.[0].origin, "TARGETED_CRITIC");
       return { status: "VERIFIED_SUPPORT", support: [supplementalSource], limitations: [], operations: [] }; },

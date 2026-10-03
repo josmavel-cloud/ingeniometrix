@@ -138,11 +138,11 @@ const digestBase = buildMethodEvidencePack(ledger);
 const detailed = sealDesignSupport({ ...identity, policyVersion: "digest-fixture", sources: [0, 1].map(index => ({
   ...addendum.sources[0], sourceId: `DS-synthetic-${index}`, gapId: "gap",
   document: { ...addendum.sources[0].document, sha256: String(index + 1).repeat(64), passages: [
-    { text: "Methodological manual heading", locator: "block:1", page: null },
-    { text: "Methodological manual heading", locator: "block:2", page: null },
-    { text: "Reviewers should define eligibility, search, extract and synthesize evidence following a reproducible protocol. This overview does not replace the detailed procedure.", locator: "block:3", page: null },
-    { text: "Extracted observations should be compared in repeated analysis. The analyst should record each coding decision and retain contradictory observations before grouping categories.", locator: "block:4", page: null },
-    { text: "This reporting standard is not intended to certify execution or replace validation. The procedure may need adjustment if the available evidence cannot substantiate a comparison.", locator: "block:5", page: null },
+    { text: "Methodological manual heading", locator: "block:1", page: null, contentKind: "METADATA" as const },
+    { text: "Methodological manual heading", locator: "block:2", page: null, contentKind: "METADATA" as const },
+    { text: "Reviewers should define eligibility, search, extract and synthesize evidence following a reproducible protocol. This overview does not replace the detailed procedure.", locator: "block:3", page: null, contentKind: "FULL_TEXT_PASSAGE" as const },
+    { text: "Extracted observations should be compared in repeated analysis. The analyst should record each coding decision and retain contradictory observations before grouping categories.", locator: "block:4", page: null, contentKind: "FULL_TEXT_PASSAGE" as const },
+    { text: "This reporting standard is not intended to certify execution or replace validation. The procedure may need adjustment if the available evidence cannot substantiate a comparison.", locator: "block:5", page: null, contentKind: "FULL_TEXT_PASSAGE" as const },
   ] },
 })) });
 const digestPack = augmentMethodEvidencePack(digestBase, detailed);

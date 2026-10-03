@@ -7,6 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { fetchPublicDocument } from "@/server/retrieval/safe-document-fetch";
 
+export const METHOD_DOCUMENT_INSPECTION_VERSION = "methodological-document-inspection.v2";
+
 export type SupportPassage = { text: string; locator: string; page: number | null;
   contentKind?: "METADATA" | "ABSTRACT" | "FULL_TEXT_PASSAGE"; contentKindBasis?: string };
 export type SupportDocument = {
@@ -110,6 +112,19 @@ export function htmlSupportPassages(html: string) {
   return {title:clean(title),passages};
 }
 
+/** Reading-order PDF blocks, with references retained as metadata across pages. */
+export function pdfSupportPassages(extracted: string): SupportPassage[] {
+  let bibliography = false;
+  return extracted.split("\f").flatMap((page, i) => page.split(/\n\s*\n/).map((paragraph, j) => {
+    const text = clean(paragraph);
+    if (/^(references|bibliography|referencias|bibliograf[ií]a)(?:\s|$)/iu.test(text)) bibliography = true;
+    const metadata = bibliography || /^(key references?|referencias? clave)\s*:/iu.test(text);
+    return { text, page: i + 1, locator: `pdf:page:${i + 1}:paragraph:${j + 1}`,
+      contentKind: metadata ? "METADATA" as const : "FULL_TEXT_PASSAGE" as const,
+      contentKindBasis: metadata ? "PDF_BIBLIOGRAPHIC_SECTION" : "INSPECTED_PDF_PAGE_TEXT" };
+  })).filter(passage => passage.text.length >= 40);
+}
+
 export function rankSupportPassages(passages: SupportPassage[], question: string, maxChars = 10000) {
   const terms = new Set(question.toLowerCase().normalize("NFKC").match(/[\p{L}\p{N}]{4,}/gu) ?? []);
   // This ranks inspection context only. Matching words never certify a claim.
@@ -136,6 +151,23 @@ export function verifiedPdfIdentityTitle(extracted: string, expected: { title: s
     (!expected.doi || firstPage.includes(expected.doi.toLowerCase())) ? expected.title : null;
 }
 
+export type SupportDocumentManifest = Pick<SupportDocument, "observedUrl" | "finalUrl" | "sha256"> & {
+  mediaType: string; privateArtifactPath?: string;
+};
+/** Retain acquired bytes and URL/hash binding even when parsing or identity fails. */
+export async function persistFetchedSupportManifest(fetched: {body: Buffer; contentType: string; finalUrl: string}, observedUrl: string, privateDirectory?: string): Promise<SupportDocumentManifest> {
+  const sha256=createHash("sha256").update(fetched.body).digest("hex");
+  const mediaType=fetched.body.subarray(0,5).toString()==="%PDF-"?"application/pdf":/text\/html|application\/xhtml\+xml/.test(fetched.contentType)?"text/html":"application/octet-stream";
+  const manifest: SupportDocumentManifest={observedUrl,finalUrl:fetched.finalUrl,sha256,mediaType};
+  if(!privateDirectory)return manifest;
+  await mkdir(privateDirectory,{recursive:true,mode:0o700});
+  const file=path.join(privateDirectory,`${sha256}.${mediaType==="application/pdf"?"pdf":mediaType==="text/html"?"html":"bin"}`);
+  try {await writeFile(file,fetched.body,{flag:"wx",mode:0o600});}
+  catch(error){if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;
+    if(createHash("sha256").update(await readFile(file)).digest("hex")!==sha256)throw new Error("DESIGN_SUPPORT_ARTIFACT_INTEGRITY");}
+  return {...manifest,privateArtifactPath:file};
+}
+
 export async function acquireSupportDocument(url: string, question: string, privateDirectory?: string, expectedIdentity?: { title: string; doi: string | null }): Promise<SupportDocument> {
   const fetched = await fetchPublicDocument(url, { Accept: "application/pdf,text/html,application/xhtml+xml" }, 20 * 1024 * 1024, 20000);
   if (!fetched.ok) throw new Error("DESIGN_SUPPORT_DOCUMENT_UNAVAILABLE");
@@ -144,7 +176,10 @@ export async function acquireSupportDocument(url: string, question: string, priv
     // The body was acquired even when PDF parsing, identity or persistence fails.
     // Propagate only a safe counting marker; never include document bytes/content.
     const failure = error instanceof Error ? error : new Error("DESIGN_SUPPORT_INSPECTION_FAILED");
-    Object.assign(failure, { documentAcquired: true });
+    let documentManifest: SupportDocumentManifest | undefined;
+    try {documentManifest=await persistFetchedSupportManifest(fetched,url,privateDirectory);}
+    catch {documentManifest={observedUrl:url,finalUrl:fetched.finalUrl,sha256:createHash("sha256").update(fetched.body).digest("hex"),mediaType:fetched.contentType};}
+    Object.assign(failure, { documentAcquired: true, documentManifest });
     throw failure;
   }
 }
@@ -174,9 +209,7 @@ export async function inspectSupportDocumentBytes(fetched: { body: Buffer; conte
         bibliography = { title, doi: expectedIdentity.doi, authors: [], year: null };
       }
       if (extracted.length > 2_000_000) throw new Error("DESIGN_SUPPORT_TEXT_TOO_LARGE");
-      passages = extracted.split(/\nReferences\s*\n/, 1)[0].split("\f").flatMap((page, i) => page.split(/\n\s*\n/).map((paragraph, j) => ({
-        text: clean(paragraph), page: i + 1, locator: `pdf:page:${i + 1}:paragraph:${j + 1}`,
-      })).filter(passage => passage.text.length >= 40));
+      passages = pdfSupportPassages(extracted);
     } finally { await rm(directory, { recursive: true, force: true }); }
   } else if (/text\/html|application\/xhtml\+xml/.test(fetched.contentType)) {
     mediaType = "text/html";
@@ -192,5 +225,7 @@ export async function inspectSupportDocumentBytes(fetched: { body: Buffer; conte
       if (createHash("sha256").update(await readFile(privateArtifactPath)).digest("hex") !== sha256) throw new Error("DESIGN_SUPPORT_ARTIFACT_INTEGRITY"); }
   }
   return { observedUrl: url, finalUrl: fetched.finalUrl, sha256, mediaType, title, privateArtifactPath, bibliography,
-    passages: rankSupportPassages(passages, question) };
+    // PDF inspection retains complete bounded paragraphs. The derived digest chooses
+    // prompt context; acquisition must not discard an entire method class first.
+    passages: mediaType === "application/pdf" ? passages : rankSupportPassages(passages, question) };
 }

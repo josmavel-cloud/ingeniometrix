@@ -1,10 +1,10 @@
 import type { MethodEvidencePack } from "./scientific-decision-contracts";
 import type { DesignSupportAddendum } from "./design-support-addendum";
-import { validateDesignSupport } from "./design-support-addendum";
+import { validateDesignSupport, supportEvidenceItems } from "./design-support-addendum";
 import type { DesignSupportGap } from "./design-support-gap";
 import { fingerprint } from "./job-execution-context";
 
-export const DESIGN_SUPPORT_DIGEST_VERSION = "DesignSupportDigest.v1";
+export const DESIGN_SUPPORT_DIGEST_VERSION = "DesignSupportDigest.v2";
 type Item = MethodEvidencePack["items"][number];
 const key = (item: Pick<Item, "source_id" | "evidence_id">) => `${item.source_id}:${item.evidence_id}`;
 const normalized = (text: string) => text.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
@@ -24,6 +24,7 @@ export function buildDesignSupportDigest(input: {
   pack: MethodEvidencePack; addendum: DesignSupportAddendum | null;
   identity: Pick<DesignSupportAddendum, "userId" | "projectId" | "jobId" | "definitionHash">;
   gaps: DesignSupportGap[]; requiredPointers: Array<Pick<Item, "source_id" | "evidence_id">>;
+  contextPointers?: Array<Pick<Item, "source_id" | "evidence_id">>;
 }) {
   if (input.addendum) validateDesignSupport(input.addendum, input.identity);
   const all = new Map(input.pack.items.map(item => [key(item), item]));
@@ -34,9 +35,18 @@ export function buildDesignSupportDigest(input: {
     if (saved) { saved.reasons = [...new Set([...saved.reasons, reason])]; saved.claims = [...new Set([...saved.claims, ...claims])]; }
     else chosen.set(key(item), { item, reasons: [reason], claims });
   };
+  for (const pointer of input.contextPointers ?? []) {
+    const item = all.get(key(pointer));
+    if (!item || !input.pack.selected_sources.some(source => source.source_id === item.source_id))
+      throw new Error("DESIGN_DIGEST_CONTEXT_POINTER_INVALID");
+    choose(item, "SELECTED_SOURCE_CLASSIFICATION_CONTEXT_NOT_METHOD_APPROVAL", []);
+  }
   for (const pointer of input.requiredPointers) {
     const item = all.get(key(pointer));
     if (!item) throw new Error("DESIGN_DIGEST_REQUIRED_POINTER_MISSING");
+    if (!["PDF_FULLTEXT", "PDF_SAMPLE_TEXT", "HTML_PASSAGE", "FULL_TEXT_PASSAGE"].includes(item.evidence_level) ||
+      !["theory_or_method_support", "blueprint_planning"].includes(item.allowed_use))
+      throw new Error("DESIGN_DIGEST_REQUIRED_POINTER_INSUFFICIENT_EVIDENCE");
     choose(item, "EXISTING_DESIGN_POINTER", []);
   }
   const exclusions: Array<{ evidenceId: string; reason: string }> = [];
@@ -45,21 +55,45 @@ export function buildDesignSupportDigest(input: {
     if (!gaps.length) throw new Error("DESIGN_DIGEST_GAP_MISMATCH");
     const claims = gaps.flatMap(gap => gap.findingCodes);
     const seen = new Set<string>();
-    const ranked = input.pack.items.filter(item => item.source_id === source.sourceId).map((item, index) => {
-      const original = source.document.passages[index];
-      if (!original || item.excerpt !== original.text || item.locator?.chunk_id !== original.locator || item.allowed_use !== "theory_or_method_support" ||
-          ["ABSTRACT_METADATA", "VERIFIED_METADATA_ONLY"].includes(item.evidence_level)) throw new Error("DESIGN_DIGEST_PASSAGE_INTEGRITY");
+    const expected = new Map(supportEvidenceItems(source).map(item => [key(item), item]));
+    const sourceItems = input.pack.items.filter(item => item.source_id === source.sourceId);
+    if (sourceItems.length !== expected.size) throw new Error("DESIGN_DIGEST_PASSAGE_INTEGRITY");
+    const ranked = sourceItems.map((item, index) => {
+      const original = expected.get(key(item));
+      if (!original || !item.excerpt || item.excerpt !== original.excerpt || item.locator?.chunk_id !== original.locator?.chunk_id ||
+        item.allowed_use !== original.allowed_use || item.evidence_level !== original.evidence_level)
+        throw new Error("DESIGN_DIGEST_PASSAGE_INTEGRITY");
       const text = normalized(item.excerpt);
       const duplicate = seen.has(text); seen.add(text);
       const found = Object.entries(facets).filter(([, pattern]) => pattern.test(text)).map(([name]) => name);
       const limits = limitation.test(text);
-      return { item, index, duplicate, found, limits, score: found.length + (procedural.test(text) ? 8 : 0) + (explicitBoundary.test(text) ? 6 : 0) - (/\b(compliance|correlated|preliminary research|we sought|discovered)\b/iu.test(text) ? 6 : 0), text };
+      // Numbered criteria/checklists are inspectable procedures, not bibliographic
+      // mentions. This is ranking only; the independent critic still decides support.
+      const criterionCount = [...text.matchAll(/\b(?:[a-z]\d+|\d+\.\d+)\.\s+/giu)].length;
+      return { item, index, duplicate, found, limits, criterionCount,
+        score: found.length + (procedural.test(text) ? 8 : 0) + Math.min(criterionCount, 10) * 4 +
+          (explicitBoundary.test(text) ? 6 : 0) - (/\b(compliance|correlated|preliminary research|we sought|discovered)\b/iu.test(text) ? 6 : 0), text };
     }).filter(candidate => {
+      if (candidate.item.allowed_use !== "theory_or_method_support" || ["ABSTRACT_METADATA", "VERIFIED_METADATA_ONLY"].includes(candidate.item.evidence_level)) {
+        exclusions.push({ evidenceId: candidate.item.evidence_id, reason: "CONTEXT_ONLY_NOT_PROCEDURAL_SUPPORT" });
+        return false;
+      }
       if (chosen.has(key(candidate.item))) return true;
       const reason = candidate.duplicate ? "DUPLICATE_TEXT" : candidate.text.length < 100 ? "HEADING_OR_SHORT_METADATA" : null;
       if (reason) { exclusions.push({ evidenceId: candidate.item.evidence_id, reason }); return false; }
       return true;
     }).sort((a, b) => b.score - a.score || a.index - b.index);
+    // Keep distinct PDF criterion sections represented before repeating one page.
+    // Full passages remain intact and available in the sealed addendum.
+    const criterionSections = new Set<string>();
+    const sectionLeads = new Set<string>();
+    for (const candidate of ranked) {
+      const page = candidate.item.locator?.page_number;
+      if (candidate.criterionCount > 0 && page != null && !criterionSections.has(String(page))) {
+        criterionSections.add(String(page)); sectionLeads.add(key(candidate.item));
+      }
+    }
+    ranked.sort((a, b) => Number(sectionLeads.has(key(b.item))) - Number(sectionLeads.has(key(a.item))) || b.score - a.score || a.index - b.index);
     // Each relevant source contributes only useful inspection context. Diversity
     // never upgrades evidence or forces its citation. Preserve contrary caveats.
     const selectedTexts: Set<string>[] = [];

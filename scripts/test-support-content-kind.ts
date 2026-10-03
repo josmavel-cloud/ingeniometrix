@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {htmlSupportPassages,verifiedPdfIdentityTitle} from "../server/mvp/design-support-document";
+import {htmlSupportPassages,verifiedPdfIdentityTitle,pdfSupportPassages} from "../server/mvp/design-support-document";
 const abstract="This review examines published methodological studies and states that detailed recommendations are provided in the full article. The record itself does not reproduce those procedures or appraisal criteria.";
 const record=htmlSupportPassages(`<html><head><title>A research record</title><meta name="citation_title" content="A methodological review"><meta name="description" content="${abstract}"></head><body><h1>A methodological review of research practices</h1><p>${abstract}</p><p>Publication type: Journal Articles; Research Reports; Information Analysis.</p><div class="footer"><p>Privacy, copyright, contact, selection policy and service navigation.</p></div></body></html>`);
 assert.ok(!record.passages.some(p=>p.contentKind==="FULL_TEXT_PASSAGE"));
@@ -31,4 +31,10 @@ assert.equal(verifiedPdfIdentityTitle("Appraisal of C+ pathways 10.1234/valid\f"
 assert.equal(verifiedPdfIdentityTitle("A# design guide\f",{title:"A design guide",doi:null}),null);
 assert.equal(verifiedPdfIdentityTitle("A verified guide 10.1234/wrong\f",{title:"A verified guide",doi:"10.1234/right"}),null);
 assert.equal(verifiedPdfIdentityTitle("Different front matter\fA verified guide",{title:"A verified guide",doi:null}),null);
-console.log("Support content kind and title typography: PASS (23 causal/security checks; no downloads).");
+
+
+const pdfSections=pdfSupportPassages("Reviewers should apply the complete stated assessment procedure and record all judgments with their supporting quotations.\n\nKey references: Alpha (2018); Beta (2020); authoritative sources that are listed for consultation only.\fReferences\nAlpha, B. (2018). A research method description, listed as bibliographic text only.\fGamma, C. (2020). Another citation mentioning should must quality assessment; not a procedural passage.");
+assert.deepEqual(pdfSections.map(p=>p.contentKind),["FULL_TEXT_PASSAGE","METADATA","METADATA","METADATA"]);
+assert.equal(pdfSections[3].locator,"pdf:page:3:paragraph:1");
+
+console.log("Support content kind and title typography: PASS (HTML abstract boundaries, PDF bibliography, typography identity, hidden content; no downloads).");

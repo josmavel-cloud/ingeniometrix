@@ -31,6 +31,8 @@ import { augmentMethodEvidencePack, effectiveGenerationLedger, sealDesignSupport
 import { researchDesignSupport, DESIGN_MINI_RESEARCH_POLICY } from "./design-mini-research";
 import { buildDesignSupportDigest, digestPromptContext, DESIGN_SUPPORT_DIGEST_VERSION } from "./design-support-digest";
 import { reuseProjectDesignSupport } from "./design-support-reuse";
+import { annotateRetainedSupportContentKind } from "./design-support-content-kind";
+import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
 import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
 export const SCIENTIFIC_DECISION_STAGE = "checkpoint:SCIENTIFIC_DECISION";
@@ -200,7 +202,11 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       }
       if (!inspectedPriorSupport) {
         inspectedPriorSupport = true;
-        const reused = await reuseProjectDesignSupport({ ...input, gaps });
+        const priorSupport = await reuseProjectDesignSupport({ ...input, gaps });
+        const inspected = priorSupport.length ? await stageCheckpoint("DESIGN_SUPPORT_CONTENT_INSPECTION",
+          { sources: priorSupport, inspectionVersion: METHOD_DOCUMENT_INSPECTION_VERSION },
+          () => Promise.all(priorSupport.map(source => annotateRetainedSupportContentKind(source)))) : [];
+        const reused = inspected.map(result => result.source);
         if (reused.length) {
           addendum = sealDesignSupport({ userId: input.userId, projectId: input.projectId,
             jobId: currentJobExecution()!.jobId, definitionHash: bundle.contextFingerprint,

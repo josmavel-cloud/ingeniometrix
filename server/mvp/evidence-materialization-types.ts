@@ -333,6 +333,8 @@ export type MvpStep5SemanticCitationAnchor = {
 };
 
 export type MvpStep5SemanticEvidenceItem = {
+  /** Derived per-passage provenance; absent in legacy extractions. */
+  evidence_basis?: MvpStep5EvidenceBasis;
   evidence_id: string;
   source_id: string;
   citation_key: string;

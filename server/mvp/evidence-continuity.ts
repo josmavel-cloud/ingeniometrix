@@ -63,7 +63,8 @@ export function assertEvidenceContinuity(ledger: MvpStep5EvidenceLedger, input: 
 export function inspectableEvidence(ledger: MvpStep5EvidenceLedger) {
   return ledger.semantic_extractions.filter((extraction) => extraction.status === "completed" && extraction.quality_decision !== "insufficient" && extraction.evidence_basis !== "VERIFIED_METADATA_ONLY")
     .flatMap((extraction) => extraction.evidence_items.filter((item) => item.allowed_use !== "gap_only" && item.traceable_summary_es.trim() && item.support_verified === true)
-      .map((item) => ({ item, basis: extraction.evidence_basis })));
+      .map((item) => ({ item, basis: item.evidence_basis ?? extraction.evidence_basis }))
+      .filter(({basis}) => basis !== "VERIFIED_METADATA_ONLY"));
 }
 
 export function evaluateEvidenceGate(ledger: MvpStep5EvidenceLedger) {
