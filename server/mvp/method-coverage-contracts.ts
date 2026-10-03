@@ -240,7 +240,7 @@ export function methodCoverageGaps(matrix: MethodCoverageMatrix) {
     operation: cell.operation, claim: cell.claim, proposedStrategy: cell.strategy,
     requiredWhen: cell.requiredWhen,
     requiredEvidence: "INSPECTABLE_SUBSTANTIVE_METHOD_GUIDANCE" as const,
-    question: `¿Qué procedimientos y condiciones verificables respaldan ${cell.claim}${cell.strategy ? ` mediante ${cell.strategy}` : ""}?`,
+    question: `¿Qué procedimientos y condiciones verificables respaldan ${cell.operation} para ${matrix.corpusClasses.find(row => row.operations.some(item => item.cellId === cell.cellId))?.classId ?? "la integración entre clases"}: ${cell.claim}${cell.strategy ? ` mediante ${cell.strategy}` : ""}?`,
     existingPointers: cell.supportPointers,
   }));
 }
