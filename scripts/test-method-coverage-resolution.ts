@@ -53,7 +53,7 @@ const reconstructed = {
 };
 // A composite primary display label must remain intact while its graph alias is
 // resolved; this is structural normalization, not a scientific approval.
-const descriptivePrimary=structuredClone(reconstructed);
+const descriptivePrimary=methodologicalReconstructionSchema.shape.alternatives.element.parse(structuredClone(reconstructed));
 descriptivePrimary.primaryMethod="Síntesis documental con extracción y contraste por clase";
 const normalizedPrimary=applyMethodReconstruction(bundle,descriptivePrimary,data.pack);
 assert.equal(normalizedPrimary.primary_method,descriptivePrimary.primaryMethod);
