@@ -170,6 +170,8 @@ async function main() {
     const repeatedPage = "Contenido científico repetido de manera patológica ".repeat(10);
     const runaway = assessRenderSanity({ bodyPages: 25, bodyPageTexts: [repeatedPage, repeatedPage, repeatedPage], expectedBodyPages: 15 });
     ok(runaway.status === "RENDER_SANITY_FAILURE" && !pageBudgetPolicy(25, { renderSanity: runaway }).publicationAllowed, "structural runaway render remains blockable independently from academic length");
+    ok(classifyFailure(new Error("AUTONOMOUS_DESIGN_UNRESOLVED: crítica focalizada no aprobó la corrección.")).category === "SCIENTIFIC_INSUFFICIENCY" &&
+      !classifyFailure(new Error("AUTONOMOUS_DESIGN_UNRESOLVED")).autoRetry, "independent scientific rejection is not an infrastructure failure or automatic paid retry");
     ok(!classifyFailure(new Error("PDF_BODY_BUDGET")).autoRetry && classifyFailure(new Error("TEMPLATE_PAGE_LIMIT")).category === "USER_ACTION_REQUIRED" && classifyFailure(new Error("RENDER_SANITY_FAILURE")).category === "PRESENTATION" && !classifyFailure(new Error("unknown failure")).autoRetry && classifyFailure({ status: 503 }).autoRetry, "central retry policy");
     const imagePath = path.join(directory, "long-spanish.png");
     await renderBoxes({ outputPath: imagePath, title: "Flujo metodológico", subtitle: "Diseño propuesto, no resultados", boxes: Array.from({ length: 5 }, () => "Priorización de pedidos urgentes y restricciones operativas explícitas, análisis de decisiones pendientes y verificación metodológica. ".repeat(20)), arrows: true });
