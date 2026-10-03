@@ -42,6 +42,46 @@ async function initialCostRecord(tx: Prisma.TransactionClient, jobId: string): P
 }
 const committed = (entries: PaidEntry[]) => entries.reduce((sum, item) => sum + (item.estimate ?? item.maximum), 0);
 
+// A reservation is a pre-dispatch forecast, not an invoice or a permanent ban.
+// Retain its original value and account for verified known usage exactly once.
+// Callers hold the BlueprintJob row lock, including concurrent/late settlement.
+async function auditKnownReservationOverruns(tx: Prisma.TransactionClient, jobId: string, record: CostRecord) {
+  if (record.entries.some(entry => !Number.isFinite(entry.maximum) || entry.maximum < 0 ||
+    entry.estimate !== null && (!Number.isFinite(entry.estimate) || entry.estimate < 0)))
+    throw new Error("JOB_COST_RECORD_INVALID");
+  const exceeded = record.entries.filter(entry => entry.estimate !== null && entry.estimate > entry.maximum);
+  if (!exceeded.length) return;
+  const owner = await tx.blueprintJob.findUniqueOrThrow({ where: { id: jobId }, select: { userId: true, projectId: true } });
+  for (const entry of exceeded) {
+    if (entry.status !== "completed" || !entry.usage) throw new Error("JOB_COST_OVERRUN_USAGE_NOT_ESTABLISHED");
+    const previous = await tx.auditLog.findFirst({ where: { userId: owner.userId, projectId: owner.projectId,
+      eventType: "JOB_CALL_RESERVATION_OVERRUN_RECORDED", payloadJson: { path: ["reservationId"], equals: entry.id } } });
+    const evidence = { jobId, reservationId: entry.id, originalMaximumUsd: entry.maximum,
+      knownUsageEstimateUsd: entry.estimate, usageFingerprint: fingerprint(entry.usage) };
+    if (previous) {
+      const prior = previous.payloadJson as Record<string, unknown>;
+      if (Object.entries(evidence).some(([key, value]) => prior[key] !== value)) throw new Error("JOB_COST_OVERRUN_EVIDENCE_CONTRADICTORY");
+      continue;
+    }
+    await tx.auditLog.create({ data: { ...owner, actorType: "SYSTEM", eventType: "JOB_CALL_RESERVATION_OVERRUN_RECORDED",
+      payloadJson: json({ version: "known-reservation-variance.v1", ...evidence,
+        differenceUsd: entry.estimate! - entry.maximum, model: entry.model, actualModel: entry.actualModel,
+        stage: entry.stage, purpose: entry.purpose, tokenCountProvenance: entry.tokenCountProvenance ?? null,
+        inputTokensReserved: entry.inputTokensReserved ?? null, accounting: "KNOWN_ESTIMATE_REPLACES_RESERVATION",
+        savedHardCapUsd: record.policy.hard }) } });
+  }
+}
+
+async function auditHistoricalReservationOverruns(jobId: string) {
+  // Separate short transaction preserves the discrepancy audit even when the
+  // subsequent reservation is correctly denied by a funding or job hard cap.
+  await prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "BlueprintJob" WHERE id = ${jobId} FOR UPDATE`;
+    const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
+    if (row) await auditKnownReservationOverruns(tx, jobId, row.outputJson as unknown as CostRecord);
+  });
+}
+
 // Call inside the SAME transaction that makes the job terminal. Uncertain/in-flight
 // spend is not refunded: retain its full reservation until late usage reconciliation.
 export async function closeJobCostControl(tx: Prisma.TransactionClient, jobId: string, jobStatus: "COMPLETED" | "FAILED") {
@@ -70,6 +110,7 @@ async function settleJobCall(jobId: string, id: string, estimate: number | null,
     Object.assign(entry, { estimate, usage, actualModel: actualModel ?? null, status: estimate === null ? "failed_unknown_usage" : "completed", finishedAt: new Date().toISOString() });
     if (estimate === null) entry.category = "FAILED_CALL_COST";
     if (entry.paidOperationId) await settleLinkedJobOperation(tx, id, estimate, usage, actualModel);
+    await auditKnownReservationOverruns(tx, jobId, record);
     await tx.blueprintJobStage.update({ where: { id: row.id }, data: { outputJson: json(record) } });
   });
 }
@@ -113,6 +154,7 @@ export async function reconcileBackgroundJobUsage(input: {
       actualModel: input.actualModel, finishedAt: new Date().toISOString(),
       category: input.estimate > entry.maximum ? "BOUND_VIOLATED_COST" :
         proof.providerStatus === "completed" ? "RECONCILED_PROVIDER_COST" : "FAILED_CALL_COST" });
+    await auditKnownReservationOverruns(tx, input.jobId, record);
     await tx.blueprintJobStage.update({ where: { id: cost.id }, data: { outputJson: json(record) } });
     await tx.auditLog.create({ data: { userId: job[0].userId, projectId: job[0].projectId,
       actorType: "SYSTEM", eventType: "BACKGROUND_JOB_USAGE_RECONCILED",
@@ -177,6 +219,7 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
   if (!execution) return null;
   if (execution.checkpointOnly) throw new Error(`CHECKPOINT_ONLY_PAID_CALL_FORBIDDEN: ${purpose}`);
   const id = randomUUID();
+  await auditHistoricalReservationOverruns(execution.jobId);
   await locked(execution, async (tx) => {
     const owner = await tx.blueprintJob.findUniqueOrThrow({ where: { id: execution.jobId }, select: { userId: true } });
     await assertQaCommitment(tx, owner.userId, maximum);
@@ -192,7 +235,7 @@ export async function reserveJobCall(purpose: string, model: string, maximum: nu
     const spent = committed(record.entries);
     if (commercialCap !== null && spent + maximum + mandatoryReserve > commercialCap) throw new Error("COST_LIMIT_REACHED: commercial policy snapshot");
     const deepSpent = committed(record.entries.filter((entry) => entry.category === "DEEP_RESEARCH_COST"));
-    if (!Number.isFinite(maximum) || maximum <= 0 || record.entries.some((entry) => entry.estimate !== null && entry.estimate > entry.maximum) || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
+    if (!Number.isFinite(maximum) || maximum <= 0 || spent + maximum + mandatoryReserve > policy.hard || optional && spent + maximum > policy.soft || /deep_research/.test(purpose) && deepSpent + maximum > policy.deep) throw new Error("COST_LIMIT_REACHED: checkpoint conservado; no se autorizo otra llamada.");
     if (paidOperationId) await reserveLinkedJobOperation(tx, { id, jobId: execution.jobId, userId: owner.userId,
       operationId: paidOperationId, purpose, model, maximumUsd: maximum });
     record.entries.push({ id, paidOperationId, purpose, stage: execution.stage, model, actualModel: null, maximum, estimate: null, usage: null, status: "reserved", startedAt: new Date().toISOString(), category: /deep_research/.test(purpose) ? "DEEP_RESEARCH_COST" : optional ? "OPTIONAL_PRESENTATION_COST" : "SUCCESSFUL_SCIENTIFIC_COST", retry: providerAttempt > 0 || (execution.recoveryAttempt ?? 0) > 0, mandatoryReserve,
