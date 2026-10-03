@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/server/auth/session";
 import { rateLimit } from "@/server/auth/security-events";
 import { commercialLaunchGuard, currentOffer } from "@/server/commercial/catalog";
 import { customerBalance } from "@/server/commercial/ledger";
+import { activeInternalGenerationCapability } from "@/server/commercial/internal-generation";
 import { limitedJson } from "@/server/commercial/mercado-pago";
 import { createPurchase, purchaseForUser } from "@/server/commercial/purchases";
 
@@ -14,7 +15,7 @@ export async function GET() {
   const purchases = await prisma.purchase.findMany({ where: { userId: user.id }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true } });
   let offer = null, checkoutAvailable = false;
   try { commercialLaunchGuard(); const current = await currentOffer(); offer = { id: current.row.id, ...current.policy }; checkoutAvailable = true; } catch { /* disabled checkout is explicit */ }
-  return NextResponse.json({ balance: await customerBalance(user.id), offer: offer && { id: offer.id, displayName: offer.displayName, priceMinor: offer.priceMinor, currency: offer.currency, planSlots: offer.planSlots, termsVersion: offer.termsVersion, privacyVersion: offer.privacyVersion }, checkoutAvailable, mode: checkoutAvailable ? "sandbox" : "unavailable", trainingConsent: user.trainingConsent,
+  return NextResponse.json({ internalGenerationAuthorized: Boolean(await activeInternalGenerationCapability(user.id)), balance: await customerBalance(user.id), offer: offer && { id: offer.id, displayName: offer.displayName, priceMinor: offer.priceMinor, currency: offer.currency, planSlots: offer.planSlots, termsVersion: offer.termsVersion, privacyVersion: offer.privacyVersion }, checkoutAvailable, mode: checkoutAvailable ? "sandbox" : "unavailable", trainingConsent: user.trainingConsent,
     purchases: await Promise.all(purchases.map((p) => purchaseForUser(user.id, p.id))) }, { headers: { "Cache-Control": "no-store" } });
 }
 export async function POST(request: Request) {
