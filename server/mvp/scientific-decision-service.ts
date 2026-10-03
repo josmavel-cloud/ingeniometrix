@@ -20,11 +20,11 @@ import { SCIENTIFIC_DESIGN_OUTPUT_REPAIR_PROMPT as outputRepair } from "./prompt
 import { SCIENTIFIC_DESIGN_AUTONOMOUS_PATCH_PROMPT as autonomousPatch } from "./prompts/scientific-design-autonomous-patch.v1";
 import { SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT as targetedCritic } from "./prompts/scientific-design-autonomous-targeted-critic.v1";
 import { applyAutonomousDesignPatch, compactAlternativeForRepair, compactCriticEvidence, compactPatchReview, inScopeAlternatives, resolveNonmaterialDecisions } from "./autonomous-design-resolution";
-import { mandatoryCompositionReservationFloor } from "./whole-job-cost-forecast";
+import { mandatoryCompositionReservationFloor, designSupportRemainingForecast } from "./whole-job-cost-forecast";
 import { designSupportGaps, isFutureRequirementFinding } from "./design-support-gap";
-import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
+import { webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
 import { augmentMethodEvidencePack, effectiveGenerationLedger, sealDesignSupport, type DesignSupportAddendum } from "./design-support-addendum";
-import { researchDesignSupport } from "./design-mini-research";
+import { researchDesignSupport, DESIGN_MINI_RESEARCH_POLICY } from "./design-mini-research";
 import { reuseProjectDesignSupport } from "./design-support-reuse";
 import { appendGenerationInput, currentGenerationInput, frozenProject, researchProjectFingerprint } from "@/server/projects/generation-input-snapshot";
 
@@ -195,12 +195,10 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
           return true;
         }
       }
-      const remaining = mandatoryCompositionReservationFloor(bundle, gaps[0].alternativeId).reduce((sum, item) => sum + item.minimumReservationUsd, 0);
-      const repair = responseCostBound({ model: autonomousPatch.model, input: stableJson(bundle.intent), max_output_tokens: autonomousPatch.max_output_tokens });
-      const review = responseCostBound({ model: targetedCritic.model, input: stableJson(bundle.intent), max_output_tokens: targetedCritic.max_output_tokens });
-      if (!repair || !review) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
-      await preflightWholeJobCost({ nextStage: "design_support_discovery", nextStageReservation: ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd,
-        minimumRemainingMandatoryReservation: remaining + repair.maximumUsd + review.maximumUsd });
+      const discoveryBound = webDiscoveryPolicyCostBound(DESIGN_MINI_RESEARCH_POLICY);
+      if (!discoveryBound) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
+      await preflightWholeJobCost({ nextStage: "design_support_discovery", nextStageReservation: discoveryBound.maximumUsd,
+        minimumRemainingMandatoryReservation: designSupportRemainingForecast(bundle, gaps[0].alternativeId, autonomousPatch, targetedCritic) });
       supportOperations++;
       const result = await (input.researchSupport ?? researchDesignSupport)({ ...input, bundle, gaps,
         operationOrdinal: supportOperations as 1 | 2, knownSupport: addendum?.sources });
@@ -243,7 +241,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
           finalUrl: support.document.finalUrl, documentHash: support.document.sha256,
           transferLimits: "Adquisición y extracción verificadas; aplicabilidad a esta afirmación pendiente del dictamen independiente." } : selectedSource };
       });
-      const variables = { intent_json: bundle.intent, alternative_json: compactAlternativeForRepair(alternative), findings_json: findings, evidence_json: evidenceWithIdentity };
+      const variables = { intent_json: bundle.intent, alternative_json: compactAlternativeForRepair(alternative), findings_json: findings, evidence_json: resolutionRound > 0 ? compactCriticEvidence(evidenceWithIdentity) : evidenceWithIdentity };
       const prompt = `${autonomousPatch.systemPrompt}\n\n${autonomousPatch.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable as keyof typeof variables]))}`;
       if (Buffer.byteLength(prompt) > 40000) throw new Error("AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const patchSchema = effectivePack.items.length > bundle.evidence_pack.items.length ? autonomousDesignEvidencePatchSchema : autonomousDesignPatchSchema;

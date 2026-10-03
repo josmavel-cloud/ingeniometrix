@@ -33,3 +33,13 @@ export function mandatoryCompositionReservationFloor(bundle: ScientificDecisionB
       minimumReservationUsd: bound.maximumUsd };
   });
 }
+
+export function designSupportRemainingForecast(bundle: ScientificDecisionBundle, alternativeId: string,
+  patch: { model: string; max_output_tokens: number }, critic: { model: string; max_output_tokens: number }) {
+  const remaining = mandatoryCompositionReservationFloor(bundle, alternativeId).reduce((sum, phase) => sum + phase.minimumReservationUsd, 0);
+  const input = JSON.stringify(bundle.intent);
+  const repair = responseCostBound({ model: patch.model, input, max_output_tokens: patch.max_output_tokens });
+  const review = responseCostBound({ model: critic.model, input, max_output_tokens: critic.max_output_tokens });
+  if (!repair || !review) throw new Error("WHOLE_JOB_FORECAST_MODEL_UNPRICED");
+  return remaining + repair.maximumUsd + review.maximumUsd;
+}

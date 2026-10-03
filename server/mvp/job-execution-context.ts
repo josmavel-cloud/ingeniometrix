@@ -295,7 +295,7 @@ export async function jobCostSnapshot() {
 export async function preflightWholeJobCost(input: { nextStage: string; nextStageReservation: number; minimumRemainingMandatoryReservation: number }) {
   const execution = context.getStore();
   if (!execution) return null;
-  return locked(execution, async (tx) => {
+  const result = await locked(execution, async (tx) => {
     const row = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:cost" } } });
     const record = row?.outputJson as unknown as CostRecord ?? await initialCostRecord(tx, execution.jobId);
     const knownSpent = record.entries.reduce((sum, entry) => sum + (entry.estimate ?? 0), 0);
@@ -315,9 +315,11 @@ export async function preflightWholeJobCost(input: { nextStage: string; nextStag
     await tx.blueprintJobStage.upsert({ where: { jobId_stageKey: { jobId: execution.jobId, stageKey: "control:forecast" } },
       create: { jobId: execution.jobId, stageKey: "control:forecast", status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) },
       update: { status: "COMPLETED", progress: 100, completedAt: new Date(), outputJson: json(forecast) } });
-    if (!equation.allowed) throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");
-    return forecast;
+    return { forecast, allowed: equation.allowed };
   });
+  // Persist a rejected forecast too; it is causal evidence, not a charge.
+  if (!result.allowed) throw new Error("COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job.");
+  return result.forecast;
 }
 
 export function classifyPlanSourceDisposition(input: {

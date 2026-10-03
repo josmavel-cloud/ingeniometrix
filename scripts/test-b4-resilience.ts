@@ -9,7 +9,7 @@ import JSZip from "jszip";
 import { prisma } from "@/lib/prisma";
 import { authorizePresentationRecoveryForUser, enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, getBlueprintProgressForUserV2, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { reservePaidCall } from "@/server/mvp/application-budget";
-import { claimJobControlSlot, reserveJobCall, stageCheckpoint, versionedCheckpointKey, withJobExecution, createBlueprintVersionOnce, closeJobCostControl } from "@/server/mvp/job-execution-context";
+import { claimJobControlSlot, reserveJobCall, stageCheckpoint, versionedCheckpointKey, preflightWholeJobCost, withJobExecution, createBlueprintVersionOnce, closeJobCostControl } from "@/server/mvp/job-execution-context";
 import { assessRenderSanity, classifyFailure, maxEditorialCompressionRounds, pageBudgetPolicy } from "@/server/mvp/execution-policy";
 import { findGeneratedArtifactForUserVersion, upsertGeneratedArtifact } from "@/server/artifacts/generated-artifact-service";
 import { generateScientificPlan } from "@/server/mvp/scientific-plan-generation";
@@ -141,6 +141,10 @@ async function main() {
       ok(nextKey === await versionedCheckpointKey("SCIENTIFIC_VERSION", { evidence: "v2" }), "changed-context retry reuses the same identity");
       const preserved = await stageCheckpoint(priorKey, { evidence: "v1" }, async () => { throw new Error("must reuse"); });
       ok((preserved as { verdict: string }).verdict === "rejected", "old completed scientific rejection is not overwritten");
+      await assert.rejects(() => preflightWholeJobCost({ nextStage: "synthetic_discovery", nextStageReservation: 9,
+        minimumRemainingMandatoryReservation: 1 }), /COST_LIMIT_REACHED/);
+      const deniedForecast = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: control.id, stageKey: "control:forecast" } } });
+      ok((deniedForecast.outputJson as { nextStage?: string })?.nextStage === "synthetic_discovery", "A denied forecast remains persisted after the guard throws");
       const publication = { projectId: project.id, versionNumber: 999, model: "offline", promptVersion: "offline", intakeSnapshotJson: {}, selectedReferencesSnapshotJson: [], blueprintJson: {}, coherenceReportJson: {} };
       const versions = await Promise.all([createBlueprintVersionOnce(publication, { science: "same" }), createBlueprintVersionOnce(publication, { science: "same" })]);
       ok(versions[0].id === versions[1].id, "publication transaction prevents duplicate versions after interrupted export");

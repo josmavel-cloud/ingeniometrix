@@ -1,3 +1,4 @@
+import { webDiscoveryCostBound, webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
 import { grantTestPackage, removeTestCommercialData } from "./fixtures/commercial";
 import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
@@ -266,6 +267,10 @@ async function main() {
     runId: "compound-access", provider: { generateStructuredObject: async (request: any) => request.schemaName === "autonomous_design_patch_v2"
       ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
   assert.equal(compoundDeferred.targetedReview?.blockingScientificIssue, false, "Compound future requirements still require independent acceptance");
+  const configuredWebBound = webDiscoveryPolicyCostBound({ maxOutputTokens: 4096, maxToolCalls: 2 });
+  assert.equal(configuredWebBound?.maximumUsd, 2.0748);
+  assert.deepEqual(configuredWebBound, webDiscoveryCostBound({ requestBytes: 5000, maxOutputTokens: 4096, maxToolCalls: 2 }),
+    "Whole-job forecast uses the identical bound enforced at web dispatch, not the generic policy ceiling");
   const repeatedIdentity = { title: "Guía", observedUrl: "https://example.org/guide", documentHash: "a".repeat(64) };
   const fullPassages = Array.from({ length: 12 }, (_, index) => ({ source_id: "S1", evidence_id: `P${index}`, excerpt: "Pasaje original completo", source_identity: repeatedIdentity }));
   const compactEvidence = compactCriticEvidence(fullPassages);
@@ -434,6 +439,20 @@ async function main() {
     assert.equal(contextRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
     assert.equal((await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } })).maxAttempts, 3);
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: fixture" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    const rejectedEvidenceReview = { ...smallReview, evidenceSupported: false };
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_1", status: "COMPLETED", progress: 100,
+      outputJson: json({ value: rejectedEvidenceReview, outputHash: fingerprint(rejectedEvidenceReview) }) } });
+    await prisma.blueprintJobStage.update({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } },
+      data: { outputJson: { entries: [], policy: { hard: 5, mandatoryReserve: 0.25 } } } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 3,
+      errorJson: { message: "COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job." } } });
+    const forecastRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(forecastRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const forecastRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(forecastRecovered.attempts, 3, "Historical failures are not reset");
+    assert.equal(forecastRecovered.maxAttempts, 4, "One audited continuation for the corrected forecast version");
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job." } } });
     await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
     await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
     await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });

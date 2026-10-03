@@ -12,7 +12,7 @@ export { designSupportGaps } from "./design-support-gap";
 import { normalizeConcept } from "@/lib/retrieval-scientific-concepts";
 import { normalizePublicWebUrl } from "@/server/retrieval/web-discovery-validation";
 
-export const DESIGN_MINI_RESEARCH_POLICY = { version: "design-mini-research.v2", maxOperations: 2, maxToolCalls: 2, maxCandidates: 5, maxDocuments: 4 } as const;
+export const DESIGN_MINI_RESEARCH_POLICY = { version: "design-mini-research.v2", maxOperations: 2, maxToolCalls: 2, maxCandidates: 5, maxDocuments: 4, maxOutputTokens: 4096 } as const;
 type VerifiedSupport = DesignSupportSource;
 
 // This is a conservative screening gate, not a claim about full-text quality.
@@ -70,7 +70,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
           purpose: DESIGN_MINI_RESEARCH_PURPOSE, gapSetHash, seenSetHash: sourcePoolVersion,
           researchIntentProjection: { searchIntentHash: intentHash, scientificSignals }, evidenceGaps: [gap],
           seenSourceIdentities: known, policy: { maxToolCalls: DESIGN_MINI_RESEARCH_POLICY.maxToolCalls,
-            maxCandidates: DESIGN_MINI_RESEARCH_POLICY.maxCandidates, maxOutputTokens: 4096 },
+            maxCandidates: DESIGN_MINI_RESEARCH_POLICY.maxCandidates, maxOutputTokens: DESIGN_MINI_RESEARCH_POLICY.maxOutputTokens },
           provider: createOpenAiWebDiscoveryProvider({ apiKey: key }) });
         const operation = { operationId: discovery.operationId, estimatedCostUsd: discovery.estimatedCostUsd, usage: discovery.usage, state: discovery.state };
         if (!["COMPLETED", "PARTIAL"].includes(discovery.state)) return { support: [] as VerifiedSupport[], limitation: `Miniinvestigación: ${discovery.state}`, operation };
