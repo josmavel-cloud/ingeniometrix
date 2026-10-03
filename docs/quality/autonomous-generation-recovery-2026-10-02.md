@@ -1,14 +1,226 @@
 # Autonomous generation: staging recovery and budget audit (2026-10-02)
 
-## Current handoff — 2026-10-03 UTC
+## Current handoff — 2026-10-03 UTC, bounded acceptance finished
 
-**NOT_CLOSED. PR #16 stays draft; main and production are unchanged.**
-The integrated support path ran on the technical staging account, acquired a
-methodological guideline, and reached the evidence-aware patch dispatch. The
-provider returned `credit_balance_exhausted` on a durable response, with no usage
-or output. The USD 0.283325 reservation remains unknown. No second job was started.
-See the current matrix and cost account below; earlier USD 2 and disconnected
-mini-research descriptions are historical findings, not current policy/state.
+**STATUS = BLOCKED_WITH_EVIDENCE. MVP_STATUS = NOT_CLOSED.**
+PR #16 remains draft. No merge or production publication. Provider credit is
+available; the remaining blocker is a proven context-packaging defect before the
+second evidence-aware patch, not exhausted provider credit or QA budget.
+
+Technical job `c3e39304-8838-4f07-b22a-99744c89fce9`, project
+`a0700f50-e3b5-4213-a9da-7f71243c12c1`, ended FAILED in `resolving_design`.
+This task created one complete acceptance job. Its audited attempts are 5/5;
+no counter, historical failure, unknown reservation or owner job was reset.
+The bounded corrective cycle is exhausted. No further paid call was launched.
+
+### Cause and proof
+
+| Problem | Cause | Correction / observed proof | Publication / limitation |
+| --- | --- | --- | --- |
+| Restored provider still could not finish | Several separate contract/guard defects preceded the scientific evaluation | Compound finding paths, versioned checkpoints, critic-context duplication and QA-linked reservations corrected; isolated tests and same-job recovery executed | Staging only |
+| First independent targeted critic rejects support | PRISMA-S supports reporting searches, not all proposed appraisal/coding/synthesis procedures | Critic preserved scope and method coherence but returned `evidenceSupported=false`; this finding triggered another bounded support operation | No forced approval |
+| Additional support acquired | New JBI mixed-method review manual section passed discovery/acquisition | One paid Astra operation, two completed web tools, three candidates, one acquired document, 12 located passages | New support has not yet passed the independent critic |
+| Second patch never dispatched | Combined prompt is **42,796 UTF-8 bytes > 40,000-byte guard** | Read-only replay reproduces the exact pre-dispatch error, `AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE` | **Unfixed release blocker**; no second patch/critic, composition or DOCX |
+| Translation contract rejection | Strict language-detection schema omitted nullable `rationale` from `required` | Schema and pre-dispatch validation fixed offline | Existing failed reservation retained; no paid retry used to claim repair |
+| Historical PDF | Exact input file unavailable | Different benign private PDF upload/retry/remove verified | Exact-file incident remains PENDING_EXACT_FILE |
+
+Replay dimensions: intent 2,151 bytes; alternative 5,684; findings 2,717;
+evidence 30,425; complete rendered prompt 42,796. The evidence contains 27
+passages: 3 selected-source passages and 24 supplemental passages from 2 sources.
+These are byte measurements, not tokens. No evidence was truncated to obtain PASS.
+
+Causal timeline: extraction → selector → first critic → first patch → compound
+finding failure → audited continuation/reused support → revised patch → oversized
+critic context → deduplicated critic context → independent evidence rejection →
+additional-support forecast rejection → corrected forecast → nested ordinary-budget
+rejection before dispatch → scoped QA correction → actual support discovery and
+acquisition → second-patch context rejection before dispatch. Selector and first
+critic each ran once. Completed paid checkpoints were reused, not regenerated.
+
+### Corrections verified in this continuation
+
+- Compound `affected_field` values now reach evidence-gap detection and distinguish
+  future access requirements from method/scope failures. Independent review remains
+  mandatory. The actual first paid patch/rejection is retained.
+- Changed evidence creates a deterministic checkpoint version; completed science is
+  preserved rather than overwritten. Selector and first critic ran only once.
+- Reused private support requires matching owner/project/definition/selection,
+  immutable snapshot hashes, completed web provenance and document SHA-256.
+- Critic context decreased from **44,548 to 31,131 UTF-8 bytes** by deduplicating
+  source identity and patch content. All 15 passages, including 12 support passages,
+  remain intact. These numbers are bytes, not token usage.
+- The configured web reservation is **USD 2.0748** (4,096 output tokens, two tools),
+  not the generic USD 2.50 policy ceiling. Rejected forecasts are now persisted.
+- Exact remaining forecast: `1.0937814 + 2.0748 + 1.166335 + 0.25 = 4.5849164 <= 5`.
+  The previous ceiling-based forecast was `5.0101164 > 5`.
+- A second pre-dispatch guard used the ordinary USD 2.50 daily budget inside an
+  explicitly authorized QA job. QA-linked calls now enforce the saved USD 5 job
+  and USD 10 incremental campaign caps, while ordinary account guards remain.
+  Historical commitments are retained in linked-call attribution and old ledgers.
+- A FAILED support operation with **zero calls and zero commitment** can obtain one
+  deterministic child attempt under the verified QA job. Unknown/completed paid
+  calls cannot use that recovery. No historical failure or attempt count is reset.
+- Language detection's strict JSON schema lacked `rationale` in `required`. Fixed
+  with local contract validation before reservation. The already-failed translation
+  reservation remains unknown and was not retried.
+- Mandatory scientific composition/review uses the existing durable Responses
+  transport. No blind second create after an uncertain response.
+
+### Current requirements and acceptance matrix
+
+This is the governing R01–R13 matrix. Older acceptance notes below are historical.
+Implemented, offline-tested, provider-tested, browser-verified and published are
+separate states.
+
+| ID | Implemented | Offline | Real provider | Authenticated browser / API | Published |
+| --- | --- | --- | --- | --- | --- |
+| R01 Search/recovery | Preserved | Six-domain, long-object, failed-operation PASS | Existing technical Sources reused | Sources reachable | Prior production implementation only |
+| R02 CORE/EXPLORATORY/Astra | Preserved | Sufficiency/idempotency PASS | One additional design-support Astra; distinct from Sources identity | Three CORE selected | Existing Sources flags ON; new code NO |
+| R03 Selection/counts | Preserved | Save/queue/isolation PASS | Not needed | Server and UI both 3; navigation/reload retained | New candidate NO |
+| R04 Translation/HTML/JATS | Preserved + strict-schema fix | Safe text/title/schema PASS | Cached translation shown; new display failure unknown, not retried | Original primary, Spanish secondary/abstract, no raw markup; responsive card viewed | New candidate NO; fresh fixed batch not live-accepted |
+| R05 Internal preparation/single CTA | Preserved | Generation contracts PASS | Evidence extraction completed | One CTA, no preparation rows | New candidate NO |
+| R06 Zero post-Sources questions | Implemented | Resolver/B4 PASS | Zero questions/WAITING_USER_DECISION through failed job | No approval UI/stale minimum instruction | Full completion not verified |
+| R07 Method support | Partial | Initial/late gap, scope, pointers/context PASS | PRISMA-S critic rejection; JBI acquisition PASS; next patch blocked | Not applicable | NO; scientific gate FAIL |
+| R08 Recovery/accounting | Implemented | Background/reconciliation/concurrency/QA PASS | Same-job paid checkpoints reused; no new job unknown usage | Explicit authenticated continuation | NO |
+| R09 Internal no-package | Preserved | Server authorization/ownership PASS | Enqueue/evidence/design without package | Internal authorization shown | Existing capability only; publication/settlement/download incomplete |
+| R10 Taxonomy/ideas/chat | Preserved | Existing multidisciplinary/contract fixtures PASS | No new idea call | Refinement control present; full idea/chat flow not rerun | Existing implementation only |
+| R11 Isolation | Preserved | Project/user/addendum/checkpoint tests PASS | No owner project used | A→B→A, two tabs, reload, back/forward PASS; second normal user denied private APIs | Final DOCX/download-token isolation not exercised: no artifact |
+| R12 PDF/DOCX | PDF preserved; document path incomplete | Storage/limits/ownership PASS | Benign PDF identity path exercised | Private upload, forced transfer failure, Retry, Remove PASS | Historical PDF pending; real DOCX/download NOT_RUN |
+| R13 Publication/operations | Candidate prepared | TypeScript/Prisma/build/bundle/diff PASS | Scientific gate FAIL | Staging healthy, not E2E PASS | NO merge, cutover, new backup or production migration |
+
+B4: **52 checks PASS**. Scientific decision, support reuse, six-domain reliability,
+internal authorization, background recovery and nested QA cost/idempotency pass.
+Clean runtime/frontend/worker build and Vercel Preview passed for code candidate
+`ef15542`. Visual Sources checks at 360/768/1280 px showed no horizontal overflow.
+A separate normally authenticated security-observer account received no provider
+calls or internal-generation capability; it was not used to evade budget limits.
+
+### Support and evidence continuity
+
+The reused PRISMA-S document has SHA-256
+`e57da5d23c5b92f9af68c30da5e007886eeadbba820332db5b48afd62fc86aa3`.
+Owner/project/definition/selection/content identity and completed web provenance
+were checked; 12 passages were reused without another web search.
+
+The new document is *8.3 The JBI approach to mixed method systematic reviews —
+JBI Manual for Evidence Synthesis*, SHA-256
+`4bdedb9bbbc2a76f995efa28b70bfb770b3f115fbabfa6d3cec8ca10d3da69f3`.
+Its 12 passages contain 7,636 characters with retained block locators. Both are
+`SYSTEM_DESIGN_SUPPORT`, not newly user-selected works. The frozen user EvidenceSet
+and explicit selection remain unchanged. The first evidence-aware patch and critic
+saw PRISMA-S. The combined 24 support passages reached the next prompt assembly,
+which failed locally before provider dispatch. No final approved addendum/design,
+composition, bibliography or DOCX acceptance is claimed.
+
+### Actual cost and usage
+
+QA campaign `scientific-closure-qa-20261002` expires **2026-10-04T00:00:00Z**:
+USD 10 incremental commitment, USD 5/job, two campaign job slots now used.
+Ordinary internal policy remains target 2 / soft 2.50 / hard 3; customer pricing
+and historical job policy snapshots are unchanged.
+
+| Quantity | USD |
+| --- | ---: |
+| New acceptance job, known estimate | **1.47830640** |
+| New acceptance job, unknown reservation | **0.00000000** |
+| This task, additional known (including display call outside job) | 1.48231440 |
+| This task, additional unknown display reservation | 0.07042800 |
+| Entire QA campaign, known | **2.49841145** |
+| Entire QA campaign, unknown reserved | **0.54786800** |
+| Entire QA campaign, committed | **3.04627945** |
+| Remaining QA monetary capacity (not a new job authorization) | **6.95372055** |
+
+Historical USD 0.94293750 and USD 0.41215 reservations are unchanged in their
+original ledgers. Campaign unknowns also remain held; no uncertain call was
+zeroed or blindly repeated. The new job's zero unknown figure does not erase
+unknown translation usage outside that job.
+
+Per-call actual usage for the new job (requested model families retained; actual
+returned model shown). Every row has known usage. Checkpoint reuse added no new
+call charge. Original provider IDs/fingerprints remain in private DB artifacts.
+
+| Stage | Actual model | Input | Cached subset | Output | Reasoning subset | Estimated USD |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| EVIDENCE | gpt-5.4-mini-2026-03-17 | 29,034 | 0 | 3,965 | 0 | 0.03961800 |
+| EVIDENCE | gpt-5.4-mini-2026-03-17 | 26,917 | 0 | 3,867 | 0 | 0.03758925 |
+| EVIDENCE | gpt-5.4-mini-2026-03-17 | 16,403 | 1,792 | 4,437 | 0 | 0.03105915 |
+| DESIGN_SELECTOR_0 | gpt-6-astra | 5,863 | 0 | 5,501 | 2,070 | 0.34833750 |
+| DESIGN_CRITIC_0_RESPONSE | gpt-5.6-sol | 7,600 | 0 | 4,163 | 3,196 | 0.12126000 |
+| AUTONOMOUS_DESIGN_PATCH_EVIDENCE_1 | gpt-6-astra | 3,403 | 0 | 3,298 | 2,070 | 0.20743750 |
+| AUTONOMOUS_DESIGN_PATCH_EVIDENCE_1 (new evidence version) | gpt-6-astra | 9,614 | 0 | 2,642 | 1,499 | 0.25227500 |
+| AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_1 | gpt-5.6-sol | 7,137 | 0 | 1,026 | 823 | 0.05620500 |
+| DESIGN_MINI_RESEARCH_V2_ACQUISITION3_1 | gpt-6-astra | 22,938 | 0 | 1,556 | 132 | 0.38452500 |
+
+Totals: **128,909 input**, **1,792 cached input subset**, **30,455 output**,
+**9,790 reasoning subset**, **159,364 input + output tokens**. Reasoning tokens
+are included in output; cached tokens are included in input. Neither is added
+twice. The new mini-research USD 0.384525 includes two web tools (USD 0.02).
+Job and linked PaidOperation are two views of the same cost, not additive charges.
+These are usage-based estimates, not provider invoices. No full-document ordinary
+USD 3 economic compatibility is established by this failed QA job.
+
+### Runtime, preservation and deployment status
+
+- Code HEAD: `ef15542395ed7b0da28c9ad1d7c70694d33dbeaf`; initial HEAD
+  `1dd1698eb331afe3192484a4e414fae96da6e149`. Subsequent documentation commit
+  records this terminal handoff; it does not change the tested runtime.
+- Staging app/worker: `imx-rc4-method-support:qa15`, both healthy, digest
+  `sha256:45483dd01b6eb5e8f59ccd16c0de81798687e8b8fb917e1cf1ee8d9cb4a9153e`.
+  Existing staging frontend is compatible; PR Preview built the changed candidate.
+- Main remains `a396451af8c0c1b5a3b51567db4ac990ef2517dd`. Production app/worker
+  remain `imx-rc4-autonomous:fdb85af`, digest
+  `sha256:0bd478cf31a0fdf21cc752ac423b19073e1b6e45e4e3289d41818981a738a951`.
+  They are healthy; **tested new candidate is not deployed to production**.
+- Existing production web/readiness HTTP 200; unauthenticated project API redirects
+  to login. Normal POST Google OIDC start returns 200 and accounts.google.com.
+  This does not claim completion of an interactive Google login or new scientific smoke.
+- App and worker in both environments retain bounded Sources fallback and design
+  mini-research enabled, Deep Research disabled and authless workspace disabled.
+  No payments, sensitive-admin, customer pricing or production environment changes.
+- Existing additive QA migration `20261002190000_qa_acceptance_campaign` is tested
+  in isolation and applied to staging only; no new production migration/backup.
+- Owner job remains `WAITING_USER_DECISION`, same updatedAt and complete job/snapshot
+  baseline hash `0fc9001efb9e6af1bfb350792d6c717e15dd000e75ff68e38690e85caae2c4ef`.
+  Read-only candidate checks find valid snapshot, matching project fingerprint,
+  context/EvidenceSet and scientific checkpoint, with no competing job. These prove
+  structural eligibility, not completed deployed recovery. It was never resumed.
+- Original RC4 worktree and all preexisting G5 files are untouched. No force push,
+  auth bypass, owner credential use, ledger reset or historical snapshot mutation.
+
+### Exact remaining work / release gate
+
+Correct the second-patch input packaging using the already acquired passages and
+existing scoped evidence registry; preserve substantive content and validate the
+resulting bounded contract before any dispatch. Do not blindly raise the guard,
+truncate scientific qualifiers, rerun Astra or regenerate selector/first critic.
+The preserved technical job is exhausted; any subsequent continuation must use
+an explicitly versioned audited recovery, not SQL resets or another account.
+Recalculate the expiring QA authorization before further paid execution.
+
+Then the still-missing gates are independent approval with JBI support, autonomous
+composition, cross-section scientific review, real DOCX, authorized download and
+actual document inspection. Scientific/document/MVP quality remain **NOT_VERIFIED**.
+Do not ask the owner to debug this route in production.
+
+Only after those gates pass: verify encrypted canonical production backup and
+restore metadata; inventory active jobs; rehearse the additive migration; deploy
+compatible tested app/worker; normal PR checks/merge; coordinate Vercel Production;
+verify immutable digests and authenticated ownership/download smoke. Preserve the
+current production image/deployment and compatible additive schema for rollback.
+No cutover or rollback was necessary in this task. Do not roll production back to
+an obsolete mandatory-design-approval flow as a substitute for fixing this defect.
+
+### Private evidence index
+
+Diagnostic artifacts are outside Git and contain no public access grant:
+`/tmp/imx-final-context-replay.json`, `/tmp/imx-final-cost-report.json`,
+`/tmp/imx-final-live-linked-recovery.log`, `/tmp/imx-final-isolation-forward.log`,
+`/tmp/imx-final-ui-observe.log`, `/tmp/imx-final-pdf-upload.log`,
+`/tmp/imx-final-pdf-retry.log`, `/tmp/imx-final-owner-eligibility.json`.
+Responsive viewport screenshots: `/tmp/imx-final-card-{360,768,1280}.png`.
+Provider response artifacts/documents remain in private staging storage, bound to
+normal owner/project authorization. Browser credentials/session copies are removed
+at handoff; no keys, cookies or private scientific excerpts are committed.
 
 ## Historical scope and outcome
 
@@ -160,7 +372,7 @@ reservation cleared. PR #16 remains draft, `main` and production remain
 unchanged. **Staging health and offline fixtures are not a complete E2E PASS.**
 
 
-## Integrated scientific closure — verified state, 2026-10-03 UTC
+## Historical first QA acceptance — superseded by current handoff above
 
 ### Causal acceptance record
 
@@ -210,23 +422,7 @@ conservatively counted for estimated billing; these are different metrics. The
 same paid discovery result was reused in both technical recoveries. No second
 mini-research operation or complete acceptance job was started.
 
-### Requirement matrix
-
-| ID | Implemented | Offline | Provider | Browser | Published to production |
-| --- | --- | --- | --- | --- | --- |
-| R01 Search/recovery | Preserved | Reliability six-domain/long-object/failed-operation PASS | Technical search PASS | Sources reached | Prior implementation only |
-| R02 CORE/EXPLORATORY/Astra | Preserved | Sufficiency and DB PASS | Standard retrieval PASS; design Astra separate PASS | CORE visible, selected 3 | Existing effective flags ON; new changes NO |
-| R03 Selection/counts | Preserved | 0–3 saves/idempotency PASS | Not required | Three selected, sidebar coherent, retained across refresh/navigation | New candidate NO |
-| R04 Translation/HTML/JATS | Preserved + Spanish-title dedup | Safe text/title checks PASS | Cached translations displayed; later background batch failed without usage | Original + Spanish secondary, Spanish abstract, no visible JATS/entity markers, selected state retained | New candidate NO |
-| R05 Internal evidence/CTA | Preserved | Generation contracts PASS | Evidence stage completed | One CTA, no preparation rows, internal account copy | New candidate NO |
-| R06 No post-Sources questions | Implemented | Resolver/B4 PASS | Zero questions through stopped job | No design-approval step reached | New candidate NO; complete path unverified |
-| R07 Method support | Implemented | Initial/late gaps, scope, pointers, immutable context PASS | Discovery/acquisition PASS; patch funding failure | Not applicable | NO |
-| R08 Recovery/accounting | Implemented | Background/reconciliation/concurrency/QA PASS | Same job/checkpoints reused; unknown held | Authenticated resume API | NO |
-| R09 Internal no-package | Preserved | Ownership/internal authorization PASS | Enqueue/evidence/design allowed without package | Internal authorization message | Existing capability only; settlement/download incomplete |
-| R10 Taxonomy/ideas/chat | Preserved | FORD 50/6, three ideas, provenance/confirmation PASS | No new idea LLM call | Existing refinement control visible; full idea/chat workflow not repeated | Existing only |
-| R11 Isolation | Preserved | Ownership, user isolation, addendum and response isolation PASS | No owner work used | A→B→A, two tabs, reload/back PASS; separate-user browser not performed | New candidate NO |
-| R12 PDF/DOCX | Private transfer preserved | Storage/limits/ownership PASS | No inference required for benign upload | PDF upload/remove PASS, 360px no overflow | Historical PDF PENDING_EXACT_FILE; real DOCX/download NOT_RUN |
-| R13 Publication | Prepared, blocked by scientific gate | Builds/TypeScript/bundle/diff checks PASS | Not applicable | Staging candidate only | NO merge/deployment/backup in this task |
+The governing R01–R13 acceptance matrix is at the top of this report.
 
 ### QA authorization and cost
 

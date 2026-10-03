@@ -1,10 +1,12 @@
 # Ingeniometrix MVP Handoff
 
-> Current PR #16 handoff (2026-10-03 UTC): **NOT_CLOSED**, provider balance exhausted
-> during real technical staging acceptance. Main/production unchanged. Continue
-> from [the canonical recovery report](docs/quality/autonomous-generation-recovery-2026-10-02.md),
-> including the QA cap/expiry, retained unknown usage and remaining DOCX gate.
-> Earlier branch/release instructions below are historical for this worktree.
+> Current PR #16 handoff (2026-10-03 UTC): **NOT_CLOSED**, bounded authenticated
+> acceptance finished without DOCX. Provider credit is available; a second
+> evidence-aware patch is blocked before dispatch: 42,796 bytes > 40,000 guard.
+> Real JBI support is retained. Job cost USD 1.4783064 known, zero job unknown;
+> campaign unknown reserves remain held. PR stays draft; main/production unchanged.
+> See [the canonical report and R01–R13 matrix](docs/quality/autonomous-generation-recovery-2026-10-02.md).
+> Earlier release/provider-funding descriptions below are historical.
 
 
 ## Acceso GitHub
