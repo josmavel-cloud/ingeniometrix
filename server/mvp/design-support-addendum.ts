@@ -56,7 +56,9 @@ export function effectiveGenerationLedger(base: MvpStep5EvidenceLedger, addendum
   const ledger = structuredClone(base);
   for (const source of addendum.sources) {
     if (ledger.source_registry.some(row => row.source_id === source.sourceId)) throw new Error("DESIGN_SUPPORT_ID_COLLISION");
-    const reference = `${source.authors.join(", ") || source.title}. (${source.year ?? "s. f."}). ${source.title}. ${source.document.finalUrl}`;
+    const reference = source.authors.length
+      ? `${source.authors.join(", ")}. (${source.year ?? "s. f."}). ${source.title}. ${source.document.finalUrl}`
+      : `${source.title}. (${source.year ?? "s. f."}). ${source.document.finalUrl}`;
     ledger.source_registry.push({ source_id: source.sourceId, reference_id: source.sourceId, project_reference_id: source.sourceId,
       selected_order: null, provider: "SYSTEM_DESIGN_SUPPORT", relevance_score: null, citation_key: source.sourceId,
       title: source.title, authors: source.authors, year: source.year, venue: null, doi: source.doi,

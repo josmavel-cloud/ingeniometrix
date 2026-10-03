@@ -98,7 +98,7 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
               if (!expected || !observed || !(observed.includes(expected) || expected.includes(observed)) || !document.passages.length)
                 return { source: null, acquired: true, reason: "DOCUMENT_IDENTITY_OR_TEXT_UNVERIFIED" };
               const source: VerifiedSupport = { sourceId: `DS-${fingerprint([input.projectId, input.runId, document.sha256]).slice(0, 20)}`,
-                gapId, title: document.title, authors: [], year: null, doi: null,
+                gapId, title: document.title, authors: document.bibliography?.authors ?? [], year: document.bibliography?.year ?? null, doi: document.bibliography?.doi ?? null,
                 observationIds: convergence.discoveryObservationIds, document, provenance: "SYSTEM_DESIGN_SUPPORT" };
               return { source, acquired: true, reason: null };
             } catch (error) {

@@ -235,7 +235,15 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
         !bundle.evidence_pack.items.some(old => old.source_id === item.source_id && old.evidence_id === item.evidence_id));
       const findings = assessment.critical_findings;
       const provider = input.provider ?? getConfiguredLlmProvider();
-      const variables = { intent_json: bundle.intent, alternative_json: compactAlternativeForRepair(alternative), findings_json: findings, evidence_json: relevantEvidence };
+      const evidenceWithIdentity = relevantEvidence.map(item => {
+        const support = (addendum as DesignSupportAddendum | null)?.sources.find(source => source.sourceId === item.source_id);
+        const selectedSource = bundle.evidence_pack.selected_sources.find(source => source.source_id === item.source_id);
+        return { ...item, source_identity: support ? { title: support.title, authors: support.authors, year: support.year,
+          doi: support.doi, provenance: support.provenance, observedUrl: support.document.observedUrl,
+          finalUrl: support.document.finalUrl, documentHash: support.document.sha256,
+          transferLimits: "Adquisición y extracción verificadas; aplicabilidad a esta afirmación pendiente del dictamen independiente." } : selectedSource };
+      });
+      const variables = { intent_json: bundle.intent, alternative_json: compactAlternativeForRepair(alternative), findings_json: findings, evidence_json: evidenceWithIdentity };
       const prompt = `${autonomousPatch.systemPrompt}\n\n${autonomousPatch.userPromptTemplate.replace(/\{\{(\w+)\}\}/g, (_, variable: string) => stableJson(variables[variable as keyof typeof variables]))}`;
       if (Buffer.byteLength(prompt) > 40000) throw new Error("AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const patchSchema = effectivePack.items.length > bundle.evidence_pack.items.length ? autonomousDesignEvidencePatchSchema : autonomousDesignPatchSchema;

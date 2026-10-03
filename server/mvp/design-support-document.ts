@@ -12,8 +12,24 @@ export type SupportDocument = {
   observedUrl: string; finalUrl: string; sha256: string; mediaType: "text/html" | "application/pdf";
   title: string; passages: SupportPassage[];
   privateArtifactPath?: string;
+  bibliography?: { title: string | null; authors: string[]; year: number | null; doi: string | null };
 };
 const clean = (text: string) => text.replace(/\s+/g, " ").trim();
+
+export function supportBibliographyFromHtml(html: string): NonNullable<SupportDocument["bibliography"]> {
+  const values = new Map<string, string[]>();
+  const parser = new Parser({ onopentag(name, attributes) {
+    if (name !== "meta") return;
+    const key = (attributes.name ?? "").toLowerCase(), value = clean(attributes.content ?? "");
+    if (key.startsWith("citation_") && value) values.set(key, [...(values.get(key) ?? []), value]);
+  } }, { decodeEntities: true });
+  parser.end(html);
+  const date = values.get("citation_publication_date")?.[0] ?? values.get("citation_date")?.[0] ?? "";
+  const doi = values.get("citation_doi")?.[0]?.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, "") ?? null;
+  return { title: values.get("citation_title")?.[0] ?? null,
+    authors: [...new Set(values.get("citation_author") ?? [])], year: /^(18|19|20|21)\d{2}\b/.test(date) ? Number(date.slice(0, 4)) : null,
+    doi: doi && /^10\.\d{4,9}\/\S+$/i.test(doi) ? doi : null };
+}
 
 // htmlparser2 decodes text entities once, never executes scripts or XML entities.
 // Passage IDs refer to reading-order blocks, not invented page numbers.
@@ -52,6 +68,7 @@ export async function acquireSupportDocument(url: string, question: string, priv
   if (!fetched.ok) throw new Error("DESIGN_SUPPORT_DOCUMENT_UNAVAILABLE");
   const sha256 = createHash("sha256").update(fetched.body).digest("hex");
   let title = "", passages: SupportPassage[], mediaType: SupportDocument["mediaType"];
+  let bibliography: SupportDocument["bibliography"];
   if (fetched.body.subarray(0, 5).toString() === "%PDF-") {
     mediaType = "application/pdf";
     const directory = await mkdtemp(path.join(os.tmpdir(), "imx-design-support-"));
@@ -72,6 +89,7 @@ export async function acquireSupportDocument(url: string, question: string, priv
   } else if (/text\/html|application\/xhtml\+xml/.test(fetched.contentType)) {
     mediaType = "text/html";
     ({ title, passages } = htmlSupportPassages(fetched.body.toString("utf8")));
+    bibliography = supportBibliographyFromHtml(fetched.body.toString("utf8"));
   } else throw new Error("DESIGN_SUPPORT_DOCUMENT_TYPE_UNSUPPORTED");
   let privateArtifactPath: string | undefined;
   if (privateDirectory) {
@@ -81,6 +99,6 @@ export async function acquireSupportDocument(url: string, question: string, priv
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
       if (createHash("sha256").update(await readFile(privateArtifactPath)).digest("hex") !== sha256) throw new Error("DESIGN_SUPPORT_ARTIFACT_INTEGRITY"); }
   }
-  return { observedUrl: url, finalUrl: fetched.finalUrl, sha256, mediaType, title, privateArtifactPath,
+  return { observedUrl: url, finalUrl: fetched.finalUrl, sha256, mediaType, title, privateArtifactPath, bibliography,
     passages: rankSupportPassages(passages, question) };
 }

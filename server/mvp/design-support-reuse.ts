@@ -8,6 +8,7 @@ import { normalizePublicWebUrl } from "@/server/retrieval/web-discovery-validati
 import { currentJobExecution, fingerprint, stageCheckpoint } from "./job-execution-context";
 import type { DesignSupportSource } from "./design-support-addendum";
 import type { DesignSupportGap } from "./design-support-gap";
+import { supportBibliographyFromHtml } from "./design-support-document";
 
 export const DESIGN_SUPPORT_REUSE_POLICY = "design-support-reuse.v1";
 type Snapshot = { project?: { id?: string; userId?: string }; evidenceSet?: { contentHash?: string; snapshotJson?: unknown } };
@@ -64,7 +65,10 @@ export async function reuseProjectDesignSupport(input: { userId: string; project
       for (const source of saved.value.support) {
         if (reused.length >= 4 || reused.some(item => item.document.sha256 === source.document.sha256) ||
             !await verifyReusableSupportSource(source, discovery)) continue;
-        reused.push({ ...source, sourceId: `DS-${fingerprint([input.projectId, source.document.sha256]).slice(0, 20)}`,
+        const bibliography = source.document.mediaType === "text/html"
+          ? supportBibliographyFromHtml(await readFile(source.document.privateArtifactPath!, "utf8")) : source.document.bibliography;
+        reused.push({ ...source, ...(bibliography ? { authors: bibliography.authors, year: bibliography.year, doi: bibliography.doi } : {}),
+          sourceId: `DS-${fingerprint([input.projectId, source.document.sha256]).slice(0, 20)}`,
           gapId: input.gaps[0].gapId, reusedFrom: { policyVersion: DESIGN_SUPPORT_REUSE_POLICY, jobId: row.jobId,
             checkpointId: row.id, checkpointHash: saved.outputHash, originalGapId: source.gapId,
             scientificIdentityHash: identity, discoveryOperationId: operation.id } });

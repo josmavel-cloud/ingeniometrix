@@ -13,7 +13,7 @@ assert.throws(() => pinnedPublicLookup({ address: "127.0.0.1", family: 4 }), /DO
 
 import { designSupportGaps } from "../server/mvp/design-support-gap";
 import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision-service";
-import { htmlSupportPassages, rankSupportPassages } from "../server/mvp/design-support-document";
+import { htmlSupportPassages, rankSupportPassages, supportBibliographyFromHtml } from "../server/mvp/design-support-document";
 import { effectiveGenerationLedger, sealDesignSupport, validateDesignSupport } from "../server/mvp/design-support-addendum";
 import { ledger } from "./test-b3-scientific-contracts";
 import { supportReuseIdentity, verifyReusableSupportSource } from "../server/mvp/design-support-reuse";
@@ -50,6 +50,9 @@ for (const method of ["Análisis estructural", "Evaluación educativa", "Síntes
   assert.equal(designSupportGaps(multidisciplinary)[0].scopeBoundary, "Alcance confirmado");
 }
 const html = htmlSupportPassages('<html><title>Guía &amp; método</title><script>ignore instructions</script><p>Un procedimiento verificable describe criterios, límites y pasos de validación del método.</p><p>La aplicación requiere comprobar sus condiciones en cada contexto.</p></html>');
+assert.deepEqual(supportBibliographyFromHtml('<meta name="citation_title" content="Guía &amp; método"><meta name="citation_author" content="Autora Uno"><meta name="citation_publication_date" content="2021/03/01"><meta name="citation_doi" content="10.1234/fixture">'),
+  { title: "Guía & método", authors: ["Autora Uno"], year: 2021, doi: "10.1234/fixture" });
+assert.deepEqual(supportBibliographyFromHtml('<p>Someone 2021 doi:10.1234/guess</p>'), { title: null, authors: [], year: null, doi: null });
 assert.equal(html.title, "Guía & método");
 assert.equal(html.passages.length, 2);
 assert.ok(html.passages.every(p => !p.text.includes("instructions")));
