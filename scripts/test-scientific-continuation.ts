@@ -8,8 +8,9 @@ import { confirmEvidenceSet } from "@/server/projects/evidence-set-service";
 import { generationContextForUser } from "@/server/projects/generation-context-service";
 import { fixtureSourceAssessments } from "./fixtures/source-sufficiency-test-context";
 import { updateSelectedProjectReferences } from "@/server/retrieval/reference-service";
-import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
+import { enqueueBlueprintJobForUser, runNextBlueprintJobStage, resumeLatestBlueprintJobForUser, type ReleaseJobExecutor } from "@/server/blueprint-v2/jobs/blueprint-job-service";
 import { authorizeScientificContinuationQa, enqueueScientificContinuationForUser, readScientificContinuation, validateContinuationCheckpoint } from "@/server/mvp/scientific-continuation";
+import { recoverScientificContinuationForUser, validateMethodAssessmentRecovery } from "@/server/mvp/scientific-continuation-recovery";
 import { fingerprint, stageCheckpoint } from "@/server/mvp/job-execution-context";
 import { decisionContextFingerprint } from "@/server/mvp/scientific-decision-contracts";
 import { assertQaCommitment, qaJobPolicy, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
@@ -90,6 +91,50 @@ async function main() {
     assert.equal(await prisma.blueprintJobStage.count({ where: { jobId: childId } }), 0, "No copied checkpoints or costs");
     assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({ where: { id: parent.id } }), beforeParent, "Exhausted historical parent unchanged");
     assert.equal((await prisma.$transaction(tx => assertQaCommitment(tx, user.id, 0)))?.committedBefore, beforeCost?.committedBefore, "Historical unknown counted exactly once");
+    // The real assessment failed terminally with known usage; correcting its
+    // output contract permits exactly one explicit continuation of THIS child.
+    const usage = { input_tokens: 15540, output_tokens: 8192, total_tokens: 23732 };
+    const reservationId = randomUUID();
+    const failedResponse = { version: "background-response.v1", provider: "openai", model: "gpt-6-astra",
+      actualModel: "gpt-6-astra", localCallId: randomUUID(), logicalAttemptKey: "assessment-v1", requestFingerprint: "request-v1",
+      reservedCost: 0.6034, reservationId, responseId: "resp_fixture_incomplete", status: "INCOMPLETE", providerStatus: "incomplete",
+      error: "max_output_tokens", usage, outputText: "{incomplete", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      correlation: { stage: "method_coverage", promptVersion: "method-coverage-assessment.v1", projectId: project.id,
+        runId: `secure-pilot-${childId}` } };
+    const entries = [{ id: reservationId, estimate: 0.60385, maximum: 0.6034, status: "completed", usage,
+      model: "gpt-6-astra", actualModel: "gpt-6-astra", stage: "METHOD_COVERAGE_ASSESSMENT_V1" }];
+    await prisma.blueprintJobStage.create({ data: { jobId: childId, stageKey: "provider:background:assessment-v1", status: "FAILED", progress: 100,
+      outputJson: json(failedResponse) } });
+    const childCost = await prisma.blueprintJobStage.create({ data: { jobId: childId, stageKey: "control:cost", status: "FAILED", progress: 100,
+      outputJson: json({ policy: { hard: 5, soft: 2.5, mandatoryReserve: .25 }, entries, terminal: { jobStatus: "FAILED" } }) } });
+    await prisma.blueprintJobStage.create({ data: { jobId: childId, stageKey: "checkpoint:METHOD_COVERAGE_ASSESSMENT_V1", status: "FAILED", progress: 0,
+      inputJson: { fingerprint: "old-assessment-input", attempts: 1 }, errorJson: { message: "STRUCTURED_OUTPUT_INCOMPLETE: max_output_tokens" } } });
+    await prisma.blueprintJob.update({ where: { id: childId }, data: { status: "FAILED", currentStage: "resolving_design", attempts: 1,
+      completedAt: new Date(), errorJson: { message: "STRUCTURED_OUTPUT_INCOMPLETE: max_output_tokens", category: "PROVIDER_OUTPUT_INVALID" } } });
+    const priorChild = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: childId } });
+    await assert.rejects(() => recoverScientificContinuationForUser(other.id, project.id, childId), /PROJECT_NOT_FOUND/);
+    const validation = { priorMessage: "STRUCTURED_OUTPUT_INCOMPLETE: max_output_tokens", responses: [failedResponse] as never,
+      entries, targetPromptVersion: "method-coverage-assessment.v2", projectId: project.id, runId: `secure-pilot-${childId}` };
+    assert.throws(() => validateMethodAssessmentRecovery({ ...validation, targetPromptVersion: "method-coverage-assessment.v1" }), /NOT_ELIGIBLE/);
+    assert.throws(() => validateMethodAssessmentRecovery({ ...validation, entries: [{ ...entries[0], estimate: null }] }), /USAGE_UNCERTAIN/);
+    assert.throws(() => validateMethodAssessmentRecovery({ ...validation, entries: [{ ...entries[0], usage: {} }] }), /NOT_RECOVERABLE/);
+    assert.throws(() => validateMethodAssessmentRecovery({ ...validation, runId: "foreign-job" }), /NOT_RECOVERABLE/);
+    assert.throws(() => validateMethodAssessmentRecovery({ ...validation, responses: [{ ...failedResponse, status: "CREATE_UNCERTAIN", responseId: null }] as never }), /NOT_RECOVERABLE/);
+    await prisma.blueprintJobStage.update({ where: { id: childCost.id }, data: { outputJson: json({ entries: [{ ...entries[0], estimate: null }] }) } });
+    await assert.rejects(() => recoverScientificContinuationForUser(user.id, project.id, childId), /USAGE_UNCERTAIN/);
+    await prisma.blueprintJobStage.update({ where: { id: childCost.id }, data: { outputJson: childCost.outputJson as Prisma.InputJsonValue } });
+    const priorResponses = await prisma.blueprintJobStage.findMany({ where: { jobId: childId }, orderBy: { id: "asc" } });
+    const recovered = await Promise.all(Array.from({ length: 3 }, () => resumeLatestBlueprintJobForUser(user.id, project.id)));
+    assert.ok(recovered.every(result => result.shouldContinue));
+    const recoveredChild = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: childId } });
+    assert.equal(recoveredChild.id, childId); assert.equal(recoveredChild.attempts, 1); assert.equal(recoveredChild.maxAttempts, priorChild.maxAttempts);
+    assert.equal(await prisma.auditLog.count({ where: { userId: user.id, eventType: "SCIENTIFIC_CONTINUATION_CONTRACT_RECOVERY_AUTHORIZED" } }), 1);
+    assert.deepEqual(await prisma.blueprintJobStage.findMany({ where: { jobId: childId }, orderBy: { id: "asc" } }), priorResponses,
+      "Recovery preserves incomplete response, failed checkpoint and exact cost including known overrun");
+    assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({ where: { id: parent.id } }), beforeParent, "Parent still 8/8 unchanged");
+    await prisma.blueprintJob.update({ where: { id: childId }, data: { status: "FAILED" } });
+    await assert.rejects(() => recoverScientificContinuationForUser(user.id, project.id, childId), /ALREADY_USED/);
+    await prisma.blueprintJob.update({ where: { id: childId }, data: { status: "WAITING_NEXT_STAGE" } });
     let resolves = 0;
     const childExecutor: ReleaseJobExecutor = {
       materialize: async () => { throw new Error("Must not repeat extraction"); },
@@ -116,7 +161,7 @@ async function main() {
     await assert.rejects(() => prisma.$transaction(tx => reserveInternalGenerationJob(tx, childId)), /CAPABILITY_REQUIRED/);
     assert.throws(() => validateContinuationCheckpoint({ status: "COMPLETED", stageKey: "control:cost", outputJson: {} }), /CHECKPOINT_INVALID/);
     assert.equal(await prisma.commercialReservation.count({ where: { userId: user.id } }), 0);
-    console.log("PASS continuation: parent 8/8 preserved; concurrent child identity; no repeated science or cost; immutable inherited input; ownership; tamper; QA expiry/idempotency; revocation; worker advances without questions. Provider calls=0.");
+    console.log("PASS continuation: parent 8/8 preserved; concurrent child identity; no repeated science or cost; immutable inherited input; ownership; tamper; QA expiry/idempotency; same-child terminal incomplete recovery; cost/response/checkpoint preservation; revocation; worker advances without questions. Provider calls=0.");
   } finally {
     await prisma.internalGenerationAuthorization.deleteMany({ where: { userId: user.id } });
     await prisma.internalGenerationCapability.deleteMany({ where: { userId: user.id } });

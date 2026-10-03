@@ -1,3 +1,4 @@
+import { recoverScientificContinuationForUser } from "@/server/mvp/scientific-continuation-recovery";
 import { readScientificContinuation } from "@/server/mvp/scientific-continuation";
 import { webDiscoveryPolicyCostBound } from "@/server/retrieval/astra-web-cost-policy";
 import { DESIGN_MINI_RESEARCH_POLICY } from "@/server/mvp/design-mini-research";
@@ -654,6 +655,10 @@ export async function resumeLatestBlueprintJobForUser(userId: string, projectId:
   const job = await prisma.blueprintJob.findFirst({ where: { userId, projectId }, orderBy: { createdAt: "desc" } });
   if (!job) throw new Error("No hay un job para reanudar.");
   if (job.status === BlueprintJobStatus.COMPLETED) return { job: toJobSummary(job), shouldContinue: false, state: "completed" as const };
+  if (job.status === BlueprintJobStatus.FAILED && (job.metadataJson as { scientificContinuation?: unknown } | null)?.scientificContinuation) {
+    const recovered = await recoverScientificContinuationForUser(userId, projectId, job.id);
+    return { job: toJobSummary(recovered.job), shouldContinue: true, state: recovered.reused ? "already_scheduled" as const : "continuation_recovery_scheduled" as const };
+  }
   if (job.status === BlueprintJobStatus.WAITING_USER_DECISION && (job.metadataJson as { scientificProfile?: string } | null)?.scientificProfile === "rc4") return authorizeAutonomousDesignRecoveryForUser(userId, projectId, job.id);
   if (job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
     (/^AUTONOMOUS_PATCH_CONTEXT_TOO_LARGE:/.test((job.errorJson as { message?: string } | null)?.message ?? "") ||
