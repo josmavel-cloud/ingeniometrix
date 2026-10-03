@@ -134,6 +134,43 @@ async function main() {
     assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({ where: { id: parent.id } }), beforeParent, "Parent still 8/8 unchanged");
     await prisma.blueprintJob.update({ where: { id: childId }, data: { status: "FAILED" } });
     await assert.rejects(() => recoverScientificContinuationForUser(user.id, project.id, childId), /ALREADY_USED/);
+    // Second proved product defect: four rejected preflights did not dispatch,
+    // assessment and reconstruction outputs completed and must be retained.
+    const completedEntries = [];
+    for (const phase of ["assessment", "reconstruction"]) {
+      const reservation = randomUUID(), consumed = { input_tokens: 100, output_tokens: 200, total_tokens: 300 };
+      const complete = { ...failedResponse, logicalAttemptKey: phase+"-v2", reservationId: reservation,
+        responseId: "resp_fixture_"+phase, requestFingerprint: phase+"-request-v2", status: "COMPLETED", providerStatus: "completed",
+        error: null, usage: consumed, outputText: "{}", correlation: { ...failedResponse.correlation,
+          promptVersion: "method-coverage-"+phase+".v2" } };
+      await prisma.blueprintJobStage.create({ data: { jobId: childId, stageKey: "provider:background:"+phase+"-v2",
+        status: "COMPLETED", progress: 100, outputJson: json(complete) } });
+      completedEntries.push({ ...entries[0], id: reservation, estimate: .1, maximum: .2, usage: consumed });
+    }
+    for (const stageKey of [`METHOD_COVERAGE_ASSESSMENT_V1:context:${fingerprint("v2")}`, "METHOD_RECONSTRUCTION_V1_1", "CORPUS_METHOD_PROFILE_V1", "METHOD_COVERAGE_BEFORE_V1"]) {
+      const value={fixture:stageKey};
+      await prisma.blueprintJobStage.create({ data: { jobId: childId, stageKey:"checkpoint:"+stageKey,status:"COMPLETED",progress:100,
+        outputJson:json({fingerprint:fingerprint([stageKey,"input"]),value,outputHash:fingerprint(value),files:[]}) } });
+    }
+    for (const ordinal of [1,2,3,4]) await prisma.blueprintJobStage.create({data:{jobId:childId,stageKey:`checkpoint:METHOD_COVERAGE_RESEARCH_V1_${ordinal}`,
+      status:"FAILED",progress:0,inputJson:{fingerprint:fingerprint(["predispatch",ordinal]),attempts:1},
+      errorJson:{message:"COST_LIMIT_REACHED: el trabajo restante completo no cabe bajo el tope del job."}}});
+    await prisma.blueprintJobStage.update({where:{id:childCost.id},data:{outputJson:json({entries:[...entries,...completedEntries]})}});
+    await prisma.blueprintJob.update({where:{id:childId},data:{status:"FAILED",attempts:2,errorJson:{message:"METHOD_HANDOFF_INVALID"}}});
+    const uncertainOp=await prisma.paidOperation.create({data:{userId:user.id,projectId:project.id,revision:"fixture",requestId:randomUUID(),
+      purpose:"DESIGN_SUPPORT_MINI_RESEARCH",inputFingerprint:"fixture",hardCapMicros:1,status:"RUNNING"}});
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/PRE_DISPATCH_PROOF_MISSING/);
+    await prisma.paidOperation.delete({where:{id:uncertainOp.id}});
+    const beforeExecutionRecovery=await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}});
+    const secondRecovered=await Promise.all(Array.from({length:3},()=>resumeLatestBlueprintJobForUser(user.id,project.id)));
+    assert.ok(secondRecovered.every(result=>result.shouldContinue));
+    assert.equal(await prisma.auditLog.count({where:{userId:user.id,eventType:"SCIENTIFIC_CONTINUATION_EXECUTION_RECOVERY_AUTHORIZED"}}),1);
+    const resumedAgain=await prisma.blueprintJob.findUniqueOrThrow({where:{id:childId}});
+    assert.equal(resumedAgain.attempts,2);assert.equal(resumedAgain.maxAttempts,3);
+    assert.deepEqual(await prisma.blueprintJobStage.findMany({where:{jobId:childId},orderBy:{id:"asc"}}),beforeExecutionRecovery);
+    assert.deepEqual(await prisma.blueprintJob.findUniqueOrThrow({where:{id:parent.id}}),beforeParent);
+    await prisma.blueprintJob.update({where:{id:childId},data:{status:"FAILED",errorJson:{message:"METHOD_HANDOFF_INVALID"}}});
+    await assert.rejects(()=>recoverScientificContinuationForUser(user.id,project.id,childId),/ALREADY_USED/);
     await prisma.blueprintJob.update({ where: { id: childId }, data: { status: "WAITING_NEXT_STAGE" } });
     let resolves = 0;
     const childExecutor: ReleaseJobExecutor = {
