@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {fixture}from"./test-method-coverage";
 import {fingerprint}from"../server/mvp/job-execution-context";
-import {projectMethodCoverageContext,reconstructMethodCoverageContext,projectMethodEvidenceContext,reconstructMethodEvidenceContext}from"../server/mvp/method-coverage-context";
+import {projectMethodCoverageContext,reconstructMethodCoverageContext,projectMethodEvidenceContext,reconstructMethodEvidenceContext,projectMethodResearchAudit,methodContextAdmissionDiagnostic}from"../server/mvp/method-coverage-context";
 const data=fixture(["EMPIRICAL_QUALITATIVE","EMPIRICAL_QUANTITATIVE","EMPIRICAL_MIXED_METHODS","THEORETICAL_CONCEPTUAL","SYSTEMATIC_OR_SCOPING_REVIEW","OTHER_REVIEW_SYNTHESIS","POLICY_STANDARD_GUIDANCE","OTHER"]);
 const matrix=structuredClone(data.matrix);const original=JSON.stringify(matrix);const context=projectMethodCoverageContext(matrix);
 assert.equal(fingerprint(reconstructMethodCoverageContext(context)),fingerprint(matrix));assert.equal(JSON.stringify(matrix),original);
@@ -19,3 +19,14 @@ assert.equal(evidenceContext.digestFingerprint,digest.digestFingerprint);assert.
 const wrong=structuredClone(evidenceContext);wrong.passageValues[0][5]="altered quotation";assert.throws(()=>reconstructMethodEvidenceContext(wrong),/INTEGRITY/);
 const foreign=structuredClone(evidenceContext);foreign.effectiveEvidenceFingerprint="another-job";assert.throws(()=>reconstructMethodEvidenceContext(foreign),/INTEGRITY/);
 console.log("Method evidence context PASS: literal excerpts, exact pointers/locators, context-only roles and shared digest identity preserved.");
+
+const fullAudit=[{ordinal:1,question:{cellIds:["EMPIRICAL_MIXED_METHODS:QUALITY_APPRAISAL"],question:"Exact methodological question",rationale:"Material gap"},status:"REINSPECTED_COMPLETED_DISCOVERY",addedSources:["DS-verified"],limitations:["No empirical transfer presumed"],checkpoints:[{reason:"DOCUMENT_PROCEDURAL_SUPPORT_NOT_SUBSTANTIVE",manifest:{privateArtifactPath:"/private/source.pdf"}}],requestId:"provider-private-identity"}];
+const auditBefore=JSON.stringify(fullAudit),auditProjection=projectMethodResearchAudit(fullAudit);
+assert.equal(JSON.stringify(fullAudit),auditBefore);assert.equal(auditProjection.privateAuditFingerprint,fingerprint(fullAudit));
+assert.deepEqual(auditProjection.operations[0].question,fullAudit[0].question);assert.deepEqual(auditProjection.operations[0].limitations,fullAudit[0].limitations);
+assert.ok(!JSON.stringify(auditProjection).includes("/private/")&&!JSON.stringify(auditProjection).includes("provider-private-identity"));
+const request={prompt:"Private scientific material not appropriate for logs",schema:{type:"object"},maxOutputTokens:34816,model:"fixture"};
+const rejected=methodContextAdmissionDiagnostic(request,{inputTokens:30837,tokenCountProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2});assert.equal(rejected.contextAllowed,false);assert.equal(rejected.contextTotal,65653);assert.ok(!JSON.stringify(rejected).includes(request.prompt));
+assert.equal(methodContextAdmissionDiagnostic(request,null).countProvenance,"UNAVAILABLE");
+assert.equal(methodContextAdmissionDiagnostic(request,{inputTokens:29000,tokenCountProvenance:"EXACT_PROVIDER_COUNT",maximumUsd:2}).contextAllowed,true);
+console.log("Method audit/admission PASS: scientific fields preserved, private operational details excluded, rejected exact count recorded safely.");

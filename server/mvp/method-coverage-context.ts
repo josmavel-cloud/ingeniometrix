@@ -129,3 +129,23 @@ export function reconstructMethodEvidenceContext(context:MethodEvidenceContext):
   if(digest.digestFingerprint!==context.digestFingerprint||digest.effectiveEvidenceFingerprint!==context.effectiveEvidenceFingerprint||fingerprint(digest)!==context.originalFingerprint)throw new Error("METHOD_EVIDENCE_CONTEXT_INTEGRITY");
   return digest;
 }
+
+export const METHOD_CONTEXT_ADMISSION_VERSION = "method-context-admission.v2";
+/** Scientific history for model input. Full operational audit remains private. */
+export function projectMethodResearchAudit(audit:unknown[]) {
+  return {version:"method-research-context.v1",privateAuditFingerprint:fingerprint(audit),operations:audit.map(value=>{
+    const row=value as {ordinal?:number;question?:unknown;status?:string;addedSources?:string[];limitations?:string[];checkpoints?:Array<{reason?:string|null}>};
+    return {ordinal:row.ordinal??null,question:row.question??null,status:row.status??"UNKNOWN",
+      addedSources:row.addedSources??[],limitations:row.limitations??[],
+      inspectionLimitations:[...new Set((row.checkpoints??[]).flatMap(item=>item.reason?[item.reason]:[]))]};})};
+}
+
+export function methodContextAdmissionDiagnostic(request:{prompt:string;schema:unknown;maxOutputTokens?:number|null;[key:string]:unknown},
+  bound:{inputTokens:number;tokenCountProvenance:string;maximumUsd:number}|null,limit=65536) {
+  const output=request.maxOutputTokens??0;
+  return {version:METHOD_CONTEXT_ADMISSION_VERSION,requestFingerprint:fingerprint(request),promptBytes:Buffer.byteLength(request.prompt),
+    schemaBytes:Buffer.byteLength(JSON.stringify(request.schema)),inputTokens:bound?.inputTokens??null,
+    countProvenance:bound?.tokenCountProvenance??"UNAVAILABLE",maxOutputTokens:output,contextLimit:limit,
+    contextTotal:bound?bound.inputTokens+output:null,contextAllowed:!!bound&&bound.inputTokens+output<=limit,
+    maximumUsd:bound?.maximumUsd??null};
+}

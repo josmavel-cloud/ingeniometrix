@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { projectMethodCoverageContext, projectMethodEvidenceContext } from "./method-coverage-context";
+import { projectMethodCoverageContext, projectMethodEvidenceContext, projectMethodResearchAudit, methodContextAdmissionDiagnostic, METHOD_CONTEXT_ADMISSION_VERSION } from "./method-coverage-context";
 import { reuseHistoricalMethodAssessment, revalidateHistoricalCoverage } from "./method-assessment-reuse";
 import { annotateRetainedSupportContentKind } from "./design-support-content-kind";
 import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
@@ -102,7 +102,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
   const jobId = currentJobExecution()?.jobId ?? input.runId;
   const maxResearchOperations = input.maxResearchOperations ?? 2;
   const resolutionInput = { decisionFingerprint: bundle.decisionFingerprint,
-    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION,
+    policyVersion: METHOD_COVERAGE_RESOLUTION_POLICY, inspectionVersion:METHOD_DOCUMENT_INSPECTION_VERSION, contextAdmissionVersion:METHOD_CONTEXT_ADMISSION_VERSION,
     promptVersions:{assessment:assessmentPrompt.version,reconstruction:reconstructionPrompt.version,critic:criticPrompt.version},
     maxResearchOperations, support: input.inheritedSupport.map(s => [s.sourceId,s.document.sha256]) };
   const resolutionKey = await versionedCheckpointKey("AUTONOMOUS_DESIGN",resolutionInput);
@@ -140,12 +140,14 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const bound = provider.estimateStructuredRequest ? await provider.estimateStructuredRequest(request) : responseCostBound({ model: request.model, input: prompt,
         text: { format: { type: "json_schema", name: request.schemaName, strict: true, schema: request.schema } },
         reasoning: { effort: request.reasoningEffort }, max_output_tokens: request.maxOutputTokens! });
-      if (!bound || bound.inputTokens + record.max_output_tokens > 65536) throw new Error("METHOD_COVERAGE_CONTEXT_UNSAFE");
+      const admission = methodContextAdmissionDiagnostic(request,bound);
+      // Record safe sizes/count provenance before rejecting. No private prompt,
+      // source text, URLs, paths or provider credentials are written to this record.
       await stageCheckpoint(`${actualKey}_FORECAST`, { requestHash: fingerprint(request) }, async () => ({
-        promptBytes: Buffer.byteLength(prompt), inputTokens: bound.inputTokens, countProvenance: bound.tokenCountProvenance,
-        maximumUsd: bound.maximumUsd, minimumRemainingMandatoryReservation: remainingAfterCall,
+        ...admission, minimumRemainingMandatoryReservation: remainingAfterCall,
         effectiveEvidenceFingerprint: addendum.checksum,
       }));
+      if (!bound || !admission.contextAllowed) throw new Error("METHOD_COVERAGE_CONTEXT_UNSAFE");
       // A resumed background response already owns its reservation. Persist the
       // original admission so retrieving it does not reserve its maximum twice.
       await stageCheckpoint(`METHOD_CALL_ADMISSION:${fingerprint(request)}`, { requestHash: fingerprint(request),
@@ -256,9 +258,13 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const contextDigest = digest(methodCoverageCells(matrix).flatMap(c=>c.supportPointers));
       const digestInput={fingerprint:contextDigest.digestFingerprint};
       await stageCheckpoint(await versionedCheckpointKey(`METHOD_COVERAGE_DIGEST_${round}`,digestInput),digestInput,async()=>contextDigest);
+      const researchContext=projectMethodResearchAudit(researchAudit);
+      const researchContextInput={version:researchContext.version,privateAuditFingerprint:researchContext.privateAuditFingerprint};
+      await stageCheckpoint(await versionedCheckpointKey("METHOD_RESEARCH_PRIVATE_AUDIT",researchContextInput),researchContextInput,
+        async()=>({audit:researchAudit,scientificProjection:researchContext}));
       const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchema, reconstructionPrompt,
         { frozenIntent:bundle.intent, ...compactMethodAuthorityContext(original),
-          historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:projectMethodCoverageContext(matrix), evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)), researchAudit });
+          historicalFindings:findings, corpusContext:compactMethodCorpusContext(originalProfile,profile), previousCoverage:projectMethodCoverageContext(matrix), evidence:projectMethodEvidenceContext(digestPromptContext(contextDigest)), researchAudit:researchContext });
       const selected = reconstruction.alternatives.find(a=>a.id===reconstruction.selectedId);
       if (!selected || new Set(reconstruction.alternatives.map(a=>a.id)).size!==reconstruction.alternatives.length) throw new Error("METHOD_SELECTION_INVALID");
       const graph = normalizeDeclaredMethodHandoffs([...original.components.filter(c => c.kind !== "method" && c.kind !== "technique"), ...selected.methodComponents],selected.methodHandoffs);
