@@ -1,11 +1,14 @@
+import { prisma } from "@/lib/prisma";
+import { checkpointSettledCost } from "./checkpoint-currency";
 import { fingerprint, stageCheckpoint, versionedCheckpointKey } from "./job-execution-context";
 import type { ScientificDecisionBundle } from "./scientific-decision-service";
 import { DESIGN_MINI_RESEARCH_PURPOSE } from "@/server/retrieval/web-discovery-contract";
-import { runWebDiscoveryOperation } from "@/server/retrieval/web-discovery-operation";
+import { runWebDiscoveryOperation, readCompletedWebDiscovery } from "@/server/retrieval/web-discovery-operation";
 import { createOpenAiWebDiscoveryProvider } from "@/server/retrieval/web-discovery-provider";
 import { convergeWebCandidate, type ExistingScientificSource } from "@/server/retrieval/web-candidate-convergence";
-import path from "node:path";
-import { acquireSupportDocument } from "./design-support-document";
+import { METHOD_DOCUMENT_INSPECTION_VERSION } from "./design-support-document";
+import { inspectMethodSupportCandidate } from "./design-support-inspection";
+export { recoverCompletedMethodResearch } from "./design-mini-research-recovery";
 import type { DesignSupportSource } from "./design-support-addendum";
 import { designSupportGaps, type DesignSupportGap } from "./design-support-gap";
 export { designSupportGaps } from "./design-support-gap";
@@ -37,7 +40,7 @@ export function designSupportMetadataEligible(input: { title: string; abstract: 
 // A web proposal is never promoted into the user's selected EvidenceSet. Only
 // independently observed bibliographic metadata with a real abstract can be
 // offered as separate, inspectable design support.
-export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; methodCoverage?: { version: "method-coverage-reconstruction.v1"; ordinal: number; cellIds: string[]; documentAllowance: number }; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }): Promise<DesignMiniResearchResult> {
+export async function researchDesignSupport(input: { userId: string; projectId: string; runId: string; bundle: ScientificDecisionBundle; gaps?: DesignSupportGap[]; operationOrdinal?: 1 | 2; methodCoverage?: { version: "method-coverage-reconstruction.v1"; ordinal: number; cellIds: string[]; documentAllowance: number }; knownSupport?: DesignSupportSource[]; focusedQuestion?: string; beforeDiscovery?: () => Promise<void> }, dependencies: { readCompleted?: typeof readCompletedWebDiscovery } = {}): Promise<DesignMiniResearchResult> {
   const { bundle } = input;
   const material = (input.gaps ?? designSupportGaps(bundle)).slice(0, 1);
   const closure = input.methodCoverage;
@@ -73,21 +76,31 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
       preferredSourceTypes: ["SCHOLARLY" as const, "STANDARD_OR_CODE" as const], unresolvedPremises: [], webDiscoveryEligible: true };
     const gapSetHash = fingerprint([bundle.decisionFingerprint, gapId, finding, gap.requiredDimension, ordinal, ...(closure ? [closure.version, closure.cellIds, input.runId] : [])]);
     try {
-      const checkpointInput = { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion };
+      const checkpointInput = { policy: DESIGN_MINI_RESEARCH_POLICY, gapSetHash, sourcePoolVersion, inspectionPolicy: METHOD_DOCUMENT_INSPECTION_VERSION };
       // A different scientific gap gets a content-addressed checkpoint. Failed
       // pre-dispatch inputs remain inspectable instead of being overwritten.
       const checkpointKey = await versionedCheckpointKey(cycle, checkpointInput);
       const verified = await stageCheckpoint(checkpointKey, checkpointInput, async () => {
-        await input.beforeDiscovery?.();
-        const key = process.env.OPENAI_API_KEY;
-        if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
-        const discovery = await runWebDiscoveryOperation({ userId: input.userId, projectId: input.projectId, smoke: false,
-          purpose: DESIGN_MINI_RESEARCH_PURPOSE, gapSetHash, seenSetHash: sourcePoolVersion,
+        const discoveryInput = { userId: input.userId, projectId: input.projectId, smoke: false,
+          purpose: DESIGN_MINI_RESEARCH_PURPOSE as typeof DESIGN_MINI_RESEARCH_PURPOSE, gapSetHash, seenSetHash: sourcePoolVersion,
           researchIntentProjection: { searchIntentHash: intentHash, scientificSignals }, evidenceGaps: [gap],
           seenSourceIdentities: known, policy: { maxToolCalls: DESIGN_MINI_RESEARCH_POLICY.maxToolCalls,
             maxCandidates: DESIGN_MINI_RESEARCH_POLICY.maxCandidates, maxOutputTokens: DESIGN_MINI_RESEARCH_POLICY.maxOutputTokens },
-          provider: createOpenAiWebDiscoveryProvider({ apiKey: key }) });
-        const operation = { operationId: discovery.operationId, estimatedCostUsd: discovery.estimatedCostUsd, usage: discovery.usage, state: discovery.state };
+          provider: { discover: async () => { throw new Error("CACHED_DISCOVERY_MUST_NOT_DISPATCH"); } } };
+        let discovery = await (dependencies.readCompleted ?? readCompletedWebDiscovery)(discoveryInput);
+        if (!discovery) {
+          await input.beforeDiscovery?.();
+          const key = process.env.OPENAI_API_KEY;
+          if (!key) throw new Error("DESIGN_MINI_RESEARCH_PROVIDER_UNAVAILABLE");
+          discovery = await runWebDiscoveryOperation({ ...discoveryInput, provider: createOpenAiWebDiscoveryProvider({ apiKey: key }) });
+        }
+        const calls = await prisma.paidOperationCall.findMany({ where: { operationId: discovery.operationId },
+          select: { estimatedMicros: true, status: true } });
+        if (discovery.estimatedCostUsd !== null && (!calls.length || calls.some(call => call.status !== "COMPLETED" || call.estimatedMicros === null)))
+          throw new Error("METHOD_RESEARCH_SETTLED_COST_UNVERIFIED");
+        const operation = { operationId: discovery.operationId,
+          ...checkpointSettledCost(discovery.estimatedCostUsd === null ? null : calls.reduce((sum, call) => sum + call.estimatedMicros!, 0)),
+          usage: discovery.usage, state: discovery.state };
         if (!["COMPLETED", "PARTIAL"].includes(discovery.state)) return { support: [] as VerifiedSupport[], limitation: `Miniinvestigación: ${discovery.state}`, operation, acquiredDocuments: 0 };
         const accepted: VerifiedSupport[] = [];
         let acquisitions = 0, inspectedCandidates = 0;
@@ -100,29 +113,15 @@ export async function researchDesignSupport(input: { userId: string; projectId: 
           // per operation/four per job. An HTTP denial is not an acquired document.
           if (acquisitions >= Math.min(2, closure?.documentAllowance ?? 2)) break;
           const slot = (ordinal - 1) * 5 + ++inspectedCandidates;
-          const inspected = await stageCheckpoint(closure ? `METHOD_COVERAGE_DOCUMENT_V1_${slot}` : `DESIGN_SUPPORT_DOCUMENT_ACQUISITION3_${slot}`, {
-            operationId: discovery.operationId, url: candidate.proposal.observedUrl, policy: DESIGN_MINI_RESEARCH_POLICY.version,
-          }, async () => {
-            try {
-              const document = await acquireSupportDocument(candidate.proposal.observedUrl, `${finding.question} ${candidate.proposal.identityProposal.title}`,
-                path.resolve("artifacts-local", "design-support", fingerprint([input.userId, input.projectId, input.runId])),
-                { title: candidate.proposal.identityProposal.title, doi: candidate.proposal.identityProposal.doi });
-              const expected = normalizeConcept(candidate.proposal.identityProposal.title);
-              const observed = normalizeConcept(document.title);
-              // Identity is checked against the acquired title. Relevance and
-              // methodological applicability remain independent critic decisions.
-              if (!expected || !observed || !(observed.includes(expected) || expected.includes(observed)) || !document.passages.length)
-                return { source: null, acquired: true, reason: "DOCUMENT_IDENTITY_OR_TEXT_UNVERIFIED" };
-              const source: VerifiedSupport = { sourceId: `DS-${fingerprint([input.projectId, input.runId, document.sha256]).slice(0, 20)}`,
-                gapId, title: document.title, authors: document.bibliography?.authors ?? [], year: document.bibliography?.year ?? null, doi: document.bibliography?.doi ?? null,
-                observationIds: convergence.discoveryObservationIds, document, provenance: "SYSTEM_DESIGN_SUPPORT" };
-              return { source, acquired: true, reason: null };
-            } catch (error) {
-              const code = (error as { code?: string }).code ?? (error instanceof Error ? error.message : "");
-              return { source: null, acquired: (error as { documentAcquired?: boolean })?.documentAcquired === true, reason: /^DOCUMENT_[A-Z_]+$|^DESIGN_SUPPORT_[A-Z_]+$|^ERR_INVALID_IP_ADDRESS$|^ETIMEDOUT$|^ECONNRESET$|^ENOTFOUND$/.test(code)
-                ? code : "DOCUMENT_ACQUISITION_FAILED" };
-            }
-          }, value => value.source?.document.privateArtifactPath ? [value.source.document.privateArtifactPath] : []);
+          const inspectionInput = { operationId: discovery.operationId, url: candidate.proposal.observedUrl,
+            policy: DESIGN_MINI_RESEARCH_POLICY.version, inspectionPolicy: METHOD_DOCUMENT_INSPECTION_VERSION };
+          const inspectionKey = await versionedCheckpointKey(closure ? `METHOD_COVERAGE_DOCUMENT_V1_${slot}` : `DESIGN_SUPPORT_DOCUMENT_ACQUISITION3_${slot}`, inspectionInput);
+          const inspected = await stageCheckpoint(inspectionKey, inspectionInput, () => inspectMethodSupportCandidate({
+            userId: input.userId, projectId: input.projectId, runId: input.runId, gapId,
+            observedUrl: candidate.proposal.observedUrl, question: finding.question,
+            expectedTitle: candidate.proposal.identityProposal.title, expectedDoi: candidate.proposal.identityProposal.doi,
+            observationIds: convergence.discoveryObservationIds,
+          }), value => value.manifest?.privateArtifactPath ? [value.manifest.privateArtifactPath] : []);
           if (inspected.acquired) acquisitions++;
           if (inspected.source && !accepted.some(source => source.document.sha256 === inspected.source!.document.sha256)) accepted.push(inspected.source);
         }
