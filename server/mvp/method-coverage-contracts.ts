@@ -318,7 +318,13 @@ export function validateMethodCoverageCritique(critiqueInput: MethodCoverageCrit
       critique.effectiveEvidenceFingerprint !== matrix.effectiveEvidenceFingerprint) throw new Error("METHOD_CRITIC_IDENTITY_MISMATCH");
   const cells = methodCoverageCells(matrix);
   if (!sameSet(critique.cellAssessments.map(row => row.cellId), cells.map(cell => cell.cellId))) throw new Error("METHOD_CRITIC_CELL_COVERAGE_MISMATCH");
-  if (!sameSet(critique.findingAssessments.map(row => row.code), unique(input.findingCodes))) throw new Error("METHOD_CRITIC_FINDING_COVERAGE_MISMATCH");
+  const assessedFindingCodes = critique.findingAssessments.map(row => row.code);
+  if (unique(assessedFindingCodes).length !== assessedFindingCodes.length) throw new Error("METHOD_CRITIC_FINDING_DUPLICATE");
+  // The independent critic may discover new blockers. A missing historical
+  // assessment is retained as unresolved, never inferred from a new code or
+  // treated as an approval. This also lets the completed critique direct the
+  // next bounded evidence step without paying for the same response again.
+  const unassessedHistoricalFindingCodes = unique(input.findingCodes).filter(code => !assessedFindingCodes.includes(code));
   const assessedCells = cells.map(cell => {
     const assessment = critique.cellAssessments.find(row => row.cellId === cell.cellId)!;
     const supported = ["SUPPORTED", "CONDITIONALLY_SUPPORTED"].includes(assessment.coverageStatus);
@@ -338,14 +344,14 @@ export function validateMethodCoverageCritique(critiqueInput: MethodCoverageCrit
   const methodValidityBlocker = critique.findingAssessments.some(finding => finding.methodValidityImpact);
   // The public boolean is a deterministic aggregate of independently assessed
   // REQUIRED operations, never a forced approval based on pointer validity.
-  return { critique, overallCoverageStatus,
+  return { critique, overallCoverageStatus, unassessedHistoricalFindingCodes,
     appraisalCoverageSupported: coverage("QUALITY_APPRAISAL"),
     extractionCoverageSupported: coverage("DATA_EXTRACTION"),
     codingCoverageSupported: coverage("CODING"),
     withinClassSynthesisSupported: coverage("WITHIN_CLASS_SYNTHESIS"),
     crossClassIntegrationSupported: coverage("CROSS_CLASS_INTEGRATION"),
     methodologicalTransferSupported: critique.cellAssessments.filter(row => cells.find(cell => cell.cellId === row.cellId)?.required).every(row => row.transferSupported),
-    evidenceSupported: critique.intentPreserved && critique.corpusClassificationValid && critique.methodCoherent &&
+    evidenceSupported: !unassessedHistoricalFindingCodes.length && critique.intentPreserved && critique.corpusClassificationValid && critique.methodCoherent &&
       !critique.blockingScientificIssue && !methodValidityBlocker && ["SUPPORTED", "CONDITIONALLY_SUPPORTED"].includes(overallCoverageStatus),
   };
 }
