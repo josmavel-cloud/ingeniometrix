@@ -6,7 +6,7 @@ import { SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT } from "@/server/mv
 import { scientificFindingFields } from "@/server/mvp/design-support-gap";
 import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { randomUUID } from "node:crypto";
-import { activeQaCampaign, allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
+import { activeQaCampaign, qaJobPolicy, allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -711,10 +711,21 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         throw new Error("AUTONOMOUS_RECOVERY_COMPOUND_FINDING_MISSING");
     }
     const legacyUnresolvedPatch = unresolvedPriorPatch && !compoundFindingRecovery;
+    const deniedSupportStage = failedResolution && /^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError)
+      ? await tx.blueprintJobStage.findFirst({ where: { jobId, status: "FAILED",
+        stageKey: { startsWith: "checkpoint:DESIGN_MINI_RESEARCH_" }, errorJson: { path: ["message"], equals: "PRE_JOB_COST_LIMIT" } } }) : null;
+    const linkedQaBudgetRecovery = Boolean(deniedSupportStage && await qaJobPolicy(tx, jobId));
     const accessReviewRecovery = legacyUnresolvedPatch && Boolean(priorMetadata?.scientificPatchRecovery) &&
       !priorMetadata?.scientificAccessReviewRecovery && job.maxAttempts === 4 && job.attempts === 4;
     if (!failedResolution && (job.status !== BlueprintJobStatus.WAITING_USER_DECISION || job.currentStage !== "awaiting_design_approval")) throw new Error("AUTONOMOUS_RECOVERY_NOT_ELIGIBLE");
     if (failedResolution) {
+      if (linkedQaBudgetRecovery) {
+        if (priorMetadata?.scientificLinkedQaRecovery || job.attempts > job.maxAttempts || job.maxAttempts > 4)
+          throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+        const noDispatch = await tx.paidOperation.findFirst({ where: { userId, projectId, purpose: "DESIGN_SUPPORT_MINI_RESEARCH",
+          status: "FAILED", committedMicros: 0, calls: { none: {} }, createdAt: { gte: job.createdAt } } });
+        if (!noDispatch) throw new Error("AUTONOMOUS_RECOVERY_NO_DISPATCH_PROOF_MISSING");
+      }
       if (forecastRecovery) {
         if (priorMetadata?.scientificForecastRecovery || job.attempts > job.maxAttempts || job.maxAttempts > 3)
           throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
@@ -751,7 +762,7 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         const patchStage = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_1" } } });
         if (patchStage?.status !== BlueprintJobStageStatus.COMPLETED || !patchStage.outputJson)
           throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_MISSING");
-      } else if (!forecastRecovery && job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      } else if (!forecastRecovery && !linkedQaBudgetRecovery && job.attempts >= job.maxAttempts) throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
       const cost = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: "control:cost" } } });
       const entries = (cost?.outputJson as { entries?: Array<{ stage: string; estimate: number | null; status: string }> } | null)?.entries;
       if (!entries) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
@@ -761,7 +772,7 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
           unknownEntries[0].status !== "failed_unknown_usage" || unknownEntries[0].estimate !== null)
           throw new Error("AUTONOMOUS_RECOVERY_LEGACY_RESERVATION_MISMATCH");
       } else if (unknownEntries.length) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
-      if (forecastRecovery) {
+      if (forecastRecovery || linkedQaBudgetRecovery) {
         const record = cost?.outputJson as { policy?: { hard: number; mandatoryReserve: number } } | null;
         const decisionRow = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
         const saved = decisionRow?.outputJson as unknown as { value?: ScientificDecisionBundle; outputHash?: string } | null;
@@ -811,9 +822,12 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     else if (commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
     else throw new Error("AUTONOMOUS_RECOVERY_COMMERCIAL_POLICY_UNKNOWN");
     const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null,
-      maxAttempts: forecastRecovery && job.attempts === job.maxAttempts ? job.maxAttempts + 1 : accessReviewRecovery ? 5 : legacyUnresolvedPatch ? 4 : job.maxAttempts,
+      maxAttempts: (forecastRecovery || linkedQaBudgetRecovery) && job.attempts === job.maxAttempts ? job.maxAttempts + 1 : accessReviewRecovery ? 5 : legacyUnresolvedPatch ? 4 : job.maxAttempts,
       completedAt: null, errorMessage: null, errorJson: Prisma.DbNull,
       metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null),
+        ...(linkedQaBudgetRecovery ? { scientificLinkedQaRecovery: { version: "qa-linked-budget.v1", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, deniedStageId: deniedSupportStage!.id, previousAttempts: job.attempts,
+          previousMaxAttempts: job.maxAttempts, previousCallsNotRepeated: true } } : {}),
         ...(forecastRecovery ? { scientificForecastRecovery: { version: "design-support-forecast.v2", authorizedAt: new Date().toISOString(),
           priorFailure: priorError, previousAttempts: job.attempts, previousMaxAttempts: job.maxAttempts, priorCriticPreserved: true } } : {}),
         ...(contextSizeRecovery ? { scientificContextRecovery: { version: "targeted-critic-context.v2", authorizedAt: new Date().toISOString(),
@@ -824,13 +838,13 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         ...(acquisitionRecovery ? { scientificAcquisitionRecovery: { authorizedAt: new Date().toISOString(), version: "pinned-dns-all.v2", priorFailure: priorError, paidDiscoveryReused: true } } : {}),
         ...(legacyUnresolvedPatch && !accessReviewRecovery ? { scientificPatchRecovery: { authorizedAt: new Date().toISOString(), fromPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v2", toPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", priorPatchRejectedBy: priorError } } : {}),
         ...(accessReviewRecovery ? { scientificAccessReviewRecovery: { authorizedAt: new Date().toISOString(), reusedPatchVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", targetedCriticVersion: "ingeniometrix-scientific-design-autonomous-targeted-critic-v2" } } : {}),
-        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: forecastRecovery ? "configured_discovery_bound" : contextSizeRecovery ? "deduplicated_critic_context" : compoundFindingRecovery ? "compound_finding_contract" : accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch } }) } });
+        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: linkedQaBudgetRecovery ? "qa_nested_funding_contract" : forecastRecovery ? "configured_discovery_bound" : contextSizeRecovery ? "deduplicated_critic_context" : compoundFindingRecovery ? "compound_finding_contract" : accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch } }) } });
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     await tx.auditLog.create({ data: { userId, projectId, actorType: "SYSTEM", eventType: "AUTONOMOUS_DESIGN_RECOVERY_SCHEDULED",
       payloadJson: toJson({ jobId, priorStatus: job.status, previousAttempts: job.attempts,
         allPriorUsageKnown: failedResolution && !rejectedLegacySchema && !legacyUnresolvedPatch,
         rejectedBeforeResponse: rejectedLegacySchema, scientificPatchRecovery: legacyUnresolvedPatch && !accessReviewRecovery,
-        forecastRecovery, contextSizeRecovery, compoundFindingRecovery, completedPatchTargetedReview: accessReviewRecovery,
+        linkedQaBudgetRecovery, forecastRecovery, contextSizeRecovery, compoundFindingRecovery, completedPatchTargetedReview: accessReviewRecovery,
         unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch }) } });
     return { job: toJobSummary(updated), shouldContinue: true, state: "autonomous_recovery_scheduled" as const };
   });

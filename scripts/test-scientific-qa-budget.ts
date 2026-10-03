@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { reserveInternalGenerationJob } from "@/server/commercial/internal-generation";
 import { allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
 import { reserveJobCall, withJobExecution } from "@/server/mvp/job-execution-context";
-import { withPaidOperation } from "@/server/mvp/pre-job-budget";
+import { withPaidOperation, currentPaidOperation } from "@/server/mvp/pre-job-budget";
 
 async function main() {
   const url = new URL(process.env.DATABASE_URL ?? "");
@@ -41,6 +41,33 @@ async function main() {
       assert.equal(unknownReport?.committedBefore, 0.51215, "Unknown reservation is not zero");
       await assert.rejects(() => reserveJobCall("too-large", "fixture", 4.5), /COST_LIMIT/);
       await assert.rejects(() => prisma.$transaction(tx => assertQaCommitment(tx, user.id, 10)), /QA_COMMITMENT/);
+      const historical = await prisma.paidOperation.create({ data: { userId: user.id, projectId: project.id,
+        requestId: `old:${randomUUID()}`, revision: "old", purpose: "REFERENCE_DISPLAY", inputFingerprint: "old", status: "FAILED",
+        hardCapMicros: 1500000, committedMicros: 1300000, createdAt: new Date(campaign.createdAt.getTime() - 1000),
+        calls: { create: { purpose: "old-unknown", model: "fixture", reservedMicros: 1300000, status: "UNKNOWN_USAGE", attributionJson: {} } } } });
+      const recoveryRequest = { userId: user.id, projectId: project.id, requestId: `fixture:${randomUUID()}`,
+        purpose: "DESIGN_SUPPORT_MINI_RESEARCH", revision: "frozen", inputs: { verified: true } };
+      await assert.rejects(() => withPaidOperation(recoveryRequest, async () => { throw new Error("PRE_JOB_COST_LIMIT"); }), /PRE_JOB_COST_LIMIT/);
+      let dispatches = 0;
+      const recover = () => withPaidOperation({ ...recoveryRequest, recoverFailed: { version: "qa-linked-budget.v1", completedCallPurposes: [] } }, async () => {
+        dispatches++;
+        const ticket = await reserveJobCall("DESIGN_SUPPORT_MINI_RESEARCH", "fixture", 2.0748, 0, currentPaidOperation()!.id);
+        await ticket!.complete(0.1, { input_tokens: 10, output_tokens: 5 }, "fixture");
+        return { support: "synthetic" };
+      });
+      await recover(); await recover();
+      assert.equal(dispatches, 1, "A proven pre-dispatch denial may recover once under the QA policy");
+      assert.equal((await prisma.paidOperation.findUniqueOrThrow({ where: { id: historical.id } })).committedMicros, 1300000,
+        "Historical unknown reservation remains intact; scoped QA funding does not rewrite it");
+      const linkedReport = await prisma.$transaction(tx => assertQaCommitment(tx, user.id, 0));
+      assert.equal(linkedReport?.committedBefore, 0.61215, "New linked call counted once within the incremental QA campaign");
+      const uncertainRequest = { ...recoveryRequest, requestId: `fixture:${randomUUID()}` };
+      await assert.rejects(() => withPaidOperation(uncertainRequest, async () => {
+        const ticket = await reserveJobCall("DESIGN_SUPPORT_MINI_RESEARCH", "fixture", 0.01, 0, currentPaidOperation()!.id);
+        await ticket!.fail(); throw new Error("UNCERTAIN");
+      }), /UNCERTAIN/);
+      await assert.rejects(() => withPaidOperation({ ...uncertainRequest, recoverFailed: { version: "qa-linked-budget.v1", completedCallPurposes: [] } },
+        async () => { throw new Error("MUST_NOT_DISPATCH"); }), /USAGE_RECONCILIATION_REQUIRED/);
       await prisma.qaAcceptanceCampaign.update({ where: { id: campaign.id }, data: { expiresAt: new Date(0) } });
       await assert.rejects(() => reserveJobCall("expired", "fixture", 0.01), /QA_AUTHORIZATION_EXPIRED/);
     });

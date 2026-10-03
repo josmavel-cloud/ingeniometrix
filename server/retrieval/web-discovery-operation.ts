@@ -51,6 +51,7 @@ export async function runWebDiscoveryOperation(input: {
     gapSetHash: input.gapSetHash, seenSetHash: input.seenSetHash, ...input.policy, purpose: input.purpose });
   return withPaidOperation({ userId: input.userId, projectId: input.projectId,
     requestId: identity.requestId, purpose: input.purpose ?? WEB_DISCOVERY_PURPOSE, revision: input.researchIntentProjection.searchIntentHash,
+    ...(input.purpose === DESIGN_MINI_RESEARCH_PURPOSE ? { recoverFailed: { version: "qa-linked-budget.v1", completedCallPurposes: [] } } : {}),
     inputs: { fingerprint: identity.fingerprint, gapPayloadHash: hash(input.evidenceGaps),
       seenPayloadHash: hash(input.seenSourceIdentities), scientificContextHash: hash(input.researchIntentProjection), smoke: input.smoke } }, async () => {
     const operation = currentPaidOperation();

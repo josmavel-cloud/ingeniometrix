@@ -2,11 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { fingerprint } from "./job-execution-context";
+import { fingerprint, currentJobExecution } from "./job-execution-context";
 import { withLlmUsageContext, type LlmUsageAttribution } from "@/server/llm-usage-registry";
 import { DESIGN_MINI_RESEARCH_PURPOSE, WEB_DISCOVERY_PURPOSE } from "@/server/retrieval/web-discovery-contract";
 import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
-import { assertQaCommitment } from "./qa-acceptance-policy";
+import { assertQaCommitment, qaJobPolicy } from "./qa-acceptance-policy";
 
 type OperationContext = { id: string; userId: string; requestId: string; revision: string; projectId?: string; draftId?: string };
 const context = new AsyncLocalStorage<OperationContext>();
@@ -32,14 +32,20 @@ export async function reserveLinkedJobOperation(tx: Prisma.TransactionClient, in
   const operation = await tx.paidOperation.findUniqueOrThrow({ where: { id: input.operationId } });
   const daily = await tx.paidOperation.aggregate({ where: { userId: input.userId, OR: [
     { createdAt: { gte: rollingDay() } }, { calls: { some: { estimatedMicros: null } } } ] }, _sum: { committedMicros: true } });
+  const job = await tx.blueprintJob.findUniqueOrThrow({ where: { id: input.jobId }, select: { userId: true, projectId: true } });
+  if (job.userId !== input.userId || job.projectId !== operation.projectId) throw new Error("PAID_OPERATION_JOB_OWNERSHIP_MISMATCH");
+  // The trusted QA job uses its campaign aggregate and saved job cap, already
+  // enforced by reserveJobCall in this transaction. Ordinary accounts retain
+  // the daily guard; historical reservations remain recorded above.
+  const qa = await qaJobPolicy(tx, input.jobId);
   const dailyCap = operation.purpose === WEB_DISCOVERY_PURPOSE || operation.purpose === DESIGN_MINI_RESEARCH_PURPOSE
     ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_DAILY_CAP_USD", 1);
   if (operation.userId !== input.userId || operation.status !== "RUNNING" || operation.boundBreached ||
     operation.committedMicros + maximum > operation.hardCapMicros ||
-    (daily._sum.committedMicros ?? 0) + maximum > dailyCap)
+    (!qa && (daily._sum.committedMicros ?? 0) + maximum > dailyCap))
     throw new Error("PRE_JOB_COST_LIMIT");
   await tx.paidOperationCall.create({ data: { id: input.id, operationId: input.operationId, purpose: input.purpose,
-    model: input.model, reservedMicros: maximum, attributionJson: { jobId: input.jobId, funding: "JOB_LINKED" } } });
+    model: input.model, reservedMicros: maximum, attributionJson: { jobId: input.jobId, funding: "JOB_LINKED", fundingPolicy: qa?.policy.version ?? "ordinary", historicalDailyCommitmentMicros: daily._sum.committedMicros ?? 0 } } });
   await tx.paidOperation.update({ where: { id: input.operationId }, data: { committedMicros: { increment: maximum } } });
 }
 export async function settleLinkedJobOperation(tx: Prisma.TransactionClient, id: string, estimate: number | null, usage: unknown, actualModel?: string) {
@@ -66,14 +72,21 @@ export async function withPaidOperation<T>(input: { userId: string; requestId: s
       if (old.status === "COMPLETED") return old;
       if (old.status === "RUNNING") throw new Error("PAID_REQUEST_IN_PROGRESS");
       const recovery = input.recoverFailed;
-      if (!recovery || input.purpose !== "SOURCE_SUFFICIENCY" || !/^[a-z0-9.-]{1,64}$/.test(recovery.version) || old.boundBreached)
+      const jobExecution = currentJobExecution();
+      const qaPolicy = input.purpose === DESIGN_MINI_RESEARCH_PURPOSE && jobExecution
+        ? await qaJobPolicy(tx, jobExecution.jobId) : null;
+      const qaSupportRecovery = qaPolicy?.campaign.userId === input.userId && Boolean(input.projectId && jobExecution &&
+        await tx.blueprintJob.findFirst({ where: { id: jobExecution.jobId, userId: input.userId, projectId: input.projectId }, select: { id: true } }));
+      if (!recovery || (input.purpose !== "SOURCE_SUFFICIENCY" && !qaSupportRecovery) || !/^[a-z0-9.-]{1,64}$/.test(recovery.version) || old.boundBreached)
         throw new Error("PAID_REQUEST_ALREADY_FAILED");
       const priorCalls = await tx.paidOperationCall.findMany({ where: { operationId: old.id }, select: { purpose: true, status: true, estimatedMicros: true } });
+      if (qaSupportRecovery && (priorCalls.length || old.committedMicros !== 0))
+        throw new Error("PAID_REQUEST_USAGE_RECONCILIATION_REQUIRED");
       if (priorCalls.some(call => call.status !== "COMPLETED" || call.estimatedMicros === null ||
         !recovery.completedCallPurposes.includes(call.purpose))) throw new Error("PAID_REQUEST_USAGE_RECONCILIATION_REQUIRED");
       // The logical request and its failed cost record stay immutable. This
       // deterministic child is one bounded new attempt, not a random bypass.
-      const retryId = `source-recovery:${fingerprint([old.requestId, old.inputFingerprint, recovery.version])}`;
+      const retryId = `${qaSupportRecovery ? "design-support-recovery" : "source-recovery"}:${fingerprint([old.requestId, old.inputFingerprint, recovery.version])}`;
       const priorAttempt = await tx.paidOperation.findUnique({ where: { userId_requestId: { userId: input.userId, requestId: retryId } } });
       if (priorAttempt) {
         if (priorAttempt.inputFingerprint !== hash) throw new Error("PAID_REQUEST_INPUT_CONFLICT");
@@ -82,7 +95,7 @@ export async function withPaidOperation<T>(input: { userId: string; requestId: s
       }
       const attempt = await tx.paidOperation.create({ data: { userId: input.userId, projectId: input.projectId, draftId: input.draftId,
         revision: input.revision, requestId: retryId, purpose: input.purpose, inputFingerprint: hash,
-        hardCapMicros: configuredMicros("IMX_PRE_JOB_REQUEST_CAP_USD", 0.25) } });
+        hardCapMicros: qaSupportRecovery ? usdMicros(ASTRA_WEB_COST_POLICY.operationReservationCeilingUsd) : configuredMicros("IMX_PRE_JOB_REQUEST_CAP_USD", 0.25) } });
       await tx.auditLog.create({ data: { userId: input.userId, projectId: input.projectId, actorType: "SYSTEM",
         eventType: "PAID_OPERATION_RECOVERY_STARTED", payloadJson: { logicalRequestId: old.requestId,
           previousOperationId: old.id, attemptOperationId: attempt.id, recoveryVersion: recovery.version,
