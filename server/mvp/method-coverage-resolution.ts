@@ -52,6 +52,18 @@ export const methodologicalReconstructionSchema = z.object({
   selectedId: text, selectionRationale: text,
 }).strict();
 
+/** Constrain identifiers in the provider contract as well as at the local gate.
+ * An untrusted passage must never be able to turn an identifier into prose or
+ * instructions while still satisfying a generic string schema. */
+export function methodologicalReconstructionSchemaFor(originalId:string) {
+  const ids=[`${originalId}-R1`,"A2","A3"] as const;
+  const id=z.enum(ids);
+  return methodologicalReconstructionSchema.extend({
+    alternatives:z.array(methodologicalReconstructionSchema.shape.alternatives.element.extend({id})).min(1).max(2),
+    selectedId:id,
+  });
+}
+
 /** Method-only changes; no model field can overwrite frozen scientific authority. */
 export function applyMethodReconstruction(bundle: ScientificDecisionBundle, patch: z.infer<typeof methodologicalReconstructionSchema>["alternatives"][number], pack: MethodEvidencePack) {
   const original = designAlternativeV2Schema.parse(bundle.decision.alternatives.find(a => a.id === bundle.decision.recommended_id));
@@ -317,7 +329,7 @@ export async function resolveMethodCoverage(bundle: ScientificDecisionBundle, in
       const researchContextInput={version:researchContext.version,privateAuditFingerprint:researchContext.privateAuditFingerprint};
       await stageCheckpoint(await versionedCheckpointKey("METHOD_RESEARCH_PRIVATE_AUDIT",researchContextInput),researchContextInput,
         async()=>({audit:researchAudit,scientificProjection:researchContext}));
-      const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchema, reconstructionPrompt,
+      const reconstruction = await call(`METHOD_RECONSTRUCTION_V1_${round}`, methodologicalReconstructionSchemaFor(original.id), reconstructionPrompt,
         { frozenIntent:bundle.intent, ...compactMethodAuthorityContext(original),
           historicalFindings:findings, priorIndependentRejection: priorIndependentRejection ? {
             rejectedAlternativeId:priorIndependentRejection.alternativeId,blockingReason:priorIndependentRejection.blockingReason,

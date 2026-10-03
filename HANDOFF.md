@@ -1,11 +1,12 @@
 # Ingeniometrix MVP Handoff
 
-> Current PR #16 handoff (2026-10-03 12:35 UTC): **NOT_CLOSED**.
-> Context-size blocker fixed and three scoped provider-backed correction iterations
-> completed on the same technical job. Final independent critic still returns
-> evidenceSupported=false for the complete heterogeneous corpus; no composition/DOCX.
-> New cost USD 1.1049975, no new unknown usage, zero additional Astra operations.
-> PR remains draft; main/production unchanged. Staging candidate qa22 is healthy.
+> Current PR #16 handoff (2026-10-03 19:35 UTC): **NOT_CLOSED**.
+> qa31 recovered existing support and a paid independent rejection (20 required
+> methodological cells unsupported). One new reconstruction returned an invalid
+> `selectedId`; the server rejected it before critic/composition. Known child cost
+> USD 10.0832775, unknown USD 0; no DOCX. A stricter ID schema is tested offline
+> but has not received live scientific acceptance. PR remains draft; production
+> unchanged. See the canonical report below.
 > See [the canonical report and current R01–R13 matrix](docs/quality/autonomous-generation-recovery-2026-10-02.md).
 > Older provider/context-size blockers below are historical.
 

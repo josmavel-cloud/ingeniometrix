@@ -1,5 +1,62 @@
 # Autonomous generation: staging recovery and budget audit (2026-10-02)
 
+## Latest verified checkpoint — 2026-10-03 19:35 UTC
+
+**MVP NOT_CLOSED; PR #16 draft; no production publication.** This section
+supersedes earlier staging-candidate and cost statements below. The same
+owner-scoped technical child `0c5c52df-b492-4775-b5bc-23ee82f1cfb4` was
+resumed through normal technical authentication. qa31 app and worker ran image
+`imx-rc4-method-support:qa31` (Docker image `sha256:917875335423…`, source
+commit `d593185`). The owner's scientific projects and G5 worktree were not
+modified.
+
+The app re-inspected and reused **four completed methodological research
+operations**, with 42 digest passages from eight sources; no fifth web
+operation was dispatched. A completed reconstruction and independent critique
+were recovered with hash and settled-cost checks. The independent critique had
+`intentPreserved=true`, `methodCoherent=true`, but
+`blockingScientificIssue=true`: 20 required cells remained `UNSUPPORTED`, 12
+were conditional and one not applicable. Its new and historical findings remain
+separate; the mismatch in finding-code sets no longer conceals the scientific
+rejection. No code path converts this into scientific approval.
+
+One new v6 reconstruction used the verified rejection as feedback. Its exact
+input count was 34,240 tokens; input plus reserved output was 69,056, within
+the application and model context. The provider completed the response with
+known usage and estimated USD **1.2530375**. The returned `selectedId` was
+outside the allowed alternative IDs, while its sole alternative was `A1-R1`
+and its coverage proposal still had 20 unsupported cells. The local validator
+stopped with `METHOD_SELECTION_INVALID` **before** a new critique or any
+composition. A suspicious instruction-like marker occurred only in that
+provider output field and its persisted response; a read-only check found no
+matching marker in the 42 evidence passages. Its origin is unproven, so no
+scientific call was repeated. The provider schema now constrains alternative
+IDs to the frozen original ID plus `A2`/`A3`; offline contract tests pass.
+
+Technical child cost is **USD 10.0832775 known, USD 0 uncertain** across 12
+settled entries. Historical unknown reservations elsewhere remain unchanged.
+No new DOCX, authorized download, scientific review or document inspection
+exists. Therefore the authenticated staging E2E, quality gate and release gate
+remain **FAIL / NOT RUN**. No PR merge, backup, migration or production deploy
+occurred. The canonical encrypted backup remains blocked by the existing Drive
+OAuth `invalid_grant`; reconnect was requested through the authorized host.
+
+This turn passed TypeScript, Prisma syntax with offline URLs, mocked method
+coverage contracts/resolver, critic-recovery contract, fresh-run isolation,
+git diff check and a clean Next.js/worker/runtime image build. The isolated
+B4 suite passed 53 checks on PostgreSQL 16 before qa31. These tests prove
+contracts and build portability, **not** scientific quality or full project
+isolation in a live browser. The mounted-card translation acceptance remains
+the earlier staging result, not a fresh qa31 browser check.
+
+Next scientific work requires an independently supportable in-scope method for
+the heterogeneous corpus. The latest model response did not provide one;
+quota padding, relabeling unsupported cells or ignoring the critic is prohibited.
+The malformed output is retained privately for analysis. A future acceptance
+must revalidate security, scientific support, DOCX quality and authorized
+download before PR #16 can be marked ready or production cut over. The exact
+historical PDF remains `PENDING_EXACT_FILE`; its checkbox is unchanged.
+
 ## Active closure cycle — 2026-10-03: heterogeneous method coverage
 
 **IN_PROGRESS; no production approval implied.** Owner attachment dated this task

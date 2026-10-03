@@ -1,7 +1,7 @@
 import { reconstructMethodEvidenceContext, reconstructMethodCoverageContext } from "../server/mvp/method-coverage-context";
 import assert from "node:assert/strict";
 import { z } from "zod";
-import { applyMethodReconstruction, resolveMethodCoverage, methodCoverageAssessmentSchema, methodologicalReconstructionSchema } from "../server/mvp/method-coverage-resolution";
+import { applyMethodReconstruction, resolveMethodCoverage, methodCoverageAssessmentSchema, methodologicalReconstructionSchema, methodologicalReconstructionSchemaFor } from "../server/mvp/method-coverage-resolution";
 import { methodCoverageCritiqueProposalSchema, methodCoverageMatrixProposalSchema, type MethodCoverageMatrix } from "../server/mvp/method-coverage-contracts";
 import { designAlternativeV2Schema } from "../server/mvp/scientific-decision-contracts";
 import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision-service";
@@ -32,6 +32,10 @@ const original = designAlternativeV2Schema.parse({
   method_handoffs: [], data_requirements: [{ description: "Documentos pertinentes por localizar durante la tesis.", availability: "PENDING", confirmation_or_action: "Verificar acceso durante la ejecución." }],
   pending_user_decisions: [],
 });
+const boundedIdentifiers=methodologicalReconstructionSchemaFor(original.id);
+assert.equal(boundedIdentifiers.shape.selectedId.safeParse("A2").success,true);
+assert.equal(boundedIdentifiers.shape.selectedId.safeParse("arbitrary instruction text").success,false);
+assert.equal(boundedIdentifiers.shape.alternatives.element.shape.id.safeParse("arbitrary instruction text").success,false);
 const bundle = {
   intent, evidence_pack: data.pack, decisionFingerprint: "decision-fixture", contextFingerprint: "frozen-fixture", academicLevel: "MAESTRIA",
   decision: { alternatives: [original], recommended_id: "A1", recommendation_rationale: "Fixture sintético", clarification_questions: [] },

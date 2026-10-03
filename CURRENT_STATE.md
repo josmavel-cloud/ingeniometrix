@@ -1,11 +1,13 @@
 # Current State
 
-> Current PR #16 handoff (2026-10-03 12:35 UTC): **NOT_CLOSED**.
-> Context-size blocker fixed and three scoped provider-backed correction iterations
-> completed on the same technical job. Final independent critic still returns
-> evidenceSupported=false for the complete heterogeneous corpus; no composition/DOCX.
-> New cost USD 1.1049975, no new unknown usage, zero additional Astra operations.
-> PR remains draft; main/production unchanged. Staging candidate qa22 is healthy.
+> Current PR #16 handoff (2026-10-03 19:35 UTC): **NOT_CLOSED**.
+> Staging qa31 safely recovered all four completed methodological discoveries and
+> the paid independent critique. That critique rejected 20 required coverage
+> cells. One new, versioned reconstruction completed with known usage, but its
+> `selectedId` violated the contract; the local validator stopped before another
+> critic or composition. The provider-contract ID enum is now hardened offline.
+> Technical child known cost USD 10.0832775, unknown USD 0; no DOCX. PR remains
+> draft; main and production are unchanged. See the canonical report below.
 > See [the canonical report and current R01–R13 matrix](docs/quality/autonomous-generation-recovery-2026-10-02.md).
 > Older provider/context-size blockers below are historical.
 
