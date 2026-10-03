@@ -115,6 +115,40 @@ export function buildCorpusMethodProfile(input: {
 }
 export type CorpusMethodProfile = ReturnType<typeof buildCorpusMethodProfile>;
 
+export const CORPUS_ROLE_REFINEMENT_VERSION = "CorpusRoleRefinement.v1";
+/** Analytical roles are proposals, not frozen user statements or observations. */
+export const corpusRoleRefinementProposalSchema = z.array(z.object({
+  classId, roleInResearch: text, claimsExpectedFromClass: texts,
+  appraisalNeeded: z.boolean(), synthesisNeeded: z.boolean(), integrationNeeded: z.boolean(),
+  justification: text,
+}).strict()).min(1).max(CORPUS_CLASSES.length);
+export type CorpusRoleRefinementProposal = z.infer<typeof corpusRoleRefinementProposalSchema>;
+
+/**
+ * Derive only analytical roles. Every identity, quotation, observed count and
+ * class remains fixed. This never certifies a reduced obligation scientifically:
+ * the independent critic receives both profiles and these justifications.
+ */
+export function deriveCorpusMethodRoles(original: CorpusMethodProfile, proposalInput: CorpusRoleRefinementProposal) {
+  const proposals = corpusRoleRefinementProposalSchema.parse(proposalInput);
+  if (!sameSet(proposals.map(row => row.classId), original.corpusClasses.map(row => row.classId)))
+    throw new Error("CORPUS_ROLE_CLASS_SET_MISMATCH");
+  const corpusClasses = original.corpusClasses.map(row => {
+    const proposal = proposals.find(candidate => candidate.classId === row.classId)!;
+    return { ...row, roleInResearch: proposal.roleInResearch, claimsExpectedFromClass: [...proposal.claimsExpectedFromClass],
+      appraisalNeeded: proposal.appraisalNeeded, synthesisNeeded: proposal.synthesisNeeded, integrationNeeded: proposal.integrationNeeded };
+  });
+  const { profileFingerprint: _previous, ...priorValue } = original;
+  const value = { ...priorValue, corpusClasses };
+  const profile: CorpusMethodProfile = { ...value, profileFingerprint: identity(value) };
+  const roleRows = proposals.map(row => ({ ...row, claimsExpectedFromClass: [...row.claimsExpectedFromClass] }));
+  const audit = { version: CORPUS_ROLE_REFINEMENT_VERSION, originalProfileFingerprint: original.profileFingerprint,
+    derivedProfileFingerprint: profile.profileFingerprint, roles: roleRows,
+    scientificStatus: "PROPOSED_REQUIRES_INDEPENDENT_ROLE_AND_SCOPE_REVIEW" as const };
+  return { profile, audit: { ...audit, derivationFingerprint: identity(audit) } };
+}
+
+
 export const methodCoverageCellSchema = z.object({
   cellId: text,
   operation: z.enum([...CLASS_METHOD_OPERATIONS, "CROSS_CLASS_INTEGRATION"]),
