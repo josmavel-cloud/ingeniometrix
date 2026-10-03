@@ -1,5 +1,6 @@
 import { autonomousDesignPatchSchema, designAlternativeV2Schema, validateScientificDecision, type DesignCritique, type MethodEvidencePack, type ResearchIntentContract, type ScientificDecision } from "./scientific-decision-contracts";
 import type { z } from "zod";
+import { scientificFindingFields, isFutureRequirementFinding } from "./design-support-gap";
 
 export type PendingDecisionClass = "SCOPE_BLOCKING" | "FACT_TO_VERIFY_DURING_RESEARCH" | "METHOD_DEFAULTABLE" | "RESOURCE_CONDITIONAL" | "NONBLOCKING_LIMITATION";
 
@@ -28,7 +29,8 @@ export function inScopeAlternatives(decision: ScientificDecision, critique: Desi
     // This only permits repair; immutable scope validation and the next critic
     // still have to pass. Pending or genuinely conflicting scope stays excluded.
     if (["PRESERVED", "CLARIFIED"].includes(review.scope.status) && !review.scope.confirmation_required &&
-      !review.critical_findings.some(finding => finding.severity === "BLOCKING" && /^(scope|definition\.|intent)(\.|$)/.test(finding.affected_field))) return true;
+      !review.critical_findings.some(finding => finding.severity === "BLOCKING" &&
+        scientificFindingFields(finding.affected_field).some(field => /^(scope|definition|intent)(\.|$)/.test(field)))) return true;
     return questions.every(question => classifyPendingDecision(question, review.scope.status) !== "SCOPE_BLOCKING");
   });
 }
@@ -90,7 +92,7 @@ export function applyAutonomousDesignPatch(input: {
   // provided an independent targeted critic explicitly accepts that deferral.
   // Scope and methodological validity findings cannot be deferred here.
   if (review.critical_findings.some((finding) => finding.severity === "BLOCKING" && unresolved.has(finding.code) &&
-    (!/^(data_requirements|feasibility)(\.|$)/.test(finding.affected_field) ||
+    (!isFutureRequirementFinding(finding.affected_field) ||
       !patch.dataRequirements.some((requirement) => requirement.availability === "PENDING"))))
     throw new Error("AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED");
   const previous = designAlternativeV2Schema.parse(alternative);

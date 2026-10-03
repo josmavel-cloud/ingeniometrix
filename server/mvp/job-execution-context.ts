@@ -386,6 +386,18 @@ export async function createBlueprintVersionOnce(data: Prisma.BlueprintVersionUn
 }
 
 type Checkpoint<T> = { fingerprint: string; value: T; outputHash: string; files: { path: string; hash: string }[]; completedAt: string };
+// Preserve a prior scientific result when new evidence changes its context.
+// Equal inputs retain the original key; new inputs get a deterministic version.
+export async function versionedCheckpointKey(key: string, inputs: unknown) {
+  const execution = context.getStore();
+  if (!execution) return key;
+  const hash = fingerprint({ version: "b4.v1", jobId: execution.jobId, inputs });
+  const prior = await prisma.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+    jobId: execution.jobId, stageKey: `checkpoint:${key}` } }, select: { inputJson: true, outputJson: true } });
+  const previousHash = (prior?.outputJson as { fingerprint?: string } | null)?.fingerprint ??
+    (prior?.inputJson as { fingerprint?: string } | null)?.fingerprint;
+  return previousHash && previousHash !== hash ? `${key}:context:${hash}` : key;
+}
 export async function stageCheckpoint<T>(key: string, inputs: unknown, work: () => Promise<T>, files: (value: T) => string[] = () => []): Promise<T> {
   const execution = context.getStore();
   if (!execution) return work();

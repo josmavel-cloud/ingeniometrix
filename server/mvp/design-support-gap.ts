@@ -14,6 +14,16 @@ export type DesignSupportGap = {
 
 // Evidence sufficiency is a critic judgement, not a keyword-relevance score.
 // Field paths merely locate a finding; its severity alone never triggers a search.
+export function scientificFindingFields(value: string) {
+  return value.split(/[;,|]/).map(field => field.trim()).filter(Boolean);
+}
+// A compound finding may concern a future access task and the procedure that
+// depends on it. Method validity, evidence and scope cannot be deferred here.
+export function isFutureRequirementFinding(value: string) {
+  const fields = scientificFindingFields(value);
+  return fields.some(field => /^(data_requirements|feasibility)(\.|$)/.test(field)) &&
+    fields.every(field => /^(data_requirements|feasibility|pending_user_decisions|procedure|research_design\.procedure)(\.|$)/.test(field));
+}
 export function designSupportGaps(bundle: ScientificDecisionBundle,
   late?: typeof targetedAutonomousCriticSchema._output): DesignSupportGap[] {
   const alternativeId = late?.alternativeId ?? bundle.decision.recommended_id;
@@ -21,7 +31,8 @@ export function designSupportGaps(bundle: ScientificDecisionBundle,
   const assessment = bundle.critique.assessments.find(item => item.alternative_id === alternativeId);
   if (!alternative || !assessment || !("primary_method" in alternative)) return [];
   const evidenceFields = new Set(["methodological_support", "evidence_support", "research_design.methodological_support", "transferability"]);
-  const findings = assessment.critical_findings.filter(finding => evidenceFields.has(finding.affected_field));
+  const findings = assessment.critical_findings.filter(finding => scientificFindingFields(finding.affected_field)
+    .some(field => evidenceFields.has(field)));
   const explicitFailure = late ? !late.evidenceSupported : assessment.evidence_support === "FAIL";
   const supportedWarning = !late && assessment.evidence_support === "PASS_WITH_LIMITATIONS" && findings.length > 0;
   if (!explicitFailure && !supportedWarning) return [];

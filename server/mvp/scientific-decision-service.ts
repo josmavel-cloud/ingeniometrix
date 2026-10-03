@@ -8,7 +8,7 @@ import { openAiBackgroundRequestFingerprint } from "@/llm/providers/openai";
 import type { LlmProvider } from "@/llm/provider";
 import { IncompleteStructuredOutputError } from "@/llm/structured-output-error";
 import { responseCostBound } from "@/llm/providers/openai-cost-bound";
-import { currentJobExecution, fingerprint, preflightWholeJobCost, stageCheckpoint, stableJson } from "./job-execution-context";
+import { currentJobExecution, fingerprint, preflightWholeJobCost, stageCheckpoint, versionedCheckpointKey, stableJson } from "./job-execution-context";
 import { assessEvidenceCoverage } from "./evidence-coverage";
 import type { MvpStep5EvidenceLedger } from "./evidence-materialization-types";
 import { autonomousDesignEvidencePatchSchema, accountDecisionSources, alternativeCanBeConfirmed, alternativeIsApprovable, autonomousDesignPatchSchema, buildMethodEvidencePack, criticAttemptEnvelopeSchema, decisionContextFingerprint, designCritiqueSchema, designRepairSchema, intentFromIntake, scientificDecisionV2Schema, targetedAutonomousCriticSchema, validateDesignCritique, validateScientificDecision, type DesignAlternative, type DesignCritique, type MethodEvidencePack, type ResearchIntentContract, type ScientificDecision } from "./scientific-decision-contracts";
@@ -21,7 +21,7 @@ import { SCIENTIFIC_DESIGN_AUTONOMOUS_PATCH_PROMPT as autonomousPatch } from "./
 import { SCIENTIFIC_DESIGN_AUTONOMOUS_TARGETED_CRITIC_PROMPT as targetedCritic } from "./prompts/scientific-design-autonomous-targeted-critic.v1";
 import { applyAutonomousDesignPatch, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "./autonomous-design-resolution";
 import { mandatoryCompositionReservationFloor } from "./whole-job-cost-forecast";
-import { designSupportGaps } from "./design-support-gap";
+import { designSupportGaps, isFutureRequirementFinding } from "./design-support-gap";
 import { ASTRA_WEB_COST_POLICY } from "@/server/retrieval/astra-web-cost-policy";
 import { augmentMethodEvidencePack, effectiveGenerationLedger, sealDesignSupport, type DesignSupportAddendum } from "./design-support-addendum";
 import { researchDesignSupport } from "./design-mini-research";
@@ -160,7 +160,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
   input: { userId: string; projectId: string; runId: string; provider?: LlmProvider;
     availableEvidencePack?: MethodEvidencePack;
     researchSupport?: typeof researchDesignSupport }) {
-  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v2", patchVersion: autonomousPatch.version, maxRevisionLoops: 2 }, async () => {
+  return stageCheckpoint("AUTONOMOUS_DESIGN", { decisionFingerprint: bundle.decisionFingerprint, policyVersion: "autonomous-evidence-resolution.v3", patchVersion: autonomousPatch.version, maxRevisionLoops: 2 }, async () => {
     const decision = bundle.decision;
     const critique = bundle.critique;
     let revised = false;
@@ -260,8 +260,9 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       const compositionFloor = mandatoryCompositionReservationFloor(bundle, alternative.id).reduce((sum, phase) => sum + phase.minimumReservationUsd, 0);
       await preflightWholeJobCost({ nextStage: "autonomous_design_patch", nextStageReservation: patchBound.maximumUsd,
         minimumRemainingMandatoryReservation: criticMinimum.maximumUsd + compositionFloor });
-      const patchKey = `AUTONOMOUS_DESIGN_PATCH_EVIDENCE_${resolutionRound + 1}`;
-      const patch = patchSchema.parse(await stageCheckpoint(patchKey, { promptHash: fingerprint(prompt), schema, model: autonomousPatch.model, version: autonomousPatch.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()
+      const patchInputs = { promptHash: fingerprint(prompt), schema, model: autonomousPatch.model, version: autonomousPatch.version };
+      const patchKey = await versionedCheckpointKey(`AUTONOMOUS_DESIGN_PATCH_EVIDENCE_${resolutionRound + 1}`, patchInputs);
+      const patch = patchSchema.parse(await stageCheckpoint(patchKey, patchInputs, () => provider.generateBackgroundStructuredObject && currentJobExecution()
         ? provider.generateBackgroundStructuredObject({ ...request, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: patchKey, promptHash: fingerprint(prompt), version: autonomousPatch.version }), requestFingerprint: openAiBackgroundRequestFingerprint(request) })
         : provider.generateStructuredObject(request)));
       selected = applyAutonomousDesignPatch({ decision, critique, intent: bundle.intent, pack: effectivePack, patch, methodologicalSupportAdded: "methodologicalSupportAdded" in patch ? patch.methodologicalSupportAdded as Array<{ source_id: string; evidence_id: string }> : [] });
@@ -270,8 +271,9 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       if (Buffer.byteLength(reviewPrompt) > 40000) throw new Error("AUTONOMOUS_CRITIC_CONTEXT_TOO_LARGE: se conserva el diseño sin truncar evidencia.");
       const reviewSchema = z.toJSONSchema(targetedAutonomousCriticSchema);
       const reviewRequest = { prompt: reviewPrompt, schema: reviewSchema, schemaName: "autonomous_design_targeted_critic_v2", model: targetedCritic.model, reasoningEffort: targetedCritic.reasoning_effort, maxOutputTokens: targetedCritic.max_output_tokens, maxRetries: 0 as const, trackingAttribution: { projectId: input.projectId, runId: input.runId, stage: "autonomous_design_targeted_critic", promptVersion: targetedCritic.version, schemaName: "autonomous_design_targeted_critic_v2" } };
-      const criticKey = `AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_${resolutionRound + 1}`;
-      targetedReview = targetedAutonomousCriticSchema.parse(await stageCheckpoint(criticKey, { promptHash: fingerprint(reviewPrompt), schema: reviewSchema, model: targetedCritic.model, version: targetedCritic.version }, () => provider.generateBackgroundStructuredObject && currentJobExecution()
+      const criticInputs = { promptHash: fingerprint(reviewPrompt), schema: reviewSchema, model: targetedCritic.model, version: targetedCritic.version };
+      const criticKey = await versionedCheckpointKey(`AUTONOMOUS_DESIGN_TARGETED_CRITIC_EVIDENCE_${resolutionRound + 1}`, criticInputs);
+      targetedReview = targetedAutonomousCriticSchema.parse(await stageCheckpoint(criticKey, criticInputs, () => provider.generateBackgroundStructuredObject && currentJobExecution()
         ? provider.generateBackgroundStructuredObject({ ...reviewRequest, logicalAttemptKey: fingerprint({ projectId: input.projectId, runId: input.runId, key: criticKey, promptHash: fingerprint(reviewPrompt), version: targetedCritic.version }), requestFingerprint: openAiBackgroundRequestFingerprint(reviewRequest) })
         : provider.generateStructuredObject(reviewRequest)));
       if (!targetedReview.evidenceSupported && resolutionRound === 0 && await gatherSupport(targetedReview)) {
@@ -280,7 +282,7 @@ export async function resolveAutonomousDesignBundle(bundle: ScientificDecisionBu
       }
       const priorBlocking = new Set(findings.filter((finding) => finding.severity === "BLOCKING").map((finding) => finding.code));
       const deferrable = new Set(findings.filter((finding) => finding.severity === "BLOCKING" &&
-        /^(data_requirements|feasibility)(\.|$)/.test(finding.affected_field) &&
+        isFutureRequirementFinding(finding.affected_field) &&
         patch.unresolvedFindingCodes.includes(finding.code) &&
         patch.dataRequirements.some((requirement) => requirement.availability === "PENDING")).map((finding) => finding.code));
       const deferred = new Set(targetedReview.deferredAsFutureRequirementCodes);

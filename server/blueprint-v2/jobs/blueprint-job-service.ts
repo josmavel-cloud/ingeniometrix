@@ -1,3 +1,4 @@
+import { scientificFindingFields } from "@/server/mvp/design-support-gap";
 import { sourceSufficiencyStatus } from "@/server/retrieval/source-sufficiency-status";
 import { randomUUID } from "node:crypto";
 import { activeQaCampaign, allowsNewQaAcceptance, assertQaCommitment, QA_COST_POLICY_VERSION } from "@/server/mvp/qa-acceptance-policy";
@@ -682,7 +683,24 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     const failedResolution = job.status === BlueprintJobStatus.FAILED && job.currentStage === "resolving_design" &&
       (/^AUTONOMOUS_DESIGN_UNRESOLVED:/.test(priorError) || rejectedLegacySchema || unresolvedPriorPatch || acquisitionRecovery);
     const priorMetadata = job.metadataJson as Record<string, unknown> | null;
-    const accessReviewRecovery = unresolvedPriorPatch && Boolean(priorMetadata?.scientificPatchRecovery) &&
+    const modernPatchStage = unresolvedPriorPatch ? await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: {
+      jobId, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_1" } } }) : null;
+    const compoundFindingRecovery = unresolvedPriorPatch && modernPatchStage?.status === "COMPLETED";
+    if (compoundFindingRecovery) {
+      if (priorMetadata?.scientificFindingRecovery || job.attempts >= job.maxAttempts)
+        throw new Error("AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED");
+      const savedPatch = modernPatchStage.outputJson as { value?: unknown; outputHash?: string } | null;
+      if (!savedPatch?.value || fingerprint(savedPatch.value) !== savedPatch.outputHash)
+        throw new Error("AUTONOMOUS_RECOVERY_PATCH_CHECKPOINT_INVALID");
+      const savedDecision = await tx.blueprintJobStage.findUnique({ where: { jobId_stageKey: { jobId, stageKey: SCIENTIFIC_DECISION_STAGE } } });
+      const saved = savedDecision?.outputJson as unknown as { value?: ScientificDecisionBundle; outputHash?: string } | null;
+      if (!saved?.value || fingerprint(saved.value) !== saved.outputHash ||
+        !saved.value.critique.assessments.some(assessment => assessment.critical_findings.some(finding =>
+          scientificFindingFields(finding.affected_field).length > 1)))
+        throw new Error("AUTONOMOUS_RECOVERY_COMPOUND_FINDING_MISSING");
+    }
+    const legacyUnresolvedPatch = unresolvedPriorPatch && !compoundFindingRecovery;
+    const accessReviewRecovery = legacyUnresolvedPatch && Boolean(priorMetadata?.scientificPatchRecovery) &&
       !priorMetadata?.scientificAccessReviewRecovery && job.maxAttempts === 4 && job.attempts === 4;
     if (!failedResolution && (job.status !== BlueprintJobStatus.WAITING_USER_DECISION || job.currentStage !== "awaiting_design_approval")) throw new Error("AUTONOMOUS_RECOVERY_NOT_ELIGIBLE");
     if (failedResolution) {
@@ -692,7 +710,7 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
         if ((acquisition?.outputJson as { value?: { reason?: string } } | null)?.value?.reason !== "DOCUMENT_ACQUISITION_FAILED")
           throw new Error("AUTONOMOUS_RECOVERY_ACQUISITION_CHECKPOINT_MISSING");
       }
-      if (unresolvedPriorPatch) {
+      if (legacyUnresolvedPatch) {
         // First recover the corrected v3 patch; then, if v3 itself completed
         // but could not classify future access, reuse that exact completed
         // patch for one independent v2 targeted review. Neither path repeats
@@ -707,22 +725,25 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
       const entries = (cost?.outputJson as { entries?: Array<{ stage: string; estimate: number | null; status: string }> } | null)?.entries;
       if (!entries) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
       const unknownEntries = entries.filter(entry => entry.estimate === null || entry.status !== "completed");
-      if (rejectedLegacySchema || unresolvedPriorPatch) {
+      if (rejectedLegacySchema || legacyUnresolvedPatch) {
         if (unknownEntries.length !== 1 || unknownEntries[0].stage !== "AUTONOMOUS_DESIGN_PATCH_1" ||
           unknownEntries[0].status !== "failed_unknown_usage" || unknownEntries[0].estimate !== null)
           throw new Error("AUTONOMOUS_RECOVERY_LEGACY_RESERVATION_MISMATCH");
       } else if (unknownEntries.length) throw new Error("AUTONOMOUS_RECOVERY_USAGE_RECONCILIATION_REQUIRED");
       const responses = await tx.blueprintJobStage.findMany({ where: { jobId, stageKey: { startsWith: "provider:background:" } }, select: { outputJson: true } });
       const responseRecords = responses.map(row => row.outputJson as { status?: string; error?: string; responseId?: string | null; providerStatus?: string | null; correlation?: { stage?: string; promptVersion?: string } } | null);
-      if (unresolvedPriorPatch && !responseRecords.some(row => row?.status === "COMPLETED" && row.correlation?.stage === "autonomous_design_patch" &&
+      if (legacyUnresolvedPatch && !responseRecords.some(row => row?.status === "COMPLETED" && row.correlation?.stage === "autonomous_design_patch" &&
         row.correlation.promptVersion === "ingeniometrix-scientific-design-autonomous-patch-v2" && row.responseId))
         throw new Error("AUTONOMOUS_RECOVERY_PRIOR_PATCH_RESPONSE_MISSING");
+      if (compoundFindingRecovery && !responseRecords.some(row => row?.status === "COMPLETED" &&
+        row.correlation?.stage === "autonomous_design_patch" && row.responseId))
+        throw new Error("AUTONOMOUS_RECOVERY_CURRENT_PATCH_RESPONSE_MISSING");
       if (accessReviewRecovery && !responseRecords.some(row => row?.status === "COMPLETED" && row.correlation?.stage === "autonomous_design_patch" &&
         row.correlation.promptVersion === "ingeniometrix-scientific-design-autonomous-patch-v3" && row.responseId))
         throw new Error("AUTONOMOUS_RECOVERY_CURRENT_PATCH_RESPONSE_MISSING");
       const incomplete = responseRecords
         .filter(row => row?.status !== "COMPLETED");
-      if (rejectedLegacySchema || unresolvedPriorPatch) {
+      if (rejectedLegacySchema || legacyUnresolvedPatch) {
         if (incomplete.length !== 1 || incomplete[0]?.status !== "CREATE_UNCERTAIN" ||
           !LEGACY_PATCH_SCHEMA_REJECTION.test(incomplete[0]?.error ?? "") ||
           (rejectedLegacySchema && incomplete[0]?.error !== priorError) ||
@@ -746,20 +767,23 @@ export async function authorizeAutonomousDesignRecoveryForUser(userId: string, p
     else if (commercialPolicy === "commercial-v1") await reserveCommercialJob(tx, jobId);
     else throw new Error("AUTONOMOUS_RECOVERY_COMMERCIAL_POLICY_UNKNOWN");
     const updated = await tx.blueprintJob.update({ where: { id: jobId }, data: { status: BlueprintJobStatus.WAITING_NEXT_STAGE, currentStage: "resolving_design", progress: 50, lockedAt: null, nextAttemptAt: null,
-      maxAttempts: accessReviewRecovery ? 5 : unresolvedPriorPatch ? 4 : job.maxAttempts,
+      maxAttempts: accessReviewRecovery ? 5 : legacyUnresolvedPatch ? 4 : job.maxAttempts,
       completedAt: null, errorMessage: null, errorJson: Prisma.DbNull,
       metadataJson: toJson({ ...(job.metadataJson as Record<string, unknown> | null),
+        ...(compoundFindingRecovery ? { scientificFindingRecovery: { version: "scientific-finding-fields.v1", authorizedAt: new Date().toISOString(),
+          priorFailure: priorError, priorPatchCheckpoint: modernPatchStage!.stageKey, priorAttempts: job.attempts,
+          completedSciencePreserved: true } } : {}),
         ...(acquisitionRecovery ? { scientificAcquisitionRecovery: { authorizedAt: new Date().toISOString(), version: "pinned-dns-all.v2", priorFailure: priorError, paidDiscoveryReused: true } } : {}),
-        ...(unresolvedPriorPatch && !accessReviewRecovery ? { scientificPatchRecovery: { authorizedAt: new Date().toISOString(), fromPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v2", toPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", priorPatchRejectedBy: priorError } } : {}),
+        ...(legacyUnresolvedPatch && !accessReviewRecovery ? { scientificPatchRecovery: { authorizedAt: new Date().toISOString(), fromPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v2", toPromptVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", priorPatchRejectedBy: priorError } } : {}),
         ...(accessReviewRecovery ? { scientificAccessReviewRecovery: { authorizedAt: new Date().toISOString(), reusedPatchVersion: "ingeniometrix-scientific-design-autonomous-patch-v3", targetedCriticVersion: "ingeniometrix-scientific-design-autonomous-targeted-critic-v2" } } : {}),
-        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || unresolvedPriorPatch } }) } });
+        autonomousRecovery: { recoveredAt: new Date().toISOString(), from: compoundFindingRecovery ? "compound_finding_contract" : accessReviewRecovery ? "completed_patch_targeted_review" : unresolvedPriorPatch ? "scientifically_unresolved_patch" : rejectedLegacySchema ? "rejected_legacy_patch_schema" : failedResolution ? "failed_resolution" : "awaiting_design_approval", decisionCheckpoint: SCIENTIFIC_DECISION_STAGE, preservedInputSnapshotId: data.inputSnapshotId, unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch } }) } });
     await tx.project.update({ where: { id: projectId }, data: { status: ProjectStatus.BLUEPRINT_GENERATING } });
     await tx.auditLog.create({ data: { userId, projectId, actorType: "SYSTEM", eventType: "AUTONOMOUS_DESIGN_RECOVERY_SCHEDULED",
       payloadJson: toJson({ jobId, priorStatus: job.status, previousAttempts: job.attempts,
-        allPriorUsageKnown: failedResolution && !rejectedLegacySchema && !unresolvedPriorPatch,
-        rejectedBeforeResponse: rejectedLegacySchema, scientificPatchRecovery: unresolvedPriorPatch && !accessReviewRecovery,
-        completedPatchTargetedReview: accessReviewRecovery,
-        unknownUsageReservationPreserved: rejectedLegacySchema || unresolvedPriorPatch }) } });
+        allPriorUsageKnown: failedResolution && !rejectedLegacySchema && !legacyUnresolvedPatch,
+        rejectedBeforeResponse: rejectedLegacySchema, scientificPatchRecovery: legacyUnresolvedPatch && !accessReviewRecovery,
+        compoundFindingRecovery, completedPatchTargetedReview: accessReviewRecovery,
+        unknownUsageReservationPreserved: rejectedLegacySchema || legacyUnresolvedPatch }) } });
     return { job: toJobSummary(updated), shouldContinue: true, state: "autonomous_recovery_scheduled" as const };
   });
 }

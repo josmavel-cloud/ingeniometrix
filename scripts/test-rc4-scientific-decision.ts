@@ -23,6 +23,7 @@ import { updateSelectedProjectReferences } from "@/server/retrieval/reference-se
 import { normalizeTitle } from "@/lib/text";
 import { generationContextForUser } from "@/server/projects/generation-context-service";
 import { designSupportGaps, designSupportMetadataEligible } from "@/server/mvp/design-mini-research";
+import { fingerprint } from "@/server/mvp/job-execution-context";
 import { generationCostReport } from "@/server/mvp/generation-cost-report";
 import { applyAutonomousDesignPatch, classifyPendingDecision, compactAlternativeForRepair, inScopeAlternatives, resolveNonmaterialDecisions } from "@/server/mvp/autonomous-design-resolution";
 import { mandatoryCompositionReservationFloor, wholeJobCostEquation } from "@/server/mvp/whole-job-cost-forecast";
@@ -255,6 +256,16 @@ async function main() {
       ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
   assert.equal(deferredBundle.targetedReview?.blockingScientificIssue, false);
   assert.deepEqual(deferredBundle.targetedReview?.deferredAsFutureRequirementCodes, ["ACCESS_UNVERIFIED"]);
+  const compoundAccess = structuredClone(accessCritique);
+  compoundAccess.assessments[0].critical_findings[0].affected_field = "data_requirements; pending_user_decisions; procedure";
+  assert.doesNotThrow(() => applyAutonomousDesignPatch({ decision, critique: compoundAccess, intent, pack, patch: deferredPatch }));
+  const mixedMethod = structuredClone(compoundAccess);
+  mixedMethod.assessments[0].critical_findings[0].affected_field = "data_requirements; analysis_method";
+  assert.throws(() => applyAutonomousDesignPatch({ decision, critique: mixedMethod, intent, pack, patch: deferredPatch }), /BLOCKING_FINDING_UNRESOLVED/);
+  const compoundDeferred = await resolveAutonomousDesignBundle({ ...rejected, critique: compoundAccess }, { userId: "fixture", projectId: "fixture",
+    runId: "compound-access", provider: { generateStructuredObject: async (request: any) => request.schemaName === "autonomous_design_patch_v2"
+      ? deferredPatch : { ...smallReview, resolvedFindingCodes: [], deferredAsFutureRequirementCodes: ["ACCESS_UNVERIFIED"] } } as any });
+  assert.equal(compoundDeferred.targetedReview?.blockingScientificIssue, false, "Compound future requirements still require independent acceptance");
   const operationalScopeCaveat = { assessments: [{ ...rejectedCritique.assessments[0],
     user_decisions_required: ["Precisar apoyo de traducción; cualquier exclusión requerirá nueva revisión del alcance."],
     scope: { ...scope, status: "PRESERVED" as const, confirmation_required: false } }] };
@@ -393,6 +404,23 @@ async function main() {
     assert.equal(acquisitionRecoveries.filter(result => result.state === "already_scheduled").length, 1);
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "DESIGN_SUPPORT_UNAVAILABLE: fixture" } } });
     await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /AUTONOMOUS_RECOVERY_ATTEMPTS_EXHAUSTED/);
+    const originalScience = await prisma.blueprintJobStage.findUniqueOrThrow({ where: { jobId_stageKey: { jobId: job.id, stageKey: "checkpoint:SCIENTIFIC_DECISION" } } });
+    const compoundScience = structuredClone(originalScience.outputJson) as any;
+    compoundScience.value.critique.assessments[0].critical_findings = compoundAccess.assessments[0].critical_findings;
+    compoundScience.outputHash = fingerprint(compoundScience.value);
+    await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(compoundScience) } });
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "checkpoint:AUTONOMOUS_DESIGN_PATCH_EVIDENCE_1", status: "COMPLETED", progress: 100,
+      outputJson: json({ value: deferredPatch, outputHash: fingerprint(deferredPatch) }) } });
+    await prisma.blueprintJobStage.create({ data: { jobId: job.id, stageKey: "provider:background:compound-fixture", status: "COMPLETED", progress: 100,
+      outputJson: { status: "COMPLETED", responseId: "resp_fixture_compound", correlation: { stage: "autonomous_design_patch" } } } });
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", attempts: 1, errorJson: { message: "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED" } } });
+    const compoundRecoveries = await Promise.all([resumeLatestBlueprintJobForUser(user.id, project.id), resumeLatestBlueprintJobForUser(user.id, project.id)]);
+    assert.equal(compoundRecoveries.filter(result => result.state === "autonomous_recovery_scheduled").length, 1);
+    const compoundRecovered = await prisma.blueprintJob.findUniqueOrThrow({ where: { id: job.id } });
+    assert.equal(compoundRecovered.attempts, 1); assert.equal(compoundRecovered.maxAttempts, 3);
+    await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "FAILED", errorJson: { message: "AUTONOMOUS_PATCH_BLOCKING_FINDING_UNRESOLVED" } } });
+    await assert.rejects(() => resumeLatestBlueprintJobForUser(user.id, project.id), /ATTEMPTS_EXHAUSTED/);
+    await prisma.blueprintJobStage.update({ where: { id: originalScience.id }, data: { outputJson: json(originalScience.outputJson) } });
     await prisma.blueprintJobStage.delete({ where: { jobId_stageKey: { jobId: job.id, stageKey: "control:cost" } } });
     await prisma.blueprintJob.update({ where: { id: job.id }, data: { status: "WAITING_USER_DECISION", currentStage: "awaiting_design_approval" } });
     const recovery = await resumeLatestBlueprintJobForUser(user.id, project.id);

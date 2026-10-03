@@ -11,7 +11,7 @@ pinned("example.org", { all: true }, (error, addresses) => { assert.equal(error,
 pinned("example.org", { all: false }, (error, address, family) => { assert.equal(error, null); assert.equal(address, "8.8.8.8"); assert.equal(family, 4); });
 assert.throws(() => pinnedPublicLookup({ address: "127.0.0.1", family: 4 }), /DOCUMENT_HOST_NOT_PUBLIC/);
 
-import { designSupportGaps } from "../server/mvp/design-support-gap";
+import { designSupportGaps, scientificFindingFields } from "../server/mvp/design-support-gap";
 import type { ScientificDecisionBundle } from "../server/mvp/scientific-decision-service";
 import { htmlSupportPassages, rankSupportPassages, supportBibliographyFromHtml } from "../server/mvp/design-support-document";
 import { effectiveGenerationLedger, sealDesignSupport, validateDesignSupport } from "../server/mvp/design-support-addendum";
@@ -37,6 +37,13 @@ const bundle = {
   evidence_pack: { items: [{ evidence_id: "E1", evidence_level: "ABSTRACT_METADATA", allowed_use: "context_only" }] },
 } as unknown as ScientificDecisionBundle;
 assert.equal(designSupportGaps(bundle).length, 1, "WARNING plus an explicit evidence limitation must not be ignored");
+const compoundFinding = structuredClone(bundle);
+compoundFinding.critique.assessments[0].critical_findings[0].affected_field = "methodological_support; components";
+assert.equal(designSupportGaps(compoundFinding).length, 1, "Multiple field references must not suppress a critic's evidence limitation");
+assert.deepEqual(scientificFindingFields("data_requirements; pending_user_decisions; procedure"),
+  ["data_requirements", "pending_user_decisions", "procedure"]);
+compoundFinding.critique.assessments[0].critical_findings[0].affected_field = "methodological_supporting_guess";
+assert.equal(designSupportGaps(compoundFinding).length, 0, "A substring is not a field reference or an evidence judgement");
 const late = { alternativeId: "A1", intentPreserved: true, methodCoherent: true, evidenceSupported: false,
   blockingScientificIssue: false, blockingReason: "", limitations: ["Falta respaldo directo"],
   resolvedFindingCodes: [], unresolvedFindingCodes: ["EVI"], deferredAsFutureRequirementCodes: [] };
