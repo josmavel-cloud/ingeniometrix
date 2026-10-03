@@ -7,8 +7,9 @@ export type QaOverage = { grantId: string; jobHardUsd: number; campaignCapUsd: n
 
 async function qaOverageForJob(tx: Prisma.TransactionClient, job: { id: string; userId: string; projectId: string },
   campaignId: string, frozenInputFingerprint?: string): Promise<QaOverage | null> {
-  const grant = await tx.auditLog.findFirst({ where: { userId: job.userId, projectId: job.projectId,
-    eventType: QA_OVERAGE_AUTHORIZED_EVENT, payloadJson: { path: ["jobId"], equals: job.id } }, orderBy: { createdAt: "desc" } });
+  const grants = await tx.auditLog.findMany({ where: { userId: job.userId, projectId: job.projectId,
+    eventType: QA_OVERAGE_AUTHORIZED_EVENT, payloadJson: { path: ["jobId"], equals: job.id } }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
+  const grant = grants[0];
   if (!grant) return null;
   const value = grant.payloadJson as { version?: string; campaignId?: string; jobId?: string; projectId?: string;
     frozenInputFingerprint?: string; jobHardUsd?: number; campaignCapUsd?: number; expiresAt?: string; issuedBy?: string; reason?: string } | null;
@@ -18,8 +19,27 @@ async function qaOverageForJob(tx: Prisma.TransactionClient, job: { id: string; 
     new Date(value.expiresAt).getTime() > grant.createdAt.getTime() + 48 * 3600_000 ||
     !Number.isFinite(value.jobHardUsd) || value.jobHardUsd! <= 0 || !Number.isFinite(value.campaignCapUsd) || value.campaignCapUsd! < value.jobHardUsd!)
     throw new Error("QA_OVERAGE_AUTHORIZATION_INVALID");
-  if (new Date(value.expiresAt) <= new Date() || await tx.auditLog.count({ where: { userId: job.userId,
-    eventType: "SCIENTIFIC_QA_OVERAGE_REVOKED", payloadJson: { path: ["grantId"], equals: grant.id } } })) return null;
+  if (new Date(value.expiresAt) <= new Date()) return null;
+  // Supersession is append-only and linear. Revoking any ancestor revokes the
+  // whole branch; never silently fall back to a superseded spending authority.
+  let ancestor: typeof grant | undefined = grant;
+  const visited = new Set<string>();
+  while (ancestor) {
+    if (visited.has(ancestor.id)) throw new Error("QA_OVERAGE_GRANT_CHAIN_INVALID");
+    visited.add(ancestor.id);
+    const child = ancestor.payloadJson as { version?: string; campaignId?: string; frozenInputFingerprint?: string;
+      jobHardUsd: number; campaignCapUsd: number; supersedesGrantId?: string | null };
+    if (child.version !== QA_OVERAGE_POLICY_VERSION || child.campaignId !== campaignId || child.frozenInputFingerprint !== frozenInputFingerprint)
+      throw new Error("QA_OVERAGE_GRANT_CHAIN_INVALID");
+    if (await tx.auditLog.count({ where: { userId: job.userId, eventType: "SCIENTIFIC_QA_OVERAGE_REVOKED",
+      payloadJson: { path: ["grantId"], equals: ancestor.id } } })) return null;
+    const previous = child.supersedesGrantId ? grants.find(item => item.id === child.supersedesGrantId) : undefined;
+    if (child.supersedesGrantId && (!previous || previous.createdAt > ancestor.createdAt ||
+      (previous.payloadJson as { jobHardUsd: number }).jobHardUsd > child.jobHardUsd ||
+      (previous.payloadJson as { campaignCapUsd: number }).campaignCapUsd > child.campaignCapUsd))
+      throw new Error("QA_OVERAGE_GRANT_CHAIN_INVALID");
+    ancestor = previous;
+  }
   const capability = await tx.internalGenerationCapability.findFirst({ where: { userId: job.userId, status: "ACTIVE",
     OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] }, select: { id: true } });
   if (!capability) throw new Error("INTERNAL_GENERATION_CAPABILITY_REQUIRED");

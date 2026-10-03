@@ -11,7 +11,7 @@ export type QaOverageForecast = {
   evidence: string;
 };
 export type QaOverageRequest = { userId: string; projectId: string; jobId: string; campaignId: string;
-  issuedBy: string; reason: string; expiresAt: string; jobHardUsd: number; campaignCapUsd: number; forecast: QaOverageForecast };
+  issuedBy: string; reason: string; expiresAt: string; supersedesGrantId?: string; jobHardUsd: number; campaignCapUsd: number; forecast: QaOverageForecast };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const json = (value: unknown) => JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 const finiteMoney = (value: number) => Number.isFinite(value) && value >= 0;
@@ -57,13 +57,30 @@ export async function provisionQaOverage(input: QaOverageRequest, apply = false)
     const authorizationFingerprint = hash(input);
     const prior = await tx.auditLog.findFirst({ where: { userId: input.userId, projectId: input.projectId,
       eventType: QA_OVERAGE_AUTHORIZED_EVENT, payloadJson: { path: ["jobId"], equals: input.jobId } }, orderBy: { createdAt: "desc" } });
+    const previousAuthorization = prior?.payloadJson as { authorizationFingerprint?: string; jobHardUsd?: number; campaignCapUsd?: number;
+      campaignId?: string; frozenInputFingerprint?: string; supersedesGrantId?: string } | null;
     if (prior) {
-      if ((prior.payloadJson as { authorizationFingerprint?: string }).authorizationFingerprint !== authorizationFingerprint)
+      // A revoked branch cannot be reopened by changing the request fingerprint.
+      let ancestor: typeof prior | null = prior;
+      const visited = new Set<string>();
+      while (ancestor) {
+        if (visited.has(ancestor.id)) throw new Error("QA_OVERAGE_GRANT_CHAIN_INVALID");
+        visited.add(ancestor.id);
+        if (await tx.auditLog.count({ where: { userId: input.userId, eventType: "SCIENTIFIC_QA_OVERAGE_REVOKED",
+          payloadJson: { path: ["grantId"], equals: ancestor.id } } })) throw new Error("QA_OVERAGE_GRANT_REVOKED");
+        const parentId: string | undefined = (ancestor.payloadJson as { supersedesGrantId?: string }).supersedesGrantId;
+        ancestor = parentId ? await tx.auditLog.findFirst({ where: { id: parentId, userId: input.userId, projectId: input.projectId,
+          eventType: QA_OVERAGE_AUTHORIZED_EVENT, payloadJson: { path: ["jobId"], equals: input.jobId } } }) : null;
+        if (parentId && !ancestor) throw new Error("QA_OVERAGE_GRANT_CHAIN_INVALID");
+      }
+      if (previousAuthorization?.authorizationFingerprint === authorizationFingerprint)
+        return { applied: true, reused: true, grantId: prior.id, authorization: prior.payloadJson };
+      if (input.supersedesGrantId !== prior.id || previousAuthorization?.campaignId !== campaign.id ||
+        previousAuthorization.frozenInputFingerprint !== continuation.frozenInputFingerprint ||
+        !Number.isFinite(previousAuthorization.jobHardUsd) || !Number.isFinite(previousAuthorization.campaignCapUsd) ||
+        input.jobHardUsd < previousAuthorization.jobHardUsd! || input.campaignCapUsd < previousAuthorization.campaignCapUsd!)
         throw new Error("QA_OVERAGE_GRANT_CONFLICT");
-      if (await tx.auditLog.count({ where: { userId: input.userId, eventType: "SCIENTIFIC_QA_OVERAGE_REVOKED",
-        payloadJson: { path: ["grantId"], equals: prior.id } } })) throw new Error("QA_OVERAGE_GRANT_REVOKED");
-      return { applied: true, reused: true, grantId: prior.id, authorization: prior.payloadJson };
-    }
+    } else if (input.supersedesGrantId) throw new Error("QA_OVERAGE_SUPERSEDED_GRANT_NOT_FOUND");
     const totals = await qaCampaignCommitment(tx, campaign);
     const current = totals.jobCommitments.find(item => item.jobId === input.jobId);
     if (!current) throw new Error("QA_OVERAGE_COST_HISTORY_REQUIRED");
@@ -79,7 +96,9 @@ export async function provisionQaOverage(input: QaOverageRequest, apply = false)
       campaignId: campaign.id, frozenInputFingerprint: continuation.frozenInputFingerprint, capabilityId: capability.id,
       issuedBy: input.issuedBy, reason: input.reason, expiresAt: expiry.toISOString(), jobHardUsd: input.jobHardUsd,
       campaignCapUsd: input.campaignCapUsd, authorizationFingerprint,
-      priorJobHardUsd: campaign.jobCapMicros / 1e6, priorCampaignCapUsd: campaign.totalCapMicros / 1e6,
+      supersedesGrantId: prior?.id ?? null,
+      priorJobHardUsd: previousAuthorization?.jobHardUsd ?? campaign.jobCapMicros / 1e6,
+      priorCampaignCapUsd: previousAuthorization?.campaignCapUsd ?? campaign.totalCapMicros / 1e6,
       knownJobCost: current.known, unknownJobReserved: current.unknown, campaignKnownCost: totals.known,
       campaignUnknownReserved: totals.unknown, projectedJob, projectedCampaign, forecast: input.forecast,
       historicalPoliciesAndUsageUnchanged: true, newJobsAuthorized: 0 };

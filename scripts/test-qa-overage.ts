@@ -79,19 +79,35 @@ async function main() {
     assert.deepEqual(saved.policy, initial.policy, "Original job cost-policy snapshot unchanged");
     assert.deepEqual(saved.entries.slice(0, 2), initial.entries, "Original known/unknown entries untouched");
     assert.deepEqual((await prisma.blueprintJobStage.findUniqueOrThrow({ where: { id: parentBefore.id } })).outputJson, parentBefore.outputJson);
+    const firstGrantBefore = await prisma.auditLog.findUniqueOrThrow({ where: { id: grants[0].grantId! } });
+    const superseding: QaOverageRequest = { ...request, supersedesGrantId: grants[0].grantId!, jobHardUsd: 16, campaignCapUsd: 21,
+      reason: "Two remaining bounded scientific paths", forecast: { ...request.forecast,
+        stages: [{ stage: "two-remaining-method-paths", maximumUsd: 10, basis: "Two bounded hypothetical paths" }], contingencyUsd: 1.78785 } };
+    await assert.rejects(() => provisionQaOverage({ ...superseding, supersedesGrantId: randomUUID() }, true), /GRANT_CONFLICT/);
+    const preview = await provisionQaOverage(superseding);
+    assert.equal(preview.applied, false);
+    const successors = await Promise.all([provisionQaOverage(superseding, true), provisionQaOverage(superseding, true)]);
+    assert.equal(successors[0].grantId, successors[1].grantId, "Concurrent supersession appends exactly one grant");
+    assert.notEqual(successors[0].grantId, grants[0].grantId);
+    assert.equal(await prisma.auditLog.count({ where: { userId: user.id, eventType: QA_OVERAGE_AUTHORIZED_EVENT } }), 2);
+    assert.deepEqual(await prisma.auditLog.findUniqueOrThrow({ where: { id: firstGrantBefore.id } }), firstGrantBefore,
+      "Superseded grant is immutable");
+    assert.equal((await prisma.$transaction(tx => qaJobPolicy(tx, job.id)))!.policy.hard, 16);
+    assert.equal((await prisma.$transaction(tx => assertQaCommitment(tx, user.id, 0, job.id)))!.ceiling, 21);
+    await assert.rejects(() => provisionQaOverage(request, true), /GRANT_CONFLICT/, "Old grant request cannot resurrect a superseded authority");
     await prisma.internalGenerationCapability.update({ where: { id: capability.id }, data: { status: "REVOKED" } });
     await assert.rejects(() => prisma.$transaction(tx => qaJobPolicy(tx, job.id)), /CAPABILITY_REQUIRED/);
     await prisma.internalGenerationCapability.update({ where: { id: capability.id }, data: { status: "ACTIVE" } });
     const revocations = await Promise.all([revokeQaOverage({ grantId: grants[0].grantId!, issuedBy: "test", reason: "revoke" }),
       revokeQaOverage({ grantId: grants[0].grantId!, issuedBy: "test", reason: "revoke" })]);
     assert.equal(revocations[0].id, revocations[1].id);
-    assert.equal((await prisma.$transaction(tx => qaJobPolicy(tx, job.id)))!.policy.hard, 5);
+    assert.equal((await prisma.$transaction(tx => qaJobPolicy(tx, job.id)))!.policy.hard, 5, "Revoking a predecessor revokes the full branch; no fallback to old grant");
     await assert.rejects(() => provisionQaOverage(request, true), /REVOKED/);
     await prisma.qaAcceptanceCampaign.update({ where: { id: campaign.id }, data: { expiresAt: new Date(0) } });
     await assert.rejects(() => prisma.$transaction(tx => qaJobPolicy(tx, job.id)), /EXPIRED/);
     assert.equal(internalPilotJobCostPolicy().hard, 3, "Ordinary internal pilot remains unchanged");
     assert.equal(await prisma.commercialReservation.count({ where: { userId: user.id } }), 0);
-    console.log("PASS: exact-job QA overlay, dry-run, idempotent grant/revoke, concurrency caps, linked accounting, unknown retained, historical policy immutable, ordinary pilot unchanged; provider calls=0");
+    console.log("PASS: exact-job QA overlay, dry-run, idempotent grant/supersession/branch revoke, concurrency caps, linked accounting, unknown retained, historical policy immutable, ordinary pilot unchanged; provider calls=0");
   } finally {
     await prisma.internalGenerationAuthorization.deleteMany({ where: { userId: user.id } });
     await prisma.internalGenerationCapability.deleteMany({ where: { userId: user.id } });
