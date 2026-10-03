@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { searchCrossrefWorks, type CrossrefMessage } from "@/server/retrieval/crossref-client";
 import { searchOpenAlexWorks } from "@/server/retrieval/openalex-client";
 import { recordLlmUsage } from "@/server/llm-usage-registry";
-import { currentApplicationBudget, reservePaidCall } from "./application-budget";
+import { hasPaidBudgetContext, reservePaidCall } from "./application-budget";
 import { assessEvidenceCoverage, shouldExpandEvidence } from "./evidence-coverage";
 import { citationChainLimits, parseCitationCandidates, parsePdfCitationLinks, resolveDiscoveryCandidate, type DiscoveryCandidate } from "./citation-chaining";
 import { runMvpEvidenceMaterialization } from "./evidence-materialization-service";
@@ -20,8 +20,7 @@ export const DEEP_RESEARCH_LIMITS = { responses: 1, toolCalls: 3, outputTokens: 
 export const DEEP_RESEARCH_MAX_USD = ((DEEP_RESEARCH_LIMITS.toolCalls + 1) * 200_000 * 2 + DEEP_RESEARCH_LIMITS.outputTokens * 8) / 1e6 + DEEP_RESEARCH_LIMITS.toolCalls * 0.01;
 
 export async function discoverWithDeepResearch(context: unknown, artifactDir: string, attribution: { projectId: string; runId: string }) {
-  const budget = currentApplicationBudget();
-  if (!budget) throw new Error("RESEARCH_BUDGET_REQUIRED");
+  if (!hasPaidBudgetContext()) throw new Error("RESEARCH_BUDGET_REQUIRED");
   const reservation = await reservePaidCall("deep_research_discovery", prompt.model, DEEP_RESEARCH_MAX_USD);
   const client = new OpenAI({ maxRetries: 0, timeout: DEEP_RESEARCH_LIMITS.wallMs });
   const request = { model: prompt.model, input: `${prompt.systemPrompt}\n\n${prompt.userPromptTemplate.replace("{{context_json}}", JSON.stringify(context))}`, max_output_tokens: DEEP_RESEARCH_LIMITS.outputTokens, max_tool_calls: DEEP_RESEARCH_LIMITS.toolCalls, tools: [{ type: "web_search_preview" as const }], store: false };

@@ -6,6 +6,7 @@ import { QA_COST_POLICY_VERSION, QA_OVERAGE_AUTHORIZED_EVENT, assertQaCommitment
 import { provisionQaOverage, revokeQaOverage, type QaOverageRequest } from "@/server/mvp/qa-overage-provisioning";
 import { preflightWholeJobCost, reserveJobCall, withJobExecution } from "@/server/mvp/job-execution-context";
 import { internalPilotJobCostPolicy } from "@/server/mvp/execution-policy";
+import { ApplicationBudget, currentApplicationBudget, hasPaidBudgetContext, reservePaidCall, withApplicationBudget } from "@/server/mvp/application-budget";
 import { currentPaidOperation, withPaidOperation } from "@/server/mvp/pre-job-budget";
 
 async function main() {
@@ -95,6 +96,23 @@ async function main() {
     assert.equal((await prisma.$transaction(tx => qaJobPolicy(tx, job.id)))!.policy.hard, 16);
     assert.equal((await prisma.$transaction(tx => assertQaCommitment(tx, user.id, 0, job.id)))!.ceiling, 21);
     await assert.rejects(() => provisionQaOverage(request, true), /GRANT_CONFLICT/, "Old grant request cannot resurrect a superseded authority");
+    assert.equal(hasPaidBudgetContext(), false);
+    await withJobExecution({jobId:job.id,startedAt:job.startedAt!,stage:"scientific_review"},async()=>{
+      assert.equal(currentApplicationBudget(),undefined);
+      assert.equal(hasPaidBudgetContext(),true,"Durable job owns the funding context without installing a stale local cap5");
+      const next=await reservePaidCall("scientific_review","fixture",6);
+      await next.complete(5.5,{input_tokens:1},"fixture");
+      const funded=(await prisma.blueprintJobStage.findUniqueOrThrow({where:{jobId_stageKey:{jobId:job.id,stageKey:"control:cost"}}})).outputJson as any;
+      assert.equal(funded.policy.hard,5,"Saved original snapshot remains5");
+      assert.equal(funded.entries.at(-1).qaAuthorization.effectiveHardCapUsd,16);
+      assert.equal(funded.entries.at(-1).qaAuthorization.grantId,successors[0].grantId);
+      await assert.rejects(()=>reservePaidCall("scientific_review","fixture",7),/COST_LIMIT|QA_COMMITMENT/);
+      await assert.rejects(()=>withApplicationBudget(new ApplicationBudget(.01),()=>reservePaidCall("evaluation_limit","fixture",.02)),/BUDGET_BLOCKED/,
+        "Explicit evaluation limits still apply even to a funded job");
+    });
+    const local=new ApplicationBudget();
+    await assert.rejects(()=>withApplicationBudget(local,()=>reservePaidCall("standalone","fixture",6)),/BUDGET_BLOCKED/,
+      "Non-worker default evaluation cap is unchanged");
     await prisma.internalGenerationCapability.update({ where: { id: capability.id }, data: { status: "REVOKED" } });
     await assert.rejects(() => prisma.$transaction(tx => qaJobPolicy(tx, job.id)), /CAPABILITY_REQUIRED/);
     await prisma.internalGenerationCapability.update({ where: { id: capability.id }, data: { status: "ACTIVE" } });

@@ -72,7 +72,7 @@ import type { CanonicalEquationBlock } from "@/server/reporting/canonical-report
 import { assertEvidenceContinuity, evaluateEvidenceGate, inspectableEvidence, sourceDisposition } from "./evidence-continuity";
 import { generateScientificPlan, scientificSectionPlan } from "./scientific-plan-generation";
 import { exportPlanPdf } from "./pdf-export";
-import { ApplicationBudget, currentApplicationBudget, withApplicationBudget } from "./application-budget";
+import { ApplicationBudget, currentApplicationBudget, hasPaidBudgetContext, withApplicationBudget } from "./application-budget";
 import { ensureResearchCoverage } from "./research-fallback";
 import { SCIENTIFIC_PLAN_LATAM_COMPACT_PROMPT as SCIENTIFIC_PLAN_PROMPT } from "./prompts/scientific-plan-latam-compact.v1";
 import { stageCheckpoint, jobCostSnapshot, createBlueprintVersionOnce, currentJobExecution } from "./job-execution-context";
@@ -3088,7 +3088,7 @@ export async function runMvpStep6BlueprintDocx(input: {
   /** Evaluation-only reuse: identical structured design/title, same project, no second image request. */
   heroReuse?: { projectId: string; fingerprint: string; plan: MvpStep6HeroImagePlan; qualityRejectionReason?: string };
 }): Promise<MvpStep6Result> {
-  if (!currentApplicationBudget()) return withApplicationBudget(new ApplicationBudget(), () => runMvpStep6BlueprintDocx(input));
+  if (!hasPaidBudgetContext()) return withApplicationBudget(new ApplicationBudget(), () => runMvpStep6BlueprintDocx(input));
   const artifacts = buildArtifacts(input.projectId, input.runId);
   const warnings: string[] = [];
   const errors: string[] = [];

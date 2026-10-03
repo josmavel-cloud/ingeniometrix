@@ -26,6 +26,9 @@ const context = new AsyncLocalStorage<ApplicationBudget>();
 const callAttempt = new AsyncLocalStorage<number>();
 export const withPaidCallAttempt = <T>(attempt: number, work: () => Promise<T>) => callAttempt.run(attempt, work);
 export const currentApplicationBudget = () => context.getStore();
+// A durable worker job already has a revalidated funding policy, whole-job
+// forecast and SQL ledger. Do not install an unrelated default evaluation cap.
+export const hasPaidBudgetContext = () => Boolean(currentApplicationBudget() || currentJobExecution());
 export function withApplicationBudget<T>(budget: ApplicationBudget, work: () => Promise<T>) { return context.run(budget, work); }
 
 // The SQL reservation is authoritative across workers/restarts; the process budget remains
